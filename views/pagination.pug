@@ -1,0 +1,53 @@
+ol.pagination
+  - var limit = 5
+  - var limitHalf = 5;
+  - var start = meta.active
+  if start < limitHalf
+    - start = 1
+    - limit = start + limit + limitHalf
+    if limit > meta.page
+      - limit = meta.page
+  else if start - limitHalf < 1
+    - start = 1
+    - limit = start + limit + limitHalf
+    if limit > meta.page
+      - limit = meta.page
+  else
+    - start = start - limitHalf
+    - limit = start + limit + limitHalf
+    if limit >= meta.page
+      - start = meta.page - 10
+      - limit = meta.page
+
+  - var isPrevious= meta.active > 1
+  li(class='btn' class=isPrevious?'previous':'previous disabled')
+    if isPrevious
+      a(href=url.replace('*',meta.active - 1)) Previous
+    else
+      span Previous
+
+  - var isFirst= start > 2
+  li(class='btn' class=isFirst?'first':'first disabled')
+    if isFirst
+      a(href=url.replace('*',1)) first
+    else
+      span first
+
+  while start <= limit
+    - var num = start++
+    li(class='num' class=num == meta.active?'active':num < meta.active?'vt':'nt')
+      a(href=url.replace('*',num)) #{num}
+
+  - var isLast = limit < meta.page
+  li(class='btn' class=isLast?'last':'last disabled')
+    if isLast
+      a(href=url.replace('*',meta.page)) last
+    else
+      span last
+
+  - var isNext = meta.active < meta.page
+  li(class='btn' class=isNext?'next':'next disabled')
+    if isNext
+      a(href=url.replace('*',meta.active + 1)) Next
+    else
+      span Next

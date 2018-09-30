@@ -1,0 +1,25 @@
+extends layout
+block content
+  include pagination
+  ol
+    each row, uniqueId in raw.data
+      li(id=uniqueId)
+        h4
+          a(href='/music/album/'+row.album) #{row.album}
+        p.artist
+          each art, i in row.artist
+            a(href='/music/artist/'+art) #{art}
+            |,
+        p.year
+          each yar, i in row.year
+            a(href='/music?year='+yar) #{yar}
+        p.genre
+          each grn, i in row.genre
+            a(href='/music?genre='+grn) #{grn}
+        ol
+          each trk, i in row.track
+            li(id=trk.ID)
+              a(href='/music/'+trk.ALBUM+'/'+trk.ARTIST+'/'+trk.TITLE) #{trk.TITLE}
+
+
+  // include pagination
