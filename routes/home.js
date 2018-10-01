@@ -1,6 +1,11 @@
-var {express} = require.main.exports(),
-    {score} = require('../score');
-var router = express.Router();
+var app = require('../');
+
+//     {express,path} = app.Core.evh(),
+//     {score} = require('.././score'),
+//     querystring = require('querystring'),
+//     Definition = require('./classDefinition');
+
+let router = app.router();
 
 router.get('/', function(req, res, next) {
   res.render('home', { title: 'Angular reserved!' });

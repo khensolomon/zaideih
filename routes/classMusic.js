@@ -1,5 +1,7 @@
-var Timer = require('./classTimer'),
-    {score} = require('../score');
+var app = require('../'),
+    {path} = app.Core.evh(),
+    {score} = require('../score'),
+    Timer = require('./classTimer');
 
 var config={
   track_limit:30,
@@ -25,7 +27,7 @@ module.exports = class Music {
 
   queryTrackSearch() {
     // TODO: search -> all, title, artist, album
-    let selector=['SELECT *',score.sql.format('FROM ?? AS t', [table.track])];
+    let selector=['SELECT *',app.sql.format('FROM ?? AS t', [table.track])];
     let where=false;
     if (this.request.q) {
       let q = this.request.q;
@@ -35,10 +37,10 @@ module.exports = class Music {
         selector.push('WHERE');
         where=true;
       }
-      selector.push(score.sql.format('?? LIKE ?', ['t.TITLE',q+'%']));
-      selector.push(score.sql.format('OR ?? LIKE ?', ['t.ARTIST',q+'%']));
-      selector.push(score.sql.format('OR ?? LIKE ?', ['t.ALBUM',q+'%']));
-      // selector.push(score.sql.format('?? LIKE ?', ['t.ARTIST',q+'%']));
+      selector.push(app.sql.format('?? LIKE ?', ['t.TITLE',q+'%']));
+      selector.push(app.sql.format('OR ?? LIKE ?', ['t.ARTIST',q+'%']));
+      selector.push(app.sql.format('OR ?? LIKE ?', ['t.ALBUM',q+'%']));
+      // selector.push(app.sql.format('?? LIKE ?', ['t.ARTIST',q+'%']));
     }
     if (this.request.year) {
       if (where) {
@@ -48,7 +50,7 @@ module.exports = class Music {
         where=true;
       }
       // selector.push(where?'OR':'WHERE');
-      selector.push(score.sql.format('?? = ?', ['t.YEAR',this.request.year]));
+      selector.push(app.sql.format('?? = ?', ['t.YEAR',this.request.year]));
     }
     if (this.request.genre) {
       if (where) {
@@ -57,10 +59,10 @@ module.exports = class Music {
         selector.push('WHERE');
         where=true;
       }
-      selector.push(score.sql.format('?? LIKE ?', ['t.GENRE',this.request.genre]));
+      selector.push(app.sql.format('?? LIKE ?', ['t.GENRE',this.request.genre]));
     }
 
-    // let from = [score.sql.format('FROM ?? AS t', [table.track])];
+    // let from = [app.sql.format('FROM ?? AS t', [table.track])];
     // let where = [];
     // let order = ['ORDER BY t.PLAYS DESC'];
     // let limit = [];
@@ -73,14 +75,14 @@ module.exports = class Music {
     /*
     let selector = this.queryTrackSearch();
 
-    // let selectorCount = score.sql.format(selector.join(' '), ['count(0) AS totalRow']);
+    // let selectorCount = app.sql.format(selector.join(' '), ['count(0) AS totalRow']);
     let selectorCount = selector.join(' ').replace('*','count(0) AS totalRow');
     // let selectorCount = selector.join(' ');
     console.log(selectorCount);
 
     // selector.unshift('')
      // ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?
-    selector.push(score.sql.format('ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?', [limit,offset]));
+    selector.push(app.sql.format('ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?', [limit,offset]));
 
     console.log(selector.join(' '));
     */
@@ -142,7 +144,7 @@ module.exports = class Music {
      callback({type:metaType,data:result,meta:meta});
    }
    let selector = this.queryTrackSearch();
-   score.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
+   app.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
      totalRow = raw[0].totalRow;
      activePage=parseInt(activePage);
      totalPage = Math.ceil(totalRow / limit);
@@ -163,8 +165,8 @@ module.exports = class Music {
 
      if (totalRow > 0) {
        // NOTE: SELECT * FROM zd_track AS t ORDER BY t.PLAYS DESC LIMIT 22 OFFSET 2
-       selector.push(score.sql.format('ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?', [limit,offset]));
-       score.sql.query(selector.join(' '), (err, raw,column) => {
+       selector.push(app.sql.format('ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?', [limit,offset]));
+       app.sql.query(selector.join(' '), (err, raw,column) => {
          // console.log(raw.length);
          // console.log(raw.affectedRows);
          asyncEach(raw);
@@ -203,7 +205,7 @@ module.exports = class Music {
       callback({type:'album',data:result,meta:meta});
     }
     let selector = this.queryTrackSearch();
-    score.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
+    app.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
       totalRow = raw[0].totalRow;
       activePage=parseInt(activePage);
       totalPage = Math.ceil(totalRow / limit);
@@ -223,8 +225,8 @@ module.exports = class Music {
       };
 
       if (totalRow > 0) {
-        selector.push(score.sql.format('GROUP BY t.UNIQUEID ORDER BY totalPlay DESC LIMIT ? OFFSET ?', [limit,offset]));
-        score.sql.query(selector.join(' ').replace('*','*,GROUP_CONCAT(t.YEAR) listYear, GROUP_CONCAT(t.GENRE) listGenre, GROUP_CONCAT(t.LENGTH) listLength,GROUP_CONCAT(t.ARTIST) listArtist, SUM(t.PLAYS) AS totalPlay, COUNT(t.ID) AS totalTrack'), (err, raw,column) => {
+        selector.push(app.sql.format('GROUP BY t.UNIQUEID ORDER BY totalPlay DESC LIMIT ? OFFSET ?', [limit,offset]));
+        app.sql.query(selector.join(' ').replace('*','*,GROUP_CONCAT(t.YEAR) listYear, GROUP_CONCAT(t.GENRE) listGenre, GROUP_CONCAT(t.LENGTH) listLength,GROUP_CONCAT(t.ARTIST) listArtist, SUM(t.PLAYS) AS totalPlay, COUNT(t.ID) AS totalTrack'), (err, raw,column) => {
           // callback({type:'album',meta:meta,data:raw});
           asyncEach(raw);
         });
@@ -262,7 +264,7 @@ module.exports = class Music {
       callback({type:'artist ???',data:result,meta:meta});
     }
     let selector = this.queryTrackSearch();
-    score.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
+    app.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
       totalRow = raw[0].totalRow;
       activePage=parseInt(activePage);
       totalPage = Math.ceil(totalRow / limit);
@@ -282,8 +284,8 @@ module.exports = class Music {
       };
 
       if (totalRow > 0) {
-        selector.push(score.sql.format('GROUP BY t.ARTIST ORDER BY totalPlay DESC LIMIT ? OFFSET ?', [limit,offset]));
-        score.sql.query(selector.join(' ').replace('*','*,GROUP_CONCAT(t.YEAR) listYear, GROUP_CONCAT(t.GENRE) listGenre, GROUP_CONCAT(t.LENGTH) listLength,  GROUP_CONCAT(t.ALBUM) listAlbum, SUM(t.PLAYS) AS totalPlay, COUNT(t.ID) AS totalTrack'), (err, raw,column) => {
+        selector.push(app.sql.format('GROUP BY t.ARTIST ORDER BY totalPlay DESC LIMIT ? OFFSET ?', [limit,offset]));
+        app.sql.query(selector.join(' ').replace('*','*,GROUP_CONCAT(t.YEAR) listYear, GROUP_CONCAT(t.GENRE) listGenre, GROUP_CONCAT(t.LENGTH) listLength,  GROUP_CONCAT(t.ALBUM) listAlbum, SUM(t.PLAYS) AS totalPlay, COUNT(t.ID) AS totalTrack'), (err, raw,column) => {
           // callback({type:'album',meta:meta,data:raw});
           asyncEach(raw);
         });
@@ -296,13 +298,13 @@ module.exports = class Music {
   }
 
   track_dumpList(callback) {
-   score.sql.query('SELECT * FROM zd_track AS t ORDER BY t.PLAYS DESC LIMIT 9', callback);
+   app.sql.query('SELECT * FROM zd_track AS t ORDER BY t.PLAYS DESC LIMIT 9', callback);
   }
   track_dumpId(trackId,callback) {
-   score.sql.query('SELECT * FROM zd_track WHERE ID=?', [trackId], callback);
+   app.sql.query('SELECT * FROM zd_track WHERE ID=?', [trackId], callback);
   }
   track_dump(callback) {
-   score.sql.query('SELECT * FROM zd_track LIMIT 3', callback);
+   app.sql.query('SELECT * FROM zd_track LIMIT 3', callback);
   }
   // trackCount(callback) {
   //  const query = mysql.format('SELECT count(*) AS TotalCount FROM ??', [table.track]);

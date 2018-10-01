@@ -1,10 +1,10 @@
-var {express,path} = require.main.exports(),
+var app = require('../'),
+    {express,path} = app.Core.evh(),
     {score} = require('../score'),
-    Music = require('./classMusic'),
-    querystring = require('querystring');
+    querystring = require('querystring'),
+    Music = require('./classMusic');
 
-var router = express.Router();
-
+let router = app.router();
 
 router.get('/album/:album', function(req, res, next) {
   res.send({page:'album detail',album:req.params.album});
@@ -54,6 +54,5 @@ router.get('/', function(req, res, next) {
     });
   });
 });
-
 
 module.exports = router;

@@ -1,8 +1,10 @@
-var {express,path} = require.main.exports(),
+var app = require('../'),
+    {express,path} = app.Core.evh(),
     {score} = require('../score'),
+    querystring = require('querystring'),
     Music = require('./classMusic');
 
-var router = express.Router();
+let router = app.router();
 
 // router.get('/edit', function(req, res, next) {
 //   console.log('apple is executed');
@@ -18,14 +20,13 @@ var router = express.Router();
 //   });
 // });
 
-
 // NOTE: Edit...
-
 // router.get('/:user_id/edit', function(req, res, next) {
 //   res.send({
 //     page:'edit'
 //   });
 // });
+
 // // NOTE: View...
 // router.get('/:id', function(req, res, next) {
 //   // console.log(req.database);
@@ -62,6 +63,7 @@ router.get('/track', function(req, res, next) {
     });
   });
 });
+
 router.get('/album', function(req, res, next) {
   let param={},
       query=req.query;
@@ -85,6 +87,7 @@ router.get('/album', function(req, res, next) {
     });
   });
 });
+
 router.get('/artist', function(req, res, next) {
   let param={},
       query=req.query;
@@ -110,11 +113,8 @@ router.get('/artist', function(req, res, next) {
   });
 });
 
-
 router.get('/', function(req, res, next) {
   res.send({TODO:true});
 });
-
-
 
 module.exports = router;
