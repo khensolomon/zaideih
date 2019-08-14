@@ -1,0 +1,325 @@
+<div>
+    <div class="navigate">
+      <div class="column">
+        <ul>
+          <li class="actives">
+            <div class="toggle panel zA icon-panel"></div>
+            <ol class="menu page">
+              <router-link tag='li' class="link" :to="{ path: '/'}">
+                <a>
+                  <span>Home</span>
+                </a>
+              </router-link>
+              <router-link tag='li' class="link" :to="{ path: '/hello', query: { name: 'Foo' }}">
+                <a>
+                  <span>Say hello</span>
+                </a>
+              </router-link>
+              <router-link tag='li' class="link" :to="{ path: '/goodbye', query: { name: 'Foo' }}">
+                <a>
+                  <span>Say goodbye</span>
+                </a>
+              </router-link>
+            </ol>
+          </li>
+        </ul>
+      </div>
+      <div class="column">
+          <div class="search">
+              <input placeholder="search" type="text">
+          </div>
+      </div>
+    </div>
+
+<div class="player-controls">
+    <div class="progress">
+      <audio ref="audio" @timeupdate="eventUpdate" @loadeddata="eventLoad" @play="eventPlay" @pause="eventPause" @ended="eventEnded" :loop="isLoop" :src="track.src"  type="audio/mp3" preload="auto" autoplay hidden></audio>
+      <!-- <audio ref="audio" :loop="loop" :src="track.track"  type="audio/mp3" preload="auto" autoplay hidden></audio> -->
+      <!-- <span v-text="track.title"></span> -->
+      <span class="tooltip" :style="{ left: hoverLeft + 'px' }">{{ hover | timeFormat }}</span>
+      <input v-model="seek" @focus="eventSeekFocus" @mousemove="eventSeekOver" @mouseout="eventSeekOut" @change="eventSeek" type="range" step="0.00000001" min="0" max="100"/>
+      <!-- <input :value="percentComplete" type="range" min="0" max="100"/> -->
+      <!-- <progress v-on:click="seekProgress" :value="percentComplete" min="0" max="100"></progress> -->
+      <!-- <div class="player-progress" @click="seekProgress" @mouseover="hoverTmp" :title="currentTmp">
+        <div :style="{ width: percentComplete + '%' }" class="player-seeker"></div>
+      </div> -->
+    </div>
+    <div class="controls">
+      <span class="icon-stop" @click="stop()"></span>
+      <span class="icon-play-previous" @click="previous()"></span>
+      <span  @click="play()" :class="[$parent.playing? 'icon-pause' : 'icon-play']"></span>
+      <span class="icon-play-next" @click="next()"></span>
+      <span class="icon-loop" @click="loop()" :class="{active:isLoop}"></span>
+      <span class="icon-shuffle" @click="shuffle()" :class="{active:isShuffle}"></span>
+      <!-- <span @click="shuffle()" :class="[loop? 'icon-loop' : 'icon-shuffle']"></span> -->
+    </div>
+    <div class="volume">
+      <span v-if="volume>90" v-on:click="mute" class="icon-volume-up"></span>
+      <span v-else-if="volume==0" v-on:click="mute" class="icon-volume-off"></span>
+      <span v-else v-on:click="mute" class="icon-volume-down"></span>
+      <!-- <span v-on:click="mute" title="Mute" class="icon-volume-up" >Mute</span> -->
+      <!-- <input v-model.lazy.number="volume" type="range" min="0" max="100"/> -->
+      <input v-model="volume" type="range" min="0" max="100"/>
+    </div>
+    <div class="info">
+      <span class="start-time">{{ current | timeFormat }}</span>/<span class="end-time">{{ duration | timeFormat }}</span>
+      <!-- <span class="start-time" >{{currentTime}}</span>/<span class="end-time">{{durationTime}}</span> -->
+    </div>
+  </div>
+
+<div class="player">
+  <div class="player-controls">
+    <div>
+      <span v-on:click.prevent="stop" title="Stop">stop</span>
+    </div>
+    <div>
+      <div v-on:click.prevent="playing = !playing" title="Play/Pause">
+        <span v-if="!playing">Play</span>
+        <span v-else>Pause</span>
+      </div>
+    </div>
+    <div>
+      <div v-on:click="seek" class="player-progress" title="Time played : Total time">
+        <div :style="{ width: this.percentComplete + '%' }" class="player-seeker"></div>
+      </div>
+      <div class="player-time">
+        <span class="player-time-current">{{ currentTime }}</span>
+        <span class="player-time-total">{{ durationTime }}</span>
+      </div>
+    </div>
+    <div>
+      <span v-on:click.prevent="download">Download</span>
+    </div>
+    <div>
+      <div v-on:click.prevent="innerLoop = !innerLoop" >
+        <span v-if="!innerLoop">Loop</span>
+        <span v-else>unLoop</span>
+      </div>
+    </div>
+    <div>
+      <div v-on:click.prevent="mute" title="Mute" href="#">
+        <span v-if="!muted">muted</span>
+        <span v-else>unmuted</span>
+      </div>
+    </div>
+    <div>
+      <div title="Volume">
+        <input v-model.lazy.number="volume" type="range" min="0" max="100"/>
+      </div>
+    </div>
+  </div>
+  <audio :loop="innerLoop" ref="audiofile" :src="file" preload="auto"></audio>
+</div>
+
+// this.player.addEventListener('timeupdate', this.eventUpdate);
+// this.player.addEventListener('loadeddata', this.eventLoad);
+// this.player.addEventListener('pause', this.eventPause);
+// this.player.addEventListener('play', this.eventPlay);
+// this.player.addEventListener('ended', this.eventEnded);
+<audio ref="audio" @timeupdate="eventUpdate" @load="eventLoad" @play="eventPlay" @pause="eventPause" @ended="eventEnded" :loop="loop" :src="track.track"  type="audio/mp3" preload="auto" autoplay hidden></audio>
+
+// this.player.on('event', () => console.log('event fired'))
+// this.player.on('ready', () => {
+//   // $('<button type="button" class="plyr-prev"><i class="fa fa-step-backward fa-lg"></i></button>').insertBefore('.plyr__controls [data-plyr="play"]');
+//   var container = document.querySelector('.plyr__controls');
+//   const nextBtn = document.createElement('button');
+//   nextBtn.setAttribute('type','button');
+//   nextBtn.setAttribute('class','plyr__control chp__control__next');
+//   nextBtn.setAttribute('data-plyr','next');
+//   nextBtn.setAttribute('aria-label','Next');
+//   nextBtn.textContent = 'Next';
+//   // nextBtn.innerHTML  = '<i class="fa fa-step-forward fa-lg"></i>';
+//   // nextBtn.innerHTML  = '<svg class="chp__control__icon__first" role="presentation" focusable="false"><use xlink:href="#plyr-play"></use></svg>';
+//   // container.appendChild(nextBtn);
+//   container.insertBefore(nextBtn, container.childNodes[1]);
+// })
+
+export default {
+  name: 'Player',
+  data: () => ({
+		audio: undefined,
+		currentSeconds: 0,
+		durationSeconds: 0,
+		loop: false,
+		loaded: false,
+		playing: false,
+		previousVolume: 35,
+    showVolume: false,
+    track:{},
+    index:0,
+		volume: 70,
+		seek: 0
+	}),
+  watch: {
+		playing(value) {
+			if (value) { return this.player.play(); }
+      this.player.pause();
+      // top();
+		},
+		volume(value) {
+			// this.showVolume = false;
+      // this.audio.volume = this.volume / 100;
+      this.player.volume = value / 100;
+		},
+		// seek(value) {
+    //   var seekto = this.$parent.durationTotal * (value / 100);
+    //   // this.$parent.durationCurrent = seekto;
+    //   // this.player.currentTime = seekto;
+    //   console.log(value,seekto);
+    //   // this.seek = this.player.currentTime * 100;
+    //   // this.seek = this.player.currentTime / this.$parent.durationTotal * 100;
+    //   // this.seek = this.$parent.durationCurrent / this.$parent.durationTotal * 100;
+    //   // return this.seek;
+		// }
+	},
+  methods: {
+    eventUpdate() {
+      this.$parent.durationCurrent = parseInt(this.player.currentTime);
+      // if (this.player.duration == this.player.currentTime){
+      //   this.stop();
+      // }
+      // this.seek = this.$parent.durationCurrent / this.$parent.durationTotal * 100;
+      this.seek = this.player.currentTime / this.player.duration * 100;
+      // console.log(this.$parent.durationCurrent);
+      // console.log(this.seek);
+    },
+    eventLoad() {
+			if (this.player.readyState >= 2) {
+				this.$parent.durationTotal = parseInt(this.player.duration);
+			}
+		},
+    eventPlay() {
+			this.$parent.playing = true
+		},
+    eventPause() {
+			this.$parent.playing = false;
+		},
+    eventEnded() {
+			if (this.loop === false){
+        this.next();
+      }
+		},
+    eventSeek(e) {
+      if (this.player.duration){
+        var seekto = this.player.duration * (e.target.value / 100);
+        this.player.currentTime = seekto;
+        this.player.play();
+        e.target.blur();
+      } else {
+        this.seek = 0;
+      }
+		},
+    eventSeekFocus(e) {
+      this.player.pause();
+		},
+    play:function(){
+      // console.log(this.$parent.trackCurrentTest);
+      if (Object.keys(this.track).length){
+        if (this.player.paused) {
+          this.player.play();
+        } else {
+          this.player.pause();
+        }
+      }
+    },
+    pause:function(){
+      console.log('pause');
+    },
+    next:function(){
+      console.log('next');
+      this.$parent.next();
+    },
+    previous:function(){
+      console.log('previous');
+      this.$parent.previous();
+    },
+    shuffle:function(){
+      this.player.loop = !this.player.loop;
+      this.loop = this.player.loop;
+      console.log('shuffle',this.player.loop);
+    },
+
+    stop:function(){
+			this.player.pause();
+			this.player.currentTime = 0;
+    },
+    time:function(e){
+      let hhmmss = new Date(e * 1000).toISOString().substr(11, 8);
+      return hhmmss.indexOf("00:") === 0 ? hhmmss.substr(3) : hhmmss;
+    },
+    mute() {
+			// if (this.muted) {
+			// 	return this.volume = this.previousVolume;
+			// }
+			// this.previousVolume = this.volume;
+      // this.volume = 0;
+      // console.log(this.player.volume / 100);
+      if (this.player.volume == 0){
+        this.player.volume = 1;
+      } else {
+        this.player.volume = 0;
+      }
+      this.volume = this.player.volume* 100;
+		},
+    seekProgress(e) {
+			if (!this.player || e.target.tagName === 'SPAN') {
+				return;
+			}
+
+			const el = e.target.getBoundingClientRect();
+			const seekPos = (e.clientX - el.left) / el.width;
+      // this.player.currentTime = parseInt(this.$parent.durationTotal * seekPos);
+      this.player.currentTime = this.$parent.durationTotal * seekPos;
+      // console.log(abc);
+    },
+    // volume(){
+    //   // console.log(this.$refs.audio.volume);
+    //   return this.player.volume;
+    // },
+    hoverTmp(e){
+      // console.log(this.player.currentTime);
+      // const el = e.target.getBoundingClientRect();
+    // const seekPos = (e.clientX - el.left) / el.width;
+      // var abc = parseInt(this.$parent.durationTotal * seekPos);
+      // this.currentTmp = this.$parent.durationTotal * seekPos;
+      // console.log(abc);
+      // this.currentTmp=e.client;
+    }
+  },
+  computed: {
+    player(){
+      return this.$refs.audio;
+      // return this.$parent.player;
+    },
+    currentTime() {
+			return this.time(this.$parent.durationCurrent);
+		},
+		durationTime() {
+			return this.time(this.$parent.durationTotal);
+    },
+    percentComplete() {
+			// return parseInt(this.$parent.durationCurrent / this.$parent.durationTotal * 100);
+			return this.$parent.durationCurrent / this.$parent.durationTotal * 100;
+    },
+    // volume(){
+    //   // console.log(this.$refs.audio.volume);
+    //   return '?';
+    // },
+    // volume: {
+    //   get : function() { return this.$refs.audio.volume; },
+    //   set : function(name) { this.$refs.audio.volume = name; }
+    // },
+    currentTmp: {
+      get : function() { return this.$parent.durationTotal; },
+      set : function(name) { this.$parent.durationTotal = name; }
+    },
+  },
+  mounted () {
+    console.log('mounted');
+    // this.player.addEventListener('timeupdate', this.eventUpdate);
+		// this.player.addEventListener('loadeddata', this.eventLoad);
+		// this.player.addEventListener('pause', this.eventPause);
+    // this.player.addEventListener('play', this.eventPlay);
+    // this.player.addEventListener('ended', this.eventEnded);
+  },
+}

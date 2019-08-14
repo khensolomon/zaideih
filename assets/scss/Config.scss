@@ -1,10 +1,13 @@
 @charset "utf-8";
 $Font: Arial, 'Myanmar3', Helvetica, sans-serif;
 $FontSize: 100%;//11pt
-$Color: #333;
-$ColorBackground:#F8F8F8;
-$ColorMain:#318ED7;
+$Color: #f0f0f0;
+$ColorBackground:gray;
+// $ColorBackground:#f0f0f0;
+// $ColorBackground:#F8F8F8;
+$ColorMain:darken(gray,10);
 $ColorSecond:#7A7A7A;
+$WidthMaxCommon:1480px;
 $WidthMobile:500px;
 $WidthTablet:820px;
 $WidthDesktop:1210px;
@@ -67,7 +70,7 @@ $media-desktop: "(min-width:961px)";
     -ms-filter:"alpha(opacity=#{$percent})";
     filter: progid:DXImageTransform.Microsoft.Alpha(Opacity=#{round($percent)});
 }
-@mixin scrollbar($bar:10,$border:10,$color:#bdbdbd){
+@mixin scrollbar($bar:13,$border:13,$color:#bdbdbd){
     ::-webkit-scrollbar { width:#{$bar}px;}
     ::-webkit-scrollbar-track {}
     ::-webkit-scrollbar-thumb { background-color:#{$color};border-top-left-radius:#{$border}px;border-top-right-radius:#{$border}px;border-bottom-right-radius:#{$border}px;border-bottom-left-radius:#{$border}px;}

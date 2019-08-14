@@ -1,17 +1,13 @@
-var app = require('../');
+const app = require('../');
+// const {dictionaries} = app.Config;
+// const {utility} = app.Common;
+const routes = app.Router();
 
-//     {express,path} = app.Core.evh(),
-//     {score} = require('.././score'),
-//     querystring = require('querystring'),
-//     Definition = require('./classDefinition');
-
-let router = app.router();
-
-router.get('/', function(req, res, next) {
-  res.render('home', { title: 'Angular reserved!' });
+routes.get('/', function(req, res, next) {
+  res.render('home', { title: 'Vue.js reserved!' });
 });
 
-module.exports = router;
+module.exports = routes;
 
 /*
 const crypto = require('crypto');

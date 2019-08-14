@@ -1,16 +1,16 @@
-var app= require('./');
+const app = require('./');
 
-app.nav('navAPI')
+app.Navigation('navAPI')
   .route({url: '/api',route: 'api', text: 'API'});
 
-// app.nav('navTerms')
+// app.Navigation('navTerms')
 //   .route({url: '/privacy',route: 'home', text: 'Privacy'})
 //   .route({url: '/terms',route: 'home', text: 'Terms'});
 
-app.nav('navPage')
+app.Navigation('navPage')
   .route({url: '/',route: 'home', text: 'Home'})
   // .route({url: '/about',route: 'about', text: 'About'})
-  .route({url: '/music',route: 'music', text: 'Music'});
+  // .route({url: '/music',route: 'music', text: 'Music'});
 
-// app.nav('navFallback')
-//   .route({url: '*',route: 'home', text: 'Fallback'})
+app.Navigation('navFallback')
+  .route({url: '*',route: 'home', text: 'Fallback'})

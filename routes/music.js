@@ -1,35 +1,35 @@
-var app = require('../'),
-    {express,path} = app.Core.evh(),
-    {score} = require('../score'),
-    querystring = require('querystring'),
-    Music = require('./classMusic');
+const app = require('../');
+// const {dictionaries} = app.Config;
+// const {utility} = app.Common;
+const routes = app.Router();
 
-let router = app.router();
+var querystring = require('querystring');
+var Music = require('./classMusic');
 
-router.get('/album/:album', function(req, res, next) {
+routes.get('/album/:album', function(req, res, next) {
   res.send({page:'album detail',album:req.params.album});
 });
-router.get('/album', function(req, res, next) {
+routes.get('/album', function(req, res, next) {
   res.send({page:'albums'});
 });
 
-router.get('/artist/:artist', function(req, res, next) {
+routes.get('/artist/:artist', function(req, res, next) {
   res.send({page:'artist detail',album:req.params.artist});
 });
-router.get('/artist', function(req, res, next) {
+routes.get('/artist', function(req, res, next) {
   res.send({page:'artists'});
 });
 
-router.get('/:album/:artist/:track', function(req, res, next) {
+routes.get('/:album/:artist/:track', function(req, res, next) {
   res.send({page:'detail',album:req.params.album,artist:req.params.artist,track:req.params.track});
 });
-// router.get('/:album/:artist', function(req, res, next) {
+// routes.get('/:album/:artist', function(req, res, next) {
 //   res.send({page:'artist',album:req.params.album,artist:req.params.artist});
 // });
-// router.get('/:album', function(req, res, next) {
+// routes.get('/:album', function(req, res, next) {
 //   res.send({page:'album',album:req.params.album});
 // });
-router.get('/', function(req, res, next) {
+routes.get('/', function(req, res, next) {
   let param={},
       query=req.query;
   if (query.q){
@@ -55,4 +55,4 @@ router.get('/', function(req, res, next) {
   });
 });
 
-module.exports = router;
+module.exports = routes;

@@ -1,10 +1,21 @@
-var app = require('../'),
-    {path} = app.Core.evh(),
-    {score} = require('../score'),
-    Timer = require('./classTimer');
+const app = require('../');
+const Timer = require('./classTimer');
 
 var config={
   track_limit:30,
+  lang:{
+    '0':'untitle',
+    '1':'zola',
+    '2':'myanmar',
+    '3':'mizo',
+    '4':'english',
+    '5':'chin',
+    '6':'haka',
+    '7':'falam',
+    '8':'korea',
+    '9':'norwegian',
+    '10':'collection'
+  },
   unique:function(res){
     // artist_newset:Array.from(new Set(row.listArtist.split(","))),
     // artist_dum:row.listArtist,
@@ -61,6 +72,16 @@ module.exports = class Music {
       }
       selector.push(app.sql.format('?? LIKE ?', ['t.GENRE',this.request.genre]));
     }
+    if (this.request.lang) {
+      console.log('lang=',this.request.lang)
+      if (where) {
+        selector.push('AND');
+      } else {
+        selector.push('WHERE');
+        where=true;
+      }
+      selector.push(app.sql.format('?? = ?', ['t.LANG',this.request.lang]));
+    }
 
     // let from = [app.sql.format('FROM ?? AS t', [table.track])];
     // let where = [];
@@ -92,6 +113,7 @@ module.exports = class Music {
   }
   requestArtist(callback) {
   }
+
   track(callback) {
     let limit=config.track_limit,
         offset,
@@ -176,6 +198,7 @@ module.exports = class Music {
      }
    });
   }
+
   album(callback) {
     let limit=config.track_limit,
         offset,
@@ -184,6 +207,7 @@ module.exports = class Music {
         totalPage,
         result={},
         meta={};
+
     async function asyncPromise(row,Id){
       result[Id]={
         artist:config.unique(row.listArtist.split(",")),
@@ -194,16 +218,17 @@ module.exports = class Music {
         totalTrack:row.totalTrack,
         totalLength:new Timer(row.listLength).format(),
         plays:row.totalPlay,
-        lang:row.LANG,
+        lang:row.LANG
       };
-
     }
+
     async function asyncEach(raw) {
       for(const row of raw){
          await asyncPromise(row,row.UNIQUEID);
       }
       callback({type:'album',data:result,meta:meta});
     }
+
     let selector = this.queryTrackSearch();
     app.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
       totalRow = raw[0].totalRow;
@@ -215,15 +240,9 @@ module.exports = class Music {
         activePage= totalPage;
       }
       offset = limit * (activePage - 1);
-
       meta={
-        active:activePage,
-        page:totalPage,
-        row:totalRow,
-        limit:limit,
-        offset:offset
+        active:activePage, page:totalPage, row:totalRow, limit:limit, offset:offset
       };
-
       if (totalRow > 0) {
         selector.push(app.sql.format('GROUP BY t.UNIQUEID ORDER BY totalPlay DESC LIMIT ? OFFSET ?', [limit,offset]));
         app.sql.query(selector.join(' ').replace('*','*,GROUP_CONCAT(t.YEAR) listYear, GROUP_CONCAT(t.GENRE) listGenre, GROUP_CONCAT(t.LENGTH) listLength,GROUP_CONCAT(t.ARTIST) listArtist, SUM(t.PLAYS) AS totalPlay, COUNT(t.ID) AS totalTrack'), (err, raw,column) => {
@@ -235,6 +254,7 @@ module.exports = class Music {
       }
     });
   }
+
   artist(callback) {
     let limit=config.track_limit,
         offset,
@@ -294,7 +314,104 @@ module.exports = class Music {
       }
     });
   }
-  artist_ss(callback) {
+
+  async track_generator(callback) {
+    let limit=this.request.limit || config.track_limit, offset,
+        activePage=this.request.page,
+        totalRow, totalPage,
+        result=[], meta={};
+
+   async function asyncPromise(rows,Ui){
+    var tmp ={
+      ui:Ui,
+      ab:rows[0].ALBUM,
+      // ar:'get it from tk',
+      // ar:rows[0].ARTIST,
+      gr:[],
+      yr:[],
+      lg:[],
+      tp:0,
+      tk:[],
+      // lt:[]
+    };
+    await rows.forEach(row => {
+      var artists = Array.from(new Set(row.ARTIST.split(',').map(i=>i.trim())));
+      tmp.tk.push({
+          id:row.ID,
+          tl:row.TITLE,
+          // ar:row.ARTIST,
+          ar:artists,
+          n:row.TRACK,
+          t:row.TYPE,
+          l:row.LENGTH,
+          p:row.PLAYS,
+          s:row.STATUS
+      });
+      tmp.tp=tmp.tp + parseInt(row.PLAYS);
+      // tmp.ar = tmp.ar+','+row.ARTIST;
+      // tmp.ar.concat(',', row.ARTIST);
+      // tmp.ar = tmp.ar+', '+row.ARTIST;
+      tmp.lg.push(row.LANG);
+      tmp.gr.push(row.GENRE.toLowerCase());
+      tmp.yr.push(row.YEAR);
+      // tmp.lt.push(row.LENGTH);
+    });
+    // tmp.ar=Array.from(new Set(tmp.ar.split(',').map(i=>i.trim())));
+    tmp.lg=Array.from(new Set(tmp.lg));
+    tmp.gr=Array.from(new Set(tmp.gr));
+    tmp.yr=Array.from(new Set(tmp.yr));
+    // tmp.lt=new Timer(tmp.lt).format();
+    result.push(tmp);
+   }
+
+   function groupBy(list, keyGetter) {
+     const map = new Map();
+     list.forEach(item => {
+        const key = keyGetter(item);
+        const collection = map.get(key);
+        if (!collection) {
+            map.set(key, [item]);
+        } else {
+            collection.push(item);
+        }
+     });
+     return map;
+   }
+
+   async function asyncEach(raw) {
+    var grouped = await groupBy(raw, row => row.UNIQUEID);
+    for(const row of grouped) await asyncPromise(row[1],row[0]);
+    // Array.from(grouped)
+    // grouped.get('db23ab53bbbceb1131b6123236e2cb38')
+     callback({meta:meta,data:result});
+   }
+
+   let selector = this.queryTrackSearch();
+   app.sql.query(selector.join(' ').replace('*','count(0) AS totalRow'), (err, raw) => {
+     totalRow = raw[0].totalRow;
+     if (isNaN(limit)){
+      limit=parseInt(totalRow);
+     }
+     activePage=parseInt(activePage);
+     totalPage = Math.ceil(totalRow / limit);
+     if (!activePage || activePage < 1) {
+       activePage = 1;
+     } else if (activePage > totalPage) {
+       activePage= totalPage;
+     }
+     offset = limit * (activePage - 1);
+
+     meta={active:activePage,page:totalPage,row:totalRow,limit:limit,offset:offset};
+
+     if (totalRow > 0) {
+       selector.push(app.sql.format('ORDER BY t.PLAYS DESC LIMIT ? OFFSET ?', [limit,offset]));
+       app.sql.query(selector.join(' '), (err, raw,column) => {
+         asyncEach(raw);
+       });
+     } else {
+       callback({meta:meta,data:result});
+     }
+   });
   }
 
   track_dumpList(callback) {

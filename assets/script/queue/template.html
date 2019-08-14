@@ -1,0 +1,15 @@
+<div class="portal" id="content" >
+  <div class="resize center">
+      <div class="queue">
+          <h1>queue is playing: {{$parent.playing}}</h1>
+          <ol>
+              <!-- @click="$parent.play(index)"  -->
+            <li v-for="(track, index) in $parent.queue" @click="$parent.play(track.id)" :class="{active:$parent.queueId == track.id}">
+              <span class="title">{{ track.tl }}</span> -
+              <span class="artist">{{track.ar.join(', ')}}</span> -
+              <span class="album">{{ track.ab }}</span>
+            </li>
+          </ol>
+      </div>
+  </div>
+</div>
