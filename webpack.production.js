@@ -1,8 +1,11 @@
-var path = require('path'),
-    merge = require('webpack-merge'),
-    MiniCssExtractPlugin = require('mini-css-extract-plugin'),
-    CleanWebpackPlugin = require('clean-webpack-plugin'),
-    configuration = require('./webpack.config.js');
+const merge = require('webpack-merge');
+const configuration = require('./webpack.config.js');
+
+const CleanWebpackPlugin = require('clean-webpack-plugin');
+
+// const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+// const VueLoaderPlugin = require('vue-loader/lib/plugin');
+
 
 module.exports = merge(configuration, {
   mode: 'production',
@@ -10,6 +13,7 @@ module.exports = merge(configuration, {
   entry: {},
   output: {},
   plugins: [
+
     new CleanWebpackPlugin([
       'static/*.*'
     ], {
@@ -18,23 +22,21 @@ module.exports = merge(configuration, {
       verbose: true,
       dry: false
     }),
-    new MiniCssExtractPlugin({
-      filename: 'style.css',
-      chunkFilename: '[id].css'
-    })
+    // new MiniCssExtractPlugin({
+    //   filename: 'style.css'
+    // }),
+    // new VueLoaderPlugin()
   ],
   module:{
     rules:[
-      {
-        test: /\.(sa|sc|c)ss$/,
-        use: [
-          {
-            loader: MiniCssExtractPlugin.loader
-          },
-          'css-loader',
-          'sass-loader'
-        ]
-      }
+      // {
+      //   test: /\.s?css$/,
+      //   use: [
+      //     MiniCssExtractPlugin.loader,
+      //     "css-loader",
+      //     "sass-loader"
+      //   ]
+      // }
     ]
   }
 });

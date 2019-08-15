@@ -1,11 +1,22 @@
 {
   "name": "zaideih",
   "version": "1.0.0",
-  "license": "MIT",
+  "description": "Zaideih Music Station",
+  "main": "index.js",
   "scripts": {
     "build": "webpack -p --config webpack.production.js",
     "test": "webpack-dev-server --open --config webpack.development.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scriptive/zaideih.git"
+  },
+  "author": "Khen Solomon Lethil",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/scriptive/zaideih/issues"
+  },
+  "homepage": "https://github.com/scriptive/zaideih#readme",
   "dependencies": {
     "vue": "^2.6.10",
     "vue-resource": "^1.5.1",
@@ -15,7 +26,7 @@
     "@babel/core": "^7.1.2",
     "babel-core": "^6.26.3",
     "babel-loader": "^8.0.4",
-    "babel-preset-es2015": "^6.24.1",
+    "babel-preset-env": "^1.7.0",
     "clean-webpack-plugin": "^0.1.19",
     "css-loader": "^1.0.0",
     "file-loader": "^2.0.0",
@@ -29,7 +40,7 @@
     "vue-template-compiler": "^2.6.10",
     "vue-template-loader": "^1.0.0",
     "webpack": "^4.20.2",
-    "webpack-cli": "^3.1.1",
+    "webpack-cli": "^3.3.6",
     "webpack-dev-middleware": "^3.4.0",
     "webpack-hot-middleware": "^2.24.2",
     "webpack-merge": "^4.1.4"

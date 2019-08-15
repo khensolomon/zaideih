@@ -1,4 +1,8 @@
-var path = require('path');
+const path = require('path');
+
+const VueLoaderPlugin = require('vue-loader/lib/plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+
 module.exports = {
   mode: 'development',
   devtool: 'inline-source-map',
@@ -11,18 +15,21 @@ module.exports = {
     publicPath: '/'
   },
   resolve: {
-    extensions: ['.js', '.vue', '.json'],
+    extensions: ['.js', '.vue', '.json','.css','.scss'],
     alias: {
       'vue$': 'vue/dist/vue.esm.js'
     }
   },
+  plugins: [
+    new MiniCssExtractPlugin({filename: 'style.css'}),
+    new VueLoaderPlugin()
+  ],
   module: {
     rules: [
       {
         test: /\.vue$/,
         loader: 'vue-loader'
       },
-
       {
         test: /\.exec\.js$/,
         use: [
@@ -37,6 +44,22 @@ module.exports = {
           presets: []
         }
       },
+      // {
+      //   test: /\.(sa|sc|c)ss$/,
+      //   use: [
+      //     'style-loader',
+      //     'css-loader',
+      //     'sass-loader'
+      //   ]
+      // },
+      {
+        test: /\.s?css$/,
+        use: [
+          MiniCssExtractPlugin.loader,
+          "css-loader",
+          "sass-loader"
+        ]
+      },
       {
         test: /Myanmar3.*$/,
         loader: 'file-loader',
@@ -45,7 +68,7 @@ module.exports = {
         }
       },
       {
-        test: /favicon.png$/,
+        test: /\.png$/,
         // NOTE: file-loader?name=[name].[ext] retain original file name
         loader: 'file-loader',
         query: {
@@ -54,21 +77,13 @@ module.exports = {
         }
       },
       {
-        test: /\.(png|jpg|gif|svg|eot|ttf|woff|woff2)$/,
+        test: /\.(jpg|gif|svg|eot|ttf|woff|woff2)$/,
         // NOTE: file-loader or url-loader
         loader: 'file-loader',
-        exclude: [/Myanmar3.*$/,/favicon.png$/],
+        exclude: [/Myanmar3.*$/],
         options: {
           limit: 10000
         }
-      },
-      {
-        test: /\.(sa|sc|c)ss$/,
-        use: [
-          'style-loader',
-          'css-loader',
-          'sass-loader'
-        ]
       }
     ]
   }

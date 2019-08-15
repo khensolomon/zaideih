@@ -72,7 +72,9 @@
         <album-raw v-for="(n, index) in limitAlbumRelated" v-bind:album="albumsRelated[index]" :key="index" />
         <div v-if="albumsRelated.length > limitAlbumRelated" class="show-more">
           <p @click="limitAlbumRelated += 9" class="icon-right">
-            <span v-text="albumsRelated.length" class="total">/</span><span v-text="limitAlbumRelated" class="limit"></span> more
+            <span v-text="albumsRelated.length" class="total">/</span>
+            <span v-text="limitAlbumRelated" class="limit"></span>
+            <span class="more">more3</span>
           </p>
         </div>
       </div>
