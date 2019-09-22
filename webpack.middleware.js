@@ -1,11 +1,8 @@
+const path = require('path');
 const webpack = require('webpack');
 const merge = require('webpack-merge');
 const configuration = require('./webpack.config.js');
-
-// const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-// const VueLoaderPlugin = require('vue-loader/lib/plugin');
-
-const path = require('path');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = merge(configuration, {
   mode: 'development',
@@ -21,19 +18,18 @@ module.exports = merge(configuration, {
   plugins: [
     new webpack.HotModuleReplacementPlugin(),
     new webpack.NoEmitOnErrorsPlugin(),
-    // new MiniCssExtractPlugin({filename: 'style.css'}),
-    // new VueLoaderPlugin()
+    new MiniCssExtractPlugin({filename: 'style.css'})
   ],
   module:{
     rules:[
-      // {
-      //   test: /\.s?css$/,
-      //   use: [
-      //     MiniCssExtractPlugin.loader,
-      //     "css-loader",
-      //     "sass-loader"
-      //   ]
-      // }
+      {
+        test: /middleware.css$/,
+        use: [
+          MiniCssExtractPlugin.loader,
+          "css-loader",
+          "sass-loader"
+        ]
+      }
     ]
   }
 });

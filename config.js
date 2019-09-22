@@ -1,6 +1,7 @@
 module.exports = {
-  styleMiddleWare: null,
-  scriptMiddleWare: null,
   config:{
+    name: 'Zaideih',
+    description: 'Zaideih Music Station',
+    version: '1.0.3'
   }
 };

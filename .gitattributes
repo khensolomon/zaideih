@@ -7,6 +7,7 @@
 # /assets/psd export-ignore
 # /assets/icon/*.json export-ignore
 webpack.*.js export-ignore
+/test.js export-ignore
 *.md export-ignore
 .env export-ignore
 

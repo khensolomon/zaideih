@@ -8,15 +8,19 @@ html(lang='en')
     base(href='/')
     link(rel='api', href='api')
     link(rel='icon', href='favicon.png' type='image/png')
-    //- https://unpkg.com/vue
+
     //- <script src="https://cdn.jsdelivr.net/npm/vue"></script>
     //- <script src="https://unpkg.com/vue-router@3.0.7/dist/vue-router.js"></script>
     //- <script src="https://cdn.jsdelivr.net/npm/vue-resource@1.5.1"></script>
-    script(src='/vue.js')
-    script(src='/vue-resource.js')
-    script(src='/vue-router.js')
-    //- script(src='https://unpkg.com/vue-plyr/dist/vue-plyr.js')
-    //- link(rel='stylesheet', href='https://unpkg.com/vue-plyr/dist/vue-plyr.css')
+
+    if isDevelopment
+      script(src='/vue.js')
+      script(src='/vue-resource.js')
+      script(src='/vue-router.js')
+    else
+      script(src='https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min.js')
+      script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
+      script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
     //- link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css')
   body
     block content

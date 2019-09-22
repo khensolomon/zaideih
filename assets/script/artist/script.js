@@ -1,5 +1,6 @@
 import trackRow from '../components/track-row.vue';
 import albumRow from '../components/album-row.vue';
+import albumRaw from '../components/album-raw.vue';
 export default {
   name: 'Artist',
   props: ['artistName','language'],
@@ -10,7 +11,7 @@ export default {
     artistRecommendedAll:[]
   }),
   components: {
-    trackRow, albumRow
+    trackRow, albumRow, albumRaw
   },
   filters:{
     sumplay: function(e){

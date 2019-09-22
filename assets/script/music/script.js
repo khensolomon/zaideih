@@ -5,11 +5,11 @@ export default {
   props: ['year','language','genre','searchQuery','searchAt'],
   data: () => ({
     // limitResult: 30,
-    limitAlbum:9,
-    limitAlbumRelated: 9,
-    limitAlbumRecommended: 9,
-    limitTrack:9,
-    limitTrackByArtist:9,
+    albumLimit:9,
+    albumsRelatedLimit: 9,
+    albumsRecommendedLimit: 9,
+    tracksLimit:9,
+    tracksByArtistLimit:9,
     results:[],
     artistList:[],
     tracksByArtistName:'',
@@ -31,11 +31,11 @@ export default {
   computed: {
     searchResult(){
       // TODO temp
-      this.limitAlbum=9;
-      this.limitAlbumRelated= 9;
-      this.limitAlbumRecommended= 9;
-      this.limitTrack=9;
-      this.limitTrackByArtist=9;
+      this.albumLimit=9;
+      this.albumsRelatedLimit= 9;
+      this.albumsRecommendedLimit= 9;
+      this.tracksLimit=9;
+      this.tracksByArtistLimit=9;
       this.results = this.$parent.all.data.filter(
         album => this.searchPattern(album.ab) || album.tk.some(
           track => this.searchPattern(track.tl) || track.ar.some(

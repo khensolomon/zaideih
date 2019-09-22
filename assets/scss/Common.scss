@@ -1,10 +1,10 @@
-h1.text-vw{
+.text-vw{
   font-size: 3em;
   // font-size:5vw;
   color: darken($Color,50);
   @include text-shadow(0px,1px,1px,darken($Color,20));
 }
-p.name-vw{
+.name-vw{
   font-size: 2em;
   // font-size:5vw;
   color: darken($Color,50);

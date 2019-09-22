@@ -9,49 +9,65 @@
           <router-link :to="{ path: '/album/'+ track.ab}">{{track.ab}}</router-link>
         </p>
       </div>
-  </div>
-  <div class="controls">
-    <div class="progress">
-      <audio ref="audio" @timeupdate="eventUpdate" @loadeddata="eventLoad" @play="eventPlay" @pause="eventPause" @ended="eventEnded" :loop="isLoop" :src="filterSRC(track.id)"  type="audio/mp3" preload="auto" autoplay hidden></audio>
-      <div class="time start">{{ current | timeFormat }}</div>
-      <div class="seek">
-          <!-- v-if="hover>0"  -->
-        <span class="tooltip" :style="{ left: hoverLeft + 'px' }">{{ hover | timeFormat }}</span>
-        <div>
-          <div :style="{ width: percentComplete + '%' }" class="player-seeker"></div>
-          <input v-model="seek" @focus="eventSeekFocus" @mousemove="eventSeekOver" @mouseout="eventSeekOut" @change="eventSeek" type="range" step="0.00000001" min="0" max="100"/>
-        </div>
-      </div>
-      <div class="time end">{{ duration | timeFormat }}</div>
     </div>
-    <ul>
-      <li class="icon-loop toggle" @click="loop()" :class="{active:isLoop}"></li>
-      <li class="icon-play-previous" @click="previous()"></li>
-      <li @click="play()" :class="[playing? 'icon-pause' : 'icon-play','round']"></li>
-      <li class="icon-play-next" @click="next()"></li>
-      <li class="icon-shuffle toggle" @click="shuffle()" :class="{active:isShuffle}"></li>
-      <li >
-        <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="queueTotal"></router-link>
-      </li>
-    </ul>
+    <div class="controls">
+      <div class="progress">
+        <audio ref="audio"
+          @timeupdate="timeupdate"
+          @loadeddata="loadeddata"
+          @progress="progress"
+          @loadstart="loadstart"
+          @loadedmetadata="loadedmetadata"
+          @canplaythrough="canplaythrough"
+          @canplay="canplay"
+          @play="eventPlay"
+          @pause="eventPause"
+          @ended="eventEnded"
+          :loop="isLoop"
+          :src="src"
+          type="audio/mp3" controls hidden>
+        </audio>
+        <div class="time start">{{ current | timeFormat }}</div>
+        <div class="seek">
+          <!-- v-if="hover>0"  -->
+          <span class="tooltip" :style="{ left: hoverLeft + 'px' }">{{ hover | timeFormat }}</span>
+          <div>
+            <div :style="{ width: percentSeeker + '%' }" class="seeker"></div>
+            <div :style="{ width: percentProgress + '%' }" class="progress"></div>
+            <input v-model="percentSeeker" @focus="eventSeekFocus" @mousemove="eventSeekOver" @change="eventSeek" type="range" step="0.00000001" min="0" max="100"/>
+          </div>
+        </div>
+        <div class="time end">{{ duration | timeFormat }}</div>
+      </div>
+      <ul>
+        <li class="icon-loop toggle" @click="loop()" :class="{active:isLoop}"></li>
+        <li class="icon-play-previous" @click="previous()"></li>
+        <li @click="play()" :class="[playing? 'icon-pause' : 'icon-play','round']"></li>
+        <li class="icon-play-next" @click="next()"></li>
+        <!-- <li class="icon-shuffle toggle" @click="shuffle()" :class="{active:isShuffle}"></li> -->
+        <li class="queue">
+          <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link>
+          <!-- <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link> -->
+        </li>
+      </ul>
   </div>
   <div class="options">
-      <ul>
-        <li>
-            <div class="volume">
-              <span v-if="volume>90" v-on:click="mute" class="icon-volume-up"></span>
-              <span v-else-if="volume==0" v-on:click="mute" class="icon-volume-off"></span>
-              <span v-else v-on:click="mute" class="icon-volume-down"></span>
-              <!-- <span v-on:click="mute" title="Mute" class="icon-volume-up" >Mute</span> -->
-              <!-- <input v-model.lazy.number="volume" type="range" min="0" max="100"/> -->
-              <input v-model="volume" type="range" min="0" max="100"/>
-            </div>
-        </li>
-        <!-- <li>
-          <router-link :to="{ path: '/queue'}" class="icon-music">
-            Queue <span class="queue" v-text="queueTotal"></span>
-          </router-link>
-        </li> -->
-      </ul>
+    <ul>
+      <li>
+        <div class="volume">
+          <span v-if="volume>0.9" v-on:click="mute" class="icon-volume-up"></span>
+          <span v-else-if="volume==0" v-on:click="mute" class="icon-volume-off"></span>
+          <span v-else v-on:click="mute" class="icon-volume-down"></span>
+          <!-- <span v-on:click="mute" title="Mute" class="icon-volume-up" >Mute</span> -->
+          <!-- <input v-model.lazy.number="volume" type="range" min="0" max="100"/> -->
+          <input v-model="volume" type="range" step="0.0001" min="0.0" max="1.0"/>
+        </div>
+      </li>
+      <!-- <li>
+        <router-link :to="{ path: '/queue'}" class="icon-music">
+          Queue <span class="queue" v-text="totalQueue"></span>
+        </router-link>
+      </li> -->
+    </ul>
   </div>
 </div>

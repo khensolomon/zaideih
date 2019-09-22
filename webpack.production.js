@@ -1,11 +1,7 @@
 const merge = require('webpack-merge');
-const configuration = require('./webpack.config.js');
-
 const CleanWebpackPlugin = require('clean-webpack-plugin');
-
-// const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-// const VueLoaderPlugin = require('vue-loader/lib/plugin');
-
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const configuration = require('./webpack.config.js');
 
 module.exports = merge(configuration, {
   mode: 'production',
@@ -13,7 +9,6 @@ module.exports = merge(configuration, {
   entry: {},
   output: {},
   plugins: [
-
     new CleanWebpackPlugin([
       'static/*.*'
     ], {
@@ -22,21 +17,18 @@ module.exports = merge(configuration, {
       verbose: true,
       dry: false
     }),
-    // new MiniCssExtractPlugin({
-    //   filename: 'style.css'
-    // }),
-    // new VueLoaderPlugin()
+    new MiniCssExtractPlugin({filename: 'style.css'})
   ],
   module:{
     rules:[
-      // {
-      //   test: /\.s?css$/,
-      //   use: [
-      //     MiniCssExtractPlugin.loader,
-      //     "css-loader",
-      //     "sass-loader"
-      //   ]
-      // }
+      {
+        test: /\.s?css$/,
+        use: [
+          MiniCssExtractPlugin.loader,
+          "css-loader",
+          "sass-loader"
+        ]
+      }
     ]
   }
 });

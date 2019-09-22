@@ -1,7 +1,6 @@
 const path = require('path');
 
 const VueLoaderPlugin = require('vue-loader/lib/plugin');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = {
   mode: 'development',
@@ -21,7 +20,6 @@ module.exports = {
     }
   },
   plugins: [
-    new MiniCssExtractPlugin({filename: 'style.css'}),
     new VueLoaderPlugin()
   ],
   module: {
@@ -44,44 +42,45 @@ module.exports = {
           presets: []
         }
       },
-      // {
-      //   test: /\.(sa|sc|c)ss$/,
-      //   use: [
-      //     'style-loader',
-      //     'css-loader',
-      //     'sass-loader'
-      //   ]
-      // },
       {
         test: /\.s?css$/,
+        // test: /\.(sa|sc|c)ss$/,
         use: [
-          MiniCssExtractPlugin.loader,
+          'style-loader',
           "css-loader",
           "sass-loader"
         ]
       },
+      // {
+      //   test: /Myanmar3.*$/,
+      //   loader: 'file-loader',
+      //   query: {
+      //     name: '[name].[ext]'
+      //   }
+      // },
+      // {
+      //   test: /\.png$/,
+      //   // NOTE: file-loader?name=[name].[ext] retain original file name
+      //   loader: 'file-loader',
+      //   query: {
+      //     mimetype: 'image/x-png',
+      //     name: '[name].[ext]'
+      //   }
+      // },
+      // {
+      //   test: /\.(jpg|gif|svg|eot|ttf|woff|woff2)$/,
+      //   // NOTE: file-loader or url-loader
+      //   loader: 'file-loader',
+      //   exclude: [/Myanmar3.*$/],
+      //   options: {
+      //     limit: 10000
+      //   }
+      // }
       {
-        test: /Myanmar3.*$/,
+        test: /\.(png|jpg|gif|svg|eot|ttf|woff|woff2)$/,
         loader: 'file-loader',
-        query: {
-          name: '[name].[ext]'
-        }
-      },
-      {
-        test: /\.png$/,
-        // NOTE: file-loader?name=[name].[ext] retain original file name
-        loader: 'file-loader',
-        query: {
-          mimetype: 'image/x-png',
-          name: '[name].[ext]'
-        }
-      },
-      {
-        test: /\.(jpg|gif|svg|eot|ttf|woff|woff2)$/,
-        // NOTE: file-loader or url-loader
-        loader: 'file-loader',
-        exclude: [/Myanmar3.*$/],
         options: {
+          name: '[name].[ext]',
           limit: 10000
         }
       }

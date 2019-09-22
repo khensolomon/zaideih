@@ -1,3 +1,5 @@
+// import VueRouter from 'vue-router';
+
 import Home from './home/index.vue';
 import Queue from './queue/index.vue';
 import Music from './music/index.vue';

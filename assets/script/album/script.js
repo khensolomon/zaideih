@@ -5,7 +5,7 @@ export default {
   name: 'Album',
   props: ['albumId','language'],
   data: () => ({
-    limitAlbum: 9,
+    albumsLimit: 9,
     activeLang:null,
   }),
   components: {
@@ -27,9 +27,9 @@ export default {
         }
       }
     },
-    playTrack: function(e){
-      this.$parent.addQueue(e);
-    },
+    // playTrack: function(e){
+    //   this.$parent.addQueue(e);
+    // },
     albumArtist: function(e){
       var o = e.map((a) => a.ar );
       return new Set([].concat.apply([], o));

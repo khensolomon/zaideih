@@ -1,6 +1,6 @@
 const {Config,Common} = require('../');
-const {fs} = Common;
-const path = require('path');
+const {fs,path} = Common;
+// const path = require('path');
 const Music = require('./classMusic');
 // var util = require('util');
 // console.log(app.Config.dir.static);
@@ -9,7 +9,8 @@ module.exports = class Generator {
   constructor(param) {
     this.setting=param;
     this.store={};
-    this.storage = path.join(Config.dir.static);
+    // this.storage = path.join(Config.dir.static);
+    this.storage = path.join(Config.media,'store');
   }
 
   get isJSONOk (){

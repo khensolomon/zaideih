@@ -29,7 +29,8 @@ var config={
   }
 };
 var table={
-  track:'zd_track'
+  track:'zd_track',
+  album:'zd_album'
 };
 module.exports = class Music {
   constructor(request) {
@@ -109,8 +110,10 @@ module.exports = class Music {
     */
     return selector;
   }
+
   requestAlbum(callback) {
   }
+
   requestArtist(callback) {
   }
 
@@ -414,19 +417,36 @@ module.exports = class Music {
    });
   }
 
-  track_dumpList(callback) {
-   app.sql.query('SELECT * FROM zd_track AS t ORDER BY t.PLAYS DESC LIMIT 9', callback);
+  trackId() {
+    return app.sql.join(
+      'UPDATE ?? SET PLAYS = PLAYS + 1 WHERE ID=?', [table.track,this.request.trackId]
+    ).then(
+      e=>e.query("SELECT distinct t.*, concat_ws('/', a.`PATH`, t.`PATH`) AS PATH \
+        FROM ?? AS t, ?? AS a \
+          WHERE t.`ID`=? AND t.`UNIQUEID`=a.`UNIQUEID` LIMIT 1;", [table.track,table.album,this.request.trackId]
+      ).then(e=>{
+        return e[0];
+      })
+    );
   }
-  track_dumpId(trackId,callback) {
-   app.sql.query('SELECT * FROM zd_track WHERE ID=?', [trackId], callback);
-  }
-  track_dump(callback) {
-   app.sql.query('SELECT * FROM zd_track LIMIT 3', callback);
-  }
+
+  // track_dumpList(callback) {
+  //  app.sql.query('SELECT * FROM zd_track AS t ORDER BY t.PLAYS DESC LIMIT 9', callback);
+  // }
+
+  // track_dumpId(trackId,callback) {
+  //  app.sql.query('SELECT * FROM zd_track WHERE ID=?', [trackId], callback);
+  // }
+
+  // track_dump(callback) {
+  //  app.sql.query('SELECT * FROM zd_track LIMIT 3', callback);
+  // }
+
   // trackCount(callback) {
   //  const query = mysql.format('SELECT count(*) AS TotalCount FROM ??', [table.track]);
   // }
-  track_Test(callback) {
-   callback(this.param);
-  }
+
+  // track_Test(callback) {
+  //  callback(this.param);
+  // }
 }

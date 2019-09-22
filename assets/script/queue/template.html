@@ -1,15 +1,35 @@
-<div class="portal" id="content" >
-  <div class="resize center">
-      <div class="queue">
-          <h1>queue is playing: {{$parent.playing}}</h1>
-          <ol>
-              <!-- @click="$parent.play(index)"  -->
-            <li v-for="(track, index) in $parent.queue" @click="$parent.play(track.id)" :class="{active:$parent.queueId == track.id}">
-              <span class="title">{{ track.tl }}</span> -
-              <span class="artist">{{track.ar.join(', ')}}</span> -
-              <span class="album">{{ track.ab }}</span>
-            </li>
-          </ol>
+<div class="zm" v-if="$parent.ready">
+  <div v-if="$parent.queue.length == 0" class="mw middle center">
+      <div class="col-1">
+        <div class="z-working">
+            <h1 class="text-vw">I don't understand!</h1>
+            <p>but let me say hello twice real quick..</p>
+            <ul>
+              <li v-for="index in 2">{{index}} Hello</li>
+            </ul>
+        </div>
       </div>
+    </div>
+  <div v-else-if="$parent.queue.length > 20" class="middle center" :class="{ mw: $parent.queue.length < 50 }">
+    <div class="track-row">
+      <track-row v-for="(n, index) in trackLimit" v-bind:track="$parent.queue[index]" :key="index" :queued="true" />
+    </div>
+  </div>
+  <div v-else class="mw middle center">
+    <div class="col-2">
+      <div class="left middle center">
+        <div>queue is playing: {{$parent.playing}}</div>
+      </div>
+      <div class="main">
+        <div v-if="$parent.queue.length" class="track-row">
+          <track-row v-for="(n, index) in trackLimit" v-bind:track="$parent.queue[index]" :key="index" :queued="true" />
+          <div v-if="$parent.queue.length > trackLimit" class="show-more">
+            <p @click="trackLimit += 9" class="icon-right">
+              <span v-text="trackLimit" class="limit"></span><span v-text="$parent.queue.length" class="total"></span><span class="more">more</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>

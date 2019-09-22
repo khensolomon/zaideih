@@ -1,5 +1,5 @@
 // NOTE: helps to prevent -> 404 Not Found (style.css)
-// require('./middleware.css');
+require('./middleware.css');
 
 // NOTE: Main
 require('./index.js');
@@ -36,9 +36,9 @@ require('./index.js');
 // require('./middlewareChild');
 // require('assert');
 //
-if (module.hot) {
-  module.hot.accept();
-  module.hot.dispose(function() {
-    clearInterval(timer);
-  });
-}
+// if (module.hot) {
+//   module.hot.accept();
+//   module.hot.dispose(function() {
+//     clearInterval(timer);
+//   });
+// }

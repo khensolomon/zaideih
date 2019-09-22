@@ -22,58 +22,66 @@ export default {
     ],
     albumList:[],
     artistList:[],
-    queueIndex:-1,
-    queueId:'0',
     queueActive:{},
+    testPlayerEvent:[],
+    api:{
+      audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
+      audio:'*/oidua/ipa/'.split("").reverse().join("")
+    },
     queue:[
       {
-        tl:'If You Were A Sailboat If You Were A Sailboat If You Were A Sailboat',
+        id:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
+        tl:'If You Were A Sailboat',
         ar:['Katie Melua'],
         ab:'testing',
-        id:'/Katie Melua - If You Were A Sailboat.mp3'
+        n:'1',
+        t:'2',
+        l:'22:00',
+        p:'234',
+        s:'343'
       },
       {
         tl:'sailing',
         ar:['Rod Stewart'],
         ab:'testing',
-        id:'/rod-stewart-sailing.mp3'
+        id:'rod-stewart-sailing.mp3'
       },
-      {
-        tl:'Have I Told You Lately That I Love',
-        ar:['Rod Stewart'],
-        ab:'testing',
-        id:'/rod-stewart-have-i-told-you-lately.mp3'
-      },
-      {
-        tl:'You\'re In My Heart',
-        ar:['Rod Stewart'],
-        ab:'testing',
-        id:'/rod-stewart-you-are-in-my-heart.mp3'
-      },
-      {
-        tl:'I Was Only Joking',
-        ar:['Rod Stewart'],
-        ab:'testing',
-        id:'/rod-stewart-i-was-only-joking.mp3'
-      },
-      {
-        tl:'I Dont Want To Talk About It',
-        ar:['Rod Stewart','Amy-Bell'],
-        ab:'testing',
-        id:'/rod-stewart-amy-belle-IDontWantToTalkAboutIt.mp3'
-      },
-      {
-        tl:'Lentement',
-        ar:['Miaow'],
-        ab:'testing',
-        id:'/Miaow - Lentement.mp3'
-      },
-      {
-        tl:'Song',
-        ar:['Miaow'],
-        ab:'testing',
-        id:'/Miaow - Song.mp3'
-      }
+      // {
+      //   tl:'Have I Told You Lately That I Love',
+      //   ar:['Rod Stewart'],
+      //   ab:'testing',
+      //   id:'/rod-stewart-have-i-told-you-lately.mp3'
+      // },
+      // {
+      //   tl:'You\'re In My Heart',
+      //   ar:['Rod Stewart'],
+      //   ab:'testing',
+      //   id:'/rod-stewart-you-are-in-my-heart.mp3'
+      // },
+      // {
+      //   tl:'I Was Only Joking',
+      //   ar:['Rod Stewart'],
+      //   ab:'testing',
+      //   id:'/rod-stewart-i-was-only-joking.mp3'
+      // },
+      // {
+      //   tl:'I Dont Want To Talk About It',
+      //   ar:['Rod Stewart','Amy-Bell'],
+      //   ab:'testing',
+      //   id:'/rod-stewart-amy-belle-IDontWantToTalkAboutIt.mp3'
+      // },
+      // {
+      //   tl:'Lentement',
+      //   ar:['Miaow'],
+      //   ab:'testing',
+      //   id:'/Miaow - Lentement.mp3'
+      // },
+      // {
+      //   tl:'Song',
+      //   ar:['Miaow'],
+      //   ab:'testing',
+      //   id:'/Miaow - Song.mp3'
+      // }
     ],
     playing:false
 	}),
@@ -90,87 +98,76 @@ export default {
       this.$router.push({path:'/music',query:{q: searchQuery}});
       e.preventDefault();
     },
-    todoInsert(e){
-      var r = e || Math.random().toString(36).substring(7);
-      this.$parent.todo.push({title:r});
+    play(){
+      this.player.play();
     },
-    todoDelete(index){
-      this.$parent.todo.splice(index, 1);
+    async playNow(id){
+      await this.setQueue(id).then(
+        () => this.play()
+      );
     },
-    todoUpdate(index,v){
-      this.$parent.todo[index]=v;
-    },
-    play(Id){
-      if (this.queue.length){
-        if (Id){
-          if (Id == this.queueId){
-            if (this.playing){
-              this.$refs.player.pause();
-            } else {
-              this.$refs.player.play();
-            }
-          } else {
-            var selected = this.queue.filter(track => track.id == Id);
-            if (selected.length){
-              var track = selected[0];
-              this.queueId=track.id;
-              this.$refs.player.track = track;
-            }
-          }
-          console.log(Id,'yes')
-        } else {
-          var track = this.queue[0];
-          this.queueId=track.id;
-          this.$refs.player.track = track;
-          console.log(Id,'no')
-        }
-      }
-    },
-    next(){
+    async nextQueue(){
       if (this.queue.length){
         if (this.queueId){
-          var currentIndex = this.queue.findIndex(track => track.id == this.queueId);
-          var nextIndex = (currentIndex + 1) % this.queue.length;
-          if (this.queue[nextIndex]){
-            return this.play(this.queue[nextIndex].id);
+          var activeQueueIndex = this.queue.findIndex(track => track.id == this.queueId);
+          var index = (activeQueueIndex + 1) % this.queue.length;
+          if (this.queue[index]){
+            return this.setQueue(this.queue[index].id).then(()=>this.play());
           }
         }
         this.play();
       }
     },
-    previous(){
+    async previousQueue(){
       if (this.queue.length){
         if (this.queueId){
-          var currentIndex = this.queue.findIndex(track => track.id == this.queueId);
-          var nextIndex = (currentIndex - 1) % this.queue.length;
-          if (this.queue[nextIndex]){
-            return this.play(this.queue[nextIndex].id);
+          var activeQueueIndex = this.queue.findIndex(track => track.id == this.queueId);
+          var index = (activeQueueIndex - 1) % this.queue.length;
+          if (this.queue[index]){
+            return this.setQueue(this.queue[index].id).then(()=>this.play());
           }
         }
         this.play();
       }
     },
-    addQueue(e){
-      var selected = this.queue.filter(track => track.id == e.id);
-      if (selected.length < 1){
-        this.queue.push(e);
-        // this.queue.push({
-        //   title:e.tl,
-        //   artist:e.ar.join(', '),
-        //   album:e.ab,
-        //   id:e.id
-        // });
-      }
-      this.play(e.id);
+    async addQueue(e){
+      // if (await this.queue.filter(track => track.id == e.id).length < 1){
+      //   this.queue.push(e);
+      //   return false;
+      // }
+      // return true;
+      if (await this.isQueued(e.id)) return true;
+      this.queue.push(e);
+      return false;
+      // return await this.isQueued(e).then(
+      //   (yes) => {
+      //     if (yes) return true;
+      //     this.queue.push(e);
+      //     return false;
+      //   }
+      // );
     },
+    async setQueue(Id){
+      var e = await this.queue.filter(track => track.id == Id);
+      if (e.length){
+        this.player.track = e[0];
+        return true;
+      }
+      return false;
+    },
+
+    isQueued(Id){
+      return this.queue.filter(track => track.id == Id).length;
+    },
+    async randamQueue(){
+      return await this.queue[Math.floor(Math.random()*this.queue.length)];
+    },
+
     formatTimer(e){
       return new Timer(e).format();
     },
 
     arrayComparer(otherArray){
-      // var onlyInA = a.filter(comparer(b));
-      // var onlyInB = b.filter(comparer(a));
-      // result = onlyInA.concat(onlyInB);
       return function(current){
         return otherArray.filter(function(other){
           return other.toLowerCase()  == current.toLowerCase()
@@ -178,20 +175,20 @@ export default {
         }).length == 0;
       }
     },
-    // arrayComparerID(otherArray){
-    //   return function(current){
-    //     return otherArray.filter(function(other){
-    //       return other.id  == current.id
-    //     }).length == 0;
-    //   }
-    // },
-    // arrayComparerUI(otherArray){
-    //   return function(current){
-    //     return otherArray.filter(function(other){
-    //       return other.ui  == current.ui
-    //     }).length == 0;
-    //   }
-    // },
+    arrayComparerID_notInUseds(otherArray){
+      return function(current){
+        return otherArray.filter(function(other){
+          return other.id  == current.id
+        }).length == 0;
+      }
+    },
+    arrayComparerUI_notInUseds(otherArray){
+      return function(current){
+        return otherArray.filter(function(other){
+          return other.ui  == current.ui
+        }).length == 0;
+      }
+    },
     arrayGroupby(raw){
       let row = raw.reduce((r, e) => {
         // get first letter of name of current element
@@ -208,29 +205,22 @@ export default {
 
   },
   computed: {
-    // msg () {
-    //   return `Goodbye, ${ this.name }!`
-    // },
-    // message:{
-    //   get: () => this.$parent.message,
-    //   set: (value) => this.$parent.commit('message', value )
-    // },
-    // message: {
-    //   get : function() { return this.$parent.message; },
-    //   set : function(name) { this.$parent.message = name; }
-    // }
+    ready(){
+      return this.$parent.ready;
+    },
     loading(){
       return this.$parent.loading;
+    },
+    player(){
+      return this.$refs.player;
+    },
+    queueId(){
+      return this.player.id;
     },
     all(){
       return this.$parent.all;
     },
     artists(){
-      // var arr = [];
-      // for (var album of this.all.data)
-      //   for (var track of album.tk)
-      //     for (var artist of track.ar) arr.push(artist);
-      // return [...new Set(arr)];
       if (!this.artistList.length){
         var arr = this.all.data.map(
           album => album.tk.map(

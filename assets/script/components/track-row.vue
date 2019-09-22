@@ -1,20 +1,7 @@
 <template>
-  <!-- <div :class="{active:$parent.queueId == track.id}">
-    <div class="option">
-      <span class="play" @click="$parent.playTrack(track)" :class="[$parent.queueId == track.id && $parent.playing? 'icon-pause':'icon-play']"></span>
-      <span class="plays icon-flag" v-text="track.p"></span>
-    </div>
-    <div class="info">
-      <a class="title">{{track.tl}}</a> -
-      <router-link v-for="(artist,index) in track.ar" :to="{ path: '/artist/'+artist}" :key="index" class="artist">{{artist}}</router-link>
-    </div>
-    <div class="length">
-      <span v-text="track.l"></span>
-    </div>
-  </div> -->
-  <div v-if="track" :class="{active:queueId == track.id}">
+  <div v-if="track" :class="[trackId == track.id? 'active':zaideih.isQueued(track.id)?'queued':null]" @click="play(track)">
     <div class="begin">
-      <span class="play" @click="$parent.playTrack(track)" :class="[queueId == track.id && playing? 'icon-pause':'icon-play']"></span>
+      <span class="play" :class="[trackId == track.id && playing? 'icon-pause':'icon-play']"></span>
       <span class="count icon-flag" v-text="track.p"></span>
     </div>
     <div class="meta">
@@ -26,12 +13,12 @@
     </div>
   </div>
 </template>
-
 <script>
 export default {
   name: 'track-row',
   props: {
     track: Object,
+    queued: Boolean,
     // title: String,
     // likes: Number,
     // isPublished: Boolean,
@@ -40,17 +27,34 @@ export default {
     // callback: Function,
     // contactsPromise: Promise // or any other constructor
   },
-
+  methods: {
+    play(track){
+      if (this.queued){
+        this.zaideih.playNow(track.id);
+      } else {
+        this.zaideih.addQueue(track).then(
+          (isQueued) => {
+            if (isQueued || this.playing == false) {
+              this.zaideih.playNow(track.id);
+            }
+          }
+        );
+      }
+    }
+  },
   computed: {
-    queueId(){
-      return this.$parent.$parent.queueId;
+    zaideih(){
+      return this.$parent.$parent;
+    },
+    trackId(){
+      return this.zaideih.queueId;
     },
     playing(){
-      return this.$parent.$parent.playing;
-    },
+      return this.zaideih.playing;
+    }
+  },
+  ready(){
+    return this.zaideih.playing;
   }
 }
 </script>
-
-<!-- Add "scoped" attribute to limit CSS to this component only -->
-<style scoped></style>

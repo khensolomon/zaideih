@@ -1,8 +1,5 @@
-// album-each, track-each, album-name
-//
 div {
   &.badge-tag{
-    padding: 5px 0;
     strong{
       color: darken($Color,30);
       font-weight: normal;
@@ -18,8 +15,8 @@ div {
       outline: none;
       border-radius: 2px;
       font-size: 13px;
-      background-color: darken($ColorBackground,15);
       color: darken($Color,25);
+      background-color: darken($ColorBackground,15);
       &.router-link-exact-active{
         background-color:darken($ColorBackground,5);
         color: darken($Color,30);
@@ -27,11 +24,22 @@ div {
     }
   }
   &.show-lang{
-    padding:1%;
     a{
+      // display: flex;
+      // align-items: center;
+      padding: 10px 15px;
+      margin: 2px;
+
+      background-color: darken($ColorBackground,10);
       text-transform: uppercase;
+      &.router-link-exact-active{
+        color: darken($Color,30);
+        background-color: darken($ColorBackground,20);
+      }
     }
+
   }
+  // NOTE: used in: track,album
   &.show-more{
     p{
       // background-color: darken($ColorBackground,10);
@@ -49,32 +57,41 @@ div {
       }
       span{
         display: inline-block;
-        margin: 1px 0px;
-        padding: 1px 5px;
+        margin: 1px 0;
+        padding: 2px 7px;
         // font-size: 2em;
         // font-size:5vw;
         // border-radius: 2px 0  0 2px;
-        background-color: darken($ColorBackground,20);
+        // background-color: darken($ColorBackground,20);
         color: darken($Color,25);
         // @include text-shadow(0px,1px,1px,darken($Color,10));
-        &.total{
-          border-radius: 2px 0  0 2px;
-          background-color: darken($ColorBackground,10);
-        }
         &.limit{
-          border-radius:0 2px 2px 0;
-          background-color: darken($ColorBackground,5);
+          border-radius: 3px 0  0 3px;
+          background-color: darken($ColorBackground,20);
+        }
+        &.total{
+          border-radius:0 3px 3px 0;
+          background-color: darken($ColorBackground,10);
         }
       }
       &:hover{
         &::before{
          margin-right:10px;
         }
+        &::after{
+          color: darken($Color,25);
+        }
         span{
-          background-color: darken($ColorBackground,20);
-          padding: 1px 5px;
+          // background-color: darken($ColorBackground,20);
+          // padding: 1px 5px;
           &.limit{
-            background-color: darken($ColorBackground,10);
+            background-color: darken($ColorBackground,30);
+          }
+          &.total{
+            background-color: darken($ColorBackground,20);
+          }
+          &.more{
+            color: darken($ColorGold,0);
           }
         }
         &::before{
@@ -84,29 +101,45 @@ div {
       }
     }
   }
+
   &.album-raw{
     display: flex;
     flex-wrap: wrap;
     flex-flow: row wrap;
-    // margin: 0 auto;
-    // flex-direction:row;
+    flex-direction:row;
+    // display: block;
+
+    flex-grow: 1;
+
     // align-content: space-around;
     // justify-content: space-between;
     // justify-content: center;
     // align-items: center;
     // align-items: stretch;
-    &.center{
-      justify-content: center;
-    }
-    &.middle{
-      align-items: center;
-    }
+    // &.center{
+    //   justify-content: center;
+    // }
+    // &.middle{
+    //   align-items: center;
+    // }
     >div{
+      // display: inline-flex;
+      // flex-grow: 1;
+
       position: relative;
       height: 255px;
       width: 250px;
+      margin:10px;
+      // margin:1%;
+      // flex:0 0 auto;
+      // display: flex;
+      // flex-wrap: wrap;
+      // flex-flow: row wrap;
+      // align-items: stretch;
+      // align-content: space-around;
+      // justify-content: space-between;
+      // flex-direction:row;
 
-      margin:1%;
       flex:1 1 auto;
       overflow: hidden;
       border-radius: 7px;
@@ -121,26 +154,24 @@ div {
       // @media #{(min-width:$width-b7)} {
         //   width: 12%;
         // }
-      @media #{(max-width:$width-b6)} {
-        // width: 12%;
-        // flex:1 1 auto;
-      }
-      @media #{(max-width:$width-b5)} {
-        width: 14%;
-      }
-      @media #{(max-width:$width-b4)} {
-        width: 23%;
-      }
-      @media #{(max-width:$width-b3)} {
-        width: 31%;
-      }
-      @media #{(max-width:$width-b2)} {
-        width: 48%;
-      }
-      @media #{(max-width:$width-b1)} {
-        // width: 94%;
-        // margin: 1% 3%
-      }
+      // @media #{(max-width:$width-b6)} {
+      //   // width: 12%;
+      //   // flex:1 1 auto;
+      // }
+      // @media #{(max-width:$width-b5)} {
+      //   width: 14%;
+      // }
+      // @media #{(max-width:$width-b4)} {
+      //   width: 23%;
+      // }
+      // @media #{(max-width:$width-b3)} {
+      //   width: 31%;
+      // }
+      // @media #{(max-width:$width-b2)} {
+      //   width: 48%;
+      // }
+      // @media #{(max-width:$width-b1)} {
+      // }
       >div{
         text-align: center;
         &.disc{
@@ -287,6 +318,21 @@ div {
           }
         }
       }
+      &.show-lang{
+        background-color: darken($ColorBackground,5);
+        display: flex;
+        flex-wrap: wrap;
+        // flex-flow: row wrap;
+        // // align-items: center;
+        // // justify-content: center;
+        // // text-align: center;
+        // justify-content: space-around;
+        // align-content: space-around;
+        // align-self: center;
+        // align-items: center;
+        align-items: center;
+        justify-content: center;
+      }
       &.show-more{
         background-color: darken($ColorBackground,5);
         display: flex;
@@ -295,9 +341,12 @@ div {
         text-align: center;
       }
     }
+    @media #{$media-mobile} {
 
+    }
   }
-  &.album-row{
+
+  &.album-row-notInUsed{
     display: table;
     width: 100%;;
     position: relative;
@@ -432,12 +481,14 @@ div {
       }
     }
   }
-  &.album-detail{
+
+  &.album-detail-{
     display: flex;
     flex-wrap: wrap;
     flex-direction: column;
     align-items: center;
-    // justify-content: center;
+    justify-content: center;
+    // margin: 10px 2%;
     >div{
       flex: 0 0 auto;
       position: relative;
@@ -507,7 +558,8 @@ div {
       }
       &.meta{
         // background-color: lighten($ColorBackground,25);
-        padding:10% 2%;
+        // padding:10% 2%;
+        padding:5% 2%;
         h1{
           // line-height: 1.8em;
           font-weight: lighter;
@@ -519,7 +571,7 @@ div {
         }
         p {
           &.info{
-            margin: 5% 0;
+            margin: 3% 0;
             a{
               display: inline-block;
               color: darken($Color,30);
@@ -534,7 +586,7 @@ div {
           }
 
           &.artist{
-            padding-top:10px;
+            // padding-top:10px;
             a{
               display: inline-block;
               margin: 1px 3px;
@@ -564,7 +616,7 @@ div {
       }
 
     }
-    @media only screen and (max-width:638px) and (min-width:500px) {
+    @media only screen and (max-width:916px) and (min-width:500px) {
       flex-direction: row;
       >div {
         flex: 1;
@@ -580,6 +632,7 @@ div {
       }
     }
   }
+
   &.artist-name{
     a{
       text-transform: capitalize;
@@ -593,229 +646,248 @@ div {
     //   }
     // }
   }
-  &.artist-detail{
-    position: relative;
-    padding:2% 1%;
-    h1{
-      padding:2% 1%;
-      font-size: 3em;
-      &::before{
-        color: darken($Color,35);
-      }
-      span {
-        display: inline-block;
-        color: darken($Color,10);
-      }
-    }
-    >div {
-      &.left{
-        width: 150px;
-        // height: 150px;
-        // background-color: #666;
-        // position: inherit;
-        // border-radius: 3px;
-        // background-color:darken($ColorBackground,10);
-        // -webkit-box-shadow: inset 0px 0px 2px 0px rgba(51,51,51,1);
-        // -moz-box-shadow: inset 0px 0px 2px 0px rgba(51,51,51,1);
-        // box-shadow: inset 0px 0px 2px 0px rgba(51,51,51,1);
-        // &:hover{
-        //   background-color:darken($ColorBackground,7);
-        // }
-        // &::before{
-        //   display: inline-block;
-        //   position: absolute;
-        //   top: 10px;
-        //   left: 10px;
-        //   width: 30px;
-        //   height: 30px;
-        //   border-radius: 100px;
-        //   content: "";
-        //   border:50px solid lighten($ColorBackground,5);
-        // }
-        // >p {
-        //   // position: inherit;
-        //   // position: relative;
-        //   position: absolute;
-        //   // display: table-row;
-        //   // background-color: blue;
-        //   // height: 37px;
-        //   text-align: center;
-        //   width: 100%;
-        //   // background-color: #666;
-        //   color: darken($Color,20);
-        //   text-shadow: 1px 1px #666;
-        //   &.play{
-        //     top: 50px;
-        //     span{
-        //       cursor: pointer;
-        //       display: inline-block;
-        //       width: 50px;
-        //       height: 50px;
-        //       background-color: darken($ColorBackground,10);
-        //       border-radius: 100px;
-        //       &::before{
-        //         line-height: 2.4em;
-        //         font-size: 1.3em;
-        //         color: lighten($ColorBackground,5);
-        //       }
-        //       &:hover{
-        //         background-color: darken($ColorBackground,20);
-        //       }
-        //     }
-        //   }
-        // }
-      }
-      span {
-        display: inline-block;
-        color: darken($Color,10);
-        font-size: 1.2em;
-        &::before{
-          color: lighten($ColorBackground,15);
-        }
-      }
-      &.play{
-        line-height: 30px;
-        span {
-          vertical-align: middle;
-          // background-color: #666;
-          // line-height: 3em;
-          // display: table-cell;
+  // NOTE: used in: album, artist
+  &.info-detail{
+    text-align: center;
 
 
-          color: lighten($ColorBackground,15);
-          // position: inherit;
-          border-radius: 100px;
-          padding: 5px 15px;
-          font-size: 1.5em;
-          font-weight: 50;
-          font-style: normal;
-          background-color:darken($ColorBackground,7);
-          -webkit-box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-          -moz-box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-          box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-          &:hover{
-            background-color:darken($ColorBackground,15);
-          }
-          &::before{
-            color: darken($Color,10);
-            background-color: lighten($ColorBackground,10);
-            border-radius: 3px;
-            padding:5px;
-            // font-size: 2em;
-            // margin-top:20px;
-          }
-        }
+    // display: flex;
+    // flex-direction: column;
+    // flex-wrap: wrap;
+    // flex-flow: row wrap;
+    // align-content: space-between;
+    // justify-content: space-between;
+
+
+    // display: flex;
+    // justify-content: center;
+    // align-self: center;
+    // flex-direction: column;
+    // align-self: center;
+    //   justify-content: center;
+    >div{
+      display: flex;
+      flex-wrap: wrap;
+      flex-flow: row wrap;
+      justify-content: center;
+      flex:1 1 auto;
+      flex-grow: 1;
+      flex-shrink: 1;
+      span{
+        // display: inline-flex;
+        // display: inline-flexbox;
+        // display: flexbox;
+        // dis
+        // display: inline-flex;
+        // white-space: nowrap;
+        // overflow: hidden;
+        // text-overflow: ellipsis;
+        // align-self: center;
+        // justify-content: center;
+        // padding:1% 7%;
+        padding: 2px 10px;
+      }
+      a {
+        display: inline-flex;
+        outline: none;
+        align-self: center;
+        justify-content: center;
+        padding: 5px 10px;
+        margin: 2px 1px;
+        line-height: 1em;
+      }
+      q{
+        display: inline-flex;
+        padding: 2px 7px;
+        margin: 1px;
+        color: darken($Color,15);
       }
       &.count{
         span{
-          margin-right: 3px;
-        }
-      }
-    }
+          padding: 2%;
+          margin: 1px;
+          border-radius: 100px;
+          font-size: 1em;
+          // font-weight: lighter;
+          // font-weight: bold;
+          // background-color: darken($ColorBackground,10);
+          // color: darken($Color,0);
+          @include text-shadow(0px,1px,1px,darken($ColorBackground,30));
 
-
-  }
-  &.track-row-tmp{
-    padding:1% 0px;
-    // display: table;
-    >div{
-      list-style: none;
-      display: table;
-      width: 100%;
-      padding: 3px 0;
-
-      max-width:$WidthMaxCommon;
-      div{
-        display: table-cell;
-        vertical-align: middle;
-        &.option{
-          // text-align: center;
-          width: 150px;
-          // background-color: red;
-          span{
-            display: inline-block;
-            border-radius: 3px;
-            line-height: 1.3em;
-            font-size: 13px;
-            &.play{
-              padding: 7px 10px;
-              color: darken($Color,30);
-              background-color: darken($ColorBackground,10);
-              -webkit-box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-              -moz-box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-              box-shadow: inset 0px 0px 1px 0px rgba(51,51,51,1);
-            }
-            &.plays{
-              width: 100px;
-              text-align: right;
-              font-size: 15px;
-              // padding: 6px 7px;
-              color: darken($Color,20);
-              // background-color: darken($ColorBackground,10);
-              &::before{
-                color: darken($Color,35);
-              }
+          &::before{
+            color: darken($Color,25);
+            @include text-shadow(1px,1px,1px,darken($ColorBackground,20));
+            // font-size: 1.3em;
+          }
+          &.plays{
+            color: lighten($ColorGold,10);
+            &::before{
+              color: darken($ColorGold,5);
             }
           }
         }
-        &.info{
-          // width: 100%;
-          // padding: 0 1%;
-          padding-left:20px;
-          // overflow: hidden;
-          // text-overflow: ellipsis;
-          // white-space: nowrap;
+      }
+      &.artist{
+        q,a{
+          padding: 7px 15px;
+          font-size:1.3em;
+          line-height: 1.3em;
+          // color: darken($Color,15);
+          color: darken($Color,25);
+        }
+        a{
+          border-radius: 100px;
+          transition: all 0.3s ease;
+          // font-size: 13px;
+          // background-color: darken($ColorBackground,12);
+
+          // background-color: darken($ColorBackground,7);
+
+          color: darken($ColorBackground,15);
+          background-color: darken($Color,15);
+          // color: darken($Color,25);
+          // &:link {
+          //   background-color: darken($ColorBackground,11);
+          // }
+          &:visited {
+            // background-color: darken($ColorBackground,10);
+            color: darken($Color,10);
+            background-color: darken($Color,30);
+          }
+          &:active {
+            background-color: lighten($ColorGreen,20);
+          }
+          &:hover{
+            // background-color: darken($ColorBackground,15);
+            color: darken($ColorBackground,30);
+            background-color: darken($Color,30);
+          }
+        }
+        &.recommended{
+          margin:2vw auto;
+          q,a{
+            // padding: 7px 15px;
+            // font-size:1.3em;
+            // line-height: 1.3em;
+            // color: darken($Color,15);
+          }
           a {
-            &.title{
-              // max-width: 70%;
-              color: darken($Color,10);
+            color: darken($ColorBackground,25);
+            background-color: darken($Color,25);
+            &:visited {
+              // color: darken($Color,15);
+              // background-color: darken($ColorGreen,1);
+              background-color: darken($Color,12);
             }
-            &.artist {
-              color: darken($Color,20);
-              &:not(:last-child)::after {
-                content: ", ";
-              }
+            &:hover{
+              color: darken($ColorBackground,5);
+              background-color: darken($Color,5);
             }
           }
         }
-        &.length{
-          // text-align: right;
-          // background-color: red;
-          width: 50px;
-          span{
-            display: inline-block;
-            border-radius: 2px;
-            padding: 3px 7px;
-            // margin:1px;
-            color: darken($Color,30);
-            font-size: 13px;
-            line-height: 1.4em;
-            background-color: darken($ColorBackground,10);
+        &.related{
+          margin:1vw auto;
+          q,a{
+            font-size:1em;
+            padding: 5px 10px;
           }
         }
       }
-      &.active{
-        // background-color: #666;
+      &.name {
+        // margin:20% auto;
+        margin:4vw auto;
+        // display: inline-flex;
+        // display: flex;
+        // flex: 1;
+        span{
+          display: inline-block;
+          font-size: 3em;
+          color: darken($Color,10);
+          @include text-shadow(1px,1px,1px,darken($ColorBackground,40));
+        }
+        &.album{}
+        &.artist{}
       }
-      &:hover{
-        // background-color: darken($ColorBackground,3);
+      &.play{
+        // margin:4vw auto;
+        span{
+          padding: 7px 35px;
+          font-size: 3vh;
+          color: darken($Color,0);
+          background-color: darken($ColorGold,13);
+          transition: all 0.3s ease;
+          border-radius: 100px;
+          cursor: pointer;
+          text-transform: capitalize;
+          &:hover{
+            background-color: darken($ColorGold,5);
+          }
+        }
+      }
+      &.year{
+        margin:2vw auto;
+        a{
+          border-radius: 3px;
+          padding: 3px 5px;
+          background-color: darken($ColorBackground,7);
+          color: darken($Color,15);
+        }
+      }
+      &.genre{
+        margin:2vw auto;
+        a{
+          border-radius: 100px;
+          font-size: 1.2em;
+          padding:5px 10px;
+          // background-color: darken($ColorBackground,5);
+          color: darken($Color,5);
+          text-transform: capitalize;
+        }
       }
     }
+    &.album{
+
+    }
   }
+
   &.track-row{
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    flex-flow: row wrap;
+    // flex-grow: 1;
+    // justify-content: center;
+    // align-content: center;
+    // align-self: center;
     >div{
-      display: table;
-      width: 100%;
+      flex:1 1 500px;
+      // width: 100%;
+      // padding: 2%;
+      display: flex;
+      flex-wrap: wrap;
+      flex-flow: row wrap;
+      flex-direction: row;
+
+      transition: all 0.4s ease;
+      position: relative;
       >div{
-        display: table-cell;
-        line-height: 1.6em;
+        display: flex;
+        flex-wrap: wrap;
+        flex-flow: row wrap;
+        // flex-shrink: 1;
+        flex-grow: 1;
+        align-self: center;
+
+        line-height: 1.2em;
         overflow: hidden;
         text-overflow: ellipsis;
         padding: 5px 0;
         &.begin{
-          width: 100px;
+          width:100px;
+          max-width:100px;
+          flex:1;
+          text-align: center;
+          justify-content: center;
+          // align-content: center;
           span {
             display: inline-block;
             &.play{
@@ -824,17 +896,25 @@ div {
               text-align: center;
               width: 35px;
               cursor: pointer;
+
+              // color: darken($Color,0);
+              // background-color: darken($ColorGold,13);
+              @include text-shadow(1px,1px,1px,darken($ColorBackground,15));
+              transition: all 0.3s ease;
               &::before{
-                color: darken($Color,20);
+                // color: darken($Color,10);
+                color: lighten($ColorGold,25);
               }
               &:hover{
                 &::before{
-                  color: lighten($Color,20);
+                  // color: lighten($Color,20);
+                  color: lighten($ColorGold,10);
                 }
               }
               &.icon-pause{
                 &::before{
-                  color: lighten($Color,10);
+                  // color: lighten($Color,10);
+                  color: darken($ColorGold,13);
                 }
               }
             }
@@ -842,20 +922,39 @@ div {
               width: 60px;
               font-size: 0.9em;
               border-radius: 3px;
-              color: darken($Color,20);
-              background-color: darken($ColorBackground,3);
+              // color: darken($Color,20);
+              // background-color: darken($ColorBackground,3);
+              color: lighten($Color,5);
+              background-color: darken($ColorBackground,5);
+              // color: darken($Color,20);
+              // background-color: lighten($ColorGold,23);
+              @include text-shadow(0px,1px,1px,darken($ColorBackground,10));
               &::before{
-                color: darken($Color,30);
+                color: lighten($Color,10);
+                // color: darken($ColorGold,13);
               }
             }
           }
         }
         &.meta{
+          width: 55%;
+          flex:2;
+          flex-direction: column;
+          // order:2;
+          padding: 0 10px;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          overflow: hidden;
           p {
-            padding: 0 5%;
+            // padding: 0 5%;
             a {
+              // white-space: nowrap;
+              // text-overflow: ellipsis;
+              // overflow: hidden;
+              // display: block;
+              // display: inline-block;
+
               color: darken($Color,0);
-              display: inline-block;
               &:not(:last-child) {
                 // <span v-if="index != 0">, </span>
                 margin-right: 15px;
@@ -871,7 +970,7 @@ div {
             }
             &.title{
               a {
-                // font-size: 1.2em;
+                font-size: 1em;
               }
             }
             &.artist{
@@ -887,20 +986,20 @@ div {
           }
         }
         &.end{
-          width: 55px;
-          // background-color:blue;
-          text-align: right;
+          width:50px;
+          max-width:50px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          // order:3;
+          // text-align: right;
           font-size: 0.9em;
           span {
-            display: block;
             text-align: center;
             color: darken($Color,20);
+            @include text-shadow(0px,1px,1px,darken($ColorBackground,20));
           }
         }
       }
-      transition: all 0.4s ease;
-      position: relative;
-
       &:not(.show-more){
         &::before{
           transition: all 0.7s ease;
@@ -909,67 +1008,114 @@ div {
           width: 3px;
           content: "";
         }
-        &:hover{
-          // background-color: lighten($ColorBackground,4);
+        &.active{
           &::before{
-            background-color: darken($ColorBackground,25);
+            background-color: darken($ColorGold,5);
+          }
+          >div{
+            &.begin{
+              span{
+                &.count{
+                  background-color: darken($ColorGold,13);
+                }
+              }
+            }
           }
         }
-        &.active{
-          // background-color: darken($ColorBackground,3);
+        &.queued{
+          // &::before{
+          //   background-color: darken($ColorGold,5);
+          // }
+          >div{
+            &.begin{
+              span{
+                &.count{
+                  background-color: lighten($ColorGold,3);
+                }
+              }
+            }
+          }
+        }
+        &:hover{
           &::before{
-            background-color: darken($ColorBackground,20);
+            background-color: darken($ColorGold,13);
           }
         }
       }
       // &.show-more{}
     }
-  }
-}
-div{
-  div.queue{
-    h1{
-      padding: 3%;
-    }
-    ol{
-      margin: 2%;
-      padding: 1%;
-      li{
-        cursor: default;
-        padding: 1%;
-        margin:3px 1px;
-        &.active{
-          color:#666;
-        }
-      }
-    }
-  }
-
-  div.artist{
-    >div{
-      &.list{
-        text-align: center;
-        ol {
-          margin: 2%;
-          li {
-            list-style: none;
-            display: inline-block;
-            a{
-              display: inline-block;
-              padding: 4px 7px;
-              border-radius: 2px;
-              margin:7px;
-              color: darken($Color,30);
-              // font-size: 17px;
-              // height: 25px;
-              line-height: 1.4em;
-              background-color: darken($ColorBackground,20);
+    @media #{$media-mobile} {
+      >div{
+        >div {
+          // padding: 0px;
+          &.begin{
+            // width:100px;
+            max-width:35px;
+            span {
+              &.count{
+                display: none;
+              }
             }
+          }
+          &.end{
+            max-width:40px;
+            // background-color: aliceblue;
+            // display: none;
           }
         }
       }
-      &.detail{}
     }
   }
+  // NOTE: used in: music not found
+  &.z-working{
+    // display: flex;
+    // flex-direction: row;
+    // flex-wrap: wrap;
+    // align-self: center;
+    // justify-content: center;
+    // width: 100%;
 
+    text-align: center;
+    // h1{
+    //   // background-color: red;
+    // }
+    p{
+      font-size: 2em;
+      // font-size:5vw;
+      color: darken($Color,10);
+      padding: 10px;
+      @include text-shadow(0px,0px,1px,darken($Color,10));
+      text-align: center;
+      font-weight: lighter;
+      &::before, &::after{
+        color: darken($Color,30);
+      }
+      &::before{
+        content: open-quote;
+      }
+      &::after{
+        content: close-quote;
+      }
+    }
+    ul{
+      // display: flex;
+      // flex-direction: column;
+      list-style: none;
+      margin: 5%;
+      //  width: 90%;
+      // display: block;
+      li{
+        // font-size: 2em;
+        // font-size:5vw;
+        color: darken($Color,20);
+        // padding: 10px;
+        @include text-shadow(0px,0px,1px,darken($Color,20));
+        font-weight: lighter;
+        span{
+          color: darken($Color,10);
+          font-size: 1.4em;
+        }
+      }
+    }
+  }
 }
