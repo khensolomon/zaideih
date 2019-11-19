@@ -28,22 +28,22 @@
     color: darken(azure,7);
   }
 }
-&.classic{
-  border-bottom-color: lighten($ColorBackground,7);
+&.rock{
+  border-bottom-color: lighten(red,40);
   &::before{
-    color: lighten($ColorBackground,7);
+    color: lighten(red,40);
+  }
+}
+&.classic{
+  border-bottom-color: lighten(beige,7);
+  &::before{
+    color: lighten(beige,7);
   }
 }
 &.blues{
   border-bottom-color: lighten(azure,7);
   &::before{
     color: lighten(azure,7);
-  }
-}
-&.rock{
-  border-bottom-color: lighten(red,40);
-  &::before{
-    color: lighten(red,40);
   }
 }
 &.country{

@@ -1,101 +1,112 @@
+<div class="home">
+  <div class="row center head">
+    <h1 class="t1">Zaideih Music Station</h1>
+  </div>
 
-<div class="zm">
-  <div class="mw middle center">
-    <div class="col-2">
-      <div class="left">left</div>
-      <div class="main">main</div>
+  <div class="row board">
+    <div class="music">
+      <p class="icon-track">discover thousand of <span>Music</span> in your language</p>
+    </div>
+    <div class="artist">
+      <p class="icon-artist">find your favorite <span>Artist</span></p>
+    </div>
+    <div class="album">
+      <p class="icon-album">In addition to get detail information about the <span>Album</span></p>
     </div>
   </div>
-  <template>
-    <a href="/api/testing">Api testing</a>
-  </template>
-  <!-- <div class="mw middle center">
-    <h1 class="text-vw">Zaideih Music Station</h1>
-    <ol>
-      <li v-for="item in $parent.testPlayerEvent" v-text="item"></li>
-    </ol>
+
+  <div class="row center desc">
+    <p>Create your own collections, manage your <strong>Lyric</strong> and <strong>Comment</strong>, share your <em>PlayList</em>, works with Lyrics &amp; Chord and many more...</p>
+  </div>
+
+  <!-- <div v-if="all.lang.length" class="show-lang badge-tag">
+    <router-link v-for="(lg,index) in all.lang" :to="{ path: '/album/'+lg.name}" :key="index">{{lg.name}}</router-link>
   </div> -->
-</div>
-    <!-- <div class="mw middle center">
-      <h1 class="text-vw">Zaideih Music Station</h1>
-      <ol>
-        <li v-for="item in $parent.testPlayerEvent" v-text="item"></li>
+  <!-- <div v-if="all.lang.length" class="show-lang badge-tag">
+    <div v-for="(lang,index) in all.lang" :key="index">
+      <h3>
+        <router-link :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}} {{lang.id}}</router-link>
+      </h3>
+      <ol v-if="artists[lang.name].length">
+        <li v-for="(a,index) in artists[lang.name]" :key="index">{{a.name}}</li>
       </ol>
     </div>
-    <div class="middles center">
-      <h1 class="text-vw">Zaideih Music Station</h1>
-      <ol>
-        <li v-for="item in $parent.testPlayerEvent" v-text="item"></li>
-      </ol>
-    </div>
-    <div class="mw middles center">
-      <h1 class="text-vw">Zaideih Music Station</h1>
-      <ol>
-        <li v-for="item in $parent.testPlayerEvent" v-text="item"></li>
-      </ol>
-    </div> -->
-<!-- <div class="lm-wrap middle center mw">
-  <div class="lm-container">
-    <div class="left testing">
-      <div>left  middle center mw</div>Set both the justify-content and align-items properties to center, and the flex item will be perfectly centered:
-    </div>
-    <div class="main testing">
-      <div>main <br>Set both the justify-content and align-items properties to center, and the flex item will be perfectly centered: </div>
-    </div>
-    <div class="right testing">
-      <div>right</div>
-    </div>
-  </div>
-  <div class="lm-container">
-    <div class="left testing">
-      <div>left  middle center mw</div>Set both the justify-content and align-items properties to center, and the flex item will be perfectly centered:
-    </div>
-    <div class="main testing">
-      <div>main <br>Set both the justify-content and align-items properties to center, and the flex item will be perfectly centered: </div>
-    </div>
-    <div class="right testing">
-      <div>right</div>
-    </div>
-  </div>
-</div> -->
-<!-- <div class="lf1">
-  <div class="lr3">
-    <div class="left">left</div>
-    <div class="main">main</div>
-    <div class="right">right</div>
-  </div>
-  <div class="lr3">
-    <div class="left">left</div>
-    <div class="main">main</div>
-  </div>
-  <div class="lr3">
-    <div class="left">left</div>
-    <div class="right">right</div>
-  </div>
-</div> -->
-
-<!-- <div class="portal" id="content" >
-  <div class="resize center">
-      <div class="tmp">
-          <h1>Home</h1>
-          <ul>
-            <li @click="todoInsert">
-              add todo
-            </li>
-            <li>
-              <input v-model="$parent.message" v-on:keyup.enter="onEnter" placeholder="edit me">
-              <p>Message is: {{ $parent.message }}</p>
-            </li>
-          </ul>
-
-          <ol v-if="todos.length" class="todos">
-            <li v-for="(item, index) in todos" @click="todoDelete(index)">
-              todo: {{ item.title }}
-            </li>
-          </ol>
-          <ol v-else>
-            <li>Nothing to do???</li>
-          </ol>
+  </div> -->
+  <div v-if="all.lang.length" class="row center most">
+    <div v-for="(lang,index) in all.lang" :key="index" :class="lang.name">
+      <h3>
+        <router-link :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}}</router-link>
+      </h3>
+      <div v-if="popularArtist[lang.id].length" class="show-lang badge-tag">
+        <router-link v-for="(artist,index) in popularArtist[lang.id]" :to="{ path: '/artist/'+artist.name}" :key="index">{{artist.name}}<span v-if="artist.aka">({{artist.aka}})</span></router-link>
       </div>
+    </div>
   </div>
-</div> -->
+
+  <div class="row lmr" style="display: none">
+    <div class="left"><p>left</p></div>
+    <div class="main"><p>main</p></div>
+    <div class="right"><p>right</p></div>
+  </div>
+  <div class="row bar" style="display: none">
+    <div class="left"><p>left</p></div>
+    <div class="main"><p>main</p></div>
+    <div class="right"><p>right</p></div>
+  </div>
+  <div class="row lar" style="display: none">
+    <div class="left"><p>left</p></div>
+    <div class="right"><p>right</p></div>
+  </div>
+  <div class="row dco" style="display: none">
+    <div class="zola">
+      <div>
+        <span data-count="3586">zola</span>
+        <p>Zola, Zolapi, Laipian late</p>
+        <em data-title="Play">593024</em>
+      </div>
+    </div>
+    <div class="mizo">
+      <div>
+        <span data-count="4555">mizo</span>
+        <p>Interpret Mizo Musics</p>
+        <em data-title="Play">209397</em>
+      </div>
+    </div>
+    <div class="myanmar">
+      <div>
+        <span data-count="1933">myanmar</span>
+        <p>Myanmar Christian Musics</p>
+        <em data-title="Play">33943</em>
+      </div>
+    </div>
+    <div class="english">
+      <div>
+        <span data-count="7051">english</span>
+        <p>Hymns, Praise & Worship</p>
+        <em data-title="Play">17944</em>
+      </div>
+    </div>
+    <div class="chin">
+      <div>
+        <span data-count="26">chin</span>
+        <p>Collection of tribal songs</p>
+        <em data-title="Play">2231</em>
+      </div>
+    </div>
+    <div class="collection">
+      <div>
+        <span data-count="41">collection</span>
+        <p>the best 70s,80s,90s collection</p>
+        <em data-title="Play">1403</em>
+      </div>
+    </div>
+    <div class="falam">
+      <div>
+        <span data-count="91">falam</span>
+        <p>Hymns, Praise & Worship</p>
+        <em data-title="Play">968</em>
+      </div>
+    </div>
+  </div>
+
+</div>

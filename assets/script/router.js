@@ -15,26 +15,31 @@ export default new VueRouter({
   routes: [
     {
       path: '/',
-      component: Home
+      component: Home,
+      name:'home'
       // redirect: '/home'
     },
     {
       path: '/queue',
-      component: Queue
+      component: Queue,
+      name:'queue'
     },
     {
       path: '/music',
       component: Music,
+      name:'music',
       props: (route) => ({searchQuery: route.query.q, searchAt: route.query.at, language: route.query.language,genre: route.query.genre,year: route.query.year })
     },
     {
       path: '/artist/:artistName?',
       component: Artist,
+      name:'artist',
       props: (route) => ({artistName:route.params.artistName})
     },
     {
       path: '/album/:albumId?',
       component: Album,
+      name:'album',
       props: (route) => ({albumId:route.params.albumId, language: route.query.language })
       // props: true
     }

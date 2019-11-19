@@ -1,82 +1,61 @@
-<div class="zm">
-  <div v-if="activeAlbum.length" class="mw middle center">
-    <div v-for="album in activeAlbum" class="col-2">
-      <div class="left middle center">
-        <div class="info-detail album">
-          <!-- <div class="disc icon-albums">
-            <p class="play">
-              <span class="icon-play" @click="playAlbum(album.ui)"></span>
-            </p>
-            <p class="length icon-time" v-text="formatTimer(album.tk)"></p>
-            <p class="total icon-music" v-text="album.tk.length"></p>
-          </div>
-          <div class="meta">
-            <h1>
-              <router-link :to="{ path: '/album/'+album.ui}">{{album.ab}}</router-link>
-            </h1>
-            <p class="info">
-              <a v-for="genre in album.gr" v-text="genre" class="genre"></a>
-              <a v-for="year in album.yr" v-text="year" class="year"></a>
-              <span class="total icon-flag">{{album.tk | sumplay}}</span>
-            </p>
-            <p class="artist">
-              <router-link v-for="artist in albumArtist(album.tk)" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-            </p>
-          </div> -->
-          <div class="count">
-            <span class="plays icon-flag">{{album.tk | sumplay}}</span>
-            <span class="time icon-time">{{formatTimer(album.tk)}}</span>
-            <span class="track icon-music">{{album.tk.length}}</span>
-          </div>
-
-          <div class="name album">
-            <span v-text="album.ab"></span>
-          </div>
-
-          <div class="play">
-            <span @click="playAlbum(album.ui)">Play all</span>
-          </div>
-
-          <div v-if="album.gr.length" class="genre">
-            <!-- <q>Genre</q> -->
-            <a v-for="genre in album.gr" v-text="genre"></a>
-          </div>
-
-          <div v-if="album.yr.length" class="year">
-            <!-- <q>Year</q> -->
-            <a v-for="year in album.yr" v-text="year"></a>
-          </div>
-
-          <div class="artist">
-            <!-- <q>Artist</q> -->
-            <router-link v-for="artist in albumArtist(album.tk)" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-          </div>
-
-
-
+<div class="album">
+  <template v-if="activeAlbum.length">
+    <div v-for="album in activeAlbum" class="container detail">
+      <div class="row center count">
+        <div class="plays">
+          <p class="icon-headphones active"><span>{{album.tp}}</span></p>
+        </div>
+        <div class="time ">
+          <p class="icon-time active"><span v-text="$.albumDuration(album)"></span></p>
+        </div>
+        <div class="track">
+          <p class="icon-music" v-bind:class="{ active: album.tk.length }"><span v-text="album.tk.length"></span></p>
         </div>
       </div>
-      <div class="main">
-        <div class="track-row" v-if="album.tk.length">
-            <track-row v-for="track in album.tk" v-bind:track="track" :key="track.id" />
+      <div class="row center head">
+        <h1 v-text="album.ab"></h1>
+      </div>
+      <div v-if="album.yr.length" class="row center year">
+        <a v-for="year in album.yr" v-text="year"></a>
+      </div>
+      <div class="row center play">
+        <span @click="$.playAlbum(album.ui)" class="play all">Play all</span>
+      </div>
+      <div v-if="album.gr.length" class="row center genre">
+        <a v-for="genre in $.albumGenre(album)" v-text="genre"></a>
+      </div>
+      <div class="row center middle artists name-artist">
+        <router-link v-for="artist in $.albumArtist(album)" :to="{ path: '/artist/'+artist.toLowerCase()}" :key="artist">{{artist}}</router-link>
+      </div>
+      <div class="row tracks bg- sh-">
+        <div class="main track-row" v-if="album.tk.length">
+          <track-row v-for="track in album.tk" v-bind:track="track" :key="track.i" />
         </div>
       </div>
     </div>
-  </div>
-  <div v-else class="middles center max">
-    <div class="col-1-">
+  </template>
+  <template v-else>
+    <div class="container list">
+      <div v-if="$.all.lang.length" class="row center tag show-lang badge-tag-">
+        <router-link v-for="(lang,index) in $.all.lang" :to="{ path: '/album/'+lang.name}" :key="index" class="icon-lightbulb">{{lang.name}}</router-link>
+        <!-- <router-link :to="{ path: '/album/abc'}" class="icon-lightbulb">None</router-link> -->
+      </div>
       <div v-if="albums.length" class="album-raw">
-        <div v-if="langs.length" class="show-lang badge-tag">
-          <router-link v-for="(lg,index) in langs" :to="{ path: '/album/'+lg.name}" :key="index">{{lg.name}}</router-link>
-        </div>
+        <!-- <div v-if="all.lang.length" class="show-lang badge-tag">
+          <router-link v-for="(lang,index) in all.lang" :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}}</router-link>
+        </div> -->
         <album-raw v-for="(n, index) in albumsLimit" v-bind:album="albums[index]" :key="index" />
-        <div v-if="albums.length > albumsLimit" class="show-more">
+        <!-- <div v-if="albums.length > albumsLimit" class="show-more">
           <p @click="albumsLimit += 9" class="icon-right">
             <span v-text="albumsLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
           </p>
-        </div>
+        </div> -->
       </div>
-
+      <div v-if="albums.length > albumsLimit" class="row center show-more">
+        <p @click="albumsLimit += 9" class="icon-right">
+          <span v-text="albumsLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
+        </p>
+      </div>
     </div>
-  </div>
+  </template>
 </div>

@@ -3,7 +3,7 @@ export default {
   name: 'Queue',
   props: ['albumId','language'],
   data: () => ({
-    trackLimit: 100
+    trackLimit: 10
   }),
   components: {
     trackRow
@@ -11,9 +11,14 @@ export default {
   methods: {
   },
   computed: {
-    common(){
-      console.log('Queue',e);
+    $(){
       return this.$parent;
-    }
-  }
+    },
+    // trackLimit(){
+    //   if (this.$.queue.length < this.limit){
+    //     return this.$.queue.length
+    //   }
+    //   return this.limit
+    // }
+  },
 }

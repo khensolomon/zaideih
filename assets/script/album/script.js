@@ -9,65 +9,52 @@ export default {
     activeLang:null,
   }),
   components: {
-    trackRow,
-    albumRaw
+    trackRow, albumRaw
   },
   watch:{
   },
   methods: {
-
-    playAlbum(ui){
-      var albums = this.$parent.all.data.filter((e) => {
-        return e.ui == ui;
-      });
-      this.$parent.queue=[];
-      for (const album of albums) {
-        for (const trk of album.tk) {
-          this.$parent.queue.push(trk);
-        }
-      }
-    },
-    // playTrack: function(e){
-    //   this.$parent.addQueue(e);
+    // playAlbum(ui){
+    //   var albums = this.$parent.old.filter((e) => {
+    //     return e.ui == ui;
+    //   });
+    //   this.$parent.queue=[];
+    //   for (const album of albums) {
+    //     for (const trk of album.tk) {
+    //       this.$parent.queue.push(trk);
+    //     }
+    //   }
     // },
-    albumArtist: function(e){
-      var o = e.map((a) => a.ar );
-      return new Set([].concat.apply([], o));
-    },
-    formatTimer(e){
-      // return new Timer(e.map(e=>e.l)).format();
-      return this.$parent.formatTimer(e.map(i=>i.l));
-    }
   },
-  filters:{
-    sumplay: function(e){
-      return e.reduce((a, b) => a + parseInt(b.p), 0);
-    }
-  },
+  // filters:{
+  //   sumplay: function(e){
+  //     return e.reduce((a, b) => a + parseInt(b.p), 0);
+  //   }
+  // },
   computed: {
-    albums(){
-      return this.$parent.all.data.filter((e) => {
-        return this.activeLang?e.lg.indexOf(this.activeLang.toString()) >= 0:true;
-      });
+    $(){
+      return this.$parent;
     },
-    langs(){
-      return this.$parent.langs;
+    albums(){
+      return this.$.all.album.filter(
+        e => this.activeLang?e.lg == this.activeLang:true
+      );
     },
     activeAlbum(){
       if (this.albumId){
-        var lg = this.langs.filter(e=>e.name.toLowerCase() == this.albumId.toLowerCase());
-        if (lg.length){
-          this.activeLang=lg[0].id;
+        var lg = this.$.all.lang.find(e=>e.name.toLowerCase() == this.albumId.toLowerCase());
+        if (lg){
+          this.activeLang=lg.id;
         } else {
-          return this.$parent.all.data.filter((e) => {
-            return e.ui == this.albumId || e.ab.toLowerCase() == this.albumId.toLowerCase()
-          });
+          return this.$.all.album.filter(
+            e => e.ui == this.albumId || e.ab.toLowerCase() == this.albumId.toLowerCase()
+          ).filter(
+            // e=>e.tk.sort((a, b) => (a.n > b.n) ? 1 : -1)
+            e=>e.tk
+          )
         }
       }
       return [];
-      // return this.$parent.all.data.filter((e) => {
-      //   return e.ui == this.albumId || e.ab == this.albumId
-      // });
     }
   },
   // created() {},

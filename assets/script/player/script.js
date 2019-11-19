@@ -5,12 +5,13 @@ export default {
     duration: 0,
     isLoop: false,
     preload: "auto",
+    loading:false,
     autoplay: true,
 		isShuffle: false,
 		// loaded: false,
 		playing: false,
     track:{
-      id:null
+      i:null
     },
     hover:0,
     hoverLeft:-13,
@@ -25,7 +26,7 @@ export default {
       // this.volumePrevious = value;
 		},
 		playing(value) {
-      this.$parent.playing = value;
+      this.$.playing = value;
 		}
   },
   methods: {
@@ -36,7 +37,7 @@ export default {
     loadeddata() {
 			if (this.audio.readyState >= 2) {
         this.duration = this.audio.duration;
-        document.title =  this.track.tl;
+        document.title =  this.track.t;
 			}
 		},
     progress() {
@@ -47,15 +48,20 @@ export default {
       for(var i = 0; i < this.audio.buffered.length; i ++){
         this.percentProgress = Math.round((100 / this.audio.duration) * (ranges[i][1] - ranges[i][0]));
       }
-      // this.$parent.testPlayerEvent.push('ss:'+this.percentProgress);
+      // this.$.testPlayerEvent.push('ss:'+this.percentProgress);
     },
     loadstart() {
+      console.log('loadstart')
+      this.loading=true;
     },
     loadedmetadata() {
     },
     canplaythrough() {
+      console.log('canplaythrough')
     },
     canplay() {
+      console.log('canplay')
+      this.loading=false;
     },
     eventPlay() {
 			this.playing = true
@@ -98,7 +104,6 @@ export default {
       }
 		},
     play(){
-      console.log('player->play');
       if (this.audio.src){
         if (this.audio.paused) {
           this.audio.play();
@@ -106,9 +111,8 @@ export default {
           this.audio.pause();
         }
       } else {
-        console.log('playRandam');
-        this.$parent.randamQueue().then(
-          (e) => this.$parent.setQueue(e.id).then(
+        this.$.randamQueue().then(
+          e => this.$.setQueue(e.i).then(
             () => this.audio.autoplay=true
           )
         );
@@ -119,10 +123,10 @@ export default {
       this.audio.pause();
     },
     next(){
-      this.$parent.nextQueue();
+      this.$.nextQueue();
     },
     previous(){
-      this.$parent.previousQueue();
+      this.$.previousQueue();
     },
     loop(){
       this.isLoop = !this.isLoop;
@@ -132,8 +136,10 @@ export default {
       this.isShuffle= !this.isShuffle;
     },
     stop(){
+      console.log('stop from player');
 			this.audio.pause();
-			this.audio.currentTime = 0;
+      this.audio.currentTime = 0;
+      this.track={};
     },
     mute() {
       if (this.audio.volume == 0){
@@ -149,6 +155,9 @@ export default {
     }
   },
   computed: {
+    $(){
+      return this.$parent;
+    },
     audio(){
       return this.$refs.audio;
     },
@@ -157,27 +166,36 @@ export default {
       //   if (isNaN(this.track.id)){
       //     return this.track.id;
       //   }
-      //   return this.$parent.api.audio.replace('*',this.track.id);
+      //   return this.$.api.audio.replace('*',this.track.id);
       // }
       // return null;
+      /*
       if (!this.id){
         return null;
       } else if (isNaN(this.id)){
-        return this.$parent.api.audio.replace('*',this.id);
+        return this.$.api.audio.replace('*',this.id);
       }
-      return this.$parent.api.audio_test.replace('*',this.id);
+      return this.$.api.audio_test.replace('*',this.id);
+      */
+     if (this.id) return this.$.api.audio.replace('*',this.id);
     },
     totalQueue() {
-			return this.$parent.queue.length;
+			return this.$.queue.length;
     },
     id(){
-      return this.track.id;
+      return this.track.i;
     }
   },
   filters:{
     timeFormat: function(e){
+      if (!e)return '00:00';
       let hhmmss = new Date(e * 1000).toISOString().substr(11, 8);
       return hhmmss.indexOf("00:") === 0 ? hhmmss.substr(3) : hhmmss;
     }
+  },
+  created(){
+
+    // console.log(this.$.all.lang)
+    // console.log(this.$.queueId)
   }
 }

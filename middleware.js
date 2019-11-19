@@ -1,4 +1,5 @@
 const app = require('./');
+const Music = require('./routes/classMusic');
 // const url = require('url');
 // const {test} = app;
 // const {utility} = app.Common;
@@ -25,6 +26,18 @@ module.exports = {
 app.Core.use('/vue.js',app.Common.express.static(__dirname + '/node_modules/vue/dist/vue.min.js'));
 app.Core.use('/vue-resource.js',app.Common.express.static(__dirname + '/node_modules/vue-resource/dist/vue-resource.min.js'));
 app.Core.use('/vue-router.js',app.Common.express.static(__dirname + '/node_modules/vue-router/dist/vue-router.min.js'));
+
+app.Core.use(function(req, res, next){
+  new Music().meta().then(
+    raw=>{
+      res.locals.rawAlbum=raw.album;
+      res.locals.rawArtist=raw.artist;
+      res.locals.rawGenre=raw.genre;
+      res.locals.rawLang=raw.lang.join(',');
+    }
+  );
+  next();
+});
 
 
 if (app.Config.development) {

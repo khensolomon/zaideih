@@ -1,34 +1,39 @@
+// new Timer(12*1000).shorten();
+// new Timer(33).isSeconds().shorten();
+// new Timer(12*1000).isMilliseconds().shorten();
 export default class Timer {
-  constructor(data) {
+  constructor(time) {
     this.result=[0,0,0];
-    if (data.constructor == Array) {
-      this.data=data;
-    } else {
-      this.data=data.split(",");
+    this.query = time;
+    if (time){
+      if (typeof time == 'array' || time.constructor == Array) {
+        this.data=time;
+      } else if (typeof time == 'string' && time.includes(":")) {
+        this.data=time.split(",");
+      }
     }
   }
-  each(raw){
-    // await new Promise(resolve => setTimeout(resolve,0));
-    let row =raw.split(':');
-    if (row.length == 3) {
-      this.hour.push(parseInt(row[0]));
-      this.minute.push(parseInt(row[1]));
-      this.second.push(parseInt(row[2]));
-    } else if (row.length == 2) {
-      this.minute.push(parseInt(row[0]));
-      this.second.push(parseInt(row[1]));
-    }
+  isMilliseconds(){
+    if (!this.data) this.data=[this.datetime(this.query)];
+    return this;
+  }
+  isSeconds(){
+    if (!this.data) this.data=[this.datetime((this.query) * 1000)];
+    return this;
+  }
+  datetime(time){
+    return (new Date(time)).toUTCString().match(/(\d\d:\d\d:\d\d)/)[0]
   }
   sum(num){
     return num.reduce(function(a,b) {
       return a + b
     });
   }
-  convert(a){
+  convert(i){
     // let minutes = Math.floor(time / 60);
     // return time - minutes * 60;
-    let leftOver = Math.floor(this.result[a] / 60);
-    this.result[a] = this.result[a] - leftOver * 60;
+    let leftOver = Math.floor(this.result[i] / 60);
+    this.result[i] = this.result[i] - leftOver * 60;
     return leftOver;
   }
   get(){
@@ -52,5 +57,17 @@ export default class Timer {
     return this.get().map(function(e){
       return (e < 10)?'0'+e:e;
     }).join(':');
+  }
+  shorten(){
+    var time = this.format().replace(/^[0|\D]*/,'');
+    return this.correction(time);
+  }
+  correction(time){
+    time = time||this.query;
+    switch(time.length) {
+      case 1: return '0:0'+time;
+      case 2: return '0:'+time;
+      default: return time;
+    }
   }
 };

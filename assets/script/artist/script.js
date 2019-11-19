@@ -5,128 +5,150 @@ export default {
   name: 'Artist',
   props: ['artistName','language'],
   data: () => ({
+    activeLang:null,
     limitShow: 30,
+    artist:{},
     albums:[],
-    artistRelatedAll:[],
-    artistRecommendedAll:[]
+    tracks:[],
+    artistRelatedIndex:[],
+    artistRecommendedIndex:[]
   }),
   components: {
     trackRow, albumRow, albumRaw
   },
-  filters:{
-    sumplay: function(e){
-      return e.reduce((a, b) => a + parseInt(b.p), 0);
-    }
-  },
+  // filters:{
+  //   sumplay: function(e){
+  //     return e.reduce((a, b) => a + parseInt(b.p), 0);
+  //   }
+  // },
   methods: {
-    showMore(){
-      this.limitShow += 5;
-    },
-    albumArtist: function(e){
-      var o = e.map((a) => a.ar );
-      return new Set([].concat.apply([], o));
-    },
-    playTrack: function(e){
-      this.$parent.addQueue(e);
-    },
-    playAlbum(ui){
-      var albums = this.$parent.all.data.filter((e) => {
-        return e.ui == ui;
-      });
-      this.$parent.queue=[];
-      for (const album of albums) {
-        for (const trk of album.tk) {
-          this.$parent.queue.push(trk);
-        }
-      }
-    },
+    // showMore(){
+    //   this.limitShow += 5;
+    // },
+    // albumArtist: function(e){
+    //   var o = e.map((a) => a.ar );
+    //   return new Set([].concat.apply([], o));
+    // },
+    // playTrack: function(e){
+    //   this.$.addQueue(e);
+    // },
+    // playAlbum(ui){
+    //   var albums = this.$parent.old.filter((e) => {
+    //     return e.ui == ui;
+    //   });
+    //   this.$parent.queue=[];
+    //   for (const album of albums) {
+    //     for (const trk of album.tk) {
+    //       this.$parent.queue.push(trk);
+    //     }
+    //   }
+    // },
     playArtist(){
-      this.$parent.queue = this.tracks;
-    }
+      // this.$parent.queue = this.tracks;
+      // this.$.queue=[];
+      // await this.tracks.forEach(e=>this.$.addQueue(e))
+      // this.$.play();
+      this.$.playAll(this.tracks);
+    },
   },
   computed: {
+    $(){
+      return this.$parent;
+    },
     init(){
-      this.albums = this.$parent.all.data.filter(
+
+      var lg = this.$.all.lang.find(e=>e.name.toLowerCase() == this.artistName.toLowerCase());
+      if (lg){
+        this.activeLang=lg.id;
+        return null;
+      }
+
+      this.artist = this.$.all.artist.find(
+        artist=> this.artistName.toLowerCase() === artist.name.toLowerCase() || artist.aka && new RegExp(this.artistName, 'i').test(artist.aka)
+      );
+      if (!this.artist) return null;
+      // console.log(artist)
+      this.albums = this.$.all.album.filter(
         album => album.tk.some(
           // track => track.ar.indexOf(this.artistName) >= 0
-          track => track.ar.findIndex(artist => this.artistName.toLowerCase() === artist.toLowerCase()) >= 0
+          track => track.a.find(
+            e=>e==this.artist.id
+          )
         )
       );
-      return this.albums.length;
-    },
-    tracks(){
-      return this.albums.map(
+
+      this.tracks = this.albums.map(
         album => album.tk.filter(
-          track => track.ar.findIndex(artist => this.artistName.toLowerCase() === artist.toLowerCase()) >= 0
+          track => track.a.find(
+            e=>e==this.artist.id
+          )
         )
-      ).reduce((prev, next) => prev.concat(next),[]);
-    },
-    artistRelated(){
-      var arr = this.albums.map(
+      ).reduce((prev, next) => prev.concat(next),[]).sort((a, b) => (a.p < b.p) ? 1 : -1);
+
+
+      var artRed = this.albums.map(
         album => album.tk.map(
-          track => track.ar
+          track => track.a
         ).reduce((prev, next) => prev.concat(next),[])
       ).reduce((prev, next) => prev.concat(next),[]);
-      // console.log([...new Set(arr)].sort());
-      this.artistRelatedAll = [...new Set(arr)];
-      return this.artistRelatedAll.filter(this.$parent.arrayComparer(this.artistRecommendedAll));
-    },
-    artistRecommended(){
-      var arr = this.tracks.map(
-        track => track.ar
-      ).reduce((prev, next) => prev.concat(next),[]);
-      this.artistRecommendedAll = [...new Set(arr)];
-      // return this.artistRecommendedAll;
-      return this.artistRecommendedAll.filter(this.$parent.arrayComparer([this.artistName]));
-    },
-    artistCurrent(){
-      return this.artistRecommendedAll.filter(
-        artist => this.artistName.toLowerCase() === artist.toLowerCase()
+      this.artistRelatedIndex = [...new Set(artRed)].filter(
+        i=> i > 1 && i !== this.artist.id
       );
-    },
-    artistGrouped(){
-      var abc = this.$parent.arrayGroupby(this.$parent.artists);
-      // console.log(abc)
-      return abc;
-      // return this.$parent.arrayGroupby();
-      // return ['working'];
-    },
-    playsAlbum(){
-      // [1, 2, 3, 4].reduce((a, b) => a + b, 0)
-      return this.albums.reduce((a,b) => a + parseInt(b.tp),0);
-    },
-    playsTrack(){
-      // [1, 2, 3, 4].reduce((a, b) => a + b, 0)
-      // return this.tracks.reduce((a,b) => a + parseInt(b.p),0);
-      // var arr = this.albums.map((a) => a.tk.map(s => s.p) );
-      // return this.albums.map(
-      //   album => album.tk.map(
-      //     track => parseInt(track.p)
-      //   ).reduce((a,b) => a + b,0)
-      // ).reduce((a,b) => a + b,0);
 
-      return this.tracks.reduce((a,b) => a + parseInt(b.p),0);
-    },
+      var artRmd = this.tracks.map(
+        track => track.a
+      ).reduce((prev, next) => prev.concat(next),[]);
+      this.artistRecommendedIndex = [...new Set(artRmd)].filter(
+        i => i > 1 && i !== this.artist.id
+      );
 
-    years(){
-      var arr = this.albums.map((a) => a.yr );
-      var yrs = arr.reduce((prev, next) => prev.concat(next),[]);
-      return [...new Set(yrs)].sort();
-    },
-    totalTrack(){
-      return this.tracks.length;
-    },
-    totalAlbum(){
+      this.artistRelated = this.artistRelatedIndex.filter(this.$.arrayComparer(this.artistRecommendedIndex)).map(
+        i => this.$.all.artist.find(e=>e.id == i)
+      ).sort((a, b) => (a.plays < b.plays) ? 1 : -1).map(
+        e => (this.$.utf8(this.artistName) || this.artist.lang.find(e=>e == 2)) && e.aka?e.aka:e.name
+        // e=>this.$.utf8(this.artistName) && e.aka?e.aka:e.name
+        // e=>this.artist.lang.find(e=>e == 2) && e.aka?e.aka:e.name
+      );
+
+      this.artistRecommended = this.artistRecommendedIndex.map(
+        i => this.$.all.artist.find(e=>e.id == i)
+      ).sort((a, b) => (a.plays < b.plays) ? 1 : -1).map(
+        e => this.$.utf8(this.artistName) && e.aka?e.aka:e.name
+      );
       return this.albums.length;
     },
-    totalLength(){
-      var lengths = this.tracks.map(
-        track => track.l
+    artistCategory(){
+      return this.$.artistAlphabetically(
+        artist=> artist.id > 1 && artist.lang.find(e=> this.activeLang?e == this.activeLang:true)
+        // artist=> artist.id > 1 && artist.lang.find(e=> this.activeLang?e == this.activeLang:true) && artist.plays > 3000
+        // artist=> artist.id > 1 && this.activeLang?artist.lang.find(e=>e == this.activeLang):true
       );
-      return this.$parent.formatTimer(lengths);
+      // return this.$.artistAlphabetically(
+      //   artist=> artist.id > 1 && artist.lang && artist.lang.find(
+      //     e => e == 1
+      //   )
+      // );
     },
-  },
-  // created() {},
-  // beforeMount() {},
-  // mounted () {},
+    albumPlays(){
+      return this.albums.reduce((a,b) => a + parseInt(b.tp),0);
+    },
+    trackPlays(){
+      return this.tracks.reduce((a,b) => a + parseInt(b.p),0);
+    },
+    artistYear(){
+      var yrs = this.albums.map(
+        a => a.yr
+      ).reduce((prev, next) => prev.concat(next),[]);
+      return [...new Set(yrs)].sort().filter(Number);
+    },
+    trackCount(){
+      return this.tracks.length;
+    },
+    albumCount(){
+      return this.albums.length;
+    },
+    trackDuration(){
+      return this.$.trackDuration(this.tracks);
+    }
+  }
 }

@@ -1,113 +1,108 @@
-<div class="zm">
+<div class="music">
   <template v-if="searchQuery">
     <!-- <h1><strong>{{searchQuery}}</strong> found match</h1> -->
-    <template v-if="searchResult">
-        <!-- track -->
-        <div v-if="tracks.length" class="mw middle- center">
-          <div class="col-2">
-            <div class="left">
-              <span>working, title match:</span>
-              <span v-text="tracks.length"></span>
-            </div>
-            <div class="main">
-              <div class="track-row">
-                <track-row v-for="(n, index) in tracksLimit" v-bind:track="tracks[index]" :key="index" />
-                <div v-if="tracks.length > tracksLimit" class="show-more">
-                  <p @click="tracksLimit += 9" class="icon-right">
-                    <span v-text="tracksLimit" class="limit"></span><span v-text="tracks.length" class="total"></span><span class="more">more</span>
-                  </p>
-                </div>
-              </div>
-            </div>
+    <div v-if="searchResult" class="container detail">
+      <div class="row center count">
+        <div class="track">
+          <p class="icon-music" v-bind:class="{ active: tracks.length }"><span v-text="tracks.length"></span></p>
+        </div>
+        <div class="album">
+          <p class="icon-cd" v-bind:class="{ active: albums.length }"><span v-text="albums.length"></span></p>
+        </div>
+        <div class="album">
+          <p class="icon-albums" v-bind:class="{ active: albumsRecommended.length }"><span v-text="albumsRecommended.length"></span></p>
+        </div>
+        <div class="album">
+          <p class="icon-flag" v-bind:class="{ active: albumsRelated.length }"><span v-text="albumsRelated.length"></span></p>
+        </div>
+        <div class="artist">
+          <p class="icon-artist" v-bind:class="{ active: artists.length }"><span v-text="artists.length"></span></p>
+        </div>
+        <div class="track">
+          <p class="icon-track" v-bind:class="{ active: tracksByArtist.length }"><span v-text="tracksByArtist.length"></span></p>
+        </div>
+      </div>
+
+      <div v-if="tracks.length" class="row tracks bg sh-">
+        <div class="track-row">
+          <track-row v-for="(n, index) in tracksLimit" v-bind:track="tracks[index]" :key="index" />
+          <div v-if="tracks.length > tracksLimit" class="show-more">
+            <p @click="tracksLimit += 9" class="icon-right">
+              <span v-text="tracksLimit" class="limit"></span><span v-text="tracks.length" class="total"></span><span class="more">more</span>
+            </p>
           </div>
         </div>
-        <!-- artist -->
-        <div v-if="artists.length" class="mw middle center">
-          <div class="col-1">
-            <div>
-              <p class="name-vw">
-                <router-link v-for="artist in artists" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
+      </div>
+
+      <div v-if="artists.length" class="row center name-artist artists matched">
+        <q>Artist matched</q>
+        <router-link v-for="artist in artists" :to="{ path: '/artist/'+artist.name}" :key="artist.id">{{artist.name}}</router-link>
+      </div>
+      <!-- album -->
+      <div v-if="albums.length" class="container list">
+        <div>
+          <div class="album-raw center">
+            <album-raw v-for="(n, index) in albumLimit" v-bind:album="albums[index]" :key="index" />
+            <div v-if="albums.length > albumLimit" class="show-more">
+              <p @click="albumLimit += 9" class="icon-right">
+                <span v-text="albumLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
               </p>
             </div>
           </div>
         </div>
-        <!-- album -->
-        <div v-if="albums.length" class="middle- center">
-          <div class="col-1">
-            <div class="album-raw center">
-              <album-raw v-for="(n, index) in albumLimit" v-bind:album="albums[index]" :key="index" />
-              <div v-if="albums.length > albumLimit" class="show-more">
-                <p @click="albumLimit += 9" class="icon-right">
-                  <span v-text="albumLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
-                </p>
-              </div>
+      </div>
+      <!-- track related: get tracks belongs to the first artist play all, length, plays -->
+      <div v-if="tracksByArtist.length" class="row tracks bg- sh-">
+        <div class="track-row">
+          <track-row v-for="(n, index) in tracksByArtistLimit" v-bind:track="tracksByArtist[index]" :key="index" />
+          <div v-if="tracksByArtist.length > tracksByArtistLimit" class="show-more">
+            <p @click="tracksByArtistLimit += 9" class="icon-right">
+              <span v-text="tracksByArtistLimit" class="limit"></span><span v-text="tracksByArtist.length" class="total"></span><span class="more">more</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      <!-- album recommended: no albums found, therefore get all album from result -->
+      <div v-if="albumsRecommended.length" class="row center">
+        <div>
+          <div class="album-raw center">
+            <album-raw v-for="(n, index) in albumsRecommendedLimit" v-bind:album="albumsRecommended[index]" :key="index" />
+            <div v-if="albumsRecommended.length > albumsRecommendedLimit" class="show-more">
+              <p @click="albumsRecommendedLimit += 9" class="icon-right">
+                <span v-text="albumsRecommendedLimit" class="limit"></span><span v-text="albumsRecommended.length" class="total"></span><span class="more">more</span>
+              </p>
             </div>
           </div>
         </div>
-        <!-- track related -->
-        <div v-if="tracksByArtist.length" class="mw middle center">
-          <div v-for="album in activeAlbum" class="col-2">
-            <div class="left">
-              <span>related: get tracks belongs to the first artist play all, length, plays</span>
-              <span v-text="tracksByArtist.length"></span>
-            </div>
-            <div class="main">
-              <div class="track-row">
-                <track-row v-for="(n, index) in tracksByArtistLimit" v-bind:track="tracksByArtist[index]" :key="index" />
-                <div v-if="tracksByArtist.length > tracksByArtistLimit" class="show-more">
-                  <p @click="tracksByArtistLimit += 9" class="icon-right">
-                    <span v-text="tracksByArtistLimit" class="limit"></span><span v-text="tracksByArtist.length" class="total"></span><span class="more">more</span>
-                  </p>
-                </div>
-              </div>
+      </div>
+      <!-- album related: albums found, there are related album too -->
+      <div v-if="albumsRelated.length" class="row center">
+        <div>
+          <div class="album-raw center">
+            <album-raw v-for="(n, index) in albumsRelatedLimit" v-bind:album="albumsRelated[index]" :key="index" />
+            <div v-if="albumsRelated.length > albumsRelatedLimit" class="show-more">
+              <p @click="albumsRelatedLimit += 9" class="icon-right">
+                <span v-text="albumsRelatedLimit" class="limit"></span><span v-text="albumsRelated.length" class="total"></span><span class="more">more</span>
+              </p>
             </div>
           </div>
-        </div>
-        <!-- album recommended -->
-        <!-- recommended: no albums found, therefore get all album from result -->
-        <div v-if="albumsRecommended.length" class="middle- center">
-          <div class="col-1">
-            <div class="album-raw center">
-              <album-raw v-for="(n, index) in albumsRecommendedLimit" v-bind:album="albumsRecommended[index]" :key="index" />
-              <div v-if="albumsRecommended.length > albumsRecommendedLimit" class="show-more">
-                <p @click="albumsRecommendedLimit += 9" class="icon-right">
-                  <span v-text="albumsRecommendedLimit" class="limit"></span><span v-text="albumsRecommended.length" class="total"></span><span class="more">more</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <!-- album related -->
-        <!-- related: albums found, there are related album too -->
-        <div v-if="albumsRelated.length" class="middle- center">
-          <div class="col-1">
-            <div class="album-raw center">
-              <album-raw v-for="(n, index) in albumsRelatedLimit" v-bind:album="albumsRelated[index]" :key="index" />
-              <div v-if="albumsRelated.length > albumsRelatedLimit" class="show-more">
-                <p @click="albumsRelatedLimit += 9" class="icon-right">
-                  <span v-text="albumsRelatedLimit" class="limit"></span><span v-text="albumsRelated.length" class="total"></span><span class="more">more</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-    </template>
-    <div v-else class="mw- middle center">
-      <div  class="col-1">
-        <div class="z-working">
-          <h1 class="text-vw">Oops!</h1>
-          <p v-text="searchQuery"></p>
-          <ul>
-            <li>...make sure <span>{{searchQuery}}</span> is spelt correctly,</li>
-            <li>try general keywords</li>
-            <li><span>or</span> try different keywords.</li>
-          </ul>
         </div>
       </div>
     </div>
+    <div v-else class="container list">
+      <div class="z-working">
+        <h1 class="text-vw">Oops!</h1>
+        <p v-text="searchQuery"></p>
+        <ul>
+          <li>...make sure <span>{{searchQuery}}</span> is spelt correctly,</li>
+          <li>try general keywords</li>
+          <li><span>or</span> try different keywords.</li>
+        </ul>
+      </div>
+    </div>
   </template>
-  <div v-else class="mw middle center">
-    <div class="col-1">
+  <template v-else>
+    <div class="container list">
       <div class="z-working">
           <h1 class="text-vw">I don't understand!</h1>
           <p>but let me say hello twice real quick..</p>
@@ -116,5 +111,5 @@
           </ul>
       </div>
     </div>
-  </div>
+  </template>
 </div>

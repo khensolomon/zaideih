@@ -4,7 +4,7 @@ const app = require('../');
 const routes = app.Router();
 
 routes.get('/', function(req, res, next) {
-  res.render('home', { title: 'Vue.js reserved!' });
+  res.render('home', { title: 'Zaideih',description:'Zaideih Music Station',keywords:'zola, mp3, myanmar' });
 });
 
 module.exports = routes;

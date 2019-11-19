@@ -1,167 +1,96 @@
->div {
-  >div{
-    &.menu{
-      ul{
-        display: table;
-        // width: 98%;
-        height: 100%;
-        // margin: 0 1%;
-        margin: 0 auto;
-        >li{
-          display: table-cell;
-          vertical-align: middle;
-          text-align: center;
+div{
+  ul{
+    list-style: none;
+    &.panel{
+      display: none;
+    }
+    li{
+      display: inline-block;
+    }
+  }
+  &.menu{
+    ul.nav{
+      li{
+        text-align: center;
+        border-bottom:2px solid transparent;
+        a {
+          display: block;
+          padding:4px 7px;
+          color:$Color;
+          height: 17px;
+          // font-size: 16px;
+          &::before{
+            text-shadow: 0px 1px lighten(#666,25);
+            // display: none;
+          }
+          span {
+            display: inline;
+          }
+
+        }
+        &::after{
+          content: '';
+          display: block;
+          width: 0;
+          margin: 0 auto;
+          height: 2px;
+          border-radius: 100px;
+          background:darken($ColorMain,0);
+          transition: width .3s;
+        }
+        &:hover::after{
+          width: 100%;
+        }
+        &:not(.home).router-link-active::after {
+          background:darken($ColorMain,0);
+          width: 100%;
+        }
+        &.router-link-exact-active {
+          &::after{
+            background:darken($ColorMain,0);
+            width: 100%;
+          }
           a {
-            display: block;
-            margin: 0 5px;
-            padding: 3px;
-            width: 30px;
-            color: darken(#f0f0f0,35);
-            font-size: 22px;
-            &::before{
-              text-shadow: 0px 1px lighten(#666,25);
-            }
-            span {
-              display: none;
-            }
-
-          }
-          // &.router-link-exact-active{}
-          &.router-link-active{
-            a {
-              background-color: darken($ColorBackground,0);
-              border-radius: 2px;
-              color:darken(#f0f0f0,5);
-              &::before{
-                text-shadow: 0px 1px #000;
-              }
-            }
-          }
-          &.logo{
-            // width: 50px;
-            // margin: 0 7px;
-            // &.router-link-active{
-            //   background-color: transparent;
-            // }
-            &.router-link-exact-active{
-              background-color: lighten($ColorBackground,0);
-            }
-            a{
-              // background-color: lighten($ColorBackground,5);
-              background-color: transparent;
-              background-image: url('../img/logo.png');
-              background-size: 70%;
-              background-position: center center;
-              background-repeat: no-repeat;
-              width: 50px;
-              height: 27px;
-              // border-radius: 3px;
-              // background-color: red;
-
-            }
+            color: darken($ColorMain,0);
           }
         }
-      }
-    }
-
-    &.search{
-      form{
-        display:table;width:98%;
-        margin: 0 1%;
-        max-width: 500px;
-        background-color:darken(silver,10);
-        border-radius: 2px;
-        overflow: hidden;
-        &:focus-within{
-          background-color:darken(silver,3);
-        }
-        input,button{
-          height:30px;
-          background-color: transparent;
-          border: 0;
-          outline: none;
-        }
-        >div{
-          display: table-cell;
-          text-align: center;
-          vertical-align: middle;
-          &.type{
-            input{
-              width: 95%;
-              padding: 0 1% 0 4%;
-            }
-          }
-          &.option{
-            max-width: 90px;
-            // width: 150px;
-            @include user-select;
-            label{
-              // text-overflow: clip;
-              // overflow: hidden;
-              // display: inline-block;
-              // max-width: 10px;
-              font-size: 12px;
-              padding: 0 2px;
-              color: lighten($ColorSecond,2);
-              // text-shadow: 0px 1px #666;
-              &::before{
-                display: none;
-              }
-            }
-            input {
-              &[type="radio"]{
-                visibility:hidden;display:none;
-                &:checked + label{
-                  // background-color:#bec8e0;border:1px solid #516183;
-                  color:lighten($ColorSecond,50);
-                }
-              }
-            }
-          }
-          &.submit{
+        &.logo{
+          // width: 50px;
+          // margin: 0 7px;
+          // &.router-link-active{
+          //   background-color: transparent;
+          // }
+          // &.router-link-exact-active{
+          //   background-color: darken($ColorMain,0);
+          // }
+          a{
+            // background-color: lighten($ColorBackground,5);
+            background-color: transparent;
+            background-image: url('../img/logo.png');
+            background-size: 50%;
+            background-position: center center;
+            background-repeat: no-repeat;
             width: 50px;
-            background-color:darken(silver,20);
-            button::before{
-              color: white;
-              text-shadow: 1px 1px #666;
-            }
-          }
-        }
-      }
-    }
-    &.opt{
-      ul{
-        list-style: none;
-        li{
-          display: inline-block;
-        }
-      }
-    }
-  }
-  @media #{$media-mobile} {
-    >div{
-      &.search{
-        form{
-          div{
-            &.submit, &.option{
-              display: none;
-            }
+            height: 27px;
+            // border-radius: 3px;
+            // background-color: red;
           }
         }
       }
     }
   }
-  @media #{$media-tablet} {
-    >div{
-      &.search{
-        form{
-          div{
-            &.option{
-              display: none;
-            }
-          }
-        }
+  &.opt{
+    text-align: right;
+  }
+}
+@media #{$media-mobile} {
+  ul{
+    li {
+      a{
+        font-size: 107%;
       }
     }
   }
+}
+@media #{$media-tablet} {
 }

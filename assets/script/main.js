@@ -1,88 +1,18 @@
 import Player from './player/index.vue';
 import Timer from './timer';
 export default {
-  name: 'App',
-  props: ['name'],
+  // name: 'App',
+  // props: ['name'],
   data: () => ({
 		searchQuery: '',
     searchAt: 'avekpi',
-    langList:[],
-    langName:[
-      'untitle',
-      'zola',
-      'myanmar',
-      'mizo',
-      'english',
-      'chin',
-      'haka',
-      'falam',
-      'korea',
-      'norwegian',
-      'collection'
-    ],
-    albumList:[],
-    artistList:[],
     queueActive:{},
-    testPlayerEvent:[],
+    // testPlayerEvent:[],
     api:{
-      audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
+      // audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
       audio:'*/oidua/ipa/'.split("").reverse().join("")
     },
-    queue:[
-      {
-        id:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
-        tl:'If You Were A Sailboat',
-        ar:['Katie Melua'],
-        ab:'testing',
-        n:'1',
-        t:'2',
-        l:'22:00',
-        p:'234',
-        s:'343'
-      },
-      {
-        tl:'sailing',
-        ar:['Rod Stewart'],
-        ab:'testing',
-        id:'rod-stewart-sailing.mp3'
-      },
-      // {
-      //   tl:'Have I Told You Lately That I Love',
-      //   ar:['Rod Stewart'],
-      //   ab:'testing',
-      //   id:'/rod-stewart-have-i-told-you-lately.mp3'
-      // },
-      // {
-      //   tl:'You\'re In My Heart',
-      //   ar:['Rod Stewart'],
-      //   ab:'testing',
-      //   id:'/rod-stewart-you-are-in-my-heart.mp3'
-      // },
-      // {
-      //   tl:'I Was Only Joking',
-      //   ar:['Rod Stewart'],
-      //   ab:'testing',
-      //   id:'/rod-stewart-i-was-only-joking.mp3'
-      // },
-      // {
-      //   tl:'I Dont Want To Talk About It',
-      //   ar:['Rod Stewart','Amy-Bell'],
-      //   ab:'testing',
-      //   id:'/rod-stewart-amy-belle-IDontWantToTalkAboutIt.mp3'
-      // },
-      // {
-      //   tl:'Lentement',
-      //   ar:['Miaow'],
-      //   ab:'testing',
-      //   id:'/Miaow - Lentement.mp3'
-      // },
-      // {
-      //   tl:'Song',
-      //   ar:['Miaow'],
-      //   ab:'testing',
-      //   id:'/Miaow - Song.mp3'
-      // }
-    ],
+    queue:[],
     playing:false
 	}),
   components: {
@@ -98,8 +28,24 @@ export default {
       this.$router.push({path:'/music',query:{q: searchQuery}});
       e.preventDefault();
     },
+
     play(){
       this.player.play();
+    },
+    playAlbum(ui){
+      // this.queue=[];
+      // this.all.album.find(
+      //   e => e.ui == ui
+      // ).tk.forEach(i=>this.queue.push(i));
+      // this.all.album.find(e => e.ui == ui).tk;
+      this.playAll(this.all.album.find(e => e.ui == ui).tk)
+    },
+    // NOTE playAll: playArtist, playAlbum
+    playAll(e){
+      this.queue=[];
+      e.forEach(i=>this.queue.push(i));
+      // this.play();
+      this.playNow(this.queue[0].i)
     },
     async playNow(id){
       await this.setQueue(id).then(
@@ -109,10 +55,10 @@ export default {
     async nextQueue(){
       if (this.queue.length){
         if (this.queueId){
-          var activeQueueIndex = this.queue.findIndex(track => track.id == this.queueId);
+          var activeQueueIndex = this.queue.findIndex(track => track.i == this.queueId);
           var index = (activeQueueIndex + 1) % this.queue.length;
           if (this.queue[index]){
-            return this.setQueue(this.queue[index].id).then(()=>this.play());
+            return this.setQueue(this.queue[index].i).then(()=>this.play());
           }
         }
         this.play();
@@ -121,56 +67,48 @@ export default {
     async previousQueue(){
       if (this.queue.length){
         if (this.queueId){
-          var activeQueueIndex = this.queue.findIndex(track => track.id == this.queueId);
+          var activeQueueIndex = this.queue.findIndex(track => track.i == this.queueId);
           var index = (activeQueueIndex - 1) % this.queue.length;
           if (this.queue[index]){
-            return this.setQueue(this.queue[index].id).then(()=>this.play());
+            return this.setQueue(this.queue[index].i).then(()=>this.play());
           }
         }
         this.play();
       }
     },
     async addQueue(e){
-      // if (await this.queue.filter(track => track.id == e.id).length < 1){
-      //   this.queue.push(e);
-      //   return false;
-      // }
-      // return true;
-      if (await this.isQueued(e.id)) return true;
+      if (await this.isQueued(e.i)) return true;
+      // this.queue.push(this.track(e));
       this.queue.push(e);
       return false;
-      // return await this.isQueued(e).then(
-      //   (yes) => {
-      //     if (yes) return true;
-      //     this.queue.push(e);
-      //     return false;
-      //   }
-      // );
     },
     async setQueue(Id){
-      var e = await this.queue.filter(track => track.id == Id);
-      if (e.length){
-        this.player.track = e[0];
+      // var e = await this.queue.filter(track => track.i == Id);
+      // if (e.length){
+      //   this.player.track = e[0];
+      //   return true;
+      // }
+      // return false;
+      var e = await this.queue.find(track => track.i == Id);
+      if (e){
+        this.player.track = e;
         return true;
       }
       return false;
     },
 
     isQueued(Id){
-      return this.queue.filter(track => track.id == Id).length;
+      return this.queue.filter(track => track.i == Id).length;
     },
     async randamQueue(){
       return await this.queue[Math.floor(Math.random()*this.queue.length)];
     },
 
-    formatTimer(e){
-      return new Timer(e).format();
-    },
-
     arrayComparer(otherArray){
       return function(current){
         return otherArray.filter(function(other){
-          return other.toLowerCase()  == current.toLowerCase()
+          return other == current
+          // return other.toString().toLowerCase()  == current.toString().toLowerCase()
           // return other.value == current.value && other.display == current.display
         }).length == 0;
       }
@@ -189,20 +127,89 @@ export default {
         }).length == 0;
       }
     },
-    arrayGroupby(raw){
-      let row = raw.reduce((r, e) => {
-        // get first letter of name of current element
-        let group = e[0].toUpperCase();
-        // if there is no property in accumulator with this letter create it
-        if(!r[group]) r[group] = {name:group, artists: [e]}
-        // if there is push current element to children array for that letter
-        else r[group].artists.push(e);
-        // return accumulator
-        return r;
+    artistAlphabetically(filters){
+      var row = this.all.artist.filter(filters).reduce((e, k) => {
+        let cluster = k.name[0].toUpperCase();
+        if(!e[cluster]) {
+          e[cluster] = {cluster:cluster, artists: []}
+        }
+        e[cluster].artists.push(k);
+        return e
       }, {});
-      return Object.values(row);
+      return Object.values(row).sort((a, b) => (a.cluster > b.cluster) ? 1 : -1);
+    },
+    albumDuration(album){
+      try {
+        return new Timer(album.tk.map(e=>e.d)).format();
+      } catch (error) {
+        console.log('time error',album.ab);
+      }
+    },
+    albumArtist(album){
+      // var o = e.map((a) => a.ar );
+      // return new Set([].concat.apply([], o));
+      var o = [...new Set([].concat(...album.tk.map(i => i.a)))];
+      return o.map(
+        i => this.all.artist[i]
+      ).map(
+        a => (album.lg == 2 && a.aka)?a.aka:a.name
+      );
+    },
+    albumGenre(album){
+      return album.gr.map(
+        i=>this.all.genre[i].name
+      );
+    },
+    albumByTrackId(id){
+      return this.all.album.find(
+        album=>album.tk.filter(
+          a=>a.i == id
+        ).length
+      );
     },
 
+
+    utf8(str){
+      // for (var i = 0; i < str.length; i++) if (str.charCodeAt(i) > 127) return true;
+      // return false;
+      return /[^\u0000-\u007f]/.test(str);
+    },
+    artistName(o){
+      return o.a.map(
+        i => {
+          var artist = this.all.artist[i];
+          if (artist){
+            return (artist.aka && this.utf8(o.t))?artist.aka:artist.name
+            // return (artist.aka && album && album.lg == 2)?artist.aka:artist.name
+          }
+          return i
+        }
+      );
+    },
+    track(o){
+      // var album = this.albumByTrackId(o.i)
+      // var synonym = { i: 'id', t:'title',a:'artist',b:'album',n:'trackNumber',d:'duration',p:'plays' };
+      var synonym = {};
+      var trk = Object.keys(o).reduce(function(e, k){
+        return {...e,...{[synonym[k] || k]: o[k]}}
+      },{});
+      // trk.b=this.trackAlbumName(o.i);
+      // trk.b=(album)?album.ab:'testing'
+      trk.a=this.artistName(o);
+      return trk;
+    },
+    trackDuration(e){
+      return new Timer(e.map(track => track.d)).format();
+    },
+    // sortTrackNumber(e){
+    //   // return e.sort((a, b) => (a.n > b.n) ? 1 : -1)
+    // },
+    // sortTrackPlay(e){
+    //   return e.sort((a, b) => (a.p > b.p) ? 1 : -1)
+    // },
+    // sortArrays(e) {
+    //   return e.orderBy(e, 'n', 'asc');
+    // }
   },
   computed: {
     ready(){
@@ -211,55 +218,85 @@ export default {
     loading(){
       return this.$parent.loading;
     },
+    all(){
+      return this.$parent.all;
+    },
     player(){
       return this.$refs.player;
     },
     queueId(){
       return this.player.id;
-    },
-    all(){
-      return this.$parent.all;
-    },
-    artists(){
-      if (!this.artistList.length){
-        var arr = this.all.data.map(
-          album => album.tk.map(
-            track => track.ar
-          ).reduce((prev, next) => prev.concat(next),[])
-        ).reduce((prev, next) => prev.concat(next),[]);
-        this.artistList = [...new Set(arr)].sort();
-      }
-      return this.artistList;
-    },
-    albums(){
-      if (!this.albumList.length){
-        var arr = this.all.data.map(
-          album => album.ab
-        ).reduce((prev, next) => prev.concat(next),[]);
-        this.albumList = [...new Set(arr)].sort();
-      }
-      return this.albumList;
-    },
-    todos(){
-      return this.$parent.todo;
-    },
-    langs(){
-      // var l = [];
-      // var o = this.$parent.all.data.map((a) => a.lg );
-      // o = new Set([].concat.apply([], o));
-      if (!this.langList.length){
-        var lg = this.all.data.map(
-          album => album.lg
-        ).reduce((prev, next) => prev.concat(next),[]).filter((value, index, self) => self.indexOf(value) === index);
-        for (const id of lg) {
-          if (this.langName[id]) this.langList.push({id:id,name:this.langName[id]});
-        }
-      }
-      return this.langList;
     }
+
   },
-  created() {
+  // beforeCreate() {},
+  async created(){
+    await this.$parent.init();
+    [
+      {
+        i:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
+        t:'If You Were A Sailboat',
+        a:['Katie Melua'],
+        n:'1',
+        d:'22:00',
+        p:'234',
+        // id:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
+        // tl:'If You Were A Sailboat',
+        // ar:['Katie Melua'],
+        // ab:'testing',
+        // n:'1',
+        // t:'2',
+        // l:'22:00',
+        // p:'234',
+        // s:'343'
+      },
+      {
+        i:'rod-stewart-sailing.mp3',
+        t:'sailing',
+        a:['Rod Stewart'],
+        p:'20'
+      }
+    ].forEach(e=>{
+      this.addQueue(e)
+    });
+
+    this.all.album.filter(
+      e=>e.lg == 2
+    ).slice(0, 10).forEach((album) =>{
+      // album.tk.slice(0, 2).forEach(e=>{
+      //   this.addQueue(this.track(e));
+      // });
+      album.tk.sort((a, b) => (a.p < b.p) ? 1 : -1).slice(0, 2).forEach(e=>{
+        this.addQueue(e);
+        // this.addQueue(this.track(e));
+      });
+    });
+    // console.log(this.queue)
+    // var abc = this.all.album.filter(
+    //   album=>album.tk.find(e=>e.i==4515)
+    // );
+    // var abc = this.all.album.filter(
+    //   album=>album.tk.some(
+    //     e=>e.i == 4515
+    //   )
+    // );
+    // var abc = this.all.album.find(
+    //   album=>album.tk.filter(
+    //     e=>e.i == 4515
+    //   ).length
+    // );
+    // var abc = [1,0].map(
+    //   i=>this.all.genre[i].name
+    // );
+    // console.log(abc)
+
+    // var abc = this.all.artist.filter(
+    //   e=>e.id > 1 && e.lang.find(i=>i == 1)
+    // ).sort((a, b) => (a.plays < b.plays) ? 1 : -1).slice(0, 10);
+    // // console.log(abc)
+    // abc.forEach(e=>console.log(e.name,e.plays))
+
   },
-  mounted () {
-  }
+  // destroyed () {},
+  // mounted () {}
 }

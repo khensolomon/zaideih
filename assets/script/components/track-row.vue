@@ -1,15 +1,21 @@
 <template>
-  <div v-if="track" :class="[trackId == track.id? 'active':zaideih.isQueued(track.id)?'queued':null]" @click="play(track)">
+  <div v-if="track" :class="[queueId == track.i? 'active':$.isQueued(track.i)?'queued':null]" @click="play">
+    <div class="at art">
+      <span class="play track" :class="[queueId == track.i && playing? 'icon-pause':'icon-play']"></span>
+    </div>
     <div class="begin">
-      <span class="play" :class="[trackId == track.id && playing? 'icon-pause':'icon-play']"></span>
-      <span class="count icon-flag" v-text="track.p"></span>
+      <span class="trk" v-text="queued"></span>
+      <span class="count icon-headphones" v-text="track.p"></span>
     </div>
     <div class="meta">
-      <p class="title"><a>{{track.tl}}</a></p>
-      <p class="artist"><router-link v-for="(artist,index) in track.ar" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
+      <p class="title"><a>{{track.t}}</a></p>
+      <p class="artist"><router-link v-for="(artist,index) in $.artistName(track)" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
     </div>
     <div class="end">
-      <span v-text="track.l"></span>
+      <span v-text="track.d"></span>
+    </div>
+    <div class="at mre">
+      <span class="icon-info"></span>
     </div>
   </div>
 </template>
@@ -28,33 +34,37 @@ export default {
     // contactsPromise: Promise // or any other constructor
   },
   methods: {
-    play(track){
-      if (this.queued){
-        this.zaideih.playNow(track.id);
-      } else {
-        this.zaideih.addQueue(track).then(
-          (isQueued) => {
-            if (isQueued || this.playing == false) {
-              this.zaideih.playNow(track.id);
+    play(){
+      if (event.target.nodeName != 'A'){
+        if (this.queued){
+          if (this.queueId != this.track.i) this.$.player.stop();
+          this.$.playNow(this.track.i);
+        } else {
+          console.log('2')
+          this.$.addQueue(this.track).then(
+            isQueued => {
+              if (isQueued || this.playing == false) {
+                this.$.playNow(this.track.i);
+              }
             }
-          }
-        );
+          );
+        }
       }
     }
   },
   computed: {
-    zaideih(){
+    $(){
       return this.$parent.$parent;
     },
-    trackId(){
-      return this.zaideih.queueId;
+    // audio(){
+    //   return this.$.track(this.track);
+    // },
+    queueId(){
+      return this.$.queueId;
     },
     playing(){
-      return this.zaideih.playing;
+      return this.$.playing;
     }
-  },
-  ready(){
-    return this.zaideih.playing;
   }
 }
 </script>

@@ -1,62 +1,71 @@
-<div class="primary">
-  <div id="bar">
-    <div class="resize-">
+<div id="app">
+  <div v-if="ready" class="zd primary">
+    <div class="bar">
+      <div>
         <div class="menu">
-          <ul>
-            <router-link tag='li' :to="{ path: '/'}" class="logo">
-              <a>
-                <span>Zaideih</span>
+          <ul class="panel">
+            <li class="icon-panel">Zaideih</li>
+          </ul>
+          <ul class="nav">
+            <router-link tag='li' :to="{ path: '/'}" class="home">
+              <a class="icon-home-">
+                <span>Home</span>
               </a>
             </router-link>
             <router-link tag='li' :to="{ path: '/artist'}">
-              <a class="icon-artist">
+              <a class="icon-artist-">
                 <span>Artist</span>
               </a>
             </router-link>
             <router-link tag='li' :to="{ path: '/album'}">
-              <a class="icon-album">
+              <a class="icon-album-">
                 <span>Album</span>
+              </a>
+            </router-link>
+            <router-link tag='li' :to="{ path: '/queue'}">
+              <a class="icon-list-bullet-" :data-count="totalQueue">
+                <span>Queue</span>
               </a>
             </router-link>
           </ul>
         </div>
-        <div class="search">
-          <form v-on:submit="search" name="search" method="get" action="#">
-              <div class="type">
-                <input v-model="searchQuery" placeholder="Type here..." type="text">
-              </div>
-              <div class="option">
-                <input v-model="searchAt" value="title" id="title" type="radio">
-                  <label for="title" title="Title" class="icon-track">Title</label>
-                <input v-model="searchAt" value="artist" id="artist" type="radio">
-                  <label for="artist" title="Artist" class="icon-artist">Artist</label>
-                <input v-model="searchAt" value="album" id="album" type="radio">
-                  <label for="album" title="Album" class="icon-album">Album</label>
-                <input v-model="searchAt" value="avekpi" id="avekpi" type="radio">
-                  <label for="avekpi" title="All" class="icon-database">All</label>
-              </div>
-              <div class="submit">
-                  <button type="submit" title="Search" class="icon-search"></button>
-              </div>
-            </form>
-        </div>
+
         <div class="opt">
           <ul>
-            <li>right</li>
+            <li class="icon-config-"></li>
           </ul>
         </div>
+      </div>
     </div>
-  </div>
-  <!-- <div id="menu">
-    <div>
-        menu
+    <div class="sch">
+      <form v-on:submit="search" name="search" method="get" action="#">
+        <div class="logo">
+          <span>Zaideih</span>
+        </div>
+        <div class="type">
+          <input v-model="searchQuery" placeholder=" Type here..." type="search">
+        </div>
+        <div class="option">
+          <input v-model="searchAt" value="title" id="title" type="radio">
+            <label for="title" title="Title" class="icon-track">Title</label>
+          <input v-model="searchAt" value="artist" id="artist" type="radio">
+            <label for="artist" title="Artist" class="icon-artist">Artist</label>
+          <input v-model="searchAt" value="album" id="album" type="radio">
+            <label for="album" title="Album" class="icon-album">Album</label>
+          <input v-model="searchAt" value="avekpi" id="avekpi" type="radio">
+            <label for="avekpi" title="All" class="icon-database">All</label>
+        </div>
+        <div class="submit">
+          <button type="submit" title="Search" class="icon-search"></button>
+        </div>
+      </form>
     </div>
-  </div> -->
-  <div id="content">
-    <!-- <div></div> -->
-    <router-view></router-view>
+    <router-view class="wrapper"></router-view>
   </div>
-  <div id="player">
+  <div v-else class="zd fullscreen loading">
+    <p class="t2 trial">one moment</p>
+  </div>
+  <div class="zd player">
     <Player ref="player" />
   </div>
 </div>

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "webpack -p --config webpack.production.js",
-    "test": "webpack-dev-server --open --config webpack.development.js"
+    "test": "webpack-dev-server --open --config webpack.development.js",
+    "job": "node ../www/run zaideih"
   },
   "repository": {
     "type": "git",
@@ -17,11 +18,13 @@
     "url": "https://github.com/scriptive/zaideih/issues"
   },
   "homepage": "https://github.com/scriptive/zaideih#readme",
-  "dependencies": {},
+  "dependencies": {
+    "@google-cloud/storage": "^3.3.1"
+  },
   "devDependencies": {
-    "vue": "^2.6.10",
-    "vue-resource": "^1.5.1",
-    "vue-router": "^3.1.2",
+    "get-mp3-duration": "^1.0.0",
+    "id3-parser": "^2.0.0",
+    "music-metadata": "^4.8.0",
     "@babel/core": "^7.1.2",
     "babel-core": "^6.26.3",
     "babel-loader": "^8.0.4",
@@ -30,12 +33,16 @@
     "css-loader": "^1.0.0",
     "file-loader": "^2.0.0",
     "mini-css-extract-plugin": "^0.4.3",
+    "node-id3": "^0.1.11",
     "node-sass": "^4.9.3",
     "sass-loader": "^7.1.0",
     "script-loader": "^0.7.2",
     "style-loader": "^0.23.0",
     "url-loader": "^1.1.1",
+    "vue": "^2.6.10",
     "vue-loader": "^15.7.0",
+    "vue-resource": "^1.5.1",
+    "vue-router": "^3.1.2",
     "vue-template-compiler": "^2.6.10",
     "vue-template-loader": "^1.0.0",
     "webpack": "^4.20.2",

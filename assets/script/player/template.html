@@ -1,55 +1,57 @@
 <div class="player-controls">
   <div class="meta">
-      <div class="info">
-        <p class="title icon-music">{{track.tl || '...'}}</p>
-        <p v-if="track.ar" class="artist icon-artist">
-          <router-link v-for="artist in track.ar" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-        </p>
-        <p v-if="track.ab" class="album icon-cd">
-          <router-link :to="{ path: '/album/'+ track.ab}">{{track.ab}}</router-link>
-        </p>
-      </div>
+    <div class="info">
+      <p class="title icon-music">{{track.t || '...'}}</p>
+      <p v-if="track.a" class="artist icon-artist">
+        <router-link v-for="artist in $.artistName(track)" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
+      </p>
+      <p v-if="track.b" class="album icon-cd">
+        <router-link :to="{ path: '/album/'+ track.b}">{{track.b}}</router-link>
+      </p>
     </div>
-    <div class="controls">
-      <div class="progress">
-        <audio ref="audio"
-          @timeupdate="timeupdate"
-          @loadeddata="loadeddata"
-          @progress="progress"
-          @loadstart="loadstart"
-          @loadedmetadata="loadedmetadata"
-          @canplaythrough="canplaythrough"
-          @canplay="canplay"
-          @play="eventPlay"
-          @pause="eventPause"
-          @ended="eventEnded"
-          :loop="isLoop"
-          :src="src"
-          type="audio/mp3" controls hidden>
-        </audio>
-        <div class="time start">{{ current | timeFormat }}</div>
-        <div class="seek">
-          <!-- v-if="hover>0"  -->
-          <span class="tooltip" :style="{ left: hoverLeft + 'px' }">{{ hover | timeFormat }}</span>
-          <div>
-            <div :style="{ width: percentSeeker + '%' }" class="seeker"></div>
-            <div :style="{ width: percentProgress + '%' }" class="progress"></div>
-            <input v-model="percentSeeker" @focus="eventSeekFocus" @mousemove="eventSeekOver" @change="eventSeek" type="range" step="0.00000001" min="0" max="100"/>
-          </div>
+  </div>
+  <div class="controls">
+    <div class="progress">
+      <audio ref="audio"
+        @timeupdate="timeupdate"
+        @loadeddata="loadeddata"
+        @progress="progress"
+        @loadstart="loadstart"
+        @loadedmetadata="loadedmetadata"
+        @canplaythrough="canplaythrough"
+        @canplay="canplay"
+        @play="eventPlay"
+        @pause="eventPause"
+        @ended="eventEnded"
+        :loop="isLoop"
+        :src="src"
+        type="audio/mp3" controls hidden>
+      </audio>
+      <div class="time start">{{ current | timeFormat }}</div>
+      <div class="seek">
+        <!-- v-if="hover>0"  -->
+        <span class="tooltip" :style="{ left: hoverLeft + 'px' }">{{ hover | timeFormat }}</span>
+        <div>
+          <div :style="{ width: percentSeeker + '%' }" class="seeker"></div>
+          <div :style="{ width: percentProgress + '%' }" class="progress"></div>
+          <input v-model="percentSeeker" @focus="eventSeekFocus" @mousemove="eventSeekOver" @change="eventSeek" type="range" step="0.00000001" min="0" max="100"/>
         </div>
-        <div class="time end">{{ duration | timeFormat }}</div>
       </div>
-      <ul>
-        <li class="icon-loop toggle" @click="loop()" :class="{active:isLoop}"></li>
-        <li class="icon-play-previous" @click="previous()"></li>
-        <li @click="play()" :class="[playing? 'icon-pause' : 'icon-play','round']"></li>
-        <li class="icon-play-next" @click="next()"></li>
-        <!-- <li class="icon-shuffle toggle" @click="shuffle()" :class="{active:isShuffle}"></li> -->
-        <li class="queue">
-          <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link>
-          <!-- <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link> -->
-        </li>
-      </ul>
+      <div class="time end">{{ duration | timeFormat }}</div>
+    </div>
+    <ul>
+      <li class="icon-loop toggle" @click="loop()" :class="{active:isLoop}"></li>
+      <li class="icon-play-previous" @click="previous()"></li>
+      <li @click="play()" :class="[loading? 'icon-loading animate-spin':playing?'icon-pause':'icon-play','round']"></li>
+      <!-- <li @click="play()" :class="[playing? 'icon-pause' : loading?'icon-loading animate-spin':'icon-play','round']"></li> -->
+      <!-- <li @click="play()" :class="[playing? 'icon-pause' : 'icon-play','round']"></li> -->
+      <li class="icon-play-next" @click="next()"></li>
+      <!-- <li class="icon-shuffle toggle" @click="shuffle()" :class="{active:isShuffle}"></li> -->
+      <li class="queue">
+        <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link>
+        <!-- <router-link :to="{ path: '/queue'}" class="icon-list-bullet" title="Queue" :data-count="totalQueue"></router-link> -->
+      </li>
+    </ul>
   </div>
   <div class="options">
     <ul>

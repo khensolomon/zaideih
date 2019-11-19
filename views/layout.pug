@@ -2,9 +2,18 @@ doctype html
 html(lang='en')
   head
     meta(charset='utf-8')
-    meta(name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0, minimal-ui, minimum-scale=1,maximum-scale=1, user-scalable=no")
+    meta(name="apple-mobile-web-app-capable" content="yes")
+    meta(names="apple-mobile-web-app-status-bar-style" content="black-translucent")
+    meta(name="apple-mobile-web-app-title" content=appName)
 
-    title= title
+    if title
+      title= title
+    if keywords
+      meta(name="keywords" content=keywords)
+    if description
+      meta(name="description" content=description)
+    meta(name="application-name" content=appName data-version=appVersion data-album=rawAlbum data-artist=rawArtist data-genre=rawGenre data-lang=rawLang)
     base(href='/')
     link(rel='api', href='api')
     link(rel='icon', href='favicon.png' type='image/png')
@@ -22,7 +31,7 @@ html(lang='en')
       script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
       script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
     //- link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css')
-  body
+  body.page
     block content
     script(type='text/javascript', src='/script.js')
     link(rel='stylesheet', href='/style.css')

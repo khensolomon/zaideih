@@ -1,35 +1,16 @@
-<div class="zm" v-if="$parent.ready">
-  <div v-if="$parent.queue.length == 0" class="mw middle center">
-      <div class="col-1">
-        <div class="z-working">
-            <h1 class="text-vw">I don't understand!</h1>
-            <p>but let me say hello twice real quick..</p>
-            <ul>
-              <li v-for="index in 2">{{index}} Hello</li>
-            </ul>
-        </div>
-      </div>
-    </div>
-  <div v-else-if="$parent.queue.length > 20" class="middle center" :class="{ mw: $parent.queue.length < 50 }">
+<div class="queue">
+  <div v-if="$.queue.length" class="row tracks bg- sh-">
+    <h1>{{$.queue.length}}</h1>
     <div class="track-row">
-      <track-row v-for="(n, index) in trackLimit" v-bind:track="$parent.queue[index]" :key="index" :queued="true" />
+      <track-row v-for="(n, index) in trackLimit" v-bind:track="$.queue[index]" :key="index" :queued="true" />
+      <div v-if="$.queue.length > trackLimit" class="show-more">
+        <p @click="trackLimit += 9" class="icon-right">
+          <span v-text="trackLimit" class="limit"></span><span v-text="$.queue.length" class="total"></span><span class="more">more</span>
+        </p>
+      </div>
     </div>
   </div>
-  <div v-else class="mw middle center">
-    <div class="col-2">
-      <div class="left middle center">
-        <div>queue is playing: {{$parent.playing}}</div>
-      </div>
-      <div class="main">
-        <div v-if="$parent.queue.length" class="track-row">
-          <track-row v-for="(n, index) in trackLimit" v-bind:track="$parent.queue[index]" :key="index" :queued="true" />
-          <div v-if="$parent.queue.length > trackLimit" class="show-more">
-            <p @click="trackLimit += 9" class="icon-right">
-              <span v-text="trackLimit" class="limit"></span><span v-text="$parent.queue.length" class="total"></span><span class="more">more</span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div v-else class="row center">
+    <h1>working: no queue...</h1>
   </div>
 </div>

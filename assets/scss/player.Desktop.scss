@@ -56,17 +56,16 @@ div.player-controls{
           // display: inline-block;
           display: table-cell;
           cursor: default;
+          outline: none;
+          // -webkit-tap-highlight-color:rgba(0,0,0,0);
+          border-radius: 100px;
           &::before{
             vertical-align: middle!important;
             text-align: center!important;
             font-size: 20px;
             padding: 10px;
-            // margin: 0;
-            border-radius: 100px;
-            // color: #f0f0f0;
-            color: darken($Color,10);
+            color: darken($Color,5);
             text-shadow: 1px 1px rgb(83, 83, 83);
-            // margin: 0!important;
           }
           &.active {
             &::before{
@@ -74,23 +73,21 @@ div.player-controls{
             }
           }
           &.round{
-            // border-radius: 100px;
-
             &::before{
-              background-color: #f0f0f0;
-              color: gray;
-              text-shadow: 1px 1px white;
+              border-radius: 20px;
+              background-color: darken($ColorBackground,20);
             }
             &.icon-play{
               &::before {
-                color: darken(gray,20);
                 padding-right: 8px;
                 padding-left: 12px;
               }
             }
             &.icon-pause{
               &::before {
-                color: darken($ColorGold,20);
+                // @include box-shadow( 0px 1px 2px 1px,rgba(0,0,0,0.5));
+                // background-color: darken($ColorGold,13);
+                background-color: darken($ColorBackground,30);
               }
             }
           }
@@ -111,23 +108,18 @@ div.player-controls{
               content: "";
             }
             a{
-              color:darken(#f0f0f0,20);
+              color: darken($Color,10);
               position: relative;
               display: inline-block;
-              // display: block;
-              // padding: 5px;
-              // background-color: burlywood;
               &::after{
-                // color:lighten(red, 1);
-                color:darken(#f0f0f0,20);
+                color: darken($Color,0);
                 content: attr(data-count);
-                background-color:darken($ColorMain,30);
-                // background-color: #f0f0f0;
+                background-color: darken($ColorGold,13);
                 position: absolute;
                 right: -7px;
                 top:-10px;
                 font-size: 13px;
-                padding: 0 5px;
+                padding: 1px 7px;
                 border-radius: 100px;
               }
             }
@@ -179,7 +171,8 @@ div.player-controls{
             >div {
               width: 100%;
               height:5px;
-              background-color:darken(silver,20);
+              // background-color:darken(silver,20);
+              background-color: darken($ColorBackground,10);
               border-radius: 100px;
               // overflow: hidden;
               // margin: 10px 0;
@@ -198,14 +191,15 @@ div.player-controls{
               }
               >div {
                 z-index: 0;
-                // background-color:darken(#fff, 10);
                 &.seeker{
                   z-index: 2;
-                  background-color:darken(#fff, 1);
+                  // background-color:darken(#fff, 1);
+                  background-color: lighten($ColorBackground,30);
                 }
                 &.progress{
                   z-index: 1;
-                  background-color:darken(#fff, 30);
+                  // background-color:darken(#fff, 30);
+                  background-color: darken($ColorBackground,30);
                 }
               }
               input[type=range] {
@@ -224,7 +218,9 @@ div.player-controls{
                 // padding: 7px 0px;
                 &::-webkit-slider-thumb {
                   -webkit-appearance: none;
-                  background-color:darken(#fff, 10);
+                  // background-color:darken(#fff, 10);
+                  background-color:lighten($ColorBackground,30);
+
                   opacity: 0.0;
                   // position: absolute;
                   // top: -5px;
@@ -321,6 +317,7 @@ div.player-controls{
       top: -20px;
       z-index: 999;
       background:darken(gray,25);
+
       // border: 1px solid #f5f5f5;
       border-radius: 3px;
       padding: 2px 3px;;

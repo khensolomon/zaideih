@@ -1,136 +1,68 @@
-<div class="zm">
+<div class="artist">
+
   <template v-if="artistName && init">
-
-    <!-- info -->
-    <!-- <div class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <div class="count">
-            <span class="icon-flag">{{playsTrack}}</span>
-            <span class="icon-time">{{totalLength}}</span>
-            <span class="icon-music">{{totalTrack}}</span>
-            <span class="icon-cd">{{totalAlbum}}</span>
-          </div>
+    <div v-if="tracks.length" class="container detail">
+      <div class="row center count">
+        <div class="plays">
+          <p class="icon-headphones" v-bind:class="{ active: trackPlays }"><span v-text="trackPlays"></span></p>
+        </div>
+        <div class="time">
+          <p class="icon-time" v-bind:class="{ active: trackDuration }"><span v-text="trackDuration"></span></p>
+        </div>
+        <div class="track">
+          <p class="icon-music" v-bind:class="{ active: trackCount }"><span v-text="trackCount"></span></p>
+        </div>
+        <div class="album">
+          <p class="icon-cd" v-bind:class="{ active: albumCount }"><span v-text="albumCount"></span></p>
         </div>
       </div>
-    </div> -->
-
-    <!-- artist -->
-    <!-- <div class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <span v-for="artist in artistCurrent" v-text="artist"></span>
+      <div class="row center head">
+        <h1>{{artist.name}} <span v-if="artist.aka">({{artist.aka}})</span></h1>
+      </div>
+      <div v-if="artistYear.length" class="row center year">
+        <a v-for="year in artistYear" :key="year">{{year}}</a>
+      </div>
+      <div class="row center play">
+        <span @click="playArtist" class="play all">Play all</span>
+      </div>
+      <div v-if="artistRecommended.length" class="row center name-artist artists recommended">
+        <q>Recommended</q>
+        <router-link v-for="artist in artistRecommended" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
+      </div>
+      <div class="row center- tracks bg sh">
+        <div class="track-row">
+          <track-row v-for="track in tracks" v-bind:track="track" :key="track.id" />
         </div>
       </div>
-    </div> -->
-
-    <!-- play -->
-    <!-- <div class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <span class="icon-play" @click="playArtist()">{{totalLength}}</span>
-        </div>
-      </div>
-    </div> -->
-
-    <!-- year -->
-    <!-- <div v-if="years.length" class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <strong>Year</strong> <a v-for="year in years" :key="year">{{year}}</a>
-        </div>
-      </div>
-    </div> -->
-
-    <!-- artist recommended -->
-    <!-- <div v-if="artistRecommended.length" class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <strong>Recommended</strong> <router-link v-for="artist in artistRecommended" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-        </div>
-      </div>
-    </div> -->
-
-    <!-- artist related -->
-    <!-- <div v-if="artistRelated.length" class="mw middle- center">
-      <div class="col-1">
-        <div class="center">
-          <strong>Related</strong> <router-link v-for="artist in artistRelated" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-        </div>
-      </div>
-    </div> -->
-
-    <!-- tracks -->
-    <div  v-if="tracks.length" class="mw middle center">
-      <div class="col-2">
-        <div class="left middle- center">
-          <div class="info-detail artist">
-            <div class="count">
-              <span class="plays icon-flag">{{playsTrack}}</span>
-              <span class="time icon-time">{{totalLength}}</span>
-              <span class="track icon-music">{{totalTrack}}</span>
-              <span class="album icon-cd">{{totalAlbum}}</span>
-            </div>
-
-            <div class="name artist">
-              <span v-for="artist in artistCurrent" v-text="artist"></span>
-            </div>
-
-            <div class="play">
-              <span @click="playArtist()">Play all</span>
-            </div>
-
-            <div v-if="years.length" class="year">
-              <a v-for="year in years" :key="year">{{year}}</a>
-            </div>
-
-            <div v-if="artistRecommended.length" class="artist recommended">
-              <q>Recommended</q>
-              <router-link v-for="artist in artistRecommended" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-            </div>
-
-            <div v-if="artistRelated.length" class="artist related">
-              <q>Related</q>
-              <router-link v-for="artist in artistRelated" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
-            </div>
-          </div>
-        </div>
-        <div class="main middle">
-          <div class="track-row center-">
-            <track-row v-for="track in tracks" v-bind:track="track" :key="track.id" />
-          </div>
-        </div>
+      <div v-if="artistRelated.length" class="row center name-artist artists related">
+        <q>Related</q>
+        <router-link v-for="artist in artistRelated" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
       </div>
     </div>
-
     <!-- albums -->
-    <div v-if="albums.length" class="middle- center">
-      <div class="col-1">
+    <div v-if="albums.length" class="container list">
+      <div>
         <div class="album-raw center">
-          <!-- <album-row v-for="album in albums" v-bind:album="album" :key="album.ui" /> -->
           <album-raw v-for="album in albums" v-bind:album="album" :key="album.ui" />
         </div>
       </div>
     </div>
 
   </template>
-  <div v-else class="mw middle center">
-    <div class="col-1">
-
-      <!-- artists -->
-      <div class="z-artists">
-        <ol v-if="artistGrouped.length">
-          <li v-for="grouped in artistGrouped" v-if="isNaN(grouped.name)">
-            <h3>{{grouped.name}}</h3>
-            <ol v-if="grouped.artists.length">
-                <li v-for="artists in grouped.artists" :key="artists">
-                  <router-link :to="{ path: '/artist/'+artists}">{{artists}}</router-link>
-                </li>
-            </ol>
-          </li>
-        </ol>
+  <template v-else>
+    <div class="container list">
+      <div v-if="$.all.lang.length" class="row center tag show-lang badge-tag-">
+        <router-link v-for="(lang,index) in $.all.lang" :to="{ path: '/artist/'+lang.name}" :key="index" class="icon-lightbulb">{{lang.name}}</router-link>
       </div>
-
+      <!-- artists -->
+      <div class="z-artists" v-if="artistCategory.length">
+        <div v-for="category in artistCategory" v-if="isNaN(category.cluster)">
+          <h3>{{category.cluster}}</h3>
+          <p v-if="category.artists.length">
+            <router-link v-for="artist in category.artists" :key="artist.id" :to="{ path: '/artist/'+artist.name}">{{artist.name}}</router-link>
+          </p>
+        </div>
+      </div>
     </div>
-  </div>
+  </template>
 </div>

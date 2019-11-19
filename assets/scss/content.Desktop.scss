@@ -10,10 +10,10 @@ div {
     a{
       display: inline-block;
       padding: 5px 7px;
-      margin: 1px 2px;
+      margin:2px;
       border: 0;
       outline: none;
-      border-radius: 2px;
+      border-radius: 100px;
       font-size: 13px;
       color: darken($Color,25);
       background-color: darken($ColorBackground,15);
@@ -24,18 +24,26 @@ div {
     }
   }
   &.show-lang{
-    a{
-      // display: flex;
-      // align-items: center;
-      padding: 10px 15px;
-      margin: 2px;
 
-      background-color: darken($ColorBackground,10);
+    a{
+      border-radius: 100px;
+      margin:5px;
+      padding: 7px 20px;
+      // padding: 7px 10px;
+      background-color:lighten($ColorBackground,7);
+      color: darken($Color,50);
+      // border-radius: 100px;
+      // background-color: darken($ColorBackground,10);
       text-transform: uppercase;
       &.router-link-exact-active{
         color: darken($Color,30);
         background-color: darken($ColorBackground,20);
+        padding-left:10px;
+        padding-right:10px;
       }
+      // &:not(.router-link-exact-active)::before{
+      //   display: none;
+      // }
     }
 
   }
@@ -109,12 +117,12 @@ div {
     flex-direction:row;
     // display: block;
 
-    flex-grow: 1;
+    // flex-grow: 1;
 
     // align-content: space-around;
     // justify-content: space-between;
-    // justify-content: center;
-    // align-items: center;
+    justify-content: center;
+    align-items: center;
     // align-items: stretch;
     // &.center{
     //   justify-content: center;
@@ -129,7 +137,12 @@ div {
       position: relative;
       height: 255px;
       width: 250px;
-      margin:10px;
+      margin:15px;
+      flex:1 1 auto;
+      overflow: hidden;
+      border-radius: 5px;
+      background-color: darken($ColorBackground,15);
+
       // margin:1%;
       // flex:0 0 auto;
       // display: flex;
@@ -140,10 +153,7 @@ div {
       // justify-content: space-between;
       // flex-direction:row;
 
-      flex:1 1 auto;
-      overflow: hidden;
-      border-radius: 7px;
-      background-color: darken($ColorBackground,15);
+
       $width-b6: (250px * 7);
       $width-b5: (250px * 6);
       $width-b4: (250px * 5);
@@ -342,6 +352,9 @@ div {
       }
     }
     @media #{$media-mobile} {
+      >div{
+        margin:5px;
+      }
 
     }
   }
@@ -633,38 +646,9 @@ div {
     }
   }
 
-  &.artist-name{
-    a{
-      text-transform: capitalize;
-      line-height: 1.3em;
-    }
-    // strong{
-    //   color: darken($Color,30);
-    //   font-weight: normal;
-    //   &::after{
-    //     content: ": "
-    //   }
-    // }
-  }
   // NOTE: used in: album, artist
   &.info-detail{
     text-align: center;
-
-
-    // display: flex;
-    // flex-direction: column;
-    // flex-wrap: wrap;
-    // flex-flow: row wrap;
-    // align-content: space-between;
-    // justify-content: space-between;
-
-
-    // display: flex;
-    // justify-content: center;
-    // align-self: center;
-    // flex-direction: column;
-    // align-self: center;
-    //   justify-content: center;
     >div{
       display: flex;
       flex-wrap: wrap;
@@ -727,100 +711,33 @@ div {
           }
         }
       }
-      &.artist{
-        q,a{
-          padding: 7px 15px;
-          font-size:1.3em;
-          line-height: 1.3em;
-          // color: darken($Color,15);
-          color: darken($Color,25);
-        }
-        a{
-          border-radius: 100px;
-          transition: all 0.3s ease;
-          // font-size: 13px;
-          // background-color: darken($ColorBackground,12);
-
-          // background-color: darken($ColorBackground,7);
-
-          color: darken($ColorBackground,15);
-          background-color: darken($Color,15);
-          // color: darken($Color,25);
-          // &:link {
-          //   background-color: darken($ColorBackground,11);
-          // }
-          &:visited {
-            // background-color: darken($ColorBackground,10);
-            color: darken($Color,10);
-            background-color: darken($Color,30);
-          }
-          &:active {
-            background-color: lighten($ColorGreen,20);
-          }
-          &:hover{
-            // background-color: darken($ColorBackground,15);
-            color: darken($ColorBackground,30);
-            background-color: darken($Color,30);
-          }
-        }
-        &.recommended{
-          margin:2vw auto;
-          q,a{
-            // padding: 7px 15px;
-            // font-size:1.3em;
-            // line-height: 1.3em;
-            // color: darken($Color,15);
-          }
-          a {
-            color: darken($ColorBackground,25);
-            background-color: darken($Color,25);
-            &:visited {
-              // color: darken($Color,15);
-              // background-color: darken($ColorGreen,1);
-              background-color: darken($Color,12);
-            }
-            &:hover{
-              color: darken($ColorBackground,5);
-              background-color: darken($Color,5);
-            }
-          }
-        }
-        &.related{
-          margin:1vw auto;
-          q,a{
-            font-size:1em;
-            padding: 5px 10px;
-          }
-        }
-      }
+      // &.artist{
+      //   &.recommended{}
+      //   &.related{}
+      // }
       &.name {
-        // margin:20% auto;
         margin:4vw auto;
-        // display: inline-flex;
-        // display: flex;
-        // flex: 1;
         span{
           display: inline-block;
           font-size: 3em;
           color: darken($Color,10);
           @include text-shadow(1px,1px,1px,darken($ColorBackground,40));
         }
-        &.album{}
-        &.artist{}
+        // &.album{}
+        // &.artist{}
       }
       &.play{
-        // margin:4vw auto;
         span{
           padding: 7px 35px;
           font-size: 3vh;
-          color: darken($Color,0);
-          background-color: darken($ColorGold,13);
+          color: lighten($Color,90);
+          background-color: darken($ColorMain,0);
           transition: all 0.3s ease;
           border-radius: 100px;
           cursor: pointer;
           text-transform: capitalize;
           &:hover{
-            background-color: darken($ColorGold,5);
+            background-color: lighten($ColorMain,10);
           }
         }
       }
@@ -854,106 +771,113 @@ div {
     display: flex;
     flex-wrap: wrap;
     flex-flow: row wrap;
-    // flex-grow: 1;
-    // justify-content: center;
-    // align-content: center;
-    // align-self: center;
+    width: 100%;
+
     >div{
-      flex:1 1 500px;
-      // width: 100%;
-      // padding: 2%;
+      flex:1 1 600px;
       display: flex;
       flex-wrap: wrap;
       flex-flow: row wrap;
-      flex-direction: row;
+      // flex-direction: row;
+      // align-self: center;
+      // justify-content: flex-start;
+      align-items: stretch;
+      align-content: stretch;
 
       transition: all 0.4s ease;
       position: relative;
+      background-color: darken($ColorBackground,6);
+      // @include box-shadow(0px 0px 2px 0px,rgba(0,0,0,0.4));
+      // background-color:lighten($ColorBackground,7);
+      // @include box-shadow(0px 0px 1px 0.7px,rgba(0,0,0,0.2));
+      // border-radius: 2px;
+      // overflow: hidden;
+      margin-top: 1px;
+      // padding:1px 0;
+      // &:nth-child(odd) {
+      //   // color: #777;
+      // }
+      &:nth-child(even) {
+        background-color: darken($ColorBackground,4);
+      }
       >div{
         display: flex;
         flex-wrap: wrap;
         flex-flow: row wrap;
-        // flex-shrink: 1;
-        flex-grow: 1;
-        align-self: center;
+        flex-direction: row;
 
-        line-height: 1.2em;
+        align-content: center;
+        align-self: center;
+        // flex-shrink: 1;
+        // flex-grow: 1;
+        // text-align: center;
+        // min-height: 45px;
+
+        // line-height: 150%;
         overflow: hidden;
         text-overflow: ellipsis;
-        padding: 5px 0;
-        &.begin{
-          width:100px;
-          max-width:100px;
-          flex:1;
-          text-align: center;
-          justify-content: center;
-          // align-content: center;
-          span {
-            display: inline-block;
-            &.play{
-              font-size: 1.3em;
-              vertical-align: middle;
-              text-align: center;
-              width: 35px;
-              cursor: pointer;
+        // padding: 0px 1px;
+        // height: 35px;
+        span{
+          color: lighten($Color,5);
+          &::before{
+            color: lighten($Color,10);
+          }
+        }
 
-              // color: darken($Color,0);
-              // background-color: darken($ColorGold,13);
-              @include text-shadow(1px,1px,1px,darken($ColorBackground,15));
-              transition: all 0.3s ease;
-              &::before{
-                // color: darken($Color,10);
-                color: lighten($ColorGold,25);
-              }
-              &:hover{
-                &::before{
-                  // color: lighten($Color,20);
-                  color: lighten($ColorGold,10);
-                }
-              }
-              &.icon-pause{
-                &::before{
-                  // color: lighten($Color,10);
-                  color: darken($ColorGold,13);
-                }
-              }
-            }
+        &.at{
+          width:45px;
+          height:45px;
+          span{
+            padding:15px 13px;
+          }
+          // &.art{}
+          // &.mre{
+          //   span {
+          //     background-color: darken($ColorBackground,20);
+          //   }
+          // }
+        }
+        &.begin{
+          text-align: center;
+          span {
             &.count{
               width: 60px;
               font-size: 0.9em;
               border-radius: 3px;
               // color: darken($Color,20);
               // background-color: darken($ColorBackground,3);
-              color: lighten($Color,5);
+              // color: lighten($Color,5);
               background-color: darken($ColorBackground,5);
               // color: darken($Color,20);
               // background-color: lighten($ColorGold,23);
               @include text-shadow(0px,1px,1px,darken($ColorBackground,10));
-              &::before{
-                color: lighten($Color,10);
-                // color: darken($ColorGold,13);
-              }
+              // &::before{
+              //   color: lighten($Color,10);
+              //   // color: darken($ColorGold,13);
+              // }
+            }
+            &.trk{
+              width:45px;
+              font-size: 90%;
+              @include text-shadow(1px,1px,1px,lighten($ColorMain,10));
+              // color: darken($Color,5);
             }
           }
         }
         &.meta{
-          width: 55%;
-          flex:2;
-          flex-direction: column;
+          flex:1;
+          // flex-direction: column;
           // order:2;
-          padding: 0 10px;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-          overflow: hidden;
-          p {
-            // padding: 0 5%;
-            a {
-              // white-space: nowrap;
-              // text-overflow: ellipsis;
-              // overflow: hidden;
-              // display: block;
-              // display: inline-block;
+          justify-content: space-between;
 
+          p {
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            padding-right:10px;
+            padding-left:10px;
+            a {
               color: darken($Color,0);
               &:not(:last-child) {
                 // <span v-if="index != 0">, </span>
@@ -962,7 +886,7 @@ div {
                 &::after {
                   color: darken($ColorBackground,10);
                   position: absolute;
-                  right: -10px;
+                  right: -12px;
                   font-size: 0.9em;
                   content: "\25cf";
                 }
@@ -970,48 +894,54 @@ div {
             }
             &.title{
               a {
-                font-size: 1em;
+                font-size: 100%;
+                // line-height: 140%;
               }
             }
             &.artist{
               a {
-                font-size: 0.9em;
-                color: darken($Color,20);
+                font-size: 90%;
+                color: darken($Color,10);
                 &:hover{
                   color: darken($Color,7);
                   text-decoration: underline;
+                }
+                &.router-link-exact-active{
+                  color: darken($Color,20);
                 }
               }
             }
           }
         }
         &.end{
-          width:50px;
-          max-width:50px;
           overflow: hidden;
           text-overflow: ellipsis;
           // order:3;
-          // text-align: right;
           font-size: 0.9em;
           span {
-            text-align: center;
-            color: darken($Color,20);
-            @include text-shadow(0px,1px,1px,darken($ColorBackground,20));
+            width:40px;
+            // text-align: center;
+            border-radius: 3px;
+            // color: darken($Color,10);
+            @include text-shadow(0px,1px,1px,darken($ColorBackground,10));
           }
         }
+
       }
       &:not(.show-more){
-        &::before{
-          transition: all 0.7s ease;
-          position: absolute;
-          height: 100%;
-          width: 3px;
-          content: "";
-        }
+        // &::before{
+        //   transition: all 0.7s ease;
+        //   position: absolute;
+        //   height: 100%;
+        //   width: 3px;
+        //   top: 0;
+        //   left: 0;
+        //   content: "";
+        // }
         &.active{
-          &::before{
-            background-color: darken($ColorGold,5);
-          }
+          // &::before{
+          //   background-color: darken($ColorGold,5);
+          // }
           >div{
             &.begin{
               span{
@@ -1037,8 +967,9 @@ div {
           }
         }
         &:hover{
+          background-color: darken($ColorBackground,10);
           &::before{
-            background-color: darken($ColorGold,13);
+            background-color: darken($ColorBackground,35);
           }
         }
       }
@@ -1046,21 +977,52 @@ div {
     }
     @media #{$media-mobile} {
       >div{
+        // flex-direction: column;
+        // align-content: flex-start;
+        // justify-content: flex-start;
+        padding: 7px;
+        // margin: 6px 0;
         >div {
           // padding: 0px;
+          // flex-direction: column;
+          // align-content: flex-start;
+          // justify-content: flex-start;
+          // align-self: flex-start;
           &.begin{
             // width:100px;
             max-width:35px;
             span {
-              &.count{
+              &.count, &.trk{
                 display: none;
               }
             }
           }
+          &.meta{
+            // display: flex;
+            // flex-wrap: wrap;
+            // flex-flow: row wrap;
+            // justify-content: space-between;
+            flex-direction: column;
+            flex-wrap: nowrap;
+            justify-content: center;
+            // align-items: center;
+            // align-content: stretch;
+            // align-content: center;
+            p {
+              &.title{
+                a {
+                  font-size: 107%;
+                }
+              }
+              // &.artist{
+              //   a {
+              //     font-size: 80%;
+              //   }
+              // }
+            }
+          }
           &.end{
             max-width:40px;
-            // background-color: aliceblue;
-            // display: none;
           }
         }
       }
@@ -1114,6 +1076,57 @@ div {
         span{
           color: darken($Color,10);
           font-size: 1.4em;
+        }
+      }
+    }
+  }
+  &.z-artists{
+    // display: flex;
+    // flex-wrap: wrap;
+    // flex-flow: row wrap;
+    // align-self: center;
+    // justify-content: center;
+    // align-self: center;
+    margin: 70px 0;
+    >div{
+      display: flex;
+      flex-wrap: wrap;
+      flex-flow: row wrap;
+      justify-content: center;
+      align-items: center;
+      margin:5px;
+      h3 {
+        // flex: 1;
+        // display: flex;
+        // flex-wrap: wrap;
+        // flex-flow: row wrap;
+        // display: flex;
+        // flex-wrap: wrap;
+        // flex-flow: row wrap;
+        // justify-content: center;
+        // align-items: center;
+        font-size: 2em;
+        // width: 100px;
+      }
+      p{
+        // flex: 3;
+        display: flex;
+        flex-wrap: wrap;
+        flex-flow: row wrap;
+        justify-content: center;
+        // flex-direction: column;
+        padding: 30px;
+        a {
+          // display: inline-block;
+          margin: 1px 5px;
+          height: 25px;
+          font-size: 16px;
+          display: inline-flex;
+          color: darken($Color,7);
+          &:hover{
+            color: $ColorMain;
+            text-decoration: underline;
+          }
         }
       }
     }
