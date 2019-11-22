@@ -11,6 +11,8 @@ webpack.*.js export-ignore
 *.md export-ignore
 .env export-ignore
 
+/package.json export-ignore
+
 .travis.yml export-ignore
 .npmignore export-ignore
 .editorconfig export-ignore
