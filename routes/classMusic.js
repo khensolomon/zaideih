@@ -20,15 +20,9 @@ module.exports = class Music {
   constructor(req) {
     this.param = req;
   }
-  trackId() {
-    return app.sql.join(
-      'UPDATE ?? SET plays = plays + 1 WHERE id=?', [table.track,this.param.trackId]
-    ).then(
-      e=>e.query("SELECT * FROM ?? WHERE id=?;", [table.track,this.param.trackId]
-      ).then(
-        e=>e[0]
-      )
-    );
+  async trackId() {
+    app.sql.query('UPDATE ?? SET plays = plays + 1 WHERE id=?', [table.track,this.param.trackId]);
+    return app.sql.query('SELECT * FROM ?? WHERE id=?;', [table.track,this.param.trackId]).then(([row])=>row);
   }
   tracks() {
     return app.sql.query(

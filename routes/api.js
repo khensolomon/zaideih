@@ -1,5 +1,4 @@
 const app = require('../');
-// const {setting} = require('../config');
 const Cloud = require('../assist/cloud');
 const {fs,path} = app.Common;
 const {storage} = app.Config;
@@ -26,7 +25,7 @@ routes.get('/audio/:trackId', function(req, res) {
   const contentType = 'audio/mpeg';
   new Music(req.params).trackId().then(row=>{
     if (row){
-      console.log('online',row.id,row.plays)
+      console.log('mp3:',row.id,row.plays);
       const audio = Cloud.bucket.file(row.dir);
       audio.getMetadata().then(
         meta=> {
@@ -58,7 +57,6 @@ routes.get('/audio/:trackId', function(req, res) {
       )
     } else {
       var file = path.resolve(storage,'music/tmp',req.params.trackId);
-      console.log('local',req.params.trackId)
       try {
         var stat = fs.statSync(file);
         if (req.headers.range !== undefined) {

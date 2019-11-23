@@ -232,33 +232,24 @@ export default {
   // beforeCreate() {},
   async created(){
     await this.$parent.init();
-    [
-      {
-        i:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
-        t:'If You Were A Sailboat',
-        a:['Katie Melua'],
-        n:'1',
-        d:'22:00',
-        p:'234',
-        // id:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
-        // tl:'If You Were A Sailboat',
-        // ar:['Katie Melua'],
-        // ab:'testing',
-        // n:'1',
-        // t:'2',
-        // l:'22:00',
-        // p:'234',
-        // s:'343'
-      },
-      {
-        i:'rod-stewart-sailing.mp3',
-        t:'sailing',
-        a:['Rod Stewart'],
-        p:'20'
-      }
-    ].forEach(e=>{
-      this.addQueue(e)
-    });
+    // [
+    //   {
+    //     i:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
+    //     t:'If You Were A Sailboat',
+    //     a:['Katie Melua'],
+    //     n:'1',
+    //     d:'22:00',
+    //     p:'234',
+    //   },
+    //   {
+    //     i:'rod-stewart-sailing.mp3',
+    //     t:'sailing',
+    //     a:['Rod Stewart'],
+    //     p:'20'
+    //   }
+    // ].forEach(e=>{
+    //   this.addQueue(e)
+    // });
 
     this.all.album.filter(
       e=>e.lg == 2

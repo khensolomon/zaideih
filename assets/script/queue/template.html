@@ -1,6 +1,5 @@
 <div class="queue">
   <div v-if="$.queue.length" class="row tracks bg- sh-">
-    <h1>{{$.queue.length}}</h1>
     <div class="track-row">
       <track-row v-for="(n, index) in trackLimit" v-bind:track="$.queue[index]" :key="index" :queued="true" />
       <div v-if="$.queue.length > trackLimit" class="show-more">

@@ -4,7 +4,7 @@
       <span class="play track" :class="[queueId == track.i && playing? 'icon-pause':'icon-play']"></span>
     </div>
     <div class="begin">
-      <span class="trk" v-text="queued"></span>
+      <span class="trk"></span>
       <span class="count icon-headphones" v-text="track.p"></span>
     </div>
     <div class="meta">
