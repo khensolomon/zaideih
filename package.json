@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack -p --config webpack.production.js",
     "test": "webpack-dev-server --open --config webpack.development.js",
+    "update-repository": "node update-repository",
     "pm2": "pm2 start pm2.json"
   },
   "repository": {
