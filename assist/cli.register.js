@@ -1,16 +1,19 @@
 const app = require('..');
-const {utility,path} = app.Common;
-var {setting} = require('../config');
+const path = require('path');
+const {bucketActive,context,bucketAvailable,template} = app.Config;
+
 const {readBucket,readAlbum,readArtist,writeArtist,readGenre,writeGenre,writeAlbum,selectDatabase,insertDatabase} = require('./data');
 
-// const artistsName = require('./artistsName.json');
+const throwError = function() {
+  if (!app.Param.length) throw 'bucket required?';
+  if (!bucketActive) throw 'bucket unavailable: 0'.replace(0,app.Param.join('/'));
+}
 
 exports.main = async function(){
-  if (!app.Param.length) throw {code:'require',message:'directory'};
-  if (!setting.bucketActive) throw {code:'unavailable',message:app.Param.join('/')};
+  throwError();
 
   await readBucket();
-  const taskBucket = setting.bucketContent.filter(
+  const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])
   );
 
@@ -18,9 +21,9 @@ exports.main = async function(){
   await readGenre();
   await readAlbum();
   for (const album of taskBucket) {
-    utility.log.msg({code:album.id,message:album.dir})
+    console.log('>',album.id,album.dir);
     var update = 0, insert = 0;
-    const language = setting.bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
+    const language = bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
     for (const track of album.track) {
       var dir = [album.dir,track.file].join('/');
       // var dir = path.join(album.dir,track.file);
@@ -73,7 +76,7 @@ exports.main = async function(){
 
 async function taskAlbum(taskBucket){
   for (const album of taskBucket) {
-    var albumTemplate = Object.assign({},setting.template.album);
+    var albumTemplate = Object.assign({},template.album);
     // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
     albumTemplate.ui = album.id;
     albumTemplate.ab = album.track[0].album;
@@ -95,7 +98,7 @@ async function taskAlbum(taskBucket){
     album.track.sort((a, b) => (a.track > b.track) ? 1 : -1);
     // album.track.sort((a, b) => a.track - b.track);
     for (const track of album.track) {
-      var trackTemplate = Object.assign({},setting.template.albumTrack);
+      var trackTemplate = Object.assign({},template.albumTrack);
       // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
       trackTemplate.i=track.id;
       trackTemplate.t=track.title;
@@ -108,13 +111,13 @@ async function taskAlbum(taskBucket){
       albumTemplate.tk.push(trackTemplate)
     }
 
-    var index = setting.albumContent.findIndex(e=>e.ui == album.id);
+    var index = context.album.findIndex(e=>e.ui == album.id);
     if (index >= 0 ){
       // console.log(' json:',album.id,'-> updated')
-      setting.albumContent[index]=albumTemplate;
+      context.album[index]=albumTemplate;
     } else {
       // console.log(' json:',album.id,'-> inserted')
-      setting.albumContent.push(albumTemplate)
+      context.album.push(albumTemplate)
     }
   }
 }
@@ -126,7 +129,7 @@ async function indexArtists (artists){
       var nameLC = name.toLowerCase();
       var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
 
-      var index = setting.artistContent.findIndex(
+      var index = context.artist.findIndex(
         e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
         // e=>e.thesaurus.includes(nameLC) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
       );
@@ -135,8 +138,8 @@ async function indexArtists (artists){
         if (nameWD){
           thesaurus.push(nameWD)
         }
-        setting.artistContent.push({name:name,thesaurus:thesaurus});
-        index = setting.artistContent.length - 1
+        context.artist.push({name:name,thesaurus:thesaurus});
+        index = context.artist.length - 1
       }
       return index;
     }
@@ -151,7 +154,7 @@ async function indexGenres (genres){
       var nameLC = name.toLowerCase();
       var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
 
-      var index = setting.genreContent.findIndex(
+      var index = context.genre.findIndex(
         e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase()
       );
       if (index < 0){
@@ -159,8 +162,8 @@ async function indexGenres (genres){
         if (nameWD){
           thesaurus.push(nameWD)
         }
-        setting.genreContent.push({name:name,thesaurus:thesaurus});
-        index = setting.genreContent.length - 1
+        context.genre.push({name:name,thesaurus:thesaurus});
+        index = context.genre.length - 1
       }
       return index;
     }
@@ -170,8 +173,8 @@ async function indexGenres (genres){
 
 exports.playsupdate = async function(){
   // throw 'playsupdate is responding, because necessary PLAYS data were imported';
-  if (!app.Param.length) throw {code:'require',message:'directory'};
-  if (!setting.bucketActive) throw {code:'unavailable',message:app.Param.join('?')};
+  throwError();
+
   //SELECT distinct t.PLAYS AS plays, concat_ws('/', 'music',a.`PATH`, t.`PATH`) AS dir FROM zd_track AS t, zd_album AS a WHERE t.UNIQUEID = a.UNIQUEID LIMIT ? OFFSET ?;
   var query = "SELECT * FROM zd_track AS t, zd_album AS a WHERE a.PATH LIKE '?/%' AND t.UNIQUEID = a.UNIQUEID AND t.PLAYS > 1;".replace('?',app.Param[0]);
   var raw = await app.sql.query(query.replace('*','count(0) AS totalRow'))
@@ -202,20 +205,20 @@ exports.playsupdate = async function(){
 /*
 exports.main = async function(){
   if (!app.Param.length) throw {code:'require',message:'directory'};
-  if (!setting.bucketActive) throw {code:'unavailable',message:app.Param.join('/')};
+  if (!bucketActive) throw {code:'unavailable',message:app.Param.join('/')};
 
   await readBucket();
   await readAlbum();
 
-  const taskBucket = setting.bucketContent.filter(
+  const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])
   );
-  // const taskBucket = setting.bucketContent;
+  // const taskBucket = context.bucket;
 
   for (const album of taskBucket) {
     utility.log.msg({code:album.id,message:album.dir})
     var update = 0, insert = 0;
-    const language = setting.bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
+    const language = bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
     for (const track of album.track) {
       var dir = [album.dir,track.file];
       // var dir = path.join(album.dir,track.file);
@@ -243,7 +246,7 @@ exports.main = async function(){
 
   for (const album of taskBucket) {
 
-    var albumTemplate = Object.assign({},setting.template.album);
+    var albumTemplate = Object.assign({},template.album);
     albumTemplate.ui = album.id;
     albumTemplate.ab = album.track[0].album;
 
@@ -262,7 +265,7 @@ exports.main = async function(){
 
     albumTemplate.tk = [];
     for (const track of album.track) {
-      var trackTemplate = Object.assign({},setting.template.albumTrack);
+      var trackTemplate = Object.assign({},template.albumTrack);
       // {id:'?', tl:'?', ar:[], n: 0, t: 0, l: "?", p: 1, s:0}
       trackTemplate.id=track.id;
       trackTemplate.tl=track.title;
@@ -285,13 +288,13 @@ exports.main = async function(){
       albumTemplate.tk.push(trackTemplate)
     }
 
-    var index = setting.albumContent.findIndex(e=>e.ui == album.id);
+    var index = context.album.findIndex(e=>e.ui == album.id);
     if (index >= 0 ){
       // console.log(' json:',album.id,'-> updated')
-      setting.albumContent[index]=albumTemplate;
+      context.album[index]=albumTemplate;
     } else {
       // console.log(' json:',album.id,'-> inserted')
-      setting.albumContent.push(albumTemplate)
+      context.album.push(albumTemplate)
     }
   }
   await writeAlbum();

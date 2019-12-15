@@ -1,22 +1,28 @@
+// NOTE: not ready
+
 const app = require('..');
-const {fs,path,utility,Burglish} = app.Common;
+const {Burglish} = app.Common;
+const fs = require('fs');
+const path = require('path');
 const request = require('request');
 const NodeID3 = require('node-id3');
-var {setting} = require('../config');
+// var {setting} = require('../config');
 // const {readBucket,readAlbum,writeAlbum,selectDatabase,insertDatabase} = require('./data');
 
-// setting.task = [];
+var taskList = [];
 
 const gmhDirectory = path.join(app.Config.storage,'gmh');
 const gmhFile = path.join(gmhDirectory,'feed.json');
-const readJSON = async () => await fs.readJson(gmhFile).then(o=>Object.assign(setting.task,o)).catch(e=>setting.task=[]);
-const writeJSON = async () => await fs.writeFileSync(gmhFile,JSON.stringify(setting.task,null,2));
+
+const readJSON = async () => readFilePromise(gmhFile).then(o=>Object.assign(taskList,JSON.parse(o))).catch(()=>taskList=[]);
+const writeJSON = async () => writeFilePromise(gmhFile,JSON.stringify(taskList,null,2));
+
 
 module.exports.main = async function(){
   await readJSON();
 
-  for (const album of setting.task) {
-    utility.log.msg(album.name)
+  for (const album of taskList) {
+    console.log(album.name)
     for (const track of album.track) {
       if (!track.downloaded) {
         await requestAudio(track,album.name).then(
@@ -32,7 +38,7 @@ module.exports.main = async function(){
     }
   }
 
-  // var name = setting.task.map(
+  // var name = taskList.map(
   //   e=>e.name
   // );
   // var nameDuplicates = name.filter((item, index) => name.indexOf(item) != index)
@@ -147,7 +153,7 @@ async function requestFeed(page){
           item.map(
             e=>{
               var link = e.match(/<link>(.*)<\/link>/)[1];
-              var index = setting.task.findIndex(e=>e.link == link);
+              var index = taskList.findIndex(e=>e.link == link);
               var title = e.match(/<title>(.*)<\/title>/)[1];
               var tmp = link.split('/');
               var name = tmp[tmp.length - 2 ];
@@ -156,9 +162,9 @@ async function requestFeed(page){
                 e=>JSON.parse(e.replace(/:"/gi,': "').replace(/(['"])?([a-z0-9A-Z_]+)(['"])?: /g, '"$2": ').replace(/\": \/\//g,'://'))
               );
               if (index < 0 ) {
-                setting.task.push({title: title,name:name,link:link,track:track})
+                taskList.push({title: title,name:name,link:link,track:track})
               } else {
-                setting.task[index]={title: title,name:name,link:link,track:track};
+                taskList[index]={title: title,name:name,link:link,track:track};
               }
             }
           )
@@ -184,7 +190,7 @@ request.get(options, function(err, resp, body) {
           item.map(
             e=>{
               var link = e.match(/<link>(.*)<\/link>/)[1];
-              var index = setting.task.findIndex(e=>e.link == link);
+              var index = taskList.findIndex(e=>e.link == link);
               var title = e.match(/<title>(.*)<\/title>/)[1];
               var tmp = link.split('/');
               var name = tmp[tmp.length - 2 ];
@@ -193,9 +199,9 @@ request.get(options, function(err, resp, body) {
                 e=>JSON.parse(e.replace(/:"/gi,': "').replace(/(['"])?([a-z0-9A-Z_]+)(['"])?: /g, '"$2": ').replace(/\": \/\//g,'://'))
               );
               if (index < 0 ) {
-                setting.task.push({title: title,name:name,link:link,track:track})
+                taskList.push({title: title,name:name,link:link,track:track})
               } else {
-                setting.task[index]={title: title,name:name,link:link,track:track};
+                taskList[index]={title: title,name:name,link:link,track:track};
               }
             }
           )

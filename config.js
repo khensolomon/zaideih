@@ -1,11 +1,8 @@
 module.exports = {
   config:{
     name: 'Zaideih',
-    description: 'Zaideih Music Station',
-    version: '1.0.3'
-  },
-  // NOTE just for development
-  setting:{
+    // description: 'package.description',
+    // version: 'package.version'
     bucketAvailable:[
       'untitle',
       'zola',
@@ -19,25 +16,59 @@ module.exports = {
       'norwegian',
       'collection'
     ],
+    store:{
+      album:'store/album.json',
+      artist:'store/album.artist.json',
+      genre:'store/album.genre.json',
+      bucket:'store/bucket.?.json'
+    },
+    context:{
+      album:[],
+      artist:[],
+      genre:[],
+      bucket:[]
+    },
     bucketActive:null,
-    bucketFile:'bucket.?.json',
-    bucketContent:[],
-
-    albumFile:'album.json',
-    albumContent:[],
-    task:[],
     template:{
       bucket:{id:'?', dir:'?', raw:[], meta:{},track:[]},
-      bucketTrack:{file:'', title:'', artist:[], albumartist:[], album:'', genre:[], track:0, year:0, duration:'',},
-
+      bucketTrack:{file:'', title:'', artist:[], albumartist:[], album:'', genre:[], track:0, year:0, duration:''},
       album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
       // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
       albumTrack:{i:'?', t:'?', a:[], d: "?", p: 1}
-    },
-    artistFile:'album.artist.json',
-    artistContent:[],
-    genreFile:'album.genre.json',
-    genreContent:[],
-
+    }
   }
 };
+/*
+bucketAvailable:[
+  'untitle',
+  'zola',
+  'myanmar',
+  'mizo',
+  'falam',
+  'haka',
+  'english',
+  'chin',
+  'korea',
+  'norwegian',
+  'collection'
+],
+bucketActive:null,
+bucketFile:'store/bucket.?.json',
+bucketContent:[],
+
+albumFile:'store/album.json',
+albumContent:[],
+task:[],
+template:{
+  bucket:{id:'?', dir:'?', raw:[], meta:{},track:[]},
+  bucketTrack:{file:'', title:'', artist:[], albumartist:[], album:'', genre:[], track:0, year:0, duration:'',},
+
+  album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
+  // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
+  albumTrack:{i:'?', t:'?', a:[], d: "?", p: 1}
+},
+artistFile:'store/album.artist.json',
+artistContent:[],
+genreFile:'store/album.genre.json',
+genreContent:[]
+*/

@@ -1,6 +1,7 @@
 const app = require('..');
-const {utility,path} = app.Common;
-var {setting} = require('../config');
+const path = require('path');
+// const {utility} = app.Common;
+const {bucketActive,context} = app.Config;
 // const Cloud = require('./cloud');
 const {readBucket} = require('./data');
 
@@ -11,12 +12,12 @@ const {readBucket} = require('./data');
 //   console.log('done')
 // }
 exports.main = async function(){
-  if (!app.Param.length) throw {code:'require',message:'directory'};
-  if (!setting.bucketActive) throw {code:'unavailable',message:app.Param.join('/')};
+  if (!app.Param.length) throw 'bucket required?';
+  if (!bucketActive) throw 'bucket unavailable: 0'.replace(0,app.Param.join('/'));
 
-  utility.log.msg('only testing')
+  console.log('only testing')
   await readBucket();
-  const taskBucket = setting.bucketContent.filter(
+  const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])
   );
   // TODO rename at storage update sql then save bucketContent

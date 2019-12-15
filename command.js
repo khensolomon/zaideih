@@ -1,23 +1,32 @@
-// const app = require.main.exports;
-// const {Config,Common,sql} = require('.');
 const app = require('.');
-const {utility} = app.Common;
 const fn = app.Param.shift() || 'main';
 const assist = require('./assist/cli');
 
 module.exports = async function(){
-  if (typeof assist[fn] == 'function') {
-    await assist[fn]().then(
-      e=>utility.log.msg(e)
-    ).catch(
-      e=>utility.log.error(e)
-    );
-  } else {
-    utility.log.msg({code:fn,message:typeof assist[fn]})
+  if (typeof assist[fn] != 'function') {
+    // throw {code:fn,message:typeof assist[fn]};
+    throw '0 is 1'.replace(0,fn).replace(1,typeof assist[fn]);
+  }
+  try {
+    return await assist[fn](app.Param[0]);
+  } catch (error) {
+    throw error
   }
 }
 
+// const app = require('.');
+// const {utility} = app.Common;
+// const task = require('./task');
+// const fn = app.Param.shift() || 'main';
+
 // module.exports = async function(){
-//   var raw = await app.sql.query('SELECT created,count(ip) AS visits_count,sum(view) AS visits_total FROM visits').then(raw=>raw);
-//   console.log(raw)
-// };
+//   if (typeof task[fn] == 'function') {
+//     await task[fn]().then(
+//       e=>utility.log.msg(e)
+//     ).catch(
+//       e=>utility.log.error(e)
+//     );
+//   } else {
+//     utility.log.msg({code:fn,message:typeof task[fn]})
+//   }
+// }

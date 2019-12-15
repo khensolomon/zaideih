@@ -1,0 +1,13 @@
+{
+  "apps": [
+    {
+      "name": "Zaideih",
+      "script": "./serve.js",
+      "watch":true,
+      "ignore_watch":["[\\/\\\\]\\./", "node_modules"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}

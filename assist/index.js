@@ -1,9 +1,8 @@
-// const app = require('..');
-// const {path} = app.Common;
-// const {setting} = require('../config');
+const Cloud = require('./cloud');
+const track = require('./track');
 
-// const store = path.join(Config.media,'store');
-// exports.album = path.join(store,setting.albumFile);
-// exports.artist = path.join(store,setting.artistFile);
-// exports.genre = path.join(store,setting.genreFile);
-// exports.language = setting.bucketAvailable;
+exports.trackId = track.id;
+exports.trackPlays = track.plays;
+exports.meta = track.meta;
+
+exports.audio = Cloud.bucket;

@@ -1,42 +1,80 @@
-const app = require('..');
+# pre api
+
+Usages...
+
+```js
+// read
+new ttf(fontType).scan(fontName).then(function(e){
+  res.send(e);
+});
+// download
+new ttf(fontType).download(fontName).then(function(file){
+  if (file){
+
+  } else {
+    res.status(500).send('restricted').end();
+  }
+}).catch(function(){
+
+});
+
+// type
+var o = new ttf(fontType);
+await o.view(fontName).then(function(e){
+  if (e instanceof Object){
+    context = e;
+    if (e.unrestrict){
+      context.type=fontType;
+      context.download=fontName;
+    }
+  }
+});
+await o.read('secondary');
+await o.read('external');
+```
+
+...
+
+```js
+const app = require('../');
 const assist = require('../assist');
 const fs = require('fs');
 const path = require('path');
 
-const {store} = app.Config;
+const {storage} = app.Config;
 const routes = app.Router();
 
-routes.get('/', function(req, res, next) {
-  assist.meta().then(e=>res.send(e)).catch(next)
+const Music = require('./classMusic');
+
+routes.get('/', function(req, res) {
+  new Music().meta().then(e=>res.send(e));
 });
 routes.get('/album', function(req, res) {
-  fs.createReadStream(store.album).pipe(res);
+  fs.createReadStream(new Music().jsonAlbum).pipe(res);
 });
 routes.get('/genre', function(req, res) {
-  fs.createReadStream(store.genre).pipe(res);
+  fs.createReadStream(new Music().jsonGenre).pipe(res);
 });
 routes.get('/artist', function(req, res) {
-  fs.createReadStream(store.artist).pipe(res);
+  fs.createReadStream(new Music().jsonArtist).pipe(res);
 });
-routes.get('/track-plays', function(req, res, next) {
-  assist.trackPlays().then(e=>res.send(e)).catch(next)
+routes.get('/track-plays', function(req, res) {
+  new Music().tracks().then(e=>res.send(e))
 });
-// 1076 1057
 routes.get('/audio/:trackId', function(req, res) {
   const contentType = 'audio/mpeg';
-  assist.trackId(req.params.trackId).then(row=>{
+  new Music(req.params).trackId().then(row=>{
     if (row){
-      // console.log('mp3:',row.id,row.plays,row.dir);
-      const audio = assist.audio.file(row.dir);
+      console.log('mp3:',row.id,row.plays);
+      const audio = assist.audio.bucket.file(row.dir);
       audio.getMetadata().then(
         meta=> {
           var stat = meta[0];
           var range = req.headers.range;
           if (range !== undefined) {
-            // var rangeByte = range.replace(/bytes=/, "").split("-");
-            // var rangeByteStart = rangeByte[0];
-            // var rangeByteEnd = rangeByte[1];
-            const [rangeByteStart, rangeByteEnd] = range.replace(/bytes=/, "").split("-");
+            var rangeByte = range.replace(/bytes=/, "").split("-");
+            var rangeByteStart = rangeByte[0];
+            var rangeByteEnd = rangeByte[1];
 
             if ((isNaN(rangeByteStart) && rangeByteStart.length > 1) || (isNaN(rangeByteEnd) && rangeByteEnd.length > 1)) {
               return res.sendStatus(500);
@@ -44,14 +82,13 @@ routes.get('/audio/:trackId', function(req, res) {
             var contentStart = parseInt(rangeByteStart, 10);
             var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
             var contentLength = (contentEnd - contentStart) + 1;
-
-            res.status(206).header({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+            res.status(206).header({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
             // audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
             audio.createReadStream({
               contentType: contentType,validation: false, start: contentStart, end: contentEnd
             }).on('error', () => res.status(404)).on('end', () => res.end()).pipe(res);
           } else{
-            res.header({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':stat.size});
+            res.header({'Content-Type':contentType,'Content-Length':stat.size});
             audio.createReadStream({contentType: contentType}).pipe(res);
           }
         }
@@ -59,14 +96,13 @@ routes.get('/audio/:trackId', function(req, res) {
         ()=>res.status(404).end()
       )
     } else {
-      var file = path.resolve(app.Config.storage,'music/tmp',req.params.trackId);
+      var file = path.resolve(storage,'music/tmp',req.params.trackId);
       try {
         var stat = fs.statSync(file);
         if (req.headers.range !== undefined) {
-          // var rangeByte = req.headers.range.replace(/bytes=/, "").split("-");
-          // var rangeByteStart = rangeByte[0];
-          // var rangeByteEnd = rangeByte[1];
-          const [rangeByteStart, rangeByteEnd] = range.replace(/bytes=/, "").split("-");
+          var rangeByte = req.headers.range.replace(/bytes=/, "").split("-");
+          var rangeByteStart = rangeByte[0];
+          var rangeByteEnd = rangeByte[1];
 
           if ((isNaN(rangeByteStart) && rangeByteStart.length > 1) || (isNaN(rangeByteEnd) && rangeByteEnd.length > 1)) {
             return res.sendStatus(500);

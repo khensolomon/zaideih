@@ -189,10 +189,21 @@ export default {
     track(o){
       // var album = this.albumByTrackId(o.i)
       // var synonym = { i: 'id', t:'title',a:'artist',b:'album',n:'trackNumber',d:'duration',p:'plays' };
-      var synonym = {};
-      var trk = Object.keys(o).reduce(function(e, k){
-        return {...e,...{[synonym[k] || k]: o[k]}}
-      },{});
+      // var synonym = {};
+      // var trk = Object.keys(o).reduce(function(e, k){
+      //   return {...e,...{[synonym[k] || k]: o[k]}}
+      // },{});
+
+      // var trk = Object.keys(o).reduce(
+      //   (acc, key) => ({
+      //     ...acc,
+      //     ...{ [synonym[key] || key]: o[key] }
+      //   }),
+      //   {}
+      // );
+      // console.log(trk)
+
+      var trk = Object.assign({},o);
       // trk.b=this.trackAlbumName(o.i);
       // trk.b=(album)?album.ab:'testing'
       trk.a=this.artistName(o);

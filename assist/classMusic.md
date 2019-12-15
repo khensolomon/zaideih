@@ -1,3 +1,13 @@
+# pre Music class
+
+Usages...
+
+```js
+```
+
+...
+
+```js
 const app = require('..');
 const {Config,Common} = app;
 const {setting} = require('../config');

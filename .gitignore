@@ -1,5 +1,6 @@
 *.v[0-9]*.*
 /test
+/_tmp
 # /static
 *-lock.json
 

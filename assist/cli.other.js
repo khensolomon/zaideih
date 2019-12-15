@@ -1,22 +1,23 @@
 const app = require('..');
-const {fs,path,utility} = app.Common;
+const {utility} = app.Common;
+const {context} = app.Config;
 
 var {setting} = require('../config');
 const {readBucket,writeBucket} = require('./data');
 
 exports.makeup = async function(){
   await readBucket();
-  setting.bucketContent.filter(e=>(!e.id)).map(
+  context.bucket.filter(e=>(!e.id)).map(
     e=>e.id=utility.createUniqueId()
   );
-  setting.bucketContent.filter(e=>(!e.meta)).map(
+  context.bucket.filter(e=>(!e.meta)).map(
     e=>e.meta={}
   );
   /*
   var idList =[
     '2d58191709bea03e5378'
   ];
-  setting.bucketContent.filter(e=>idList.includes(e.id)).map(
+  context.bucket.filter(e=>idList.includes(e.id)).map(
     e=>e.track.map(
       a=>{
         a.artist=[e.meta.artist]
@@ -26,11 +27,11 @@ exports.makeup = async function(){
   );
   */
 
-  setting.bucketContent.filter(e=>(!e.track)).map(
+  context.bucket.filter(e=>(!e.track)).map(
     e=>e.track=[]
   );
   await writeBucket();
-  const taskMain = setting.bucketContent.map(e=>e.id)
+  const taskMain = context.bucket.map(e=>e.id)
   var albumIdDuplicates = taskMain.filter((item, index) => taskMain.indexOf(item) != index)
   if (albumIdDuplicates.length){
     console.log(albumIdDuplicates)
@@ -40,7 +41,7 @@ exports.makeup = async function(){
 
 exports.checkTrackEmpty = async function(){
   await readBucket();
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => !e.track || !e.track.length
   );
   for (const active of taskMain) {
@@ -51,7 +52,7 @@ exports.checkTrackEmpty = async function(){
 exports.checkTrackDuration = async function(){
   await readBucket();
   var trackFilter = (row) => (!row.duration || row.duration.length <= 3);
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {
@@ -64,7 +65,7 @@ exports.checkTrackDuration = async function(){
 exports.checkTrackYear = async function(){
   await readBucket();
   var trackFilter = (row) => (!row.year || row.year.length <= 3 || row.year.length > 4 || isNaN(row.year) === true);
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {
@@ -77,7 +78,7 @@ exports.checkTrackYear = async function(){
 exports.checkTrackArtist = async function(){
   await readBucket();
   var trackFilter = (row) => !row.artist || !row.artist.length;
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {
@@ -90,7 +91,7 @@ exports.checkTrackArtist = async function(){
 exports.checkTrackAlbum = async function(){
   await readBucket();
   var trackFilter = (row) => !row.album;
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {
@@ -103,7 +104,7 @@ exports.checkTrackAlbum = async function(){
 exports.checkTrackNumber = async function(){
   await readBucket();
   var trackFilter = (row) => !row.track || isNaN(row.track) === true;
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {
@@ -116,7 +117,7 @@ exports.checkTrackNumber = async function(){
 exports.checkTrackTitle = async function(){
   await readBucket();
   var trackFilter = (row) => !row.title;
-  const taskMain = setting.bucketContent.filter(
+  const taskMain = context.bucket.filter(
     e => e.track.length && e.track.filter(trackFilter).length
   );
   for (const active of taskMain) {

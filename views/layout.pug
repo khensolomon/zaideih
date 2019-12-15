@@ -13,10 +13,15 @@ html(lang='en')
       meta(name="keywords" content=keywords)
     if description
       meta(name="description" content=description)
-    meta(name="application-name" content=appName data-version=appVersion data-album=rawAlbum data-artist=rawArtist data-genre=rawGenre data-lang=rawLang)
+    meta(name="application-name" content=appName data-version=appVersion data-album=raw.album data-artist=raw.artist data-genre=raw.genre data-lang=raw.lang)
     base(href='/')
     link(rel='api', href='api')
-    link(rel='icon', href='favicon.png' type='image/png')
+    //- link(rel='icon', href='favicon.png' type='image/png')
+    link(rel="apple-touch-icon", sizes="180x180" href="/apple-touch-icon.png")
+    link(rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png")
+    link(rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png")
+    link(rel="manifest" href="/app.webmanifest")
+
 
     //- <script src="https://cdn.jsdelivr.net/npm/vue"></script>
     //- <script src="https://unpkg.com/vue-router@3.0.7/dist/vue-router.js"></script>
@@ -30,14 +35,17 @@ html(lang='en')
       'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
       })(window,document,'script','dataLayer','GTM-PBZSB96');
 
-    if isDevelopment
-      script(src='/vue.js')
-      script(src='/vue-resource.js')
-      script(src='/vue-router.js')
-    else
-      script(src='https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min.js')
-      script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
-      script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
+    script(src='https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min.js')
+    script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
+    script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
+    //- if isDevelopment
+    //-   script(src='/vue.js')
+    //-   script(src='/vue-resource.js')
+    //-   script(src='/vue-router.js')
+    //- else
+    //-   script(src='https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min.js')
+    //-   script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
+    //-   script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
     //- link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css')
   body.page
     //- Google Tag Manager (noscript)

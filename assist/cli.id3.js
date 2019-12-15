@@ -1,5 +1,7 @@
 const app = require('..');
-const {path,Timer} = app.Common;
+const path = require('path');
+const {Timer} = app.Common;
+const {bucketActive,context,template} = app.Config;
 
 const NodeID3 = require('node-id3');
 const NodeMP3Duration = require('get-mp3-duration');
@@ -11,20 +13,20 @@ const {readBucket,writeBucket} = require('./data');
 
 exports.cloud = async function(){
   if (!app.Param.length) throw 'path?';
-  if (!setting.bucketActive) throw 'path?';
+  if (!bucketActive) throw 'path?';
   await readBucket();
 
-  setting.bucketContent.filter(e=>(!e.id)).map(
+  context.bucket.filter(e=>(!e.id)).map(
     e=>e.id=utility.createUniqueId()
   );
-  // setting.bucketContent.filter(e=>(!e.meta)).map(
+  // context.bucket.filter(e=>(!e.meta)).map(
   //   e=>e.meta={}
   // );
-  setting.bucketContent.filter(e=>(!e.track)).map(
+  context.bucket.filter(e=>(!e.track)).map(
     e=>e.track=[]
   );
-  // const taskList = setting.bucketContent.filter(e=>e.id == "a63b197309a5dcebd812")
-  const taskMain = setting.bucketContent.filter(
+  // const taskList = context.bucket.filter(e=>e.id == "a63b197309a5dcebd812")
+  const taskMain = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (!e.track.length && !app.Param[1])
   ).map(e=>{
     e.task=[];
@@ -68,7 +70,7 @@ var readCloudID3 = async function(file){
     buffer=>{
       try {
         var tag = NodeID3.read(buffer[0]);
-        var meta = Object.assign({},setting.template.bucketTrack,{ track:tag.trackNumber, year:tag.year});
+        var meta = Object.assign({},template.bucketTrack,{ track:tag.trackNumber, year:tag.year});
         if (tag.title) meta.title=tag.title.trim();
         if (tag.album) meta.album=tag.album.trim();
         if (tag.artist) meta.artist=tag.artist.toString().split(',').map(s => s.trim())
@@ -76,7 +78,7 @@ var readCloudID3 = async function(file){
         if (tag.performerInfo) meta.albumartist=tag.performerInfo.toString().split(',').map(s => s.trim());
 
         // var tag = NodeId3Parser.parse(buffer[0]);
-        // var meta = Object.assign({},setting.template.bucketTrack,{track:tag.track || tag.trackNumber, year:tag.year||tag['recording-time']});
+        // var meta = Object.assign({},template.bucketTrack,{track:tag.track || tag.trackNumber, year:tag.year||tag['recording-time']});
         // if (tag.title) meta.title=tag.title.trim();
         // if (tag.album) meta.album=tag.album.trim();
         // if (tag.artist) meta.artist=tag.artist.toString().split(',').map(s => s.trim())
