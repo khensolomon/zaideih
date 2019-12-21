@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack -p --config webpack.production.js",
     "test": "webpack-dev-server --open --config webpack.development.js",
+    "update-package": "node update-package",
     "update-repository": "node update-repository",
     "test-port": "set PORT=5000 && node serve",
     "test-listen": "set LISTEN= && node serve",
