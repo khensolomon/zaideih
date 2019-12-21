@@ -2,7 +2,7 @@
   "apps": [
     {
       "name": "Zaideih",
-      "script": "./app.js",
+      "script": "./serve.js",
       "watch":true,
       "ignore_watch":["[\\/\\\\]\\./", "node_modules"],
       "env": {
