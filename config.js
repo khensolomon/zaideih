@@ -3,10 +3,6 @@ module.exports = {
     name: 'Zaideih',
     // description: 'package.description',
     // version: 'package.version'
-    visits:{
-      counts:0,
-      previous:0
-    },
     bucketAvailable:[
       'untitle',
       'zola',
