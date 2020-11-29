@@ -94,12 +94,12 @@ div.player-controls{
           &.toggle{
             &::before{
               color:darken(#f0f0f0,20);
-              text-shadow: 1px 1px #666;
+              text-shadow: 0px 1px #666;
             }
             &.active {
               &::before{
-                color:lighten(black,20);
-                text-shadow: 1px 1px gray;
+                color:lighten(red,0);
+                text-shadow: 1px 0px gray;
               }
             }
           }

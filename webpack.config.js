@@ -1,17 +1,26 @@
 const path = require('path');
-
 const VueLoaderPlugin = require('vue-loader/lib/plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = {
   mode: 'development',
   devtool: 'inline-source-map',
+
+  // devServer: {
+  //   contentBase: path.join(__dirname, 'static'),
+  //   port: 8081,
+  //   host: `localhost`,
+  // },
+
   entry: {
-    script: path.resolve(__dirname, 'assets/webpack/index.js')
+    script: [
+      path.resolve(__dirname, 'assets/webpack/index.js')
+    ],
   },
   output: {
     path: path.resolve(__dirname, 'static'),
-    filename:'[name].js',
-    publicPath: '/'
+    publicPath: '/',
+    filename:'[name].js'
   },
   resolve: {
     extensions: ['.js', '.vue', '.json','.css','.scss'],
@@ -20,7 +29,8 @@ module.exports = {
     }
   },
   plugins: [
-    new VueLoaderPlugin()
+    new VueLoaderPlugin(),
+    new MiniCssExtractPlugin({filename: 'style.css'})
   ],
   module: {
     rules: [
@@ -35,47 +45,39 @@ module.exports = {
         ]
       },
       {
-        test: /\.js$/,
-        exclude: /(node_modules|bower_components)/,
-        loader: "babel-loader",
-        options: {
-          presets: []
-        }
-      },
-      {
-        test: /\.s?css$/,
+        // test: /\.s?css$/,
         // test: /\.(sa|sc|c)ss$/,
+        test: /\.(sa|sc|c)ss$/i,
         use: [
-          'style-loader',
+          MiniCssExtractPlugin.loader,
+          // 'style-loader',
           "css-loader",
           "sass-loader"
+        ],
+        // exclude: /middleware\.css$/
+      },
+      {
+        test: /\.js$/,
+        exclude: /(node_modules|bower_components)/,
+        use: [
+          {
+            loader: 'babel-loader',
+            options: {
+              presets: [
+                // [
+                //   '@babel/preset-env',
+                //   {
+                //     'modules': 'auto',//commonjs,amd,umd,systemjs,auto
+                //     'useBuiltIns': 'usage',
+                //     'targets': '> 0.25%, not dead',
+                //     'corejs': 3
+                //   }
+                // ]
+              ]
+            }
+          }
         ]
       },
-      // {
-      //   test: /Myanmar3.*$/,
-      //   loader: 'file-loader',
-      //   query: {
-      //     name: '[name].[ext]'
-      //   }
-      // },
-      // {
-      //   test: /\.png$/,
-      //   // NOTE: file-loader?name=[name].[ext] retain original file name
-      //   loader: 'file-loader',
-      //   query: {
-      //     mimetype: 'image/x-png',
-      //     name: '[name].[ext]'
-      //   }
-      // },
-      // {
-      //   test: /\.(jpg|gif|svg|eot|ttf|woff|woff2)$/,
-      //   // NOTE: file-loader or url-loader
-      //   loader: 'file-loader',
-      //   exclude: [/Myanmar3.*$/],
-      //   options: {
-      //     limit: 10000
-      //   }
-      // }
       {
         test: /\.(png|ico|jpg|gif|svg|eot|ttf|woff|woff2|webmanifest)$/,
         loader: 'file-loader',

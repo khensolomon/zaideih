@@ -3,6 +3,7 @@ require('./middleware.css');
 
 // NOTE: Main
 require('./index.js');
+// require('./test-script.js');
 
 // var h1 = document.getElementById('delete');
 // h1.style.color = 'red';
@@ -37,6 +38,7 @@ require('./index.js');
 // require('assert');
 //
 // if (module.hot) {
+//   console.log('module.hot');
 //   module.hot.accept();
 //   module.hot.dispose(function() {
 //     clearInterval(timer);

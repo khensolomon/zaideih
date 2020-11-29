@@ -16,7 +16,7 @@ form{
 
       button::before{
         color:darken($ColorMain,50);
-        text-shadow: 1px 1px $ColorSecond;
+        text-shadow: 0px 1px $ColorSecond;
       }
     }
   }
@@ -99,7 +99,8 @@ form{
     &.submit{
       width: 50px;
       button::before{
-        color:darken($ColorMain,30);
+        // color:darken($ColorMain,30);
+        // color: red;
         text-shadow: 1px 1px $ColorSecond;
       }
     }

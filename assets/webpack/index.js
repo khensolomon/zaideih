@@ -14,6 +14,8 @@ require('../icon/zaideih.css');
 
 // NOTE: layout and design
 require('../scss/style.scss');
+// @import '../scss/style.scss';
+// import "../scss/style.scss";
 
 // NOTE: script
 require('../script/index.js');

@@ -2,7 +2,7 @@
 /test
 /_tmp
 # /static
-*-lock.json
+# *-lock.json
 
 # Logs
 logs
