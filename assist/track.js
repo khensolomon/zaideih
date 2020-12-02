@@ -2,7 +2,9 @@ const app = require('..');
 const data = require('./data');
 
 exports.id = async function(Id){
-  data.trackPlaysUpdate(Id);
+  data.trackPlaysUpdate(Id).catch((e)=>{
+    console.log('trackPlaysUpdate',e);
+  });
   try {
     const [row] = await data.trackById(Id);
     return row;

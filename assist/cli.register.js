@@ -171,8 +171,9 @@ async function indexGenres (genres){
   return [...new Set(result)];
 }
 
+/*
 exports.playsupdate = async function(){
-  // throw 'playsupdate is responding, because necessary PLAYS data were imported';
+  throw 'playsupdate has only one responsibility, which is to import Old playsCount data';
   throwError();
 
   //SELECT distinct t.PLAYS AS plays, concat_ws('/', 'music',a.`PATH`, t.`PATH`) AS dir FROM zd_track AS t, zd_album AS a WHERE t.UNIQUEID = a.UNIQUEID LIMIT ? OFFSET ?;
@@ -201,6 +202,7 @@ exports.playsupdate = async function(){
     console.log('none')
   }
 }
+*/
 
 /*
 exports.main = async function(){

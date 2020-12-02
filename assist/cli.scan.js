@@ -5,7 +5,7 @@ const Cloud = require('./cloud');
 var {setting} = require('../config');
 const {readBucket,writeBucket} = require('./data');
 
-exports.cloud = async function(){
+exports.main = async function(){
   if (!app.Param.length) throw {code:'require',message:'directory'};
   if (!setting.bucketActive) throw {code:'unavailable',message:app.Param.join('/')};
   await readBucket();

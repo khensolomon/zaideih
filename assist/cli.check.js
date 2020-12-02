@@ -5,7 +5,7 @@ const {context} = app.Config;
 var {setting} = require('../config');
 const {readBucket,writeBucket} = require('./data');
 
-exports.makeup = async function(){
+exports.checkAlbumId = async function(){
   await readBucket();
   context.bucket.filter(e=>(!e.id)).map(
     e=>e.id=utility.createUniqueId()

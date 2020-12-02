@@ -19,6 +19,7 @@ const writeJSON = async () => writeFilePromise(gmhFile,JSON.stringify(taskList,n
 
 
 module.exports.main = async function(){
+  throw 'only testing, please check the script and uncomment?';
   await readJSON();
 
   for (const album of taskList) {
@@ -44,7 +45,9 @@ module.exports.main = async function(){
   // var nameDuplicates = name.filter((item, index) => name.indexOf(item) != index)
   // console.log(nameDuplicates)
 }
+
 module.exports.name = async function(){
+  throw 'only testing, please check the script and uncomment?';
   /*
   const dirMain = path.join(gmhDirectory,'mp3');
   var dirList = fs.readdirSync(dirMain);
@@ -112,7 +115,9 @@ module.exports.name = async function(){
   // 1fde1949099550d143fa check artsts ???
   // 9309191d098db87b66a1 check album name ???
 }
+
 module.exports.feed = async function(){
+  throw 'only testing, please check the script and uncomment?';
   await readJSON();
   await requestFeed(1).then(
     e=>console.log(e)

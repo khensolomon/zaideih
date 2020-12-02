@@ -15,7 +15,8 @@ exports.main = async function(){
   if (!app.Param.length) throw 'bucket required?';
   if (!bucketActive) throw 'bucket unavailable: 0'.replace(0,app.Param.join('/'));
 
-  console.log('only testing')
+  throw 'only testing, please check the script and uncomment?';
+
   await readBucket();
   const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])

@@ -11,10 +11,12 @@ const Cloud = require('./cloud');
 var {setting} = require('../config');
 const {readBucket,writeBucket} = require('./data');
 
-exports.cloud = async function(){
+exports.main = async function(){
   if (!app.Param.length) throw 'path?';
   if (!bucketActive) throw 'path?';
   await readBucket();
+
+  throw 'please check the script and uncomment?';
 
   context.bucket.filter(e=>(!e.id)).map(
     e=>e.id=utility.createUniqueId()
