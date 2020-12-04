@@ -1,6 +1,7 @@
 const app = require('..');
 const path = require('path');
-const {readFilePromise,writeFilePromise} = app.Common;
+const fs = require('fs');
+// const {utility,Burglish} = app.Common;
 const {media,store,context} = app.Config;
 
 const tableTrack = 'track';
@@ -10,23 +11,23 @@ store.album = path.join(media,store.album);
 store.artist = path.join(media,store.artist);
 store.genre = path.join(media,store.genre);
 
-const readJSON = async (file) => readFilePromise(file).then(o=>JSON.parse(o)).catch(()=>new Array());
-// const writeJSON = async (file,raw) => writeFilePromise(file,JSON.stringify(raw,null,2));
+const readJSON = async (file) => fs.promises.readFile(file).then(o=>JSON.parse(o)).catch(()=>new Array());
+// const writeJSON = async (file,raw) => fs.promises.writeFile(file,JSON.stringify(raw,null,2));
 
 exports.readBucket = async() => await readJSON(store.bucket).then(o=>Object.assign(context.bucket,o)).catch(()=>context.bucket=[]);
-exports.writeBucket = async () => await writeFilePromise(store.bucket,JSON.stringify(context.bucket,null,2));
+exports.writeBucket = async () => await fs.promises.writeFile(store.bucket,JSON.stringify(context.bucket,null,2));
 
 exports.album = async () => await readJSON(store.album);
 exports.readAlbum = async () => await readJSON(store.album).then(o=>Object.assign(context.album,o)).catch(()=>context.album=[]);
-exports.writeAlbum = async () => await writeFilePromise(store.album,JSON.stringify(context.album));
+exports.writeAlbum = async () => await fs.promises.writeFile(store.album,JSON.stringify(context.album));
 
 exports.artist = async () => await readJSON(store.artist);
 exports.readArtist = async () => await readJSON(store.artist).then(o=>Object.assign(context.artist,o)).catch(()=>context.artist=[]);
-exports.writeArtist = async () => await writeFilePromise(store.artist,JSON.stringify(context.artist,null,2));
+exports.writeArtist = async () => await fs.promises.writeFile(store.artist,JSON.stringify(context.artist,null,2));
 
 exports.genre = async () => await readJSON(store.genre);
 exports.readGenre = async () => await readJSON(store.genre).then(o=>Object.assign(context.genre,o)).catch(()=>context.genre=[]);
-exports.writeGenre = async () => await writeFilePromise(store.genre,JSON.stringify(context.genre,null,2));
+exports.writeGenre = async () => await fs.promises.writeFile(store.genre,JSON.stringify(context.genre,null,2));
 
 exports.selectDatabase = async (uid,dir)  => await app.sql.query('SELECT * FROM ?? WHERE uid = ? AND dir = ?;',[tableTrack,uid,dir])
 exports.insertDatabase = async (uid,dir) => await app.sql.query('INSERT INTO ?? (uid,dir) VALUES (?,?);',[tableTrack,uid,dir]);

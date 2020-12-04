@@ -38,6 +38,7 @@ node run register falam
 
 ```js
 // node run playsupdate
+const register = require('./cli.register');
 exports.playsupdate = async () => await register.playsupdate();
 ```
 
@@ -45,7 +46,8 @@ exports.playsupdate = async () => await register.playsupdate();
 
 ## scan
 
-...Cloud directories
+...Cloud directories, create UniqueId for album and format *bucket.?.json* using *config.template.bucket*
+data will be merged in *config.store.bucket*
 
 `node run scan [bucket] [directory(optional)]`
 ...

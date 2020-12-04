@@ -4,7 +4,7 @@ const app = require('..');
 const {Burglish} = app.Common;
 const fs = require('fs');
 const path = require('path');
-const request = require('request');
+// const request = require('request');
 const NodeID3 = require('node-id3');
 // var {setting} = require('../config');
 // const {readBucket,readAlbum,writeAlbum,selectDatabase,insertDatabase} = require('./data');
@@ -14,8 +14,8 @@ var taskList = [];
 const gmhDirectory = path.join(app.Config.storage,'gmh');
 const gmhFile = path.join(gmhDirectory,'feed.json');
 
-const readJSON = async () => readFilePromise(gmhFile).then(o=>Object.assign(taskList,JSON.parse(o))).catch(()=>taskList=[]);
-const writeJSON = async () => writeFilePromise(gmhFile,JSON.stringify(taskList,null,2));
+const readJSON = async () => fs.promises.readFile(gmhFile).then(o=>Object.assign(taskList,JSON.parse(o))).catch(()=>taskList=[]);
+const writeJSON = async () => fs.promises.writeFile(gmhFile,JSON.stringify(taskList,null,2));
 
 
 module.exports.main = async function(){

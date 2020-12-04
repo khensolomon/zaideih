@@ -38,8 +38,8 @@ exports.id3 = async () => await id3.main();
 exports.rename = async () => await rename.main();
 
 // SEE: cli.md#gmh
-exports.gmh = async () => await gmh.main();
-exports.gmh_name = async () => await gmh.name();
+// exports.gmh = async () => await gmh.main();
+// exports.gmh_name = async () => await gmh.name();
 
 // SEE: cli.md#testing
 exports.testing = async () => await testing();
