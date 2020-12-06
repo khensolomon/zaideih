@@ -11,9 +11,15 @@
     "test-port": "set PORT=5000 && node serve",
     "test-listen": "set LISTEN= && node serve",
     "test-production": "set NODE_ENV=production && node serve",
+    "install:webpack": "npm install --save-dev webpack webpack-cli",
+    "pm2:start": "pm2 start",
+    "pm2:startJSON": "pm2 start pm2.json",
+    "pm2:reload": "pm2 reload Zaideih",
+    "pm2:reloadJSON": "pm2 reload pm2.json",
+    "pm2:stop": "pm2 stop Zaideih",
+    "pm2:delete": "pm2 delete Zaideih",
     "pm2:kill": "pm2 kill",
-    "pm2:start": "pm2 start pm2.json",
-    "install:webpack": "npm install --save-dev webpack webpack-cli"
+    "pm2:list": "pm2 list"
   },
   "repository": {
     "type": "git",

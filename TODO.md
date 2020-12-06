@@ -1,6 +1,8 @@
 # Todo
 
-- [ ] search bar
+## utilities
+
+- [x] search bar
 - [ ] playlist save
 - [ ] track-list - sortable
 - [ ] artist-list - css
@@ -11,3 +13,10 @@
 - [ ] track-list - meta - inline-flex
 
 - [ ] play all - album, artist
+- [x] Shorten plays count
+- [ ] volume off highlight
+
+## bugs
+
+- [x] reading data from both disk & cloud (server)
+- [x] repair local storage (client)
