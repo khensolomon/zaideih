@@ -1,5 +1,6 @@
 import Player from './player/index.vue';
 import Timer from './timer';
+import Digit from './digit';
 export default {
   // name: 'App',
   // props: ['name'],
@@ -12,7 +13,29 @@ export default {
       // audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
       audio:'*/oidua/ipa/'.split("").reverse().join("")
     },
-    queue:[],
+    queue:[
+      // {
+      //   a:['Katie Melua'],
+      //   d:'3.41',
+      //   i:'Katie-Melua-If-You-Were-A-Sailboat.mp3',
+      //   p:224564563,
+      //   t:'If You Were A Sailboat'
+      // },
+      // {
+      //   a:['Rod Stewart'],
+      //   d:'4:51',
+      //   i:'rod-stewart-sailing.mp3',
+      //   p:127237368,
+      //   t:'Sailing'
+      // },
+      // {
+      //   a:['Ruben'],
+      //   d:'2:59',
+      //   i:'Ruben-Dear-God.mp3',
+      //   p:6775752667,
+      //   t:'Dear God'
+      // }
+    ],
     playing:false
 	}),
   components: {
@@ -46,6 +69,7 @@ export default {
       e.forEach(i=>this.queue.push(i));
       // this.play();
       this.playNow(this.queue[0].i)
+      console.log(this.queue);
     },
     async playNow(id){
       await this.setQueue(id).then(
@@ -167,8 +191,9 @@ export default {
         ).length
       );
     },
-
-
+    digitShortenTesting(digit){
+      return new Digit(digit).shorten();
+    },
     utf8(str){
       // for (var i = 0; i < str.length; i++) if (str.charCodeAt(i) > 127) return true;
       // return false;

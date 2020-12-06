@@ -45,10 +45,18 @@ new Vue({
     async fetch(uri){
       uri = uri.split("").reverse().join('');
       var id = uri.split('/').slice(-1)[0], k = id.split("").reverse().join('');
-      var o = await this.getItem(k);
-      if (JSON.stringify(o).length == this.meta[id]) {
-        this.all[id] = o;
-      } else {
+
+      try {
+        var o = await this.getItem(k);
+        if (JSON.stringify(o).length == this.meta[id]) {
+          this.all[id] = o;
+        } else {
+          // NOTE: throw error, so that catch can request a new data. This happen when local storage has no data
+          this.error = 'eadsfasdfasdf';
+          throw 'error';
+        }
+      } catch (error) {
+        // NOTE: This happened because local storage is empty or user has modified. So we just simply request fresh data.
         await this.$http.get(uri).then(response=>{
           this.all[id] = response.data;
         }, error=>{
