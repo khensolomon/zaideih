@@ -51,16 +51,13 @@ export default {
       // this.$.testPlayerEvent.push('ss:'+this.percentProgress);
     },
     loadstart() {
-      console.log('loadstart')
       this.loading=true;
     },
     loadedmetadata() {
     },
     canplaythrough() {
-      console.log('canplaythrough')
     },
     canplay() {
-      console.log('canplay')
       this.loading=false;
     },
     eventPlay() {
@@ -136,7 +133,6 @@ export default {
       this.isShuffle= !this.isShuffle;
     },
     stop(){
-      console.log('stop from player');
 			this.audio.pause();
       this.audio.currentTime = 0;
       this.track={};
