@@ -7,7 +7,11 @@ exports.id = async function(Id){
   });
   try {
     const [row] = await data.trackById(Id);
-    return row;
+    if (row){
+      return row;
+    } else {
+      throw 'none';
+    }
   } catch (error) {
     throw error
   }
