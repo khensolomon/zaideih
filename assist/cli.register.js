@@ -5,8 +5,8 @@ const {bucketActive,context,bucketAvailable,template} = app.Config;
 const {readBucket,readAlbum,readArtist,writeArtist,readGenre,writeGenre,writeAlbum,selectDatabase,insertDatabase} = require('./data');
 
 const throwError = function() {
-  if (!app.Param.length) throw 'bucket required?';
-  if (!bucketActive) throw 'bucket unavailable: 0'.replace(0,app.Param.join('/'));
+  if (!app.Param.length) throw 'required a [bucket] name?';
+  if (!bucketActive) throw 'bucket name [0] unavailable'.replace(0,app.Param.join('/'));
 }
 
 exports.main = async function(){
