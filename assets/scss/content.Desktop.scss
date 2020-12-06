@@ -839,12 +839,15 @@ div {
           // }
         }
         &.begin{
-          text-align: center;
           span {
+            text-align: center;
             &.count{
+              // position: relative;
+              // min-width: 40px;
               width: 60px;
               font-size: 0.9em;
               border-radius: 3px;
+              padding: 4px 2px;
               // color: darken($Color,20);
               // background-color: darken($ColorBackground,3);
               // color: lighten($Color,5);
@@ -853,7 +856,12 @@ div {
               // background-color: lighten($ColorGold,23);
               @include text-shadow(0px,1px,1px,darken($ColorBackground,10));
               // &::before{
-              //   color: lighten($Color,10);
+              //   // position: absolute;
+              //   // left: 2px;
+              //   // break-after: always;
+              //   // text-align: left;
+
+              //   // color: lighten($Color,10);
               //   // color: darken($ColorGold,13);
               // }
             }

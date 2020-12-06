@@ -36,7 +36,16 @@ div.player-controls{
         color: darken(silver,20);
        }
       //  &.title{}
-      //  &.artist{}
+       &.artist{
+        &:hover{
+          a{
+            color:darken($ColorGold,13);
+          }
+          &::before{
+            color:darken($ColorGold,13);
+          }
+        }
+       }
       //  &.album{}
      }
     }
@@ -275,6 +284,9 @@ div.player-controls{
           width: 150px;
           span{
             width: 20%;
+            &.muted::before{
+              color: red;
+            }
           }
           input[type=range] {
             display: inline-block;

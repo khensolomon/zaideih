@@ -58,7 +58,7 @@
       <li>
         <div class="volume">
           <span v-if="volume>0.9" v-on:click="mute" class="icon-volume-up"></span>
-          <span v-else-if="volume==0" v-on:click="mute" class="icon-volume-off"></span>
+          <span v-else-if="volume==0" v-on:click="mute" class="muted icon-volume-off"></span>
           <span v-else v-on:click="mute" class="icon-volume-down"></span>
           <!-- <span v-on:click="mute" title="Mute" class="icon-volume-up" >Mute</span> -->
           <!-- <input v-model.lazy.number="volume" type="range" min="0" max="100"/> -->
