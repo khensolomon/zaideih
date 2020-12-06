@@ -5,7 +5,7 @@
     </div>
     <div class="begin">
       <span class="trk"></span>
-      <span class="count icon-headphones" v-text="track.p"></span>
+      <span class="count icon-headphones" v-text="$.digitShortenTesting(track.p)"></span>
     </div>
     <div class="meta">
       <p class="title"><a>{{track.t}}</a></p>
@@ -40,7 +40,6 @@ export default {
           if (this.queueId != this.track.i) this.$.player.stop();
           this.$.playNow(this.track.i);
         } else {
-          console.log('2')
           this.$.addQueue(this.track).then(
             isQueued => {
               if (isQueued || this.playing == false) {
