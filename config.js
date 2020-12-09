@@ -20,13 +20,15 @@ module.exports = {
       album:'store/album.json',
       artist:'store/album.artist.json',
       genre:'store/album.genre.json',
+      title:'store/track.title.json',
       bucket:'store/bucket.?.json'
     },
     context:{
       album:[],
       artist:[],
       genre:[],
-      bucket:[]
+      bucket:[],
+      title:[]
     },
     bucketActive:null,
     template:{
@@ -38,6 +40,7 @@ module.exports = {
     }
   }
 };
+
 /*
 bucketAvailable:[
   'untitle',

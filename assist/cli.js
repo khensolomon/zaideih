@@ -8,8 +8,23 @@ const scan = require('./cli.scan');
 const check = require('./cli.check');
 const id3 = require('./cli.id3');
 const rename = require('./cli.rename');
-const gmh = require('./cli.gmh');
+const m3s = require('./cli.m3s');
+// const gmh = require('./cli.gmh');
 const testing = require('./cli.testing');
+
+// setting.bucketActive = setting.bucketAvailable.includes(app.Param[0])?app.Param[0]:null;
+// setting.bucketFile = path.join(app.Config.media,setting.bucketFile).replace('?',setting.bucketActive||'tmp');
+
+// setting.albumFile = path.join(app.Config.media,setting.albumFile);
+// setting.artistFile = path.join(app.Config.media,setting.artistFile);
+// setting.genreFile = path.join(app.Config.media,setting.genreFile);
+
+// setting.albumFile = path.join(app.Config.media,'store',setting.albumFile);
+// setting.artistFile = path.join(app.Config.media,'store',setting.artistFile);
+// setting.genreFile = path.join(app.Config.media,'store',setting.genreFile);
+// setting.albumFile = path.join(app.Config.media,'store',setting.albumFile).replace('.json',_fileVersion);
+// setting.artistFile = path.join(app.Config.media,'store',setting.artistFile).replace('.json',_fileVersion);
+// setting.genreFile = path.join(app.Config.media,'store',setting.genreFile).replace('.json',_fileVersion);
 
 exports.main = async () => 'what do you mean?';
 
@@ -17,7 +32,8 @@ exports.main = async () => 'what do you mean?';
 exports.register = async () => await register.main();
 
 // SEE: cli.md#scan
-exports.scan = async () => await scan.main();
+exports.scanCloud = async () => await scan.cloud();
+exports.scanLocal = async () => await scan.local();
 
 // SEE: cli.md#checkAlbum
 exports.checkAlbumId = async () => await check.checkAlbumId();
@@ -32,7 +48,8 @@ exports.checkTrackAlbum = async () => await check.checkTrackAlbum();
 exports.checkTrackNumber = async () => await check.checkTrackNumber();
 
 // SEE: cli.md#id3
-exports.id3 = async () => await id3.main();
+exports.id3Cloud = async () => await id3.cloud();
+exports.id3Local = async () => await id3.local();
 
 // SEE: cli.md#rename
 exports.rename = async () => await rename.main();
@@ -40,6 +57,9 @@ exports.rename = async () => await rename.main();
 // SEE: cli.md#gmh
 // exports.gmh = async () => await gmh.main();
 // exports.gmh_name = async () => await gmh.name();
+
+// SEE: cli.md#m3s
+exports.m3s = async (e) => await m3s.main(e);
 
 // SEE: cli.md#testing
 exports.testing = async () => await testing();

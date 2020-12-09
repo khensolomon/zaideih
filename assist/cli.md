@@ -46,28 +46,52 @@ exports.playsupdate = async () => await register.playsupdate();
 
 ## scan
 
-...Cloud directories, create UniqueId for album and format *bucket.?.json* using *config.template.bucket*
+...Cloud/Local directories, create UniqueId for album and format *bucket.?.json* using *config.template.bucket*
 data will be merged in *config.store.bucket*
 
-`node run scan [bucket] [directory(optional)]`
+`node run scan* [bucket] [directory(optional)]`
+
+`bucket` is one of config.bucketAvailable
+
 ...
 
 ```bash
-node run scan zola
-node run scan zola Agape
-node run scan myanmar ANOO
-node run scan myanmar MMGSL
-node run scan myanmar MPROL
-node run scan myanmar NAHNUAI
-node run scan myanmar PUKHEN
-node run scan myanmar GMH
-node run scan myanmar knot 'အရိပ်၏မျိုးစေ့'
-node run scan myanmar 'knot/ဟင်းလင်းပြင်၏ တံခါးဝှက်'
-node run scan myanmar SINGLE -> ?
-node run scan myanmar VARIOUS -> ?
-node run scan english ?
-node run scan mizo
-node run scan falam
+node run scanCloud zola
+node run scanCloud zola Agape
+node run scanCloud myanmar ANOO
+node run scanCloud myanmar MMGSL
+node run scanCloud myanmar MPROL
+node run scanCloud myanmar NAHNUAI
+node run scanCloud myanmar PUKHEN
+node run scanCloud myanmar GMH
+node run scanCloud myanmar knot 'အရိပ်၏မျိုးစေ့'
+node run scanCloud myanmar 'knot/ဟင်းလင်းပြင်၏ တံခါးဝှက်'
+node run scanCloud myanmar SINGLE -> ?
+node run scanCloud myanmar VARIOUS -> ?
+node run scanCloud english ?
+node run scanCloud mizo
+node run scanCloud falam
+
+node run scanLocal myanmar "d:/m3s/9"
+```
+
+---
+
+## id3
+
+...get ID3 from Cloud/Local and update *bucket.?.json*
+
+`node run id3* [bucket] [albumID(optional)]`
+...
+
+```bash
+node run id3Cloud zola
+node run id3Cloud myanmar 92d719820999e4a2ad04
+node run id3Cloud mizo
+node run id3Cloud falam
+
+node run id3Local myanmar edef2003118078c72ed2
+node run id3Local myanmar 6cda20a911867a327a10
 ```
 
 ---
@@ -107,22 +131,6 @@ node run checkTrackYear zola
 node run checkTrackArtist zola
 node run checkTrackAlbum zola
 node run checkTrackNumber zola
-```
-
----
-
-## id3
-
-...get ID3 from Cloud Storage
-
-`node run id3 [bucket] [albumID(optional)]`
-...
-
-```bash
-node run id3 zola
-node run id3 myanmar 92d719820999e4a2ad04
-node run id3 mizo
-node run id3 falam
 ```
 
 ---

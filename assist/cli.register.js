@@ -2,28 +2,34 @@ const app = require('..');
 const path = require('path');
 const {bucketActive,context,bucketAvailable,template} = app.Config;
 
-const {readBucket,readAlbum,readArtist,writeArtist,readGenre,writeGenre,writeAlbum,selectDatabase,insertDatabase} = require('./data');
+const {readBucket,readAlbum,readArtist,writeArtist,readGenre,writeGenre,writeAlbum,selectDatabase,insertDatabase,selectAllTrack,readTitle} = require('./data');
 
-const throwError = function() {
-  if (!app.Param.length) throw 'required a [bucket] name?';
-  if (!bucketActive) throw 'bucket name [0] unavailable'.replace(0,app.Param.join('/'));
+function throwError() {
+  if (!app.Param.length) throw '> require bucket';
+  if (!app.Config.bucketActive) throw '> no such "?" bucket'.replace('?',app.Param.join('/'));
 }
 
 exports.main = async function(){
   throwError();
 
   await readBucket();
+  // const taskBucket = context.bucket;
   const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])
   );
 
+  await readTitle();
   await readArtist();
   await readGenre();
   await readAlbum();
+
+  // var select = [];
+  var select = await selectAllTrack();
+
   for (const album of taskBucket) {
     console.log('>',album.id,album.dir);
     var update = 0, insert = 0;
-    const language = bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
+    const language = await bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
     for (const track of album.track) {
       var dir = [album.dir,track.file].join('/');
       // var dir = path.join(album.dir,track.file);
@@ -34,10 +40,10 @@ exports.main = async function(){
         track.title=path.parse(track.file).name;
       }
       if (!track.artist.length && album.meta.artist){
-        track.artist=album.meta.artist.split(',');
+        track.artist=album.meta.artist.split(/(?:,|;)+/);
       }
       if (!track.genre.length && album.meta.genre){
-        track.genre=album.meta.genre.split(',');
+        track.genre=album.meta.genre.split(/(?:,|;)+/);
       }
       if (!track.album && album.meta.album){
         track.album=album.meta.album;
@@ -48,23 +54,27 @@ exports.main = async function(){
       track.track = parseInt(track.track||0);
       track.artist = await indexArtists(track.artist);
       track.genre = await indexGenres(track.genre);
-      var select = await selectDatabase(album.id,dir);
-      if (!select.length){
+
+      var row = await select.find(
+        e => e.uid == album.id && e.dir == dir
+      );
+      if (row) {
+        update++;
+        track.id=row.id;
+        track.plays=row.plays;
+        track.status=row.status;
+      } else {
         var row = await insertDatabase(album.id,dir);
         insert++;
         track.id=row.insertId;
         track.plays=0;
         track.status=0;
-      } else {
-        update++;
-        track.id=select[0].id;
-        track.plays=select[0].plays;
-        track.status=select[0].status;
       }
+
     }
     var isOk = album.track.length == (update + insert);
-    var msgTemplate = 'total:update/insert status';
-    console.log(' ','db',msgTemplate,msgTemplate.replace('total',album.track.length).replace('update',update).replace('insert',insert).replace('status',isOk))
+    var msgTemplate = 'total:insert/update status';
+    console.log(' ','db',msgTemplate,msgTemplate.replace('total',album.track.length).replace('insert',insert).replace('update',update).replace('status',isOk))
   }
 
   await taskAlbum(taskBucket);
@@ -76,50 +86,53 @@ exports.main = async function(){
 
 async function taskAlbum(taskBucket){
   for (const album of taskBucket) {
-    var albumTemplate = Object.assign({},template.album);
-    // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
-    albumTemplate.ui = album.id;
-    albumTemplate.ab = album.track[0].album;
+    if (album.track.length) {
+      var albumTemplate = Object.assign({},template.album);
+      // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
+      albumTemplate.ui = album.id;
+      albumTemplate.ab = album.track[0].album;
 
-    var albumGenre = album.track.map(row => row.genre).reduce((prev, next) => prev.concat(next),[])
-    albumTemplate.gr = [...new Set(albumGenre)].sort();
+      var albumGenre = album.track.map(row => row.genre).reduce((prev, next) => prev.concat(next),[])
+      albumTemplate.gr = [...new Set(albumGenre)].sort();
 
-    var albumYear = album.track.map(row => row.year).reduce((prev, next) => prev.concat(next),[])
-    albumTemplate.yr = [...new Set(albumYear)].sort();
+      var albumYear = album.track.map(row => parseInt(row.year)).reduce((prev, next) => prev.concat(next),[])
+      albumTemplate.yr = [...new Set(albumYear)].sort();
 
-    albumTemplate.lg = album.track[0].lang;
-    // var albumLanguage = album.track.map(row => row.language).reduce((prev, next) => prev.concat(next),[])
-    // albumTemplate.lg = [...new Set(albumLanguage)].sort();
+      albumTemplate.lg = album.track[0].lang;
+      // var albumLanguage = album.track.map(row => row.language).reduce((prev, next) => prev.concat(next),[])
+      // albumTemplate.lg = [...new Set(albumLanguage)].sort();
 
-    // var albumPlays = album.track.map(row => row.plays).reduce((prev, next) => prev.concat(next),[])
-    // albumTemplate.p = albumPlays.reduce((total,num)=> total+num);
+      // var albumPlays = album.track.map(row => row.plays).reduce((prev, next) => prev.concat(next),[])
+      // albumTemplate.p = albumPlays.reduce((total,num)=> total+num);
 
-    albumTemplate.tk = [];
-    album.track.sort((a, b) => (a.track > b.track) ? 1 : -1);
-    // album.track.sort((a, b) => a.track - b.track);
-    for (const track of album.track) {
-      var trackTemplate = Object.assign({},template.albumTrack);
-      // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
-      trackTemplate.i=track.id;
-      trackTemplate.t=track.title;
-      trackTemplate.a=track.artist;
-      // trackTemplate.n=track.track;
-      // trackTemplate.n=parseInt(track.track||0);
-      trackTemplate.d=track.duration;
-      trackTemplate.p=track.plays;
-      // trackTemplate.s=track.status;
-      albumTemplate.tk.push(trackTemplate)
-    }
+      albumTemplate.tk = [];
+      album.track.sort((a, b) => (a.track > b.track) ? 1 : -1);
+      // album.track.sort((a, b) => a.track - b.track);
+      for (const track of album.track) {
+        var trackTemplate = Object.assign({},template.albumTrack);
+        // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
+        trackTemplate.i=track.id;
+        trackTemplate.t= await titleCorrention(track.title);
+        trackTemplate.a=track.artist;
+        // trackTemplate.n=track.track;
+        // trackTemplate.n=parseInt(track.track||0);
+        trackTemplate.d=convert2Seconds(track.duration);
+        trackTemplate.p=track.plays;
+        // trackTemplate.s=track.status;
+        albumTemplate.tk.push(trackTemplate)
+      }
 
-    var index = context.album.findIndex(e=>e.ui == album.id);
-    if (index >= 0 ){
-      // console.log(' json:',album.id,'-> updated')
-      context.album[index]=albumTemplate;
-    } else {
-      // console.log(' json:',album.id,'-> inserted')
-      context.album.push(albumTemplate)
+      var index = context.album.findIndex(e=>e.ui == album.id);
+      if (index >= 0 ){
+        // console.log(' json:',album.id,'-> updated')
+        context.album[index]=albumTemplate;
+      } else {
+        // console.log(' json:',album.id,'-> inserted')
+        context.album.push(albumTemplate)
+      }
     }
   }
+
 }
 
 async function indexArtists (artists){
@@ -147,6 +160,21 @@ async function indexArtists (artists){
   return [...new Set(result)];
 }
 
+async function titleCorrention(i){
+
+  var name = i.trim().replace(/ {1,}/g," ");
+  var nameLC = name.toLowerCase();
+  var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
+
+  var index = context.title.find(
+    e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase()
+  );
+  if (index){
+    return index.name;
+  }
+  return name;
+}
+
 async function indexGenres (genres){
   var result = genres.map(
     i=> {
@@ -170,6 +198,22 @@ async function indexGenres (genres){
   );
   return [...new Set(result)];
 }
+
+function convert2Seconds(time) {
+  // var time = "00:3:50";
+  if (!time) return 0;
+  var i = time.split(":");
+  if (i.length > 2) {
+    return (parseInt(i[0], 10) * 60 * 60) + (parseInt(i[1], 10) * 60) + parseInt(i[2], 10)
+  } else if (i.length == 2) {
+    return (parseInt(i[0], 10) * 60) + parseInt(i[1], 10)
+  } else if (isNaN(i[0])) {
+    return 0
+  } else {
+    return parseInt(i[0], 10);
+  }
+}
+
 
 /*
 exports.playsupdate = async function(){
