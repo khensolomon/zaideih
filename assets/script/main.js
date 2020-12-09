@@ -235,7 +235,8 @@ export default {
       return trk;
     },
     trackDuration(e){
-      return new Timer(e.map(track => track.d)).format();
+      return new Timer(e).shorten();
+      // return new Timer(e.map(track => track.d)).format();
     },
     // sortTrackNumber(e){
     //   // return e.sort((a, b) => (a.n > b.n) ? 1 : -1)

@@ -5,14 +5,15 @@
     </div>
     <div class="begin">
       <span class="trk"></span>
-      <span class="count icon-headphones" v-text="$.digitShortenTesting(track.p)"></span>
+      <span class="count icon-headphones" v-text="track.p>0?$.digitShortenTesting(track.p):''"></span>
     </div>
     <div class="meta">
       <p class="title"><a>{{track.t}}</a></p>
       <p class="artist"><router-link v-for="(artist,index) in $.artistName(track)" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
     </div>
     <div class="end">
-      <span v-text="track.d"></span>
+      <!-- <span v-text="track.d"></span> -->
+      <span v-text="$.trackDuration(track.d)"></span>
     </div>
     <div class="at mre">
       <span class="icon-info"></span>

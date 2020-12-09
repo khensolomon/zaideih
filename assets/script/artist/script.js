@@ -7,6 +7,7 @@ export default {
   data: () => ({
     activeLang:null,
     limitShow: 30,
+    tracksLimit:99,
     artist:{},
     albums:[],
     tracks:[],
@@ -16,6 +17,7 @@ export default {
   components: {
     trackRow, albumRow, albumRaw
   },
+
   // filters:{
   //   sumplay: function(e){
   //     return e.reduce((a, b) => a + parseInt(b.p), 0);
@@ -50,6 +52,14 @@ export default {
       // this.$.play();
       this.$.playAll(this.tracks);
     },
+  },
+  watch: {
+    tracksLimit(e){
+      this.tracksLimit = e<this.tracks.length?e:this.tracks.length;
+    },
+    // tracksByArtistLimit(e){
+    //   this.tracksByArtistLimit = e<this.tracksByArtist.length?e:this.tracksByArtist.length;
+    // },
   },
   computed: {
     $(){
@@ -148,7 +158,8 @@ export default {
       return this.albums.length;
     },
     trackDuration(){
-      return this.$.trackDuration(this.tracks);
+      // return this.$.trackDuration(this.tracks);
+      return this.$.trackDuration(this.tracks.map(track => track.d));
     }
   }
 }

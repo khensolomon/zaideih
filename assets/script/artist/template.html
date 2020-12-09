@@ -31,7 +31,13 @@
       </div>
       <div class="row center- tracks bg sh">
         <div class="track-row">
-          <track-row v-for="track in tracks" v-bind:track="track" :key="track.id" />
+          <!-- <track-row v-for="track in tracks" v-bind:track="track" :key="track.id" /> -->
+          <track-row v-for="(n, index) in tracksLimit" v-bind:track="tracks[index]" :key="index" />
+          <div v-if="tracks.length > tracksLimit" class="show-more">
+            <p @click="tracksLimit += 9" class="icon-right">
+              <span v-text="tracksLimit" class="limit"></span><span v-text="tracks.length" class="total"></span><span class="more">more</span>
+            </p>
+          </div>
         </div>
       </div>
       <div v-if="artistRelated.length" class="row center name-artist artists related">
