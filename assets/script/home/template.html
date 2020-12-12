@@ -34,9 +34,9 @@
   </div> -->
   <div v-if="all.lang.length" class="row center most">
     <div v-for="(lang,index) in all.lang" :key="index" :class="lang.name">
-      <h3>
+      <h2>
         <router-link :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}}</router-link>
-      </h3>
+      </h2>
       <div v-if="popularArtist[lang.id].length" class="show-lang badge-tag">
         <router-link v-for="(artist,index) in popularArtist[lang.id]" :to="{ path: '/artist/'+artist.name}" :key="index">{{artist.name}}<span v-if="artist.aka">({{artist.aka}})</span></router-link>
       </div>
