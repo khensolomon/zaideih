@@ -313,12 +313,12 @@ div {
             &.album{
               a{
                 display: block;
-                padding:10px 5px;
+                padding:10px;
                 line-height: 23px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 color: darken($Color,10);
-                font-size: 15px;
+                font-size: 110%;
                 &:hover{
                   background-color: darken($ColorBackground,15);
                 }
@@ -875,10 +875,8 @@ div {
         }
         &.meta{
           flex:1;
-          // flex-direction: column;
-          // order:2;
           justify-content: space-between;
-
+          width: 70px;
           p {
             white-space: nowrap;
             text-overflow: ellipsis;
@@ -887,6 +885,8 @@ div {
             padding-left:10px;
             a {
               color: darken($Color,0);
+              overflow: hidden;
+              line-height: 25px;
               &:not(:last-child) {
                 // <span v-if="index != 0">, </span>
                 margin-right: 15px;
@@ -902,8 +902,7 @@ div {
             }
             &.title{
               a {
-                font-size: 100%;
-                // line-height: 140%;
+                font-size: 110%;
               }
             }
             &.artist{
@@ -922,10 +921,9 @@ div {
           }
         }
         &.end{
-          overflow: hidden;
-          text-overflow: ellipsis;
           // order:3;
           font-size: 0.9em;
+          max-width: 40px;
           span {
             width:40px;
             // text-align: center;
@@ -1013,6 +1011,7 @@ div {
             flex-direction: column;
             flex-wrap: nowrap;
             justify-content: center;
+            width:70px;
             // align-items: center;
             // align-content: stretch;
             // align-content: center;
@@ -1023,8 +1022,12 @@ div {
                 }
               }
               // &.artist{
+              //   // display: flex;
+              //   // overflow: hidden;
+              //   max-width: 100px;
               //   a {
-              //     font-size: 80%;
+              //     // font-size: 80%;
+              //     // display: inline;
               //   }
               // }
             }
