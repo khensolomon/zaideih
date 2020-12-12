@@ -69,7 +69,6 @@ export default {
       e.forEach(i=>this.queue.push(i));
       // this.play();
       this.playNow(this.queue[0].i)
-      console.log(this.queue);
     },
     async playNow(id){
       await this.setQueue(id).then(
