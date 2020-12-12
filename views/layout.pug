@@ -1,8 +1,11 @@
 doctype html
 html(lang='en')
   head
-    meta(charset='utf-8')
-    meta(name="viewport" content="width=device-width, initial-scale=1.0, minimal-ui, minimum-scale=1,maximum-scale=1, user-scalable=no")
+    meta(charset='UTF-8')
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    meta(name='robots' content='index, follow')
+    meta(name="theme-color" content="#5a5a5a")
+
     meta(name="apple-mobile-web-app-capable" content="yes")
     meta(names="apple-mobile-web-app-status-bar-style" content="black-translucent")
     meta(name="apple-mobile-web-app-title" content=appName)
@@ -22,11 +25,6 @@ html(lang='en')
     link(rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png")
     link(rel="manifest" href="/app.webmanifest")
 
-
-    //- <script src="https://cdn.jsdelivr.net/npm/vue"></script>
-    //- <script src="https://unpkg.com/vue-router@3.0.7/dist/vue-router.js"></script>
-    //- <script src="https://cdn.jsdelivr.net/npm/vue-resource@1.5.1"></script>
-
     //- Google Tag Manager
     //- script.
     //-   (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -35,9 +33,9 @@ html(lang='en')
     //-   'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     //-   })(window,document,'script','dataLayer','GTM-PBZSB96');
 
-    script(src='https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min.js')
+    script(src='https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js')
     script(src='https://cdn.jsdelivr.net/npm/vue-resource@1.5.1/dist/vue-resource.min.js')
-    script(src='https://cdn.jsdelivr.net/npm/vue-router@3.1.2/dist/vue-router.min.js')
+    script(src='https://cdn.jsdelivr.net/npm/vue-router@3.4.9/dist/vue-router.min.js')
     //- link(rel='stylesheet', href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css')
   body.page
     //- Google Tag Manager (noscript)
