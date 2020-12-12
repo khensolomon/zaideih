@@ -7,7 +7,7 @@ export default {
   data: () => ({
     activeLang:null,
     limitShow: 30,
-    tracksLimit:99,
+    tracksLimit:50,
     artist:{},
     albums:[],
     tracks:[],
