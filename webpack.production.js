@@ -1,4 +1,3 @@
-// const path= require('path');
 const { merge } = require('webpack-merge');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const configuration = require('./webpack.config.js');
@@ -12,8 +11,11 @@ module.exports = merge(configuration, {
   ],
   entry: {
     script:[
-      // path.resolve(__dirname, 'assets/script/analytics.js')
-      './assets/script/analytics.js'
+      './assets/script/analytics.js',
+      './assets/script/sw.register.js',
+    ],
+    sw:[
+      './assets/script/sw.js'
     ]
   },
   module:{

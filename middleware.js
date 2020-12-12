@@ -9,6 +9,12 @@ module.exports = {
 
 app.Core.disable('x-powered-by');
 
+// app.Core.use('/robots.txt', function (req, res, next) {
+//   res.type('text/plain')
+//   // res.send("User-agent: *\nDisallow: /");
+//   res.send("User-Agent: *\nAllow: /");
+// });
+
 // app.Core.use('/vue.js',app.Common.express.static(__dirname + '/node_modules/vue/dist/vue.min.js'));
 // app.Core.use('/vue-resource.js',app.Common.express.static(__dirname + '/node_modules/vue-resource/dist/vue-resource.min.js'));
 // app.Core.use('/vue-router.js',app.Common.express.static(__dirname + '/node_modules/vue-router/dist/vue-router.min.js'));
