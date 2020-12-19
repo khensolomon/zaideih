@@ -1,4 +1,4 @@
-// const app = require('..');
+const app = require('..');
 /*
 $env:GOOGLE_APPLICATION_CREDENTIALS="C:\server\www\secure\Server-245222d1b962.json"
 set GOOGLE_APPLICATION_CREDENTIALS=C:\server\www\secure\Server-245222d1b962.json
@@ -6,7 +6,7 @@ gsaks.json
 */
 const {Storage} = require('@google-cloud/storage');
 exports.storage = new Storage();
-exports.bucket = exports.storage.bucket('storage.lethil.me');
+exports.bucket = exports.storage.bucket(app.Config.bucket);
 
 
 exports.buckets = async () => await exports.storage.getBuckets();
