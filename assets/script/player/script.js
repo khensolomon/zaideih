@@ -37,8 +37,11 @@ export default {
     loadeddata() {
 			if (this.audio.readyState >= 2) {
         this.duration = this.audio.duration;
-        document.title =  this.track.t;
+        document.title =  this.track.t+' - '+ this.artistName().join(', ');
 			}
+		},
+    artistName() {
+			return this.$.artistName(this.track);
 		},
     progress() {
       var ranges = [];
@@ -90,10 +93,10 @@ export default {
 		},
     eventSeekOver(e) {
       if (this.audio.duration){
-        const el = e.target.getBoundingClientRect();
-        const seekClient = (e.clientX - el.left);
-        const seekMax = el.width;
-        const seekPos = seekClient / seekMax
+        let el = e.target.getBoundingClientRect();
+        let seekClient = (e.clientX - el.left);
+        let seekMax = el.width;
+        let seekPos = seekClient / seekMax
         if (seekClient > 0 && seekClient < seekMax ){
           this.hover = this.audio.duration * seekPos;
           this.hoverLeft=seekClient-18;
@@ -190,7 +193,6 @@ export default {
     }
   },
   created(){
-
     // console.log(this.$.all.lang)
     // console.log(this.$.queueId)
   }
