@@ -1,7 +1,8 @@
 {
   "name": "zaideih",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Zaideih Music Station",
+  "live": "https://www.zaideih.com",
   "main": "index.js",
   "scripts": {
     "build": "webpack --config webpack.production.js",
@@ -52,6 +53,7 @@
     "sass": "^1.29.0",
     "sass-loader": "^10.1.0",
     "script-loader": "^0.7.2",
+    "siege": "^0.2.0",
     "style-loader": "^2.0.0",
     "url-loader": "^4.1.1",
     "vue": "^2.6.12",

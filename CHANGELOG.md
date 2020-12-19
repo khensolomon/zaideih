@@ -1,12 +1,21 @@
 # Version
 
-## 1.0
+## 1.1.0
 
-Feature
+Improve
 
-- album
-- artist
-- queue
+- track to file
+- middleware
+
+Add
+
+- artist -> title
+
+## 1.0.9
+
+Improve
+
+- visibility (track>meta>artist)
 
 ## 1.0.8
 
@@ -27,8 +36,10 @@ Update
 
 - framework, Package
 
-## 1.0.9
+## 1.0
 
-Improve
+Feature
 
-- visibility (track>meta>artist)
+- album
+- artist
+- queue
