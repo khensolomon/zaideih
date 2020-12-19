@@ -1,15 +1,20 @@
 const app = require('..');
-const {Burglish} = app.Common;
+// const {Burglish} = app.Common;
+
+const abc = require('./crypto');
 
 // var {setting} = require('../config');
-// const {readBucket,readAlbum,writeAlbum,selectDatabase,insertDatabase} = require('./data');
+// const {readBucket,readAlbum,writeAlbum,selectTrack,insertTrack} = require('./data');
 
 module.exports = async function(){
   // var artists = ['Mv paunos','Mv pauno','Mv   pauno',' a  b '];
   // console.log(path.parse('Vincy Feat. Catherine Lalpuii Khiangte - Kan Hlim Ni.mp3').name)
-  var abc =  new Burglish('Catherine Lalpuii Khiangte')
-  // abc.toUnicode;
-  console.log('01-ဘုရားခ်စ္တဲ့သုိးေလး',abc.toUnicode)
+  // var abc =  new Burglish('Catherine Lalpuii Khiangte')
+  // // abc.toUnicode;
+  // console.log('01-ဘုရားခ်စ္တဲ့သုိးေလး',abc.toUnicode)
+
+  return app.Config;
+
 
   // var abc =  new Burglish('01-ဘုရားခ်စ္တဲ့သုိးေလး')
   // await abc.toUnicode();

@@ -2,40 +2,59 @@ const app = require('..');
 const path = require('path');
 const {bucketActive,context,bucketAvailable,template} = app.Config;
 
-const {readBucket,readAlbum,readArtist,writeArtist,readGenre,writeGenre,writeAlbum,selectDatabase,insertDatabase,selectAllTrack,readTitle} = require('./data');
+const {
+  readBucket,
+  readAlbum, writeAlbum,
+  readArtist, writeArtist,
+  readGenre, writeGenre,
+  insertTrack,selectTrackAll,
+  readTrackName,readAlbumName
+} = require('./data');
 
-function throwError() {
+function throwError(){
   if (!app.Param.length) throw '> require bucket';
-  if (!app.Config.bucketActive) throw '> no such "?" bucket'.replace('?',app.Param.join('/'));
+  if (!bucketActive) throw '> no such "?" bucket'.replace('?',app.Param.join('/'));
 }
 
 exports.main = async function(){
+  console.log(app.Param);
+}
+
+exports.mainTmp = async function(){
   throwError();
 
   await readBucket();
-  // const taskBucket = context.bucket;
   const taskBucket = context.bucket.filter(
     e=>(app.Param[1] && app.Param[1] == e.id) || (e.track.length && !app.Param[1])
   );
 
-  await readTitle();
+  await readAlbumName();
+  await readTrackName();
   await readArtist();
   await readGenre();
   await readAlbum();
 
   // var select = [];
-  var select = await selectAllTrack();
+  var select = await selectTrackAll();
 
   for (const album of taskBucket) {
-    console.log('>',album.id,album.dir);
     var update = 0, insert = 0;
-    const language = await bucketAvailable.findIndex(e=>e == album.dir.split('/')[1].toLowerCase());
+    // NOTE: music/zola/...
+    var dirAlbum = album.dir.split('/');
+    dirAlbum.shift();
+    var langName = dirAlbum.shift();
+    const langId = await bucketAvailable.findIndex(e=>e == langName.toLowerCase());
+
+    dirAlbum = dirAlbum.join('/');
+    console.log('>',album.id,langId,album.dir);
+
     for (const track of album.track) {
-      var dir = [album.dir,track.file].join('/');
+      // var dir = [album.dir,track.file].join('/');
       // var dir = path.join(album.dir,track.file);
       // var dir = path.join(album.dir,track.file).replace(/\\/g,"/");
       // var dir = album.dir+'/'+track.file;
-      track.lang = language;
+      var dir = dirAlbum+'/'+track.file;
+      track.lang = langId;
       if (!track.title){
         track.title=path.parse(track.file).name;
       }
@@ -56,32 +75,31 @@ exports.main = async function(){
       track.genre = await indexGenres(track.genre);
 
       var row = await select.find(
-        e => e.uid == album.id && e.dir == dir
+        e => e.uid == album.id && e.lang == langId && e.dir == dir
       );
       if (row) {
         update++;
         track.id=row.id;
         track.plays=row.plays;
-        track.status=row.status;
+        // track.status=row.status;
       } else {
-        var row = await insertDatabase(album.id,dir);
         insert++;
+        var row = await insertTrack(album.id,langId,dir);
         track.id=row.insertId;
         track.plays=0;
-        track.status=0;
+        // track.status=0;
       }
-
     }
     var isOk = album.track.length == (update + insert);
     var msgTemplate = 'total:insert/update status';
-    console.log(' ','db',msgTemplate,msgTemplate.replace('total',album.track.length).replace('insert',insert).replace('update',update).replace('status',isOk))
+    console.log(' ',msgTemplate,msgTemplate.replace('total',album.track.length).replace('insert',insert).replace('update',update).replace('status',isOk))
   }
 
   await taskAlbum(taskBucket);
   await writeArtist();
   await writeGenre();
   await writeAlbum();
-  return taskBucket.length?'done':'nothing todo'
+  return taskBucket.length?'...done':'...nothing todo'
 }
 
 async function taskAlbum(taskBucket){
@@ -90,7 +108,7 @@ async function taskAlbum(taskBucket){
       var albumTemplate = Object.assign({},template.album);
       // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
       albumTemplate.ui = album.id;
-      albumTemplate.ab = album.track[0].album;
+      albumTemplate.ab = await albumNameCollection(album.track[0].album);
 
       var albumGenre = album.track.map(row => row.genre).reduce((prev, next) => prev.concat(next),[])
       albumTemplate.gr = [...new Set(albumGenre)].sort();
@@ -112,7 +130,7 @@ async function taskAlbum(taskBucket){
         var trackTemplate = Object.assign({},template.albumTrack);
         // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
         trackTemplate.i=track.id;
-        trackTemplate.t= await titleCorrention(track.title);
+        trackTemplate.t= await trackNameCollection(track.title);
         trackTemplate.a=track.artist;
         // trackTemplate.n=track.track;
         // trackTemplate.n=parseInt(track.track||0);
@@ -135,23 +153,58 @@ async function taskAlbum(taskBucket){
 
 }
 
-async function indexArtists (artists){
+async function albumNameCollection(i){
+  var name = i.trim().replace(/ {1,}/g," ");
+  var nlc = name.toLowerCase();
+  var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+
+  var index = context.albumName.find(
+    e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
+  );
+  if (index){
+    return index.name;
+  }
+  return name;
+}
+
+async function trackNameCollection(i){
+  var name = i.trim().replace(/ {1,}/g," ");
+  var nlc = name.toLowerCase();
+  var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+
+  var index = context.trackName.find(
+    e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
+  );
+  if (index){
+    return index.name;
+  }
+  return name;
+}
+
+async function indexArtists(artists){
   var result = artists.map(
     i=> {
       var name = i.trim().replace(/ {1,}/g," ");
-      var nameLC = name.toLowerCase();
-      var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
+      var nlc = name.toLowerCase();
+      var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
 
+      // var index = context.artist.findIndex(
+      //   e=>e.thesaurus.find(s=> s.toLowerCase() == nlc ) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
+      //   // e=>e.thesaurus.includes(nlc) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
+      // );
       var index = context.artist.findIndex(
-        e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
-        // e=>e.thesaurus.includes(nameLC) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
+        e => e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name || e.correction.find(
+          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
+        ) || e.thesaurus.find(
+          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
+        )
       );
       if (index < 0){
-        var thesaurus = [];
-        if (nameWD){
-          thesaurus.push(nameWD)
+        var correction = [];
+        if (nwd){
+          correction.push(nwd)
         }
-        context.artist.push({name:name,thesaurus:thesaurus});
+        context.artist.push({name:name,correction:correction,thesaurus:[]});
         index = context.artist.length - 1
       }
       return index;
@@ -160,37 +213,27 @@ async function indexArtists (artists){
   return [...new Set(result)];
 }
 
-async function titleCorrention(i){
-
-  var name = i.trim().replace(/ {1,}/g," ");
-  var nameLC = name.toLowerCase();
-  var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
-
-  var index = context.title.find(
-    e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase()
-  );
-  if (index){
-    return index.name;
-  }
-  return name;
-}
-
-async function indexGenres (genres){
+async function indexGenres(genres){
   var result = genres.map(
     i=> {
       var name = i.trim().replace(/ {1,}/g," ");
-      var nameLC = name.toLowerCase();
-      var nameWD = nameLC.includes(".")?nameLC.replace(/\./g, ""):null
+      var nlc = name.toLowerCase();
+      var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
 
       var index = context.genre.findIndex(
-        e=>e.thesaurus.find(s=> s.toLowerCase() == nameLC ) || nameWD && e.thesaurus.includes(nameWD) || e.name.toLowerCase() == name.toLowerCase()
+        // e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
+        e => e.name.toLowerCase() == name.toLowerCase() || e.correction.find(
+          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
+        ) || e.thesaurus.find(
+          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
+        )
       );
       if (index < 0){
-        var thesaurus = [];
-        if (nameWD){
-          thesaurus.push(nameWD)
+        var correction = [];
+        if (nwd){
+          correction.push(nwd)
         }
-        context.genre.push({name:name,thesaurus:thesaurus});
+        context.genre.push({name:name,correction:correction,thesaurus:[]});
         index = context.genre.length - 1
       }
       return index;
@@ -199,19 +242,10 @@ async function indexGenres (genres){
   return [...new Set(result)];
 }
 
+// eg. (HH:MM:SS) 3:23 to 203
 function convert2Seconds(time) {
-  // var time = "00:3:50";
-  if (!time) return 0;
-  var i = time.split(":");
-  if (i.length > 2) {
-    return (parseInt(i[0], 10) * 60 * 60) + (parseInt(i[1], 10) * 60) + parseInt(i[2], 10)
-  } else if (i.length == 2) {
-    return (parseInt(i[0], 10) * 60) + parseInt(i[1], 10)
-  } else if (isNaN(i[0])) {
-    return 0
-  } else {
-    return parseInt(i[0], 10);
-  }
+  var num = parseInt(time.split(':').reduce((a,b) => (60 * a) + +b));
+  return isNaN(num)?0:num;
 }
 
 
@@ -271,9 +305,9 @@ exports.main = async function(){
       // var dir = path.join(album.dir,track.file).replace(/\\/g,"/");
       // var dir = album.dir+'/'+track.file;
       track.language = language;
-      var select = await selectDatabase(album.id,dir.join('/'));
+      var select = await selectTrack(album.id,dir.join('/'));
       if (!select.length){
-        var row = await insertDatabase(album.id,dir.join('/'));
+        var row = await insertTrack(album.id,dir.join('/'));
         insert++;
         track.id=row.insertId;
         track.plays=1;

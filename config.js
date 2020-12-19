@@ -4,31 +4,36 @@ module.exports = {
     // description: 'package.description',
     // version: 'package.version'
     bucketAvailable:[
-      'untitle',
-      'zola',
-      'myanmar',
-      'mizo',
-      'falam',
-      'haka',
-      'english',
-      'chin',
-      'korea',
-      'norwegian',
-      'collection'
+      'untitle', //0
+      'zola', // 1
+      'myanmar', // 2
+      'mizo', // 3
+      'falam', // 4
+      'haka', // 5
+      'english', // 6
+      'chin', // 7
+      'korea', // 8
+      'norwegian', // 9
+      'collection' // 10
     ],
+    // titleTrack titleAlbum album.title album.track album.name album.track track.name album.name name.track name.album
     store:{
       album:'store/album.json',
-      artist:'store/album.artist.json',
-      genre:'store/album.genre.json',
-      title:'store/track.title.json',
+      artist:'store/artist.json',
+      genre:'store/genre.json',
+      // title:'store/track.name.json',
+      trackName:'store/track.name.json',
+      albumName:'store/album.name.json',
       bucket:'store/bucket.?.json'
     },
     context:{
       album:[],
       artist:[],
       genre:[],
-      bucket:[],
-      title:[]
+      title:[],
+      trackName:[],
+      albumName:[],
+      bucket:[]
     },
     bucketActive:null,
     template:{
@@ -42,6 +47,7 @@ module.exports = {
 };
 
 /*
+
 bucketAvailable:[
   'untitle',
   'zola',

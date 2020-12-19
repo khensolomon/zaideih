@@ -29,7 +29,7 @@ const testing = require('./cli.testing');
 exports.main = async () => 'what do you mean?';
 
 // SEE: cli.md#register
-exports.register = async () => await register.main();
+exports.register = async (e) => await register.main(e);
 
 // SEE: cli.md#scan
 exports.scanCloud = async () => await scan.cloud();

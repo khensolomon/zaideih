@@ -1,10 +1,10 @@
 const app = require('..');
 const path = require('path');
-const fs = require('fs');
+// const fs = require('fs');
 const jsdom = require('jsdom');
 const NodeID3 = require('node-id3');
 
-const data = require('./data');
+const {readJSON,writeJSON} = require('./data');
 // const { URLSearchParams } = require('url');
 // const params = new URLSearchParams();
 // params.append('album', s);
@@ -101,8 +101,8 @@ setting.info.artistListFile = path.join(root,setting.info.artistListFile);
 
 exports.main = async function(param){
   // var param = process.argv[2];
-  setting.info.artistListData = await data.readJSON(setting.info.artistListFile);
-  setting.info.albumListData = await data.readJSON(setting.info.albumListFile);
+  setting.info.artistListData = await readJSON(setting.info.artistListFile);
+  setting.info.albumListData = await readJSON(setting.info.albumListFile);
   switch (param) {
     case 'albumdetail-multi':
       // node run m3s albumdetail-multi
@@ -185,7 +185,7 @@ const albumListProcess = async function(pathQuery){
     }
   );
 
-  await data.writeJSON(setting.info.albumListFile,setting.info.albumListData);
+  await writeJSON(setting.info.albumListFile,setting.info.albumListData);
 
   if (taskCompleted) {
     // NOTE: process to Album
@@ -248,7 +248,7 @@ const artistListProcess = async function(){
     }
   );
 
-  await data.writeJSON(setting.info.artistListFile,setting.info.artistListData);
+  await writeJSON(setting.info.artistListFile,setting.info.artistListData);
 
   if (taskCompleted) {
     // NOTE: process to Artist
@@ -426,8 +426,8 @@ const albumDetailProcess = async function(albumDetailTmp){
       }
     }
   }
-  // await data.writeJSON(path.join(root,'tmp-'+albumId+'.json'),albumDetailTmp);
-  await data.writeJSON(setting.info.albumListFile,setting.info.albumListData);
+  // await writeJSON(path.join(root,'tmp-'+albumId+'.json'),albumDetailTmp);
+  await writeJSON(setting.info.albumListFile,setting.info.albumListData);
 
   return 'Done';
 }
@@ -466,7 +466,7 @@ const artistAlbum = async function(){
   //   albumArt:'',
   //   track:{}
   // };
-  await data.writeJSON(setting.info.artistListFile,setting.info.artistListData);
+  await writeJSON(setting.info.artistListFile,setting.info.artistListData);
 
   return 'done';
 

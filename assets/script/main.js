@@ -11,6 +11,7 @@ export default {
     // testPlayerEvent:[],
     api:{
       // audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
+      // audio:'*/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
       audio:'*/oidua/ipa/'.split("").reverse().join("")
     },
     queue:[

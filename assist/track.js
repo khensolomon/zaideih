@@ -1,12 +1,13 @@
 const app = require('..');
-const data = require('./data');
+
+const {trackPlaysUpdate, trackById, trackPlaysList, album, artist, genre} = require('./data');
 
 exports.id = async function(Id){
-  data.trackPlaysUpdate(Id).catch((e)=>{
+  trackPlaysUpdate(Id).catch((e)=>{
     console.log('trackPlaysUpdate',e);
   });
   try {
-    const [row] = await data.trackById(Id);
+    const [row] = await trackById(Id);
     if (row){
       return row;
     } else {
@@ -16,13 +17,14 @@ exports.id = async function(Id){
     throw error
   }
 }
-exports.plays = async () => data.trackPlaysList();
+
+exports.plays = async () => trackPlaysList();
 
 exports.meta = async function(locals){
   var raw = {};
-  raw.album = JSON.stringify(await data.album()).length;
-  raw.artist = JSON.stringify(await data.artist()).length;
-  raw.genre = JSON.stringify(await data.genre()).length
+  raw.album = JSON.stringify(await album()).length;
+  raw.artist = JSON.stringify(await artist()).length;
+  raw.genre = JSON.stringify(await genre()).length
 
   if (locals){
     raw.lang = app.Config.bucketAvailable.join();
