@@ -3,7 +3,7 @@
     <div class="info">
       <p class="title icon-music">{{track.t || '...'}}</p>
       <p v-if="track.a" class="artist icon-artist">
-        <router-link v-for="artist in $.artistName(track)" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
+        <router-link v-for="artist in artistName()" :to="{ path: '/artist/'+artist}" :key="artist">{{artist}}</router-link>
       </p>
       <p v-if="track.b" class="album icon-cd">
         <router-link :to="{ path: '/album/'+ track.b}">{{track.b}}</router-link>
@@ -25,7 +25,7 @@
         @ended="eventEnded"
         :loop="isLoop"
         :src="src"
-        type="audio/mp3" controls hidden>
+        type="audio/mpeg" controls hidden>
       </audio>
       <div class="time start">{{ current | timeFormat }}</div>
       <div class="seek">
