@@ -1,8 +1,4 @@
-const track = require('./track');
-const audio = require('./audio');
+import * as anchor from './anchor/index.js';
 
-exports.trackId = track.id;
-exports.trackPlays = track.plays;
-exports.meta = track.meta;
-
-exports.audio = audio.streamer;
+export const config = anchor.config.setting;
+export const {meta,trackList,audio,store} = anchor;

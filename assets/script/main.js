@@ -1,6 +1,6 @@
 import Player from './player/index.vue';
-import Timer from './timer';
-import Digit from './digit';
+import Timer from './timer.js';
+import Digit from './digit.js';
 export default {
   // name: 'App',
   // props: ['name'],
@@ -11,8 +11,8 @@ export default {
     // testPlayerEvent:[],
     api:{
       // audio_test:'*/yalp/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
-      // audio:'*/oidua/ipa/moc.hiediaz//:ptth'.split("").reverse().join(""),
-      audio:'*/oidua/ipa/'.split("").reverse().join("")
+      audio:'1l=v1d?*/oidua/ipa/moc.hiediaz.www//:sptth'.split("").reverse().join(""),
+      // audio:'*/oidua/ipa/'.split("").reverse().join("")
     },
     queue:[
       // {

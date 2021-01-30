@@ -1,7 +1,7 @@
 // import Vue from 'vue';
 
 import main from './main.vue';
-import router from './router';
+import router from './router.js';
 // import Timer from './timer';
 // Vue.config.productionTip = false;
 // Vue.config.devtools = false

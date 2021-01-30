@@ -1,38 +1,67 @@
-const app = require('.');
-const {restrict} = app.Config;
+import {config,route,parse} from 'lethil';
+// import {language} from './assist/index.js';
 
-// module.exports = {
-//   restrictMiddleWare(req, res){
-//     if (res.locals.referer)
-//       if (req.xhr || req.headers.range) return true
-//   }
-// };
+const routes = route();
 
-app.Core.disable('x-powered-by');
-
-app.Core.use('/api', function (req, res, next) {
-  if (res.locals.referer) {
-    if (req.xhr || req.headers.range) {
-      return next();
+if (config.development){
+  import('./webpack.middleware.js').then(
+    mwa => {
+      routes.use(mwa.dev);
+      routes.use(mwa.hot);
     }
-  } else {
-    var base = Object.keys(restrict), user = Object.keys(req.query), key = base.filter(e => user.includes(e));
-    if (key.length && restrict[key] == req.query[key]) {
-      return next();
-    }
-  }
-  res.status(404).send();
-});
-
-// HACK: if development enviroment -> webpack middleware
-if (app.Config.development) {
-  const webpack = require('webpack'), config = require('./webpack.middleware'), compiler = webpack(config);
-
-  //Enable "webpack-dev-middleware"
-  app.Core.use(require('webpack-dev-middleware')(compiler, {
-    publicPath: config.output.publicPath
-  }));
-
-  //Enable "webpack-hot-middleware"
-  app.Core.use(require('webpack-hot-middleware')(compiler));
+  )
 }
+
+routes.use(
+  /**
+   * @param {*} req
+   * @param {*} res
+   * @param {*} next
+   */
+  function(req, res, next){
+
+    // res.locals.app_locale = locale;
+
+    res.locals.appName = config.name;
+    res.locals.appVersion = config.version;
+    res.locals.appDescription = config.description;
+
+    if (req.headers.referer){
+      var ref = parse.url(req.headers.referer);
+      res.locals.referer = req.headers.host == ref.host;// || config.user.referer.filter((e)=>e.exec(ref.host)).length > 0;
+      res.locals.host = ref.protocol+'//'+req.headers.host;
+    }
+
+    next();
+  }
+);
+
+/**
+ * org: restrictMiddleWare
+ */
+routes.use(
+  '/api/:audio?',
+  /**
+   * @param {*} req
+   * @param {*} res
+   * @param {*} next
+   */
+  function(req, res, next){
+    next();
+    // if (res.locals.referer) return next();
+    // res.status(404).end();
+    // if (req.xhr || req.headers.range) next();
+    // if (req.params.audio && res.locals.referer)
+    // if (res.locals.referer) {
+    //   if (req.xhr || req.headers.range) {
+    //     return next();
+    //   }
+    // } else {
+    //   var base = Object.keys(config.restrict), user = Object.keys(req.query), key = base.find(e => user.includes(e));
+    //   if (key && config.restrict[key] == req.query[key]) {
+    //     return next();
+    //   }
+    // }
+    // res.status(404).send();
+  }
+);
