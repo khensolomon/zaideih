@@ -49,7 +49,7 @@
     "@google-cloud/storage": "^5.7.3",
     "lethil": "file:../lethil",
     "mysql": "^2.18.1",
-    "pug": "^3.0.0",
+    "pug": "^3.0.1",
     "tar": "^6.1.0"
   },
   "devDependencies": {
