@@ -1,5 +1,12 @@
 # Version
 
+## 1.2.0
+
+Package
+
+- @google-cloud/storage: 5.8.1
+- pug: 3.0.2
+
 ## 1.1.0
 
 Improve
