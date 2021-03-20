@@ -1,11 +1,13 @@
 // import Vue from 'vue';
 
+// @ts-ignore
 import main from './main.vue';
 import router from './router.js';
 // import Timer from './timer';
 // Vue.config.productionTip = false;
 // Vue.config.devtools = false
 
+// @ts-ignore
 new Vue({
   router:router,
   data:{
