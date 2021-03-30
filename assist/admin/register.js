@@ -102,10 +102,10 @@ export default async function(req){
     )
   }
 
-  // await taskAlbum(taskBucket);
-  // await store.artist.write();
-  // await store.genre.write();
-  // await store.album.write();
+  await taskAlbum(taskBucket);
+  await store.artist.write();
+  await store.genre.write();
+  await store.album.write();
   return taskBucket.length?'done':'nothing todo';
 }
 
