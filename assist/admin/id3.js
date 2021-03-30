@@ -118,7 +118,9 @@ async function readCloudID3(file=''){
 };
 
 async function readLocalID3(file=''){
-  file = file.replace('music/myanmar/','d:/music/myanmar/');
+  // file = file.replace('music/myanmar/','d:/music/myanmar/');
+  // file = file.replace('music/zola/','d:/music/zola/');
+  file = 'd:/'+file;
   return await fs.promises.readFile(file).then(
     buffer => readId3(buffer,file)
   ).catch(
