@@ -32,6 +32,16 @@ node run register zola e8b619fa098dd5039452
 node run register myanmar
 node run register mizo
 node run register falam
+
+node run register-zola
+node run register-zola/e8b619fa098dd5039452
+node run register-myanmar
+node run register-mizo
+node run register-falam
+
+register-:bucketName/:albumId?
+
+node run register-zola
 ```
 
 ...**deprecated**, used to import plays count from previous version. has only one responsibility, which is to import Old playsCount data
@@ -48,6 +58,12 @@ exports.playsupdate = async () => await register.playsupdate();
 
 ...Cloud/Local directories, create UniqueId for album and format *bucket.?.json* using *config.template.bucket*
 data will be merged in *config.store.bucket*
+
+scan-:jobName/:bucketName/:more?
+node run scan-:jobName/:bucketName/:more?
+
+node run scan-local/myanmar/m3s/10
+node run scan-local/zola/Collection/Sian.Tongluan
 
 `node run scan* [bucket] [directory(optional)]`
 
@@ -83,6 +99,10 @@ node run scanLocal myanmar "d:/m3s/9"
 
 `node run id3* [bucket] [albumID(optional)]`
 ...
+id3-:jobName/:bucketName/:albumId?
+
+node run id3-local/myanmar/3f47207211bbc340a36f
+node run id3-local/zola/b7972194028f41746445
 
 ```bash
 node run id3Cloud zola
