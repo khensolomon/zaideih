@@ -113,7 +113,7 @@ async function processor(fileList) {
         test[0].raw.push(filename);
       } else {
         tmp.push(folder);
-        bucketContent.push({id:utility.createUniqueId(),dir:folder,raw:[filename],meta:{},track:[]});
+        bucketContent.push({id:utility.createUniqueId(),dir:folder,raw:[filename],meta:{},track:[],task:[]});
       }
     }
   }
