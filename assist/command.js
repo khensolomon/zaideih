@@ -40,3 +40,8 @@ routes.get("upgrade/:id?", async(req={}) => await import('./admin/upgrade.js').t
     e => e.default(req)
   )
 );
+
+routes.get("mobile-artist", async(req={}) => await import('./admin/mobile.js').then(
+    e => e.default(req)
+  )
+);
