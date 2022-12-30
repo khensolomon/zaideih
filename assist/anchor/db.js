@@ -1,14 +1,18 @@
-import {db} from 'lethil';
+import { db } from "lethil";
 
-const tableTrack = '_track';
-const tableFile = 'file';
+const tableTrack = "_track";
+const tableFile = "file";
 
 /**
  * @param {string} uid
  * @param {string} dir
  */
 export async function selectTrack(uid, dir) {
-  return await db.mysql.query('SELECT * FROM ?? WHERE uid = ? AND dir = ?;', [tableTrack, uid, dir]);
+	return await db.mysql.query("SELECT * FROM ?? WHERE uid = ? AND dir = ?;", [
+		tableTrack,
+		uid,
+		dir,
+	]);
 }
 
 /**
@@ -17,11 +21,16 @@ export async function selectTrack(uid, dir) {
  * @param {string} dir
  */
 export async function insertTrack(uid, langId, dir) {
-  return await db.mysql.query('INSERT INTO ?? (uid,lang,dir) VALUES (?,?,?);', [tableFile, uid, langId, dir]);
+	return await db.mysql.query("INSERT INTO ?? (uid,lang,dir) VALUES (?,?,?);", [
+		tableFile,
+		uid,
+		langId,
+		dir,
+	]);
 }
 
 export async function selectTrackAll() {
-  return await db.mysql.query('SELECT * FROM ??;', [tableFile]);
+	return await db.mysql.query("SELECT * FROM ??;", [tableFile]);
 }
 
 // NOTE: use in production
@@ -29,18 +38,25 @@ export async function selectTrackAll() {
  * @param {string} id
  */
 export async function trackPlaysUpdate(id) {
-  return db.mysql.query('UPDATE ?? SET plays = plays + 1 WHERE id=?;', [tableFile, id]);
+	return db.mysql.query("UPDATE ?? SET plays = plays + 1 WHERE id=?;", [
+		tableFile,
+		id,
+	]);
 }
 
 export async function trackListTmp() {
-  return await db.mysql.query('SELECT ??,?? FROM ??;', ['id', 'plays', tableTrack]);
+	return await db.mysql.query("SELECT ??,?? FROM ??;", [
+		"id",
+		"plays",
+		tableTrack,
+	]);
 }
 
 /**
  * @param {any} id
  */
 export async function trackById(id) {
-  return await db.mysql.query('SELECT * FROM ?? WHERE id=?;', [tableTrack, id]);
+	return await db.mysql.query("SELECT * FROM ?? WHERE id=?;", [tableTrack, id]);
 }
 
 // exports.selectDatabase = async function() {

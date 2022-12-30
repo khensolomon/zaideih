@@ -1,58 +1,81 @@
+import path from "path";
 
-import path from 'path';
+import { seek } from "lethil";
+import config from "./config.js";
 
-import {seek} from 'lethil';
-import config from './config.js';
+import * as cloud from "./cloud.js";
+import { trackPlays } from "./track.js";
 
-import * as cloud from './cloud.js';
-import {trackPlays} from './track.js';
-
-const contentType = 'audio/mpeg';
+const contentType = "audio/mpeg";
 
 /**
  * @param {*} req
  * @param {*} res
  * @param {*} row
  */
-async function streamCloud(req, res, row){
-  const audio = cloud.bucket.file(row.dir);
-  return audio.getMetadata().then(
-    meta=> {
-      var stat = meta[0];
-      var range = req.headers.range;
-      if (range !== undefined) {
-        // var rangeByte = range.replace(/bytes=/, "").split("-");
-        // var rangeByteStart = rangeByte[0];
-        // var rangeByteEnd = rangeByte[1];
-        const [rangeByteStart, rangeByteEnd] = range.replace(/bytes=/, "").split("-");
+async function streamCloud(req, res, row) {
+	const audio = cloud.bucket.file(row.dir);
+	// console.log("streamCloud", audio);
+	return audio
+		.getMetadata()
+		.then((meta) => {
+			var stat = meta[0];
+			var range = req.headers.range;
+			if (range !== undefined) {
+				// var rangeByte = range.replace(/bytes=/, "").split("-");
+				// var rangeByteStart = rangeByte[0];
+				// var rangeByteEnd = rangeByte[1];
+				const [rangeByteStart, rangeByteEnd] = range
+					.replace(/bytes=/, "")
+					.split("-");
 
-        if ((isNaN(rangeByteStart) && rangeByteStart.length > 1) || (isNaN(rangeByteEnd) && rangeByteEnd.length > 1)) {
-          return res.sendStatus(500);
-        }
-        var contentStart = parseInt(rangeByteStart, 10);
-        var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
-        var contentLength = (contentEnd - contentStart) + 1;
+				if (
+					(isNaN(rangeByteStart) && rangeByteStart.length > 1) ||
+					(isNaN(rangeByteEnd) && rangeByteEnd.length > 1)
+				) {
+					return res.sendStatus(500);
+				}
+				var contentStart = parseInt(rangeByteStart, 10);
+				var contentEnd = rangeByteEnd
+					? parseInt(rangeByteEnd, 10)
+					: stat.size - 1;
+				var contentLength = contentEnd - contentStart + 1;
 
-        res.status(206).setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
-        // audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
-        // userProject?: string;
-        // validation?: 'md5' | 'crc32c' | false | true;
-        // start?: number;
-        // end?: number;
-        // decompress?: boolean;
-        audio.createReadStream({
-          validation: false, start: contentStart, end: contentEnd
-        }).on('error', () => res.status(404)).on('end', () => res.end()).pipe(res);
-      } else{
-        res.setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':stat.size});
-        audio.createReadStream().pipe(res);
-      }
-    }
-  ).catch(
-    (e)=> {
-      throw e;
-    }
-  )
+				res.status(206).setHeaders({
+					"Content-Play": row.plays,
+					"Content-Type": contentType,
+					"Content-Length": contentLength,
+					"Content-Range":
+						"bytes " + contentStart + "-" + contentEnd + "/" + stat.size,
+				});
+				// audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
+				// userProject?: string;
+				// validation?: 'md5' | 'crc32c' | false | true;
+				// start?: number;
+				// end?: number;
+				// decompress?: boolean;
+				audio
+					.createReadStream({
+						validation: false,
+						start: contentStart,
+						end: contentEnd,
+					})
+					.on("error", () => res.status(404))
+					.on("end", () => res.end())
+					.pipe(res);
+			} else {
+				res.setHeaders({
+					"Content-Play": row.plays,
+					"Content-Type": contentType,
+					"Content-Length": stat.size,
+				});
+				audio.createReadStream().pipe(res);
+			}
+		})
+		.catch((e) => {
+			console.log("streamCloud error", e);
+			throw e;
+		});
 }
 
 /**
@@ -60,32 +83,49 @@ async function streamCloud(req, res, row){
  * @param {*} res
  * @param {*} row
  */
-async function streamDisk(req, res,row){
-  var file = path.resolve(config.setting.storage,row.dir);
-  try {
-    var stat = seek.statSync(file);
-    var range = req.headers.range;
-    if (range !== undefined) {
-      // var rangeByte = req.headers.range.replace(/bytes=/, "").split("-");
-      // var rangeByteStart = rangeByte[0];
-      // var rangeByteEnd = rangeByte[1];
-      const [rangeByteStart, rangeByteEnd] = range.replace(/bytes=/, "").split("-");
+async function streamDisk(req, res, row) {
+	var file = path.resolve(config.setting.storage, row.dir);
+	try {
+		var stat = seek.statSync(file);
+		var range = req.headers.range;
+		if (range !== undefined) {
+			// var rangeByte = req.headers.range.replace(/bytes=/, "").split("-");
+			// var rangeByteStart = rangeByte[0];
+			// var rangeByteEnd = rangeByte[1];
+			const [rangeByteStart, rangeByteEnd] = range
+				.replace(/bytes=/, "")
+				.split("-");
 
-      if ((isNaN(rangeByteStart) && rangeByteStart.length > 1) || (isNaN(rangeByteEnd) && rangeByteEnd.length > 1)) {
-        return res.sendStatus(500);
-      }
-      var contentStart = parseInt(rangeByteStart, 10);
-      var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
-      var contentLength = (contentEnd - contentStart) + 1;
-      res.status(206).setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
-      seek.readStream(file, {start: contentStart, end: contentEnd}).pipe(res);
-    } else {
-      res.setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':stat.size});
-      seek.readStream(file).pipe(res);
-    }
-  } catch (e) {
-    throw e;
-  }
+			if (
+				(isNaN(rangeByteStart) && rangeByteStart.length > 1) ||
+				(isNaN(rangeByteEnd) && rangeByteEnd.length > 1)
+			) {
+				return res.sendStatus(500);
+			}
+			var contentStart = parseInt(rangeByteStart, 10);
+			var contentEnd = rangeByteEnd
+				? parseInt(rangeByteEnd, 10)
+				: stat.size - 1;
+			var contentLength = contentEnd - contentStart + 1;
+			res.status(206).setHeaders({
+				"Content-Play": row.plays,
+				"Content-Type": contentType,
+				"Content-Length": contentLength,
+				"Content-Range":
+					"bytes " + contentStart + "-" + contentEnd + "/" + stat.size,
+			});
+			seek.readStream(file, { start: contentStart, end: contentEnd }).pipe(res);
+		} else {
+			res.setHeaders({
+				"Content-Play": row.plays,
+				"Content-Type": contentType,
+				"Content-Length": stat.size,
+			});
+			seek.readStream(file).pipe(res);
+		}
+	} catch (e) {
+		throw e;
+	}
 }
 
 /**
@@ -93,20 +133,20 @@ async function streamDisk(req, res,row){
  * @param {*} res
  */
 export function streamer(req, res) {
-  trackPlays(req.params.trackId).then(row=>{
-    // console.log('mp3:',row.id,row.plays,row.dir);
-    streamCloud(req, res,row).catch(
-      () => streamDisk(req, res,row).catch(
-        () => res.status(404).end()
-      )
-    )
-  }).catch(()=>{
-    streamDisk(req, res,{dir:'music/tmp/'+req.params.trackId,plays:"development"}).catch(
-      ()=>{
-        res.status(404).end();
-      }
-    )
-  });
+	trackPlays(req.params.trackId)
+		.then((row) => {
+			streamCloud(req, res, row).catch((e) => {
+				streamDisk(req, res, row).catch(() => res.status(404).end());
+			});
+		})
+		.catch((msg) => {
+			streamDisk(req, res, {
+				dir: config.setting.localMusic + "/" + req.params.trackId,
+				plays: msg,
+			}).catch(() => {
+				res.status(404).end();
+			});
+		});
 }
 
 /*
@@ -134,13 +174,13 @@ routes.get('/audio/:trackId', function(req, res) {
             var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
             var contentLength = (contentEnd - contentStart) + 1;
 
-            res.status(206).setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+            res.status(206).setHeaders({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
             // audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
             audio.createReadStream({
               contentType: contentType,validation: false, start: contentStart, end: contentEnd
             }).on('error', () => res.status(404)).on('end', () => res.end()).pipe(res);
           } else{
-            res.setHeader({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':stat.size});
+            res.setHeaders({'Content-Play':row.plays,'Content-Type':contentType,'Content-Length':stat.size});
             audio.createReadStream({contentType: contentType}).pipe(res);
           }
         }
@@ -166,10 +206,10 @@ routes.get('/audio/:trackId', function(req, res) {
           var contentStart = parseInt(rangeByteStart, 10);
           var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
           var contentLength = (contentEnd - contentStart) + 1;
-          res.status(206).setHeader({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+          res.status(206).setHeaders({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
           seek.readStream(file, {start: contentStart, end: contentEnd}).pipe(res);
         } else {
-          res.setHeader({'Content-Type':contentType,'Content-Length':stat.size});
+          res.setHeaders({'Content-Type':contentType,'Content-Length':stat.size});
           seek.readStream(file).pipe(res);
         }
       } catch (e) {
@@ -199,13 +239,13 @@ audio.getMetadata().then(
       var contentStart = parseInt(rangeByteStart, 10);
       var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
       var contentLength = (contentEnd - contentStart) + 1;
-      res.status(206).setHeader({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+      res.status(206).setHeaders({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
       // audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
       audio.createReadStream({
         contentType: contentType,validation: false, start: contentStart, end: contentEnd
       }).on('error', () => res.status(404)).on('end', () => res.end()).pipe(res);
     } else{
-      res.setHeader({'Content-Type':contentType,'Content-Length':stat.size});
+      res.setHeaders({'Content-Type':contentType,'Content-Length':stat.size});
       audio.createReadStream({contentType: contentType}).pipe(res);
     }
   }
@@ -232,13 +272,13 @@ routes.get('/audio-cloud-stream', function(req, res) {
         var contentStart = parseInt(rangeByteStart, 10);
         var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
         var contentLength = (contentEnd - contentStart) + 1;
-        res.status(206).setHeader({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+        res.status(206).setHeaders({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
         // audio.createReadStream({contentType:contentType,validation:false,start:contentStart,end:contentEnd}).pipe(res);
         audio.createReadStream({
           contentType: contentType,validation: false, start: contentStart, end: contentEnd
         }).on('error', () => res.status(404)).on('end', () => res.end()).pipe(res);
       } else{
-        res.setHeader({'Content-Type':contentType,'Content-Length':stat.size});
+        res.setHeaders({'Content-Type':contentType,'Content-Length':stat.size});
         audio.createReadStream({contentType: contentType}).pipe(res);
       }
     }
@@ -255,9 +295,9 @@ routes.get('/audio-cloud-download', function(req, res) {
     () => res.status(404)
   ).on('response',
     streamResponse => {
-      res.setHeader('Content-Length', streamResponse.headers['content-length']);
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-disposition', 'attachment; filename="0"'.replace('0',path.basename('tmp.mp3')));
+      res.setHeaders('Content-Length', streamResponse.headers['content-length']);
+      res.setHeaders('Content-Type', 'audio/mpeg');
+      res.setHeaders('Content-disposition', 'attachment; filename="0"'.replace('0',path.basename('tmp.mp3')));
     }
   ).on('end',
     () => res.end()
@@ -282,10 +322,10 @@ routes.get('/audio-local-stream/:trackId', function(req, res) {
         var contentStart = parseInt(rangeByteStart, 10);
         var contentEnd = rangeByteEnd ? parseInt(rangeByteEnd, 10) : stat.size - 1;
         var contentLength = (contentEnd - contentStart) + 1;
-        res.status(206).setHeader({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
+        res.status(206).setHeaders({'Content-Type':contentType,'Content-Length':contentLength,'Content-Range':"bytes " + contentStart + "-" + contentEnd + "/" + stat.size});
         seek.readStream(music, {start: contentStart, end: contentEnd}).pipe(res);
       } else {
-        res.setHeader({'Content-Type':contentType,'Content-Length':stat.size});
+        res.setHeaders({'Content-Type':contentType,'Content-Length':stat.size});
         seek.readStream(music).pipe(res);
       }
     } catch (e) {
@@ -316,7 +356,7 @@ routes.get('/audio-not-in-used/:id', (req, res) => {
     var end = partial_end ? parseInt(partial_end, 10) : stat.size - 1;
     var content_length = (end - start) + 1;
 
-    res.status(206).setHeader({
+    res.status(206).setHeaders({
       'Content-Type': 'audio/mpeg',
       'Content-Length': content_length,
       'Content-Range': "bytes " + start + "-" + end + "/" + stat.size
@@ -324,7 +364,7 @@ routes.get('/audio-not-in-used/:id', (req, res) => {
 
     readStream = seek.readStream(music, {start: start, end: end});
   } else {
-    res.setHeader({'Content-Type': 'audio/mpeg','Content-Length': stat.size});
+    res.setHeaders({'Content-Type': 'audio/mpeg','Content-Length': stat.size});
     readStream = seek.readStream(music);
   }
   readStream.pipe(res);
@@ -349,8 +389,8 @@ routes.get('/audio-download/:id', function(req,res){
   var music = path.resolve(storage,'music/tmp',req.params.id);
 	fs.exists(music,function(exists){
 		if(exists){
-      res.setHeader('Content-disposition', 'attachment; filename=' + path.basename(music));
-			res.setHeader('Content-Type', 'application/audio/mpeg3')
+      res.setHeaders('Content-disposition', 'attachment; filename=' + path.basename(music));
+			res.setHeaders('Content-Type', 'application/audio/mpeg3')
 			seek.readStream(music).pipe(res);
 		} else {
 			res.status(404).end();
