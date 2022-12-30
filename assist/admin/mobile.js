@@ -1,8 +1,8 @@
-import path from 'path';
-import {seek} from 'lethil';
-import {config,store,db} from '../anchor/index.js';
+import path from "path";
+import { seek } from "lethil";
+import { config, store, db } from "../anchor/index.js";
 
-const {template,bucketAvailable} = config.setting;
+const { template, bucketAvailable } = config.setting;
 
 /**
  * generate artist for Mobile version
@@ -10,91 +10,95 @@ const {template,bucketAvailable} = config.setting;
  * @param {any} req
  * `node run mobile-artist`
  */
-export default async function(req){
+export default async function (req) {
+	await store.album.also.name.read();
+	await store.album.read();
+	await store.track.also.name.read();
+	await store.artist.read();
+	await store.genre.read();
 
+	// var select = await db.selectTrackAll();
 
-  await store.album.also.name.read();
-  await store.album.read();
-  await store.track.also.name.read();
-  await store.artist.read();
-  await store.genre.read();
+	// var abc = store.artist.data;
+	// for (const [index,artist] of store.artist.data.entries()) {
+	//   artist.id = index;
+	//   console.log(artist)
+	// }
+	// album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
+	// // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
+	// albumTrack:{i:'?', t:'?', a:[], d: 0, p: 1}
+	const track = store.album.data
+		.map((e) =>
+			e.tk.map((i) => {
+				i.uid = e.ui;
+				i.lang = e.lg;
+				return i;
+			})
+		)
+		.reduce((prev, next) => prev.concat(next));
 
-  // var select = await db.selectTrackAll();
+	// var raw = [];
+	// for await (const artist of store.artist.data) {
+	//   var index = store.artist.data.indexOf(artist);
+	//   artist.id = index;
 
-  // var abc = store.artist.data;
-  // for (const [index,artist] of store.artist.data.entries()) {
-  //   artist.id = index;
-  //   console.log(artist)
-  // }
-  // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
-  // // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
-  // albumTrack:{i:'?', t:'?', a:[], d: 0, p: 1}
-  const track = store.album.data.map(
-    e => e.tk.map(
-      (i) => {
-        i.uid = e.ui;
-        i.lang = e.lg;
-        return i
-      }
-    )
-  ).reduce((prev, next) => prev.concat(next));
+	//   // var ass = [...new Set([].concat(...tmp))];
+	//   const artistTrack = await track.filter( e=>e.a.includes(index));
+	//   artist.duration = await artistTrack.map(e=>e.d).reduce((accumulator, curr) => accumulator + curr);
+	//   artist.plays = artistTrack.map(e=>e.p).reduce((accumulator, curr) => accumulator + curr);
+	//   artist.track = artistTrack.length;
+	//   // [...new Set(array)]
+	//   artist.album = artistTrack.map(e=>e.uid).filter((value, index, a) => a.indexOf(value) === index).length;
+	//   artist.lang = artistTrack.map(e=>e.lang).filter((value, index, a) => a.indexOf(value) === index);
+	//   // console.log('artistDuration',artistDuration);
+	//   // console.log('artistPlays',artistPlays);
+	//   // console.log('artistTrack',artistTrack);
+	//   // console.log('artistTrackCount',artistTrackCount);
+	//   // console.log('artistAlbumCount',artistAlbumCount);
+	//   // console.log('artistLangList',artistLangList);
+	//   raw.push(artist);
+	//   console.log(raw.length)
+	// }
 
-  // var raw = [];
-  // for await (const artist of store.artist.data) {
-  //   var index = store.artist.data.indexOf(artist);
-  //   artist.id = index;
+	var raw = store.artist.data.map((artist) => {
+		var index = store.artist.data.indexOf(artist);
+		artist.id = index;
 
-  //   // var ass = [...new Set([].concat(...tmp))];
-  //   const artistTrack = await track.filter( e=>e.a.includes(index));
-  //   artist.duration = await artistTrack.map(e=>e.d).reduce((accumulator, curr) => accumulator + curr);
-  //   artist.plays = artistTrack.map(e=>e.p).reduce((accumulator, curr) => accumulator + curr);
-  //   artist.track = artistTrack.length;
-  //   // [...new Set(array)]
-  //   artist.album = artistTrack.map(e=>e.uid).filter((value, index, a) => a.indexOf(value) === index).length;
-  //   artist.lang = artistTrack.map(e=>e.lang).filter((value, index, a) => a.indexOf(value) === index);
-  //   // console.log('artistDuration',artistDuration);
-  //   // console.log('artistPlays',artistPlays);
-  //   // console.log('artistTrack',artistTrack);
-  //   // console.log('artistTrackCount',artistTrackCount);
-  //   // console.log('artistAlbumCount',artistAlbumCount);
-  //   // console.log('artistLangList',artistLangList);
-  //   raw.push(artist);
-  //   console.log(raw.length)
-  // }
+		// var ass = [...new Set([].concat(...tmp))];
+		const artistTrack = track.filter((e) => e.a.includes(index));
+		artist.duration = artistTrack
+			.map((e) => e.d)
+			.reduce((accumulator, curr) => accumulator + curr, 0);
+		artist.plays = artistTrack
+			.map((e) => e.p)
+			.reduce((accumulator, curr) => accumulator + curr, 0);
+		artist.track = artistTrack.length;
+		// [...new Set(array)]
+		artist.album = artistTrack
+			.map((e) => e.uid)
+			.filter((value, index, a) => a.indexOf(value) === index).length;
+		artist.lang = artistTrack
+			.map((e) => e.lang)
+			.filter((value, index, a) => a.indexOf(value) === index);
+		// console.log('artistDuration',artistDuration);
+		// console.log('artistPlays',artistPlays);
+		// console.log('artistTrack',artistTrack);
+		// console.log('artistTrackCount',artistTrackCount);
+		// console.log('artistAlbumCount',artistAlbumCount);
+		// console.log('artistLangList',artistLangList);
+		return artist;
+	});
 
-  var raw = store.artist.data.map(
-    artist=> {
-      var index = store.artist.data.indexOf(artist);
-      artist.id = index;
+	const file = store.artist.file.replace(".json", "-mobile.json");
 
-      // var ass = [...new Set([].concat(...tmp))];
-      const artistTrack = track.filter(e=>e.a.includes(index));
-      artist.duration = artistTrack.map(e=>e.d).reduce((accumulator, curr) => accumulator + curr,0);
-      artist.plays = artistTrack.map(e=>e.p).reduce((accumulator, curr) => accumulator + curr,0);
-      artist.track = artistTrack.length;
-      // [...new Set(array)]
-      artist.album = artistTrack.map(e=>e.uid).filter((value, index, a) => a.indexOf(value) === index).length;
-      artist.lang = artistTrack.map(e=>e.lang).filter((value, index, a) => a.indexOf(value) === index);
-      // console.log('artistDuration',artistDuration);
-      // console.log('artistPlays',artistPlays);
-      // console.log('artistTrack',artistTrack);
-      // console.log('artistTrackCount',artistTrackCount);
-      // console.log('artistAlbumCount',artistAlbumCount);
-      // console.log('artistLangList',artistLangList);
-      return artist;
-    }
-  );
+	// await seek.write(file, JSON.stringify(raw, null, 2));
+	await seek.write(file, JSON.stringify(raw, null, 2));
+	// await seek.write(file, JSON.stringify({a:true}, null, 2));
 
-  const file = store.artist.file.replace('.json','-mobile.json');
+	// console.log('asdf',raw.length)
 
-  // await seek.write(file, JSON.stringify(raw, null, 2));
-  await seek.write(file, JSON.stringify(raw, null, 2));
-  // await seek.write(file, JSON.stringify({a:true}, null, 2));
-
-  // console.log('asdf',raw.length)
-
-  return file;
-  /*
+	return file;
+	/*
   var bucketName = req.params.bucketName;
   var albumId = req.params.albumId;
 
@@ -195,158 +199,178 @@ export default async function(req){
 /**
  * @param {*} taskBucket
  */
-async function taskAlbum(taskBucket){
-  for (const album of taskBucket) {
-    if (album.track.length) {
-      var albumTemplate = Object.assign({},template.album);
-      // album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
-      albumTemplate.ui = album.id;
-      albumTemplate.ab = await albumNameCollection(album.track[0].album);
+async function taskAlbum(taskBucket) {
+	for (const album of taskBucket) {
+		if (album.track.length) {
+			var albumTemplate = Object.assign({}, template.album);
+			// album:{ui:'?', ab:'?', gr:[], yr:[], lg:0, tk:[]},
+			albumTemplate.ui = album.id;
+			albumTemplate.ab = await albumNameCollection(album.track[0].album);
 
-      var albumGenre = album.track.map(row => row.genre).reduce((prev, next) => prev.concat(next),[])
-      albumTemplate.gr = [...new Set(albumGenre)].sort();
+			var albumGenre = album.track
+				.map((row) => row.genre)
+				.reduce((prev, next) => prev.concat(next), []);
+			albumTemplate.gr = [...new Set(albumGenre)].sort();
 
-      var albumYear = album.track.map(row => parseInt(row.year)).reduce((prev, next) => prev.concat(next),[])
-      albumTemplate.yr = [...new Set(albumYear)].sort();
+			var albumYear = album.track
+				.map((row) => parseInt(row.year))
+				.reduce((prev, next) => prev.concat(next), []);
+			albumTemplate.yr = [...new Set(albumYear)].sort();
 
-      albumTemplate.lg = album.track[0].lang;
-      // var albumLanguage = album.track.map(row => row.language).reduce((prev, next) => prev.concat(next),[])
-      // albumTemplate.lg = [...new Set(albumLanguage)].sort();
+			albumTemplate.lg = album.track[0].lang;
+			// var albumLanguage = album.track.map(row => row.language).reduce((prev, next) => prev.concat(next),[])
+			// albumTemplate.lg = [...new Set(albumLanguage)].sort();
 
-      // var albumPlays = album.track.map(row => row.plays).reduce((prev, next) => prev.concat(next),[])
-      // albumTemplate.p = albumPlays.reduce((total,num)=> total+num);
+			// var albumPlays = album.track.map(row => row.plays).reduce((prev, next) => prev.concat(next),[])
+			// albumTemplate.p = albumPlays.reduce((total,num)=> total+num);
 
-      albumTemplate.tk = [];
-      album.track.sort((a, b) => (a.track > b.track) ? 1 : -1);
-      // album.track.sort((a, b) => a.track - b.track);
-      for (const track of album.track) {
-        var trackTemplate = Object.assign({},template.albumTrack);
-        // albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
-        trackTemplate.i=track.id;
-        trackTemplate.t= await trackNameCollection(track.title);
-        trackTemplate.a=track.artist;
-        // trackTemplate.n=track.track;
-        // trackTemplate.n=parseInt(track.track||0);
-        trackTemplate.d=convert2Seconds(track.duration);
-        trackTemplate.p=track.plays;
-        // trackTemplate.s=track.status;
-        albumTemplate.tk.push(trackTemplate)
-      }
+			albumTemplate.tk = [];
+			album.track.sort((a, b) => (a.track > b.track ? 1 : -1));
+			// album.track.sort((a, b) => a.track - b.track);
+			for (const track of album.track) {
+				var trackTemplate = Object.assign({}, template.albumTrack);
+				// albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
+				trackTemplate.i = track.id;
+				trackTemplate.t = await trackNameCollection(track.title);
+				trackTemplate.a = track.artist;
+				// trackTemplate.n=track.track;
+				// trackTemplate.n=parseInt(track.track||0);
+				trackTemplate.d = convert2Seconds(track.duration);
+				trackTemplate.p = track.plays;
+				// trackTemplate.s=track.status;
+				albumTemplate.tk.push(trackTemplate);
+			}
 
-      var index = store.album.data.findIndex(e=>e.ui == album.id);
-      if (index >= 0 ){
-        // console.log(' json:',album.id,'-> updated')
-        store.album.data[index]=albumTemplate;
-      } else {
-        // console.log(' json:',album.id,'-> inserted')
-        store.album.data.push(albumTemplate)
-      }
-    }
-  }
-
+			var index = store.album.data.findIndex((e) => e.ui == album.id);
+			if (index >= 0) {
+				// console.log(' json:',album.id,'-> updated')
+				store.album.data[index] = albumTemplate;
+			} else {
+				// console.log(' json:',album.id,'-> inserted')
+				store.album.data.push(albumTemplate);
+			}
+		}
+	}
 }
 
 /**
  * @param {*} i
  */
-async function albumNameCollection(i){
-  var name = i.trim().replace(/ {1,}/g," ");
-  var nlc = name.toLowerCase();
-  var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+async function albumNameCollection(i) {
+	var name = i.trim().replace(/ {1,}/g, " ");
+	var nlc = name.toLowerCase();
+	var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
 
-  var index = store.album.also.name.data.find(
-    e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
-  );
-  if (index){
-    return index.name;
-  }
-  return name;
+	var index = store.album.also.name.data.find(
+		(e) =>
+			e.correction.find((s) => s.toLowerCase() == nlc) ||
+			(nwd && e.correction.includes(nwd)) ||
+			e.name.toLowerCase() == name.toLowerCase()
+	);
+	if (index) {
+		return index.name;
+	}
+	return name;
 }
 
 /**
  * @param {*} i
  */
-async function trackNameCollection(i){
-  var name = i.trim().replace(/ {1,}/g," ");
-  var nlc = name.toLowerCase();
-  var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+async function trackNameCollection(i) {
+	var name = i.trim().replace(/ {1,}/g, " ");
+	var nlc = name.toLowerCase();
+	var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
 
-  var index = store.track.also.name.data.find(
-    e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
-  );
-  if (index){
-    return index.name;
-  }
-  return name;
+	var index = store.track.also.name.data.find(
+		(e) =>
+			e.correction.find((s) => s.toLowerCase() == nlc) ||
+			(nwd && e.correction.includes(nwd)) ||
+			e.name.toLowerCase() == name.toLowerCase()
+	);
+	if (index) {
+		return index.name;
+	}
+	return name;
 }
 
 /**
  * @param {*} artists
  */
-async function indexArtists(artists){
-  var result = artists.map(
-    i => {
-      var name = i.trim().replace(/ {1,}/g," ");
-      var nlc = name.toLowerCase();
-      var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+async function indexArtists(artists) {
+	var result = artists.map((i) => {
+		var name = i.trim().replace(/ {1,}/g, " ");
+		var nlc = name.toLowerCase();
+		var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
 
-      // store.artist.data;
+		// store.artist.data;
 
-      // var index = store.artist.data.findIndex(
-      //   e=>e.thesaurus.find(s=> s.toLowerCase() == nlc ) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
-      //   // e=>e.thesaurus.includes(nlc) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
-      // );
-      var index = store.artist.data.findIndex(
-        e => e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name || e.correction.find(
-          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
-        ) || e.thesaurus.find(
-          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
-        )
-      );
-      if (index < 0){
-        var correction = [];
-        if (nwd){
-          correction.push(nwd)
-        }
-        store.artist.data.push({name:name,correction:correction,thesaurus:[]});
-        index = store.artist.data.length - 1
-      }
-      return index;
-    }
-  );
-  return [...new Set(result)];
+		// var index = store.artist.data.findIndex(
+		//   e=>e.thesaurus.find(s=> s.toLowerCase() == nlc ) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
+		//   // e=>e.thesaurus.includes(nlc) || nwd && e.thesaurus.includes(nwd) || e.name.toLowerCase() == name.toLowerCase() || e.aka && e.aka == name
+		// );
+		var index = store.artist.data.findIndex(
+			(e) =>
+				e.name.toLowerCase() == name.toLowerCase() ||
+				(e.aka && e.aka == name) ||
+				e.correction.find(
+					(s) => s.toLowerCase() == nlc || (nwd && s.toLowerCase() == nwd)
+				) ||
+				e.thesaurus.find(
+					(s) => s.toLowerCase() == nlc || (nwd && s.toLowerCase() == nwd)
+				)
+		);
+		if (index < 0) {
+			var correction = [];
+			if (nwd) {
+				correction.push(nwd);
+			}
+			store.artist.data.push({
+				name: name,
+				correction: correction,
+				thesaurus: [],
+			});
+			index = store.artist.data.length - 1;
+		}
+		return index;
+	});
+	return [...new Set(result)];
 }
 
 /**
  * @param {*} genres
  */
-async function indexGenres(genres){
-  var result = genres.map(
-    i=> {
-      var name = i.trim().replace(/ {1,}/g," ");
-      var nlc = name.toLowerCase();
-      var nwd = nlc.includes(".")?nlc.replace(/\./g, ""):null;
+async function indexGenres(genres) {
+	var result = genres.map((i) => {
+		var name = i.trim().replace(/ {1,}/g, " ");
+		var nlc = name.toLowerCase();
+		var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
 
-      var index = store.genre.data.findIndex(
-        // e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
-        e => e.name.toLowerCase() == name.toLowerCase() || e.correction.find(
-          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
-        ) || e.thesaurus.find(
-          s=> s.toLowerCase() == nlc || nwd && s.toLowerCase() == nwd
-        )
-      );
-      if (index < 0){
-        var correction = [];
-        if (nwd){
-          correction.push(nwd)
-        }
-        store.genre.data.push({name:name,correction:correction,thesaurus:[]});
-        index = store.genre.data.length - 1
-      }
-      return index;
-    }
-  );
-  return [...new Set(result)];
+		var index = store.genre.data.findIndex(
+			// e=>e.correction.find(s=> s.toLowerCase() == nlc ) || nwd && e.correction.includes(nwd) || e.name.toLowerCase() == name.toLowerCase()
+			(e) =>
+				e.name.toLowerCase() == name.toLowerCase() ||
+				e.correction.find(
+					(s) => s.toLowerCase() == nlc || (nwd && s.toLowerCase() == nwd)
+				) ||
+				e.thesaurus.find(
+					(s) => s.toLowerCase() == nlc || (nwd && s.toLowerCase() == nwd)
+				)
+		);
+		if (index < 0) {
+			var correction = [];
+			if (nwd) {
+				correction.push(nwd);
+			}
+			store.genre.data.push({
+				name: name,
+				correction: correction,
+				thesaurus: [],
+			});
+			index = store.genre.data.length - 1;
+		}
+		return index;
+	});
+	return [...new Set(result)];
 }
 
 /**
@@ -354,9 +378,11 @@ async function indexGenres(genres){
  * @param {*} time
  */
 function convert2Seconds(time) {
-  var num = parseInt(time.toString().split(':').reduce(
-    (a,b) => (60 * a)+ +b
-    )
-  );
-  return isNaN(num)?0:num;
+	var num = parseInt(
+		time
+			.toString()
+			.split(":")
+			.reduce((a, b) => 60 * a + +b)
+	);
+	return isNaN(num) ? 0 : num;
 }
