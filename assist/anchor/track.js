@@ -1,20 +1,23 @@
-import * as db from './db.js';
+import * as db from "./db.js";
 
 /**
- * @param {string} Id
+ * @param {any} Id
  */
-export async function trackPlays(Id){
-  db.trackPlaysUpdate(Id);
-  try {
-    const [row] = await db.trackById(Id);
-    if (row){
-      return row;
-    } else {
-      throw 'none';
-    }
-  } catch (error) {
-    throw error
-  }
+export async function trackPlays(Id) {
+	// NOTE: api/audio/1
+	// NOTE: api/audio/Ruben-Dear-God.mp3
+	try {
+		db.trackPlaysUpdate(Id).catch((e) => console.log(e.sqlMessage));
+		// const [row] = await db.trackById(Id).catch(() => null);
+		const [row] = await db.trackById(Id);
+		if (row) {
+			return row;
+		} else {
+			throw "development";
+		}
+	} catch (error) {
+		throw error;
+	}
 }
 
 export const trackList = db.trackListTmp;
