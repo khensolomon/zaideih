@@ -16,7 +16,9 @@
   </div>
 
   <div class="row center desc">
-    <p>Create your own collections, manage your <strong>Lyric</strong> and <strong>Comment</strong>, share your <em>PlayList</em>, works with Lyrics &amp; Chord and many more...</p>
+    <p>Create your own collections, manage your <strong>Lyric</strong> and <strong>Comment</strong>, share your
+      <em>PlayList</em>, works with Lyrics &amp; Chord and many more...
+    </p>
   </div>
 
   <!-- <div v-if="all.lang.length" class="show-lang badge-tag">
@@ -32,30 +34,47 @@
       </ol>
     </div>
   </div> -->
-  <div v-if="all.lang.length" class="row center most">
-    <div v-for="(lang,index) in all.lang" :key="index" :class="lang.name">
+  <div v-if="dataStore.all.lang.length" class="row center most">
+    <div v-for="(lang,index) in dataStore.all.lang" :key="index" :class="lang.name">
       <h2>
         <router-link :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}}</router-link>
       </h2>
       <div v-if="popularArtist[lang.id].length" class="show-lang badge-tag">
-        <router-link v-for="(artist,index) in popularArtist[lang.id]" :to="{ path: '/artist/'+artist.name}" :key="index">{{artist.name}}<span v-if="artist.aka">({{artist.aka}})</span></router-link>
+        <router-link v-for="(artist,index) in popularArtist[lang.id]" :to="{ path: '/artist/'+artist.name}"
+          :key="index">{{artist.name}}<span v-if="artist.aka">({{artist.aka}})</span></router-link>
       </div>
     </div>
   </div>
 
   <div class="row lmr" style="display: none">
-    <div class="left"><p>left</p></div>
-    <div class="main"><p>main</p></div>
-    <div class="right"><p>right</p></div>
+    <div class="left">
+      <p>left</p>
+    </div>
+    <div class="main">
+      <p>main</p>
+    </div>
+    <div class="right">
+      <p>right</p>
+    </div>
   </div>
   <div class="row bar" style="display: none">
-    <div class="left"><p>left</p></div>
-    <div class="main"><p>main</p></div>
-    <div class="right"><p>right</p></div>
+    <div class="left">
+      <p>left</p>
+    </div>
+    <div class="main">
+      <p>main</p>
+    </div>
+    <div class="right">
+      <p>right</p>
+    </div>
   </div>
   <div class="row lar" style="display: none">
-    <div class="left"><p>left</p></div>
-    <div class="right"><p>right</p></div>
+    <div class="left">
+      <p>left</p>
+    </div>
+    <div class="right">
+      <p>right</p>
+    </div>
   </div>
   <div class="row dco" style="display: none">
     <div class="zola">

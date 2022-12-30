@@ -10,25 +10,29 @@
           <p class="icon-cd" v-bind:class="{ active: albums.length }"><span v-text="albums.length"></span></p>
         </div>
         <div class="album">
-          <p class="icon-albums" v-bind:class="{ active: albumsRecommended.length }"><span v-text="albumsRecommended.length"></span></p>
+          <p class="icon-albums" v-bind:class="{ active: albumsRecommended.length }"><span
+              v-text="albumsRecommended.length"></span></p>
         </div>
         <div class="album">
-          <p class="icon-flag" v-bind:class="{ active: albumsRelated.length }"><span v-text="albumsRelated.length"></span></p>
+          <p class="icon-flag" v-bind:class="{ active: albumsRelated.length }"><span
+              v-text="albumsRelated.length"></span></p>
         </div>
         <div class="artist">
           <p class="icon-artist" v-bind:class="{ active: artists.length }"><span v-text="artists.length"></span></p>
         </div>
         <div class="track">
-          <p class="icon-track" v-bind:class="{ active: tracksByArtist.length }"><span v-text="tracksByArtist.length"></span></p>
+          <p class="icon-track" v-bind:class="{ active: tracksByArtist.length }"><span
+              v-text="tracksByArtist.length"></span></p>
         </div>
       </div>
 
       <div v-if="tracks.length" class="row tracks bg sh-">
         <div class="track-row">
-          <track-row v-for="(n, index) in tracksLimit" v-bind:track="tracks[index]" :key="index" />
-          <div v-if="tracks.length > tracksLimit" class="show-more">
-            <p @click="tracksLimit += 9" class="icon-right">
-              <span v-text="tracksLimit" class="limit"></span><span v-text="tracks.length" class="total"></span><span class="more">more</span>
+          <track-row v-for="(n, index) in dataStore.searchTrackLimit" v-bind:track="tracks[index]" :key="index" />
+          <div v-if="tracks.length > dataStore.searchTrackLimit" class="show-more">
+            <p @click="searchTrackLimitUpdate" class="icon-right">
+              <span v-text="dataStore.searchTrackLimit" class="limit"></span><span v-text="tracks.length"
+                class="total"></span><span class="more">more</span>
             </p>
           </div>
         </div>
@@ -36,16 +40,18 @@
 
       <div v-if="artists.length" class="row center name-artist artists matched">
         <q>Artist matched</q>
-        <router-link v-for="artist in artists" :to="{ path: '/artist/'+artist.name}" :key="artist.id">{{artist.name}}</router-link>
+        <router-link v-for="artist in artists" :to="{ path: '/artist/'+artist.name}"
+          :key="artist.id">{{artist.name}}</router-link>
       </div>
       <!-- album -->
       <div v-if="albums.length" class="container list">
         <div>
           <div class="album-raw center">
-            <album-raw v-for="(n, index) in albumLimit" v-bind:album="albums[index]" :key="index" />
-            <div v-if="albums.length > albumLimit" class="show-more">
-              <p @click="albumLimit += 9" class="icon-right">
-                <span v-text="albumLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
+            <album-raw v-for="(n, index) in dataStore.searchAlbumLimit" v-bind:album="albums[index]" :key="index" />
+            <div v-if="albums.length > dataStore.searchAlbumLimit" class="show-more">
+              <p @click="dataStore.searchAlbumLimit += 9" class="icon-right">
+                <span v-text="dataStore.searchAlbumLimit" class="limit"></span><span v-text="albums.length"
+                  class="total"></span><span class="more">more</span>
               </p>
             </div>
           </div>
@@ -54,10 +60,12 @@
       <!-- track related: get tracks belongs to the first artist play all, length, plays -->
       <div v-if="tracksByArtist.length" class="row tracks bg- sh-">
         <div class="track-row">
-          <track-row v-for="(n, index) in tracksByArtistLimit" v-bind:track="tracksByArtist[index]" :key="index" />
-          <div v-if="tracksByArtist.length > tracksByArtistLimit" class="show-more">
-            <p @click="tracksByArtistLimit += 9" class="icon-right">
-              <span v-text="tracksByArtistLimit" class="limit"></span><span v-text="tracksByArtist.length" class="total"></span><span class="more">more</span>
+          <track-row v-for="(n, index) in dataStore.searchTracksByArtistLimit" v-bind:track="tracksByArtist[index]"
+            :key="index" />
+          <div v-if="tracksByArtist.length > dataStore.searchTracksByArtistLimit" class="show-more">
+            <p @click="searchTracksByArtistLimitUpdate" class="icon-right">
+              <span v-text="dataStore.searchTracksByArtistLimit" class="limit"></span><span
+                v-text="tracksByArtist.length" class="total"></span><span class="more">more</span>
             </p>
           </div>
         </div>
@@ -66,10 +74,12 @@
       <div v-if="albumsRecommended.length" class="row center">
         <div>
           <div class="album-raw center">
-            <album-raw v-for="(n, index) in albumsRecommendedLimit" v-bind:album="albumsRecommended[index]" :key="index" />
-            <div v-if="albumsRecommended.length > albumsRecommendedLimit" class="show-more">
-              <p @click="albumsRecommendedLimit += 9" class="icon-right">
-                <span v-text="albumsRecommendedLimit" class="limit"></span><span v-text="albumsRecommended.length" class="total"></span><span class="more">more</span>
+            <album-raw v-for="(n, index) in dataStore.searchAlbumRecommendedLimit"
+              v-bind:album="albumsRecommended[index]" :key="index" />
+            <div v-if="albumsRecommended.length > dataStore.searchAlbumRecommendedLimit" class="show-more">
+              <p @click="dataStore.searchAlbumRecommendedLimit += 9" class="icon-right">
+                <span v-text="dataStore.searchAlbumRecommendedLimit" class="limit"></span><span
+                  v-text="albumsRecommended.length" class="total"></span><span class="more">more</span>
               </p>
             </div>
           </div>
@@ -79,10 +89,12 @@
       <div v-if="albumsRelated.length" class="row center">
         <div>
           <div class="album-raw center">
-            <album-raw v-for="(n, index) in albumsRelatedLimit" v-bind:album="albumsRelated[index]" :key="index" />
-            <div v-if="albumsRelated.length > albumsRelatedLimit" class="show-more">
-              <p @click="albumsRelatedLimit += 9" class="icon-right">
-                <span v-text="albumsRelatedLimit" class="limit"></span><span v-text="albumsRelated.length" class="total"></span><span class="more">more</span>
+            <album-raw v-for="(n, index) in dataStore.searchAlbumRelatedLimit" v-bind:album="albumsRelated[index]"
+              :key="index" />
+            <div v-if="albumsRelated.length > dataStore.searchAlbumRelatedLimit" class="show-more">
+              <p @click="dataStore.searchAlbumRelatedLimit += 9" class="icon-right">
+                <span v-text="dataStore.searchAlbumRelatedLimit" class="limit"></span><span
+                  v-text="albumsRelated.length" class="total"></span><span class="more">more</span>
               </p>
             </div>
           </div>
@@ -104,11 +116,11 @@
   <template v-else>
     <div class="container list">
       <div class="z-working">
-          <h1 class="text-vw">I don't understand!</h1>
-          <p>but let me say hello twice real quick..</p>
-          <ul>
-            <li v-for="index in 2">{{index}} Hello</li>
-          </ul>
+        <h1 class="text-vw">I don't understand! {{dataStore.searchQuery}}</h1>
+        <p>but let me say hello twice real quick..</p>
+        <ul>
+          <li v-for="index in 2">{{index}} Hello</li>
+        </ul>
       </div>
     </div>
   </template>

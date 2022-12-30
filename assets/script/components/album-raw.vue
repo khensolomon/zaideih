@@ -1,19 +1,19 @@
 <template>
   <div v-if="album" class="album-box--">
-    <div class="disc icon-albums" :class="$.albumGenre(album).map(e=>e.toLowerCase()).join(' ')">
+    <div class="disc icon-albums" :class="root.albumGenre(album).map(e=>e.toLowerCase()).join(' ')">
       <p class="genre">
-        <a v-for="gr in $.albumGenre(album)" :key="gr" v-text="gr"></a>
+        <a v-for="gr in root.albumGenre(album)" :key="gr" v-text="gr"></a>
       </p>
       <p class="year">
         <a v-for="year in album.yr" :key="year" v-text="year"></a>
       </p>
       <p class="play">
-        <span class="icon-play" @click="$.playAlbum(album.ui)"></span>
+        <span class="icon-play" @click="root.playAlbum(album.ui)"></span>
       </p>
-      <p class="length icon-time" v-text="$.albumDuration(album)"></p>
+      <p class="length icon-time" v-text="dataStore.albumDuration(album)"></p>
       <p class="total icon-headphones"  v-text="album.tp"></p>
       <p class="artist">
-        <span v-for="artist in $.albumArtist(album)" :key="artist">{{artist}}</span>
+        <span v-for="artist in root.albumArtist(album)" :key="artist">{{artist}}</span>
       </p>
     </div>
     <div class="name">
@@ -21,14 +21,14 @@
         <router-link :to="{ path: '/album/'+album.ui}" :title="album.ab">{{album.ab}}</router-link>
       </p>
       <!-- <p class="artist">
-        <span v-for="artist in $.albumArtist(album)" :key="artist">{{artist}}</span>
+        <span v-for="artist in root.albumArtist(album)" :key="artist">{{artist}}</span>
       </p> -->
     </div>
   </div>
 </template>
 
 <script>
-import Timer from '../timer';
+// import Timer from '../timer';
 export default {
   name: 'album-raw',
   // props: ['name'],
@@ -42,6 +42,7 @@ export default {
     // callback: Function,
     // contactsPromise: Promise // or any other constructor
   },
+  inject: ["root", "dataStore", "storageStore"],
   methods: {
     // formatTimer(e){
     //   try {
@@ -66,11 +67,7 @@ export default {
     //   );
     // }
   },
-  computed: {
-    $(){
-      return this.$parent.$
-    }
-  }
+  // computed: {}
 }
 </script>
 

@@ -6,7 +6,7 @@
           <p class="icon-headphones active"><span>{{album.tp}}</span></p>
         </div>
         <div class="time ">
-          <p class="icon-time active"><span v-text="$.albumDuration(album)"></span></p>
+          <p class="icon-time active"><span v-text="dataStore.albumDuration(album)"></span></p>
         </div>
         <div class="track">
           <p class="icon-music" v-bind:class="{ active: album.tk.length }"><span v-text="album.tk.length"></span></p>
@@ -19,13 +19,14 @@
         <a v-for="year in album.yr" v-text="year"></a>
       </div>
       <div class="row center play">
-        <span @click="$.playAlbum(album.ui)" class="play all">Play all</span>
+        <span @click="root.playAlbum(album.ui)" class="play all">Play all</span>
       </div>
       <div v-if="album.gr.length" class="row center genre">
-        <a v-for="genre in $.albumGenre(album)" v-text="genre"></a>
+        <a v-for="genre in root.albumGenre(album)" v-text="genre"></a>
       </div>
       <div class="row center middle artists name-artist">
-        <router-link v-for="artist in $.albumArtist(album)" :to="{ path: '/artist/'+artist.toLowerCase()}" :key="artist">{{artist}}</router-link>
+        <router-link v-for="artist in root.albumArtist(album)" :to="{ path: '/artist/'+artist.toLowerCase()}"
+          :key="artist">{{artist}}</router-link>
       </div>
       <div class="row tracks bg- sh-">
         <div class="main track-row" v-if="album.tk.length">
@@ -36,24 +37,26 @@
   </template>
   <template v-else>
     <div class="container list">
-      <div v-if="$.all.lang.length" class="row center tag show-lang badge-tag-">
-        <router-link v-for="(lang,index) in $.all.lang" :to="{ path: '/album/'+lang.name}" :key="index" class="icon-lightbulb">{{lang.name}}</router-link>
+      <div v-if="dataStore.all.lang.length" class="row center tag show-lang badge-tag-">
+        <router-link v-for="(lang,index) in dataStore.all.lang" :to="{ path: '/album/'+lang.name}" :key="index"
+          class="icon-lightbulb">{{lang.name}}</router-link>
         <!-- <router-link :to="{ path: '/album/abc'}" class="icon-lightbulb">None</router-link> -->
       </div>
       <div v-if="albums.length" class="album-raw">
         <!-- <div v-if="all.lang.length" class="show-lang badge-tag">
           <router-link v-for="(lang,index) in all.lang" :to="{ path: '/album/'+lang.name}" :key="index">{{lang.name}}</router-link>
         </div> -->
-        <album-raw v-for="(n, index) in albumsLimit" v-bind:album="albums[index]" :key="index" />
-        <!-- <div v-if="albums.length > albumsLimit" class="show-more">
-          <p @click="albumsLimit += 9" class="icon-right">
-            <span v-text="albumsLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
+        <album-raw v-for="(n, index) in dataStore.albumLimit" v-bind:album="albums[index]" :key="index" />
+        <!-- <div v-if="albums.length > dataStore.albumLimit" class="show-more">
+          <p @click="dataStore.albumLimit += 9" class="icon-right">
+            <span v-text="dataStore.albumLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
           </p>
         </div> -->
       </div>
-      <div v-if="albums.length > albumsLimit" class="row center show-more">
-        <p @click="albumsLimit += 9" class="icon-right">
-          <span v-text="albumsLimit" class="limit"></span><span v-text="albums.length" class="total"></span><span class="more">more</span>
+      <div v-if="albums.length > dataStore.albumLimit" class="row center show-more">
+        <p @click="dataStore.albumLimit += 9" class="icon-right">
+          <span v-text="dataStore.albumLimit" class="limit"></span><span v-text="albums.length"
+            class="total"></span><span class="more">more</span>
         </p>
       </div>
     </div>

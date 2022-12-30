@@ -1,10 +1,12 @@
 <div class="queue">
-  <div v-if="$.queue.length" class="row tracks bg- sh-">
+  <div v-if="dataStore.queue.length" class="row tracks bg- sh-">
     <div class="track-row">
-      <track-row v-for="(n, index) in trackLimit" v-bind:track="$.queue[index]" :key="index" :queued="true" />
-      <div v-if="$.queue.length > trackLimit" class="show-more">
-        <p @click="trackLimit += 9" class="icon-right">
-          <span v-text="trackLimit" class="limit"></span><span v-text="$.queue.length" class="total"></span><span class="more">more</span>
+      <track-row v-for="(n, index) in dataStore.queueTrackLimit" v-bind:track="dataStore.queue[index]" :key="index"
+        :queued="true" />
+      <div v-if="dataStore.queue.length > dataStore.queueTrackLimit" class="show-more">
+        <p @click="dataStore.queueTrackLimit += 9" class="icon-right">
+          <span v-text="dataStore.queueTrackLimit" class="limit"></span><span v-text="dataStore.queue.length"
+            class="total"></span><span class="more">more</span>
         </p>
       </div>
     </div>

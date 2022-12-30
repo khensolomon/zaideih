@@ -1,19 +1,19 @@
 <template>
-  <div v-if="track" :class="[queueId == track.i? 'active':$.isQueued(track.i)?'queued':null]" @click="play">
+  <div v-if="track" :class="[playerId == track.i? 'active':root.isQueued(track.i)?'queued':null]" @click="play">
     <div class="at art">
-      <span class="play track" :class="[queueId == track.i && playing? 'icon-pause':'icon-play']"></span>
+      <span class="play track" :class="[playerId == track.i && playing? 'icon-pause':'icon-play']"></span>
     </div>
     <div class="begin">
       <span class="trk"></span>
-      <span class="count icon-headphones" v-text="track.p>0?$.digitShortenTesting(track.p):''"></span>
+      <span class="count icon-headphones" v-text="track.p > 0 ? dataStore.digitShortenTesting(track.p):''"></span>
     </div>
     <div class="meta">
       <p class="title"><a>{{track.t}}</a></p>
-      <p class="artist"><router-link v-for="(artist,index) in $.artistName(track)" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
+      <p class="artist"><router-link v-for="(artist,index) in root.artistName(track)" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
     </div>
     <div class="end">
       <!-- <span v-text="track.d"></span> -->
-      <span v-text="$.trackDuration(track.d)"></span>
+      <span v-text="dataStore.trackDuration(track.d)"></span>
     </div>
     <div class="at mre">
       <span class="icon-info"></span>
@@ -34,17 +34,18 @@ export default {
     // callback: Function,
     // contactsPromise: Promise // or any other constructor
   },
+  inject: ["root", "dataStore", "storageStore"],
   methods: {
-    play(){
+    play(event){
       if (event.target.nodeName != 'A'){
         if (this.queued){
-          if (this.queueId != this.track.i) this.$.player.stop();
-          this.$.playNow(this.track.i);
+          if (this.playerId != this.track.i) this.root.player.stop();
+          this.root.playNow(this.track.i);
         } else {
-          this.$.addQueue(this.track).then(
+          this.root.addQueue(this.track).then(
             isQueued => {
               if (isQueued || this.playing == false) {
-                this.$.playNow(this.track.i);
+                this.root.playNow(this.track.i);
               }
             }
           );
@@ -53,17 +54,12 @@ export default {
     }
   },
   computed: {
-    $(){
-      return this.$parent.$parent;
-    },
-    // audio(){
-    //   return this.$.track(this.track);
-    // },
-    queueId(){
-      return this.$.queueId;
+
+    playerId(){
+      return this.root.playerId;
     },
     playing(){
-      return this.$.playing;
+      return this.dataStore.playing;
     }
   }
 }
