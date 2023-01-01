@@ -4,7 +4,7 @@ import { config, route, parse } from "lethil";
 const routes = route();
 
 if (config.development) {
-	import("./webpack.middleware.js").then(mwa => {
+	import("./webpack.middleware.js").then((mwa) => {
 		routes.use(mwa.dev);
 		routes.use(mwa.hot);
 	});
@@ -16,7 +16,7 @@ routes.use(
 	 * @param {*} res
 	 * @param {*} next
 	 */
-	function(req, res, next) {
+	function (req, res, next) {
 		// res.locals.app_locale = locale;
 
 		res.locals.appName = config.name;
@@ -43,7 +43,8 @@ routes.use(
 	 * @param {*} res
 	 * @param {*} next
 	 */
-	function(req, res, next) {
+	function (req, res, next) {
+		console.log("passing through restrictMiddleWare /api/:audio?");
 		next();
 		// if (res.locals.referer) return next();
 		// res.status(404).end();
