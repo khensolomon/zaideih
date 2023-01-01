@@ -6,17 +6,21 @@ import * as db from "./db.js";
 export async function trackPlays(Id) {
 	// NOTE: api/audio/1
 	// NOTE: api/audio/Ruben-Dear-God.mp3
-	try {
-		db.trackPlaysUpdate(Id).catch((e) => console.log(e.sqlMessage));
-		// const [row] = await db.trackById(Id).catch(() => null);
-		const [row] = await db.trackById(Id);
-		if (row) {
-			return row;
-		} else {
-			throw "development";
+	if (/^\d+$/.test(Id)) {
+		try {
+			db.trackPlaysUpdate(Id).catch((e) => console.log(e.sqlMessage));
+			// const [row] = await db.trackById(Id).catch(() => null);
+			const [row] = await db.trackById(Id);
+			if (row) {
+				return row;
+			} else {
+				throw "local";
+			}
+		} catch (error) {
+			throw error;
 		}
-	} catch (error) {
-		throw error;
+	} else {
+		throw "development";
 	}
 }
 
