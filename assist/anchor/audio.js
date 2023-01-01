@@ -133,6 +133,7 @@ async function streamDisk(req, res, row) {
  * @param {*} res
  */
 export function streamer(req, res) {
+	const localDirectory = req.url.split("/").slice(3);
 	trackPlays(req.params.trackId)
 		.then((row) => {
 			streamCloud(req, res, row).catch((e) => {
@@ -141,7 +142,8 @@ export function streamer(req, res) {
 		})
 		.catch((msg) => {
 			streamDisk(req, res, {
-				dir: config.setting.localMusic + "/" + req.params.trackId,
+				// @ts-ignore
+				dir: [config.setting.localMusic, ...localDirectory].join("/"),
 				plays: msg,
 			}).catch(() => {
 				res.status(404).end();
