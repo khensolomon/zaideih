@@ -1,6 +1,7 @@
 *.v[0-9]*.*
 *tmp/
-# /static
+/static
+/log
 # *-lock.json
 
 # Logs
