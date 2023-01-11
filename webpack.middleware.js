@@ -12,13 +12,14 @@ const config = merge(common, {
 	devtool: "inline-source-map",
 	entry: {
 		script: [
-			"webpack-hot-middleware/client?path=/__webpack_hmr&reload=true&timeout=1000",
+			// "webpack-hot-middleware/client?path=/__webpack_hmr&reload=true&timeout=1000"
+			"webpack-hot-middleware/client?path=/__webpack_hmr&timeout=1000&overlay=false",
 			path.resolve("./assets/script/analytics.js"),
-			path.resolve("./assets/script/sw.register.js")
+			path.resolve("./assets/script/sw.register.js"),
 		],
-		sw: [path.resolve("./assets/script/sw.js")]
+		sw: [path.resolve("./assets/script/sw.js")],
 	},
-	plugins: [new webpack.HotModuleReplacementPlugin()]
+	plugins: [new webpack.HotModuleReplacementPlugin()],
 });
 
 //reload=true:Enable auto reloading when changing JS files or content
