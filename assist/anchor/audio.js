@@ -1,9 +1,9 @@
 import path from "path";
 
-import { seek } from "lethil";
-import config from "./config.js";
+import { seek, config } from "lethil";
+import { setting } from "./config.js";
 
-import * as cloud from "./cloud.js";
+import cloud from "./cloud.js";
 import { trackPlays } from "./track.js";
 
 const contentType = "audio/mpeg";
@@ -84,9 +84,12 @@ async function streamCloud(req, res, row) {
  * @param {*} row
  */
 async function streamDisk(req, res, row) {
-	var file = path.resolve(config.setting.storage, row.dir);
+	var file = path.resolve(config.storage, row.dir);
 	try {
-		var stat = seek.statSync(file);
+		const stat = seek.statSync(file);
+		if (stat.isDirectory()) {
+			throw "is directory";
+		}
 		var range = req.headers.range;
 		if (range !== undefined) {
 			// var rangeByte = req.headers.range.replace(/bytes=/, "").split("-");
@@ -129,11 +132,11 @@ async function streamDisk(req, res, row) {
 }
 
 /**
+ * streamDisk dir expected req.url /api/audio/tmp/file.mp3
  * @param {*} req
  * @param {*} res
  */
 export function streamer(req, res) {
-	const localDirectory = req.url.split("/").slice(3);
 	trackPlays(req.params.trackId)
 		.then((row) => {
 			streamCloud(req, res, row).catch((e) => {
@@ -142,10 +145,10 @@ export function streamer(req, res) {
 		})
 		.catch((msg) => {
 			streamDisk(req, res, {
-				// @ts-ignore
-				dir: [config.setting.localMusic, ...localDirectory].join("/"),
+				dir: req.url.replace("/api/audio", "music"),
 				plays: msg,
 			}).catch(() => {
+				// Sorry no local file either
 				res.status(404).end();
 			});
 		});
