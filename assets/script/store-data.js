@@ -38,6 +38,13 @@ export const useDataStore = defineStore("data", {
 		},
 		queue: [
 			{
+				a: ["Yes"],
+				d: "3.41",
+				i: "tmp/music_collection_million-times.mp3",
+				p: 224564563,
+				t: "Korea",
+			},
+			{
 				a: ["Katie Melua"],
 				d: "3.41",
 				i: "tmp/Katie-Melua-If-You-Were-A-Sailboat.mp3",
