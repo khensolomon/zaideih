@@ -35,33 +35,23 @@
     ],
     "plugins": []
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/khensolomon/zaideih.git"
-  },
-  "author": "Khen Solomon Lethil",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/khensolomon/zaideih/issues"
-  },
-  "homepage": "https://github.com/khensolomon/zaideih#readme",
   "dependencies": {
-    "@google-cloud/storage": "^6.8.0",
-    "lethil": "^1.2.8",
+    "@google-cloud/storage": "^6.9.0",
+    "lethil": "file:../lethil",
     "mysql2": "^2.3.3",
     "pug": "^3.0.2",
     "tar": "^6.1.13"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.7",
+    "@babel/core": "^7.20.12",
     "@babel/preset-env": "^7.20.2",
     "axios": "^1.2.2",
-    "babel-loader": "^9.1.0",
+    "babel-loader": "^9.1.2",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.7.3",
     "file-loader": "^6.2.0",
     "get-mp3-duration": "^1.0.0",
-    "jsdom": "^20.0.3",
+    "jsdom": "^21.0.0",
     "mini-css-extract-plugin": "^2.7.2",
     "node-id3": "^0.2.5",
     "pinia": "^2.0.28",
@@ -81,20 +71,35 @@
     "webpack-hot-middleware": "^2.25.3",
     "webpack-merge": "^5.8.0"
   },
-  "used-in": {
-    "m3s": [
-      "jsdom"
-    ],
-    "id3": [
-      "get-mp3-duration",
-      "node-id3",
-      "music-metadata"
-    ],
-    "test": [
-      "siege"
-    ],
-    "?": [
-      "parse5"
-    ]
-  }
+  "docs": {
+    "dev": {
+      "lethil": "file:../lethil"
+    },
+    "used-in": {
+      "m3s": [
+        "jsdom"
+      ],
+      "id3": [
+        "get-mp3-duration",
+        "node-id3",
+        "music-metadata"
+      ],
+      "test": [
+        "siege"
+      ],
+      "?": [
+        "parse5"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khensolomon/zaideih.git"
+  },
+  "author": "Khen Solomon Lethil",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/khensolomon/zaideih/issues"
+  },
+  "homepage": "https://github.com/khensolomon/zaideih#readme"
 }
