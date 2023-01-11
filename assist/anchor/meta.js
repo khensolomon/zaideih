@@ -1,4 +1,5 @@
-import { setting } from "./config.js";
+import { config } from "lethil";
+// import { setting } from "./config.js";
 import { album, artist, genre } from "./store.js";
 
 /**
@@ -11,10 +12,10 @@ export async function meta(locals = null) {
 	raw.genre = JSON.stringify(await genre.get()).length;
 
 	if (locals) {
-		raw.lang = setting.bucketAvailable.join();
+		raw.lang = config.bucketAvailable.join();
 		locals.raw = raw;
 	} else {
-		raw.lang = setting.bucketAvailable;
+		raw.lang = config.bucketAvailable;
 	}
 	return raw;
 }

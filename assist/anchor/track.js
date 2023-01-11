@@ -1,16 +1,17 @@
 import * as db from "./db.js";
 
 /**
- * @param {any} Id
+ * Update track play by trackId
+ * @param {any} trackId
  */
-export async function trackPlays(Id) {
+export async function trackPlays(trackId) {
 	// NOTE: api/audio/1
 	// NOTE: api/audio/Ruben-Dear-God.mp3
-	if (/^\d+$/.test(Id)) {
+	if (/^\d+$/.test(trackId)) {
 		try {
-			db.trackPlaysUpdate(Id).catch((e) => console.log(e.sqlMessage));
-			// const [row] = await db.trackById(Id).catch(() => null);
-			const [row] = await db.trackById(Id);
+			db.trackPlaysUpdate(trackId).catch((e) => console.log(e.sqlMessage));
+			// const [row] = await db.trackById(trackId).catch(() => null);
+			const [row] = await db.trackById(trackId);
 			if (row) {
 				return row;
 			} else {
