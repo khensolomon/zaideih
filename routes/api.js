@@ -1,6 +1,6 @@
 import { route, seek } from "lethil";
 
-import { config, meta, trackList, audio, store } from "../assist/index.js";
+import { meta, trackList, audio, store } from "../assist/index.js";
 
 const routes = route("API", "/api");
 
@@ -63,7 +63,7 @@ routes.get(
 	}
 );
 
-routes.get("/audio/:trackId", audio.streamer);
+routes.get("/audio/:trackId?", audio.streamer);
 
 /*
 const app = require('..');
