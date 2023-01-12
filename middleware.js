@@ -37,29 +37,32 @@ routes.use(
  * org: restrictMiddleWare
  */
 routes.use(
-	"/api/:audio?",
+	"/api",
 	/**
 	 * @param {*} req
 	 * @param {*} res
 	 * @param {*} next
 	 */
 	function (req, res, next) {
-		console.log("passing through restrictMiddleWare /api/:audio?");
-		next();
-		// if (res.locals.referer) return next();
-		// res.status(404).end();
-		// if (req.xhr || req.headers.range) next();
-		// if (req.params.audio && res.locals.referer)
-		// if (res.locals.referer) {
-		//   if (req.xhr || req.headers.range) {
-		//     return next();
-		//   }
-		// } else {
-		//   var base = Object.keys(config.restrict), user = Object.keys(req.query), key = base.find(e => user.includes(e));
-		//   if (key && config.restrict[key] == req.query[key]) {
-		//     return next();
-		//   }
-		// }
-		// res.status(404).send();
+		if (res.locals.referer) {
+			// NOTE: internal
+			const requestedInternal = req.route.pathname.split("/");
+			if (requestedInternal == "audio") {
+				if (req.xhr || req.headers.range) {
+					return next();
+				}
+			} else {
+				return next();
+			}
+		} else {
+			// NOTE: external
+			const base = Object.keys(config.restrict),
+				user = Object.keys(req.query),
+				key = base.find((e) => user.includes(e));
+			if (key && config.restrict[key] == req.query[key]) {
+				return next();
+			}
+		}
+		res.status(404).end();
 	}
 );
