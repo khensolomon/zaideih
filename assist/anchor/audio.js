@@ -132,7 +132,7 @@ async function streamDisk(req, res, row) {
 }
 
 /**
- * streamDisk dir expected req.url /api/audio/tmp/file.mp3
+ * streamDisk dir expected `req.route.pathname` /api/audio/tmp/file.mp3
  * @param {*} req
  * @param {*} res
  */
@@ -145,7 +145,8 @@ export function streamer(req, res) {
 		})
 		.catch((msg) => {
 			streamDisk(req, res, {
-				dir: req.url.replace("/api/audio", "music"),
+				// dir: req.url.replace("/api/audio", "music"),
+				dir: req.route.pathname.replace("/api/audio", "music"),
 				plays: msg,
 			}).catch(() => {
 				// Sorry no local file either
