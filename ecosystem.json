@@ -1,0 +1,40 @@
+{
+  "apps": [
+    {
+      "name": "Zaideih",
+      "script": "serve.js",
+      "watch": false,
+      "ignore_watch": [],
+      "error_file": "./logs/pm2.err.log",
+      "out_file": "./logs/pm2.out.log",
+      "docs": {
+        "test": "pm2 start ecosystem.json ",
+        "?": "^env_*$ => Specify environment variables to be injected when using –env"
+      },
+      "instances": 1,
+      "exec_mode": "cluster",
+      "autorestart": true,
+      "max_memory_restart": "1G",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "env_production": {
+        "NODE_ENV": "production"
+      }
+    }
+  ],
+  "deploy": {
+    "production": {
+      "user": "khensolomon",
+      "host": "35.238.166.146",
+      "ref": "origin/master",
+      "repo": "git@github.com:khensolomon/zaideih.git",
+      "fetch": "all",
+      "path": "/var/www/zaideih-test",
+      "pre-deploy-local": "",
+      "post-deploy": "ls -la",
+      "post-deploy-": "npm install && npm run build && pm2 reload ecosystem.json --env production",
+      "pre-setup": ""
+    }
+  }
+}
