@@ -2,7 +2,6 @@
   "name": "zaideih",
   "version": "1.2.1",
   "description": "Zaideih Music Station",
-  "live": "https://www.zaideih.com",
   "main": "index.js",
   "type": "module",
   "scripts": {
