@@ -15,7 +15,7 @@ html(lang='en')
     if keywords
       meta(name="keywords" content=keywords)
     if description
-      meta(name="description" content=description)
+      meta(name="description" content=description data-env=environment)
     meta(name="application-name" content=appName data-version=appVersion data-album=raw.album data-artist=raw.artist data-genre=raw.genre data-lang=raw.lang)
     base(href='/')
     link(rel='api', href='api')
