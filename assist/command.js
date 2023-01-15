@@ -6,6 +6,10 @@ routes.get("", async () => "?");
 routes.get("apple", async () => "Did you know apple is fruit?");
 routes.get("orange", async () => "Orange is good for health");
 
+routes.get("ecosystem", async (req = {}) =>
+	import("./admin/ecosystem.js").then((e) => e.createOrUpdate(req))
+);
+
 routes.get(
 	"register-:bucketName/:albumId?",
 	async (req = {}) =>
