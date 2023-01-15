@@ -20,8 +20,8 @@
       "env_development": {
         "NODE_ENV": "development"
       },
-      "cwd": "./",
-      "cwd-": "/var/www/<APP_SRC>-src/current",
+      "cwd-": "./",
+      "cwd": "/var/www/<APP_SRC>-repo/current",
       "args": ""
     }
   ],
@@ -32,11 +32,11 @@
       "ref": "origin/master",
       "repo": "<APP_REPO>",
       "fetch": "all",
-      "path": "/var/www/<APP_SRC>-src",
+      "path": "/var/www/<APP_SRC>-repo",
       "pre-deploy": "",
       "post-deploy": "",
       "pre-setup": "",
-      "post-setup": "ls -s /var/www/<APP_SRC>-src/current /var/www/<APP_SRC>",
+      "post-setup": "ln -s /var/www/<APP_SRC>-repo/current /var/www/<APP_SRC>",
       "pre-deploy-local": ""
     }
   },

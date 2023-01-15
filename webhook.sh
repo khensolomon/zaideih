@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create symbolic link, and update nginx config
-# ls -s /var/www/zaideih-src/current /var/www/zaideih
+# ln -s /var/www/zaideih-src/current /var/www/zaideih
 
 # Copy to
 # cp webhook.sh /var/www/webhook/update-zaideih.sh
@@ -21,6 +21,7 @@ npm install
 npm run build
 
 # Reload PM2
-pm2 reload Zaideih
+# pm2 startOrRestart ecosystem.json
+pm2 reload zaideih
 # Save PM2
 pm2 save

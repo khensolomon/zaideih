@@ -6,6 +6,10 @@ routes.get("", async () => "?");
 routes.get("apple", async () => "Did you know apple is fruit?");
 routes.get("orange", async () => "Orange is good for health");
 
+routes.get("environment", async (req = {}) =>
+	import("./admin/ecosystem.js").then((e) => e.transferEnvironment(req))
+);
+
 routes.get("ecosystem", async (req = {}) =>
 	import("./admin/ecosystem.js").then((e) => e.createOrUpdate(req))
 );
