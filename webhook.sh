@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Create symbolic link, and update nginx config
+# ls -s /var/www/zaideih-src/current /var/www/zaideih
+
 # Copy to
 # cp webhook.sh /var/www/webhook/update-zaideih.sh
 
