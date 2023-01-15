@@ -73,7 +73,7 @@
   },
   "env": {
     "app": {
-      "name-": "zaideih",
+      "name": "zaideih",
       "src": "zaideih",
       "repo": "git@github.com:khensolomon/zaideih.git"
     },

@@ -20,7 +20,8 @@
       "env_development": {
         "NODE_ENV": "development"
       },
-      "cwd": "/var/www/<APP_SRC>-src/current",
+      "cwd": "./",
+      "cwd-": "/var/www/<APP_SRC>-src/current",
       "args": ""
     }
   ],
