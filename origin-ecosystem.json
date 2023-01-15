@@ -5,8 +5,8 @@
       "script": "./serve.js",
       "watch": false,
       "ignore_watch": [],
-      "error_file": "./logs/pm2.err.log",
-      "out_file": "./logs/pm2.out.log",
+      "error_file": "./logs/pm2-err.log",
+      "out_file": "./logs/pm2-out.log",
       "-instances": 1,
       "-exec_mode": "cluster",
       "autorestart": true,
@@ -20,7 +20,7 @@
       "env_development": {
         "NODE_ENV": "development"
       },
-      "cwd": "/var/www/<APP_REPO>-src/current",
+      "cwd": "/var/www/<APP_SRC>-src/current",
       "args": ""
     }
   ],
@@ -29,26 +29,27 @@
       "user": "<SSH_USER>",
       "host": "<SSH_HOST>",
       "ref": "origin/master",
-      "repo": "git@github.com:khensolomon/<APP_REPO>.git",
+      "repo": "<APP_REPO>",
       "fetch": "all",
-      "path": "/var/www/<APP_REPO>-src",
-      "post-deploy-help": {
-        "wid": "Execute command after git:ref.fetch",
-        "eg": "npm install && npm run build && pm2 reload ecosystem.json --env production"
-      },
+      "path": "/var/www/<APP_SRC>-src",
       "pre-deploy": "",
       "post-deploy": "",
       "pre-setup": "",
-      "post-setup": "",
+      "post-setup": "ls -s /var/www/<APP_SRC>-src/current /var/www/<APP_SRC>",
       "pre-deploy-local": ""
     }
   },
   "help": {
     "define": {
-      "APP_NAME": "Application name",
-      "APP_REPO": "Repository name",
+      "APP_NAME": "Application name used by pm2",
+      "APP_SRC": "Repository name or custome folder name",
+      "APP_REPO": "Repository git",
       "SSH_USER": "SSH user",
       "SSH_HOST": "SSH host"
+    },
+    "post-deploy": {
+      "desc": "Execute command after git:ref.fetch",
+      "eg": "npm install && npm run build && pm2 reload ecosystem.json --env production"
     },
     "^env_*$": "Specify environment variables to be injected when using --env",
     "deploy.production.setup": "pm2 deploy ecosystem.json production setup",
