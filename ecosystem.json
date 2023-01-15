@@ -1,0 +1,49 @@
+{
+  "apps": [
+    {
+      "name": "zaideih",
+      "script": "./serve.js",
+      "watch": false,
+      "ignore_watch": [],
+      "error_file": "./logs/pm2-err.log",
+      "out_file": "./logs/pm2-out.log",
+      "-instances": 1,
+      "-exec_mode": "cluster",
+      "autorestart": true,
+      "max_memory_restart": "300M",
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "env_production": {
+        "NODE_ENV": "production"
+      },
+      "env_development": {
+        "NODE_ENV": "development"
+      },
+      "cwd": "./",
+      "cwd-": "/var/www/zaideih-src/current",
+      "args": ""
+    }
+  ],
+  "deploy": {
+    "production": {
+      "user": "khensolomon",
+      "host": "35.238.166.146",
+      "ref": "origin/master",
+      "repo": "git@github.com:khensolomon/zaideih.git",
+      "fetch": "all",
+      "path": "/var/www/zaideih-src",
+      "pre-deploy": "",
+      "post-deploy": "",
+      "pre-setup": "",
+      "post-setup": "ls -s /var/www/zaideih-src/current /var/www/zaideih",
+      "pre-deploy-local": ""
+    }
+  },
+  "help": {
+    "note": "Do not modify this file directly!",
+    "created_date": "2023-01-15T17:26:10.612Z",
+    "updated_date": "2023-01-15T18:23:47.565Z",
+    "modified": 4
+  }
+}
