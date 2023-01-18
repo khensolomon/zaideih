@@ -12,7 +12,8 @@
     "test-port": "set PORT=5000 && node serve",
     "test-listen": "set LISTEN= && node serve",
     "test-production": "set NODE_ENV=production && node serve",
-    "ecosystem": "node run ecosystem",
+    "deployment:environment": "node run environment",
+    "deployment:ecosystem": "node run ecosystem",
     "pm2:start": "pm2 start",
     "pm2:startJSON": "pm2 start ecosystem.json",
     "pm2:reload": "pm2 reload Zaideih",
@@ -22,7 +23,7 @@
     "pm2:kill": "pm2 kill",
     "pm2:list": "pm2 list"
   },
-  "babe": {
+  "babel": {
     "presets": [
       [
         "@babel/preset-env",
@@ -37,7 +38,7 @@
   },
   "dependencies": {
     "@google-cloud/storage": "^6.9.0",
-    "lethil": "^1.3.0",
+    "lethil": "file:../lethil",
     "mysql2": "^3.0.0",
     "pug": "^3.0.2",
     "tar": "^6.1.13"
@@ -45,7 +46,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.12",
     "@babel/preset-env": "^7.20.2",
-    "axios": "^1.2.2",
+    "axios": "^1.2.3",
     "babel-loader": "^9.1.2",
     "clean-webpack-plugin": "^4.0.0",
     "css-loader": "^6.7.3",
@@ -70,17 +71,6 @@
     "webpack-dev-middleware": "^6.0.1",
     "webpack-hot-middleware": "^2.25.3",
     "webpack-merge": "^5.8.0"
-  },
-  "env": {
-    "app": {
-      "name": "zaideih",
-      "src": "zaideih",
-      "repo": "git@github.com:khensolomon/zaideih.git"
-    },
-    "ssh": {
-      "user": "",
-      "host": ""
-    }
   },
   "docs": {
     "dev": {

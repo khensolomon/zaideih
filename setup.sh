@@ -13,8 +13,8 @@ cd /var/www/zaideih
 npm install
 
 # 2.2 Build ecosystem.json for pm2
-npm run ecosystem
-# node run ecosystem
+node run ecosystem
+# npm run ecosystem
 
 # 2.2 Build assets
 npm run build

@@ -1,7 +1,7 @@
 import path from "path";
 
 import { seek, config } from "lethil";
-import { setting } from "./config.js";
+// import { setting } from "./config.js";
 
 import cloud from "./cloud.js";
 import { trackPlays } from "./track.js";

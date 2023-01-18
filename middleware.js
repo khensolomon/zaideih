@@ -1,7 +1,7 @@
 import { config, route, parse } from "lethil";
 // import {language} from './assist/index.js';
 
-const routes = route();
+const routes = new route.gui();
 
 if (config.development) {
 	import("./webpack.middleware.js").then((mwa) => {
@@ -10,60 +10,46 @@ if (config.development) {
 	});
 }
 
-routes.use(
-	/**
-	 * @param {*} req
-	 * @param {*} res
-	 * @param {*} next
-	 */
-	function (req, res, next) {
-		// res.locals.app_locale = locale;
+routes.use(function (req, res, next) {
+	// res.locals.app_locale = locale;
 
-		res.locals.appName = config.name;
-		res.locals.appVersion = config.version;
-		res.locals.appDescription = config.description;
-		res.locals.environment = config.development ? "development" : "production";
+	res.locals.appName = config.name;
+	res.locals.appVersion = config.version;
+	res.locals.appDescription = config.description;
+	res.locals.environment = config.development ? "development" : "production";
 
-		if (req.headers.referer) {
-			var ref = parse.url(req.headers.referer);
-			res.locals.referer = req.headers.host == ref.host; // || config.user.referer.filter((e)=>e.exec(ref.host)).length > 0;
-			res.locals.host = ref.protocol + "//" + req.headers.host;
-		}
-
-		next();
+	if (req.headers.referer) {
+		var ref = parse.url(req.headers.referer);
+		res.locals.referer = req.headers.host == ref.host; // || config.user.referer.filter((e)=>e.exec(ref.host)).length > 0;
+		res.locals.host = ref.protocol + "//" + req.headers.host;
 	}
-);
+
+	next();
+});
 
 /**
  * org: restrictMiddleWare
  */
-routes.use(
-	"/api",
-	/**
-	 * @param {*} req
-	 * @param {*} res
-	 * @param {*} next
-	 */
-	function (req, res, next) {
-		if (res.locals.referer) {
-			// NOTE: internal
-			const requestedInternal = req.route.pathname.split("/");
-			if (requestedInternal == "audio") {
-				if (req.xhr || req.headers.range) {
-					return next();
-				}
-			} else {
+routes.use("/api", function (req, res, next) {
+	if (res.locals.referer) {
+		// NOTE: internal
+		const requestedInternal = req.route.pathname.split("/")[3];
+		// req.xhr ||
+		if (requestedInternal == "audio") {
+			if (req.headers.range) {
 				return next();
 			}
 		} else {
-			// NOTE: external
-			const base = Object.keys(config.restrict),
-				user = Object.keys(req.query),
-				key = base.find((e) => user.includes(e));
-			if (key && config.restrict[key] == req.query[key]) {
-				return next();
-			}
+			return next();
 		}
-		res.status(404).end();
+	} else {
+		// NOTE: external
+		const base = Object.keys(config.restrict),
+			user = Object.keys(req.query),
+			key = base.find((e) => user.includes(e));
+		if (key && config.restrict[key] == req.query[key]) {
+			return next();
+		}
 	}
-);
+	res.status(404).end();
+});

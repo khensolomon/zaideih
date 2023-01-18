@@ -2,16 +2,11 @@
 * text=auto
 
 /test export-ignore
-# /static export-ignore
 /assets export-ignore
-# /assets/psd export-ignore
-# /assets/icon/*.json export-ignore
-webpack.*.js export-ignore
+/docs export-ignore
 /test.js export-ignore
-*.md export-ignore
+# *.md export-ignore
 .env export-ignore
-
-# /package.json export-ignore
 
 /.vscode export-ignore
 .travis.yml export-ignore

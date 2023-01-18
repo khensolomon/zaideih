@@ -11,13 +11,20 @@ const config = app.config;
 
 app.listen(config.listen, () => {
 	if (typeof app.address == "object") {
-		console.log(config.name, app.address.address, app.address.port);
+		console.log(
+			config.name,
+			"listening",
+			app.address.address,
+			app.address.port
+		);
 	} else {
-		console.log(config.name, app.address);
+		console.log(config.name, "listening", app.address);
 	}
 	// app.close();
 });
 
-app.on("error", function (e) {
-	console.log("...", e);
+app.on("error", console.error);
+
+app.on("close", function (e) {
+	console.warn("close", e);
 });

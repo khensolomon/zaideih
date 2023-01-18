@@ -17,7 +17,13 @@ app.execute(() => {
 });
 
 // NOTE: on success
-app.on("success", (e) => console.log("...", e));
+// app.on("success", (e) => console.log("...", e));
+app.on("success", console.log);
 
 // NOTE: on error
-app.on("error", (e) => console.log("...", e));
+// app.on("error", (e) => console.log("...", e));
+app.on("error", console.log);
+
+// app.on("close", function (e) {
+// 	console.warn("close", e);
+// });

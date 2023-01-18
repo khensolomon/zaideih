@@ -4,7 +4,10 @@
       "name": "<APP_NAME>",
       "script": "./serve.js",
       "watch": false,
-      "ignore_watch": [],
+      "ignore_watch": [
+        "[\\/\\\\]\\./",
+        "node_modules"
+      ],
       "error_file": "./logs/pm2-err.log",
       "out_file": "./logs/pm2-out.log",
       "-instances": 1,
@@ -20,8 +23,8 @@
       "env_development": {
         "NODE_ENV": "development"
       },
-      "cwd-": "./",
-      "cwd": "/var/www/<APP_SRC>-repo/current",
+      "cwd": "./",
+      "cwd-": "<APP_ROOT>",
       "args": ""
     }
   ],
@@ -32,18 +35,18 @@
       "ref": "origin/master",
       "repo": "<APP_REPO>",
       "fetch": "all",
-      "path": "/var/www/<APP_SRC>-repo",
+      "path": "<APP_ROOT>-repo",
       "pre-deploy": "",
       "post-deploy": "",
       "pre-setup": "",
-      "post-setup": "ln -s /var/www/<APP_SRC>-repo/current /var/www/<APP_SRC>",
+      "post-setup": "ln -s <APP_ROOT>-repo/current <APP_ROOT>",
       "pre-deploy-local": ""
     }
   },
   "help": {
     "define": {
       "APP_NAME": "Application name used by pm2",
-      "APP_SRC": "Repository name or custome folder name",
+      "APP_ROOT": "Application root, which is symbolic link",
       "APP_REPO": "Repository git",
       "SSH_USER": "SSH user",
       "SSH_HOST": "SSH host"
