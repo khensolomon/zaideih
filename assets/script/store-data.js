@@ -59,6 +59,20 @@ export const useDataStore = defineStore("data", {
 				t: "The day you went away",
 			},
 			{
+				a: ["စိုးသူ"],
+				d: "3.59",
+				i: "tmp/soe-tho_kyi_phyy_bar_doh.mp3",
+				p: 44564563,
+				t: "ကြည်ဖြူပါတော့",
+			},
+			{
+				a: ["Irene Zin Mar Myint"],
+				d: "3.59",
+				i: "tmp/Irene-Zin-Mar-Myint_melody_2013.mp3",
+				p: 345643,
+				t: "???",
+			},
+			{
 				a: ["Cyndi"],
 				d: "3.53",
 				i: "tmp/cyndi-first-love.mp3",
