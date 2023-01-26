@@ -1,13 +1,9 @@
 import path from "path";
 // import fs from 'fs';
-import { seek, config } from "lethil";
-import { setting } from "./config.js";
+import { seek } from "lethil";
+import config from "./config.js";
 
-const { bucketAvailable } = setting;
-
-// export function asdfasdf(){
-// 	return path.join(config.media, setting.store.bucket);
-// }
+const { bucketAvailable } = config;
 
 /**
  * @param {string} file
@@ -44,7 +40,7 @@ export const bucket = {
 			: `no such "${bucket.id}" bucket exists`),
 	file: () =>
 		path
-			.join(config.media, setting.store.bucket)
+			.join(config.media, config.store.bucket)
 			.replace("?", bucket.active() || bucket.tmp),
 	get: () => read(bucket.file()),
 	read: () =>
@@ -58,9 +54,9 @@ export const bucket = {
 
 export const album = {
 	data: [],
-	// file: path.join(config.media, setting.store.album),
+	// file: path.join(config.media, config.store.album),
 	get file() {
-		return path.join(config.media, setting.store.album);
+		return path.join(config.media, config.store.album);
 	},
 	get: () => read(album.file),
 	read: () =>
@@ -72,7 +68,7 @@ export const album = {
 	also: {
 		name: {
 			data: [],
-			file: path.join(config.media, setting.store.albumName),
+			file: path.join(config.media, config.store.albumName),
 			read: () =>
 				read(album.also.name.file)
 					.then((o) => Object.assign(album.also.name.data, o))
@@ -84,7 +80,7 @@ export const album = {
 export const artist = {
 	data: [],
 	get file() {
-		return path.join(config.media, setting.store.artist);
+		return path.join(config.media, config.store.artist);
 	},
 	get: () => read(artist.file),
 	read: () =>
@@ -98,9 +94,9 @@ export const artist = {
 
 export const genre = {
 	data: [],
-	// file: path.join(config.media, setting.store.genre),
+	// file: path.join(config.media, config.store.genre),
 	get file() {
-		return path.join(config.media, setting.store.genre);
+		return path.join(config.media, config.store.genre);
 	},
 	get: () => read(genre.file),
 	read: () =>
@@ -116,9 +112,9 @@ export const track = {
 	also: {
 		name: {
 			data: [],
-			// file: path.join(config.media, setting.store.trackName),
+			// file: path.join(config.media, config.store.trackName),
 			get file() {
-				return path.join(config.media, setting.store.trackName);
+				return path.join(config.media, config.store.trackName);
 			},
 			read: () =>
 				read(track.also.name.file)

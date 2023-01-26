@@ -1,5 +1,4 @@
-import { config } from "lethil";
-// import { setting } from "./config.js";
+import config from "./config.js";
 import { album, artist, genre } from "./store.js";
 
 /**

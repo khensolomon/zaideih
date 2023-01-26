@@ -1,8 +1,7 @@
-import path from "path";
 import { seek } from "lethil";
-import { config, store, db } from "../anchor/index.js";
+import { config, store } from "../anchor/index.js";
 
-const { template, bucketAvailable } = config.setting;
+const { template } = config;
 
 /**
  * generate artist for Mobile version

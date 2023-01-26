@@ -1,5 +1,5 @@
 import path from "path";
-import { store, cloud } from "../anchor/index.js";
+import { store } from "../anchor/index.js";
 
 // const {template,bucketAvailable} = config.setting;
 

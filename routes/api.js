@@ -1,12 +1,15 @@
 import { route, seek } from "lethil";
 
-import { meta, trackList, audio, store } from "../assist/index.js";
+import { config, meta, trackList, audio, store } from "../assist/index.js";
 
-// const routes = route("API", "/api");
 const routes = new route.gui("API", "/api");
 
 routes.get("", function (_req, res) {
 	meta().then((e) => res.json(e));
+});
+
+routes.get("/config", (_req, res) => {
+	res.json(config);
 });
 
 routes.get("/album", function (_req, res) {
@@ -30,40 +33,3 @@ routes.get("/track-list-id-plays", function (_req, res) {
 });
 
 routes.get("/audio/:trackId?", audio.streamer);
-
-/*
-const app = require('..');
-const assist = require('../assist');
-const fs = require('fs');
-// const url = require('url');
-// const path = require('path');
-
-const {store} = app.Config;
-const routes = app.Router();
-
-routes.get('/', function(req, res, next) {
-  assist.meta().then(e=>res.send(e)).catch(next)
-});
-
-routes.get('/album', function(req, res) {
-  res.header("Content-Type", "application/json; charset=utf-8");
-  fs.createReadStream(store.album).pipe(res);
-});
-
-routes.get('/genre', function(req, res) {
-  fs.createReadStream(store.genre).pipe(res);
-});
-
-routes.get('/artist', function(req, res) {
-  res.header("Content-Type", "application/json; charset=utf-8");
-  fs.createReadStream(store.artist).pipe(res);
-});
-
-routes.get('/track-plays', function(req, res, next) {
-  assist.trackPlays().then(e=>res.send(e)).catch(next)
-});
-
-routes.get('/audio/:trackId', assist.audio);
-
-module.exports = routes;
-*/

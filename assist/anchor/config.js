@@ -1,4 +1,6 @@
-export const setting = {
+import { set } from "lethil";
+
+const settings = {
 	name: "Zaideih",
 	// description: 'package.description',
 	// version: 'package.version',
@@ -61,4 +63,4 @@ export const setting = {
 	},
 };
 
-export default { setting };
+export default set.merge(settings);

@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import { utility } from "lethil";
 
-import { config, store, cloud } from "../anchor/index.js";
+import { store, cloud } from "../anchor/index.js";
 
 /**
  * scan-:jobName/:bucketName/:more?

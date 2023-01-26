@@ -1,7 +1,7 @@
 import path from "path";
 import { config, store, db } from "../anchor/index.js";
 
-const { template, bucketAvailable } = config.setting;
+const { template, bucketAvailable } = config;
 
 /**
  * track and its plays count

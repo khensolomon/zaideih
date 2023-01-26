@@ -137,7 +137,7 @@ async function readId3(buffer, file) {
 		// var tag = NodeID3.read(buffer[0]);
 
 		var tag = await NodeID3.Promise.read(buffer);
-		var meta = Object.assign({}, config.setting.template.bucketTrack, {
+		var meta = Object.assign({}, config.template.bucketTrack, {
 			track: tag.trackNumber,
 			year: tag.year,
 		});
