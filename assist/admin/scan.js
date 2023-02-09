@@ -23,15 +23,15 @@ export default async function (req) {
 	var file = [];
 	try {
 		if (jobName == "cloud") {
-			file = await cloudDirectory(req.pathname);
+			file = await cloudDirectory(req.route.pathname);
 		} else if (jobName == "local") {
-			file = await localDirectory(req.pathname);
+			file = await localDirectory(req.route.pathname);
 		} else {
 			throw '> no such "?" method'.replace("?", jobName);
 		}
 		return await processor(file);
 	} catch (error) {
-		return error.message || error;
+		return error;
 	}
 }
 

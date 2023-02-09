@@ -1,4 +1,4 @@
-export * as cloud from "./cloud.js";
+export { cloud } from "./cloud.js";
 export * as store from "./store.js";
 export * as db from "./db.js";
 export { meta } from "./meta.js";

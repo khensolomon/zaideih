@@ -16,6 +16,7 @@ export const useStorageStore = defineStore("storage", {
 				.replace(/(\<|%3C|\>|%3E)(.*)(\<|%3C\>|%3E)/g, "")
 				.replace(/(\/|%2F)(.*)(\>|%3E)/g, "")
 				.replace(/(\/\*)/g, "")
+				.replace(/\s+|%22|%3E|%3C/g, " ")
 				.trim();
 		},
 		/**
@@ -57,7 +58,7 @@ export const useStorageStore = defineStore("storage", {
 			if (e) {
 				const val = JSON.parse(e);
 				if (Array.isArray(val)) {
-					return val.filter(v => this.isValid(v));
+					return val.filter((v) => this.isValid(v));
 				}
 			}
 			return [];
@@ -70,7 +71,9 @@ export const useStorageStore = defineStore("storage", {
 		 */
 		setItemAsList(id, value) {
 			var items = this.getItemAsList(id);
-			var _Index = items.findIndex(e => e.toLowerCase() == value.toLowerCase());
+			var _Index = items.findIndex(
+				(e) => e.toLowerCase() == value.toLowerCase()
+			);
 			if (_Index > -1) {
 				items.unshift(items.splice(_Index, 1)[0]);
 			} else {
@@ -98,12 +101,12 @@ export const useStorageStore = defineStore("storage", {
 		 */
 		setItemAsObject(id, value) {
 			this.setItem(id, JSON.stringify(value));
-		}
+		},
 		// async getItem(k) {
 		// 	return await JSON.parse(localStorage.getItem(k));
 		// },
 		// async setItem(k, v) {
 		// 	localStorage.setItem(k, JSON.stringify(v));
 		// }
-	}
+	},
 });

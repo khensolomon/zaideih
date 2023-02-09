@@ -61,4 +61,6 @@ class Cloud {
 	}
 }
 
-export default new Cloud();
+export const cloud = new Cloud();
+
+// export default new Cloud();
