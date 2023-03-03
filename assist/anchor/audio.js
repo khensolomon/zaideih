@@ -2,7 +2,7 @@ import path from "path";
 
 import { seek, config } from "lethil";
 
-import cloud from "./cloud.js";
+import { cloud } from "./cloud.js";
 import { trackPlays } from "./track.js";
 
 const contentType = "audio/mpeg";
@@ -40,7 +40,8 @@ async function streamCloud(req, res, row) {
 					: stat.size - 1;
 				var contentLength = contentEnd - contentStart + 1;
 
-				res.status(206).setHeaders({
+				res.status(206);
+				res.set({
 					"Content-Play": row.plays,
 					"Content-Type": contentType,
 					"Content-Length": contentLength,
@@ -63,7 +64,7 @@ async function streamCloud(req, res, row) {
 					.on("end", () => res.end())
 					.pipe(res);
 			} else {
-				res.setHeaders({
+				res.set({
 					"Content-Play": row.plays,
 					"Content-Type": contentType,
 					"Content-Length": stat.size,
@@ -109,7 +110,8 @@ async function streamDisk(req, res, row) {
 				? parseInt(rangeByteEnd, 10)
 				: stat.size - 1;
 			var contentLength = contentEnd - contentStart + 1;
-			res.status(206).setHeaders({
+			res.status(206);
+			res.set({
 				"Content-Play": row.plays,
 				"Content-Type": contentType,
 				"Content-Length": contentLength,
@@ -118,7 +120,7 @@ async function streamDisk(req, res, row) {
 			});
 			seek.readStream(file, { start: contentStart, end: contentEnd }).pipe(res);
 		} else {
-			res.setHeaders({
+			res.set({
 				"Content-Play": row.plays,
 				"Content-Type": contentType,
 				"Content-Length": stat.size,
@@ -131,12 +133,14 @@ async function streamDisk(req, res, row) {
 }
 
 /**
- * streamDisk dir expected `req.route.pathname` /api/audio/tmp/file.mp3
+ * streamDisk dir expected `req.originalUrl` /api/audio/tmp/file.mp3
  * @param {*} req
  * @param {*} res
  */
 export function streamer(req, res) {
-	trackPlays(req.params.trackId)
+	var e = req.path.split("/").splice(3);
+	// req.params.trackId;
+	trackPlays(e[0])
 		.then((row) => {
 			streamCloud(req, res, row).catch((e) => {
 				streamDisk(req, res, row).catch(() => res.status(404).end());
@@ -144,8 +148,8 @@ export function streamer(req, res) {
 		})
 		.catch((msg) => {
 			streamDisk(req, res, {
-				// dir: req.url.replace("/api/audio", "music"),
-				dir: req.route.pathname.replace("/api/audio", "music"),
+				// dir: req.path.replace("/api/audio", "music"),
+				dir: ["music"].concat(e).join("/"),
 				plays: msg,
 			}).catch(() => {
 				// Sorry no local file either

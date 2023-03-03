@@ -1,10 +1,10 @@
-import { route } from "lethil";
-
+import { server } from "lethil";
 import { meta } from "../assist/index.js";
 
-const routes = new route.gui("navPage", "/");
+const app = server();
+const routes = app.routes("/", "page");
 
-routes.get({ url: "", route: "home", text: "Home" }, function (_req, res) {
+routes.register({ name: "home", text: "Home" }, function (req, res) {
 	meta(res.locals).then(() =>
 		res.render("home", {
 			title: "Zaideih",

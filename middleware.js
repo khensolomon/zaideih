@@ -1,16 +1,25 @@
-import { config, route, parse } from "lethil";
+import { server, config, parse } from "lethil";
+import cookieParser from "cookie-parser";
+import compression from "compression";
 // import {language} from './assist/index.js';
 
-const routes = new route.gui();
+const app = server();
 
-if (config.development) {
-	import("./webpack.middleware.js").then((mwa) => {
-		routes.use(mwa.dev);
-		routes.use(mwa.hot);
-	});
-}
+app.disable("x-powered-by");
 
-routes.use(function (req, res, next) {
+app.use(cookieParser());
+
+app.use(app.middleware.static("static"));
+// if (config.development) {
+// 	import("./webpack.middleware.js").then((mwa) => {
+// 		app.use(mwa.dev);
+// 		app.use(mwa.hot);
+// 	});
+
+// app.use(app.middleware.menu);
+app.use(compression());
+
+app.use(function (req, res, next) {
 	// res.locals.app_locale = locale;
 
 	res.locals.appName = config.name;
@@ -18,11 +27,11 @@ routes.use(function (req, res, next) {
 	res.locals.appDescription = config.description;
 	res.locals.environment = config.development ? "development" : "production";
 
-	if (req.headers.referer) {
-		var ref = parse.url(req.headers.referer);
-		res.locals.referer = req.headers.host == ref.host; // || config.user.referer.filter((e)=>e.exec(ref.host)).length > 0;
-		res.locals.host = ref.protocol + "//" + req.headers.host;
-	}
+	// if (req.headers.referer) {
+	// 	var ref = parse.url(req.headers.referer);
+	// 	res.locals.referer = req.headers.host == ref.host; // || config.user.referer.filter((e)=>e.exec(ref.host)).length > 0;
+	// 	res.locals.host = ref.protocol + "//" + req.headers.host;
+	// }
 
 	next();
 });
@@ -30,10 +39,22 @@ routes.use(function (req, res, next) {
 /**
  * org: restrictMiddleWare
  */
-routes.use("/api", function (req, res, next) {
+app.use("/api", function (req, res, next) {
+	if (req.headers.referer) {
+		var ref = parse.url(req.headers.referer);
+		res.locals.referer = req.headers.host == ref.host;
+
+		// ref.host == host;
+		// req.headers.referer -> https://myordbok.lethil.me
+		// req.headers.host -> myordbok
+		// req.headers.host -> myordbok.lethil.me
+		// ref.host - myordbok.lethil.me
+	}
+
 	if (res.locals.referer) {
 		// NOTE: internal
-		const requestedInternal = req.route.pathname.split("/")[3];
+
+		const requestedInternal = req.originalUrl.split("/")[3];
 		// req.xhr ||
 		if (requestedInternal == "audio") {
 			if (req.headers.range) {
