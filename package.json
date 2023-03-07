@@ -38,11 +38,11 @@
     "plugins": []
   },
   "dependencies": {
-    "@google-cloud/storage": "^6.9.3",
+    "@google-cloud/storage": "^6.9.4",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "lethil": "file:..//lethil",
-    "mysql2": "^3.1.2",
+    "mysql2": "^3.2.0",
     "pug": "^3.0.2",
     "tar": "^6.1.13"
   },
@@ -59,7 +59,7 @@
     "mini-css-extract-plugin": "^2.7.2",
     "mocha": "^10.2.0",
     "node-id3": "^0.2.6",
-    "pinia": "^2.0.32",
+    "pinia": "^2.0.33",
     "postcss-loader": "^7.0.2",
     "sass": "^1.58.3",
     "sass-loader": "^13.2.0",
