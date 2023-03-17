@@ -1,12 +1,13 @@
-import { server, config, parse } from "lethil";
+import { server, config } from "lethil";
 import cookieParser from "cookie-parser";
 import compression from "compression";
+import helmet from "helmet";
 // import {language} from './assist/index.js';
 
 const app = server();
 
+app.use(helmet());
 app.disable("x-powered-by");
-
 app.use(cookieParser());
 
 app.use(app.middleware.static("static"));

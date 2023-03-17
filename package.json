@@ -41,6 +41,7 @@
     "@google-cloud/storage": "^6.9.4",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
+    "helmet": "^6.0.1",
     "lethil": "file:..//lethil",
     "mysql2": "^3.2.0",
     "pug": "^3.0.2",
