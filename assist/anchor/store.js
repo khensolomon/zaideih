@@ -1,7 +1,7 @@
 import path from "path";
 // import fs from 'fs';
 import { seek } from "lethil";
-import config from "./config.js";
+import config from "./env.js";
 
 const { bucketAvailable } = config;
 
@@ -11,7 +11,7 @@ const { bucketAvailable } = config;
 export async function read(file) {
 	return seek
 		.read(file)
-		.then((o) => JSON.parse(o))
+		.then((o) => JSON.parse(o.toString()))
 		.catch(() => new Array());
 }
 
@@ -31,6 +31,9 @@ export const bucket = {
 	data: [],
 	id: "",
 	tmp: "tmp?",
+	/**
+	 * @type {string?}
+	 */
 	invalid: null,
 	active: () =>
 		bucket.id && bucketAvailable.includes(bucket.id) ? bucket.id : null,

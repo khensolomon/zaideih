@@ -1,6 +1,6 @@
-import { set } from "lethil";
+import core from "lethil";
 
-const settings = {
+export const config = core.config.merge({
 	name: "Zaideih",
 	// description: 'package.description',
 	// version: 'package.version',
@@ -61,6 +61,7 @@ const settings = {
 		// albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
 		albumTrack: { i: "?", t: "?", a: [], d: 0, p: 1 },
 	},
-};
+});
 
-export default set.merge(settings);
+// to get latest merge, config must be used
+export default config;
