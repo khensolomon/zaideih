@@ -1,4 +1,5 @@
 import pug from "pug";
+import helmet from "helmet";
 import core from "./core.js";
 import "./middleware.js";
 import "./route.js";
@@ -7,6 +8,12 @@ const app = core.server();
 app.environment();
 
 app.pug((file) => pug.compileFile(file));
+// app.use(helmet());
+app.use(
+	helmet({
+		contentSecurityPolicy: false,
+	})
+);
 
 app.listen(app.config.listen, function () {
 	var now = new Date().toLocaleDateString("en-GB", {
