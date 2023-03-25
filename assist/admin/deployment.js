@@ -2,17 +2,17 @@ import { deploy } from "lethil";
 
 /**
  * Purely for deployment from local/workspace
+ * @alias deploy.ecosystem
+ */
+export const createOrUpdate = deploy.ecosystem.createOrUpdate;
+
+/**
+ * Purely for deployment from local/workspace
  * @alias deploy.environment
  * @param {any} req
  */
 export function transferEnvironment(req) {
 	const env = "~/OneDrive/env/dev/zaideih/web/.env";
-	// deploy.environment.transfer(env);
-	return deploy.environment.buildCommandLine(env);
+	return deploy.environment.transfer(env);
+	// return deploy.environment.buildCommandLine(env);
 }
-
-/**
- * Purely for deployment from local/workspace
- * @alias deploy.ecosystem
- */
-export const createOrUpdate = deploy.ecosystem.createOrUpdate;
