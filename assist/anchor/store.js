@@ -1,9 +1,9 @@
 import path from "path";
 // import fs from 'fs';
 import { seek } from "lethil";
-import config from "./env.js";
+import * as env from "./env.js";
 
-const { bucketAvailable } = config;
+const { config, bucketAvailable } = env;
 
 /**
  * @param {string} file
@@ -26,9 +26,12 @@ export async function write(file, raw, reps = null, spac = 2) {
 
 export const bucket = {
 	/**
-	 * @type {{id:string,dir:string,raw:Array<string>,meta:any,track:any,task:Array<any>}[]}
+	 * @type {env.TypeOfBucket[]}
 	 */
 	data: [],
+	/**
+	 * current working bucket id
+	 */
 	id: "",
 	tmp: "tmp?",
 	/**
@@ -56,6 +59,9 @@ export const bucket = {
 };
 
 export const album = {
+	/**
+	 * @type {env.TypeOfAlbum[]}
+	 */
 	data: [],
 	// file: path.join(config.media, config.store.album),
 	get file() {
@@ -67,9 +73,12 @@ export const album = {
 			.get()
 			.then((o) => Object.assign(album.data, o))
 			.catch(() => (album.data = [])),
-	write: () => write(album.file, album.data, null, 0),
+	write: () => write(album.file, album.data, null, 2),
 	also: {
 		name: {
+			/**
+			 * @type {env.TypeOfAlbumName[]}
+			 */
 			data: [],
 			file: path.join(config.media, config.store.albumName),
 			read: () =>
@@ -81,6 +90,9 @@ export const album = {
 };
 
 export const artist = {
+	/**
+	 * @type {env.TypeOfArtist[]}
+	 */
 	data: [],
 	get file() {
 		return path.join(config.media, config.store.artist);
@@ -91,11 +103,27 @@ export const artist = {
 			.get()
 			.then((o) => Object.assign(artist.data, o))
 			.catch(() => (artist.data = [])),
-	write: () => write(artist.file, artist.data, null, 0),
-	also: {},
+	write: () => write(artist.file, artist.data, null, 2),
+	// also: {},
+	also: {
+		name: {
+			/**
+			 * @type {env.TypeOfArtistName[]}
+			 */
+			data: [],
+			file: path.join(config.media, config.store.artistName),
+			read: () =>
+				read(artist.also.name.file)
+					.then((o) => Object.assign(artist.also.name.data, o))
+					.catch(() => (artist.also.name.data = [])),
+		},
+	},
 };
 
 export const genre = {
+	/**
+	 * @type {env.TypeOfGenre[]}
+	 */
 	data: [],
 	// file: path.join(config.media, config.store.genre),
 	get file() {
@@ -107,13 +135,16 @@ export const genre = {
 			.get()
 			.then((o) => Object.assign(genre.data, o))
 			.catch(() => (genre.data = [])),
-	write: () => write(genre.file, genre.data, null, 0),
+	write: () => write(genre.file, genre.data, null, 2),
 	also: {},
 };
 
 export const track = {
 	also: {
 		name: {
+			/**
+			 * @type {env.TypeOfTrackName[]}
+			 */
 			data: [],
 			// file: path.join(config.media, config.store.trackName),
 			get file() {

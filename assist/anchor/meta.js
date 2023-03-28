@@ -1,4 +1,4 @@
-import config from "./env.js";
+import { bucketAvailable } from "./env.js";
 import { album, artist, genre } from "./store.js";
 
 /**
@@ -11,10 +11,10 @@ export async function meta(locals = null) {
 	raw.genre = JSON.stringify(await genre.get()).length;
 
 	if (locals) {
-		raw.lang = config.bucketAvailable.join();
+		raw.lang = bucketAvailable.join();
 		locals.raw = raw;
 	} else {
-		raw.lang = config.bucketAvailable;
+		raw.lang = bucketAvailable;
 	}
 	return raw;
 }
