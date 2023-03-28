@@ -8,12 +8,13 @@ const app = server();
 app.disable("x-powered-by");
 app.use(cookieParser());
 
-app.use(app.middleware.static("static"));
-// if (config.development) {
-// 	import("./webpack.middleware.js").then((mwa) => {
-// 		app.use(mwa.dev);
-// 		app.use(mwa.hot);
-// 	});
+if (config.development) {
+	app.use(app.middleware.static("static"));
+	// import("./webpack.middleware.js").then((mwa) => {
+	// 	app.use(mwa.dev);
+	// 	app.use(mwa.hot);
+	// });
+}
 
 // app.use(app.middleware.menu);
 app.use(compression());
