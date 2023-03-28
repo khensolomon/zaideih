@@ -4,4 +4,4 @@ export * as db from "./db.js";
 export { meta } from "./meta.js";
 export { trackList } from "./track.js";
 export * as audio from "./audio.js";
-export { config } from "./env.js";
+export * as env from "./env.js";
