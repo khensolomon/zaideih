@@ -11,17 +11,17 @@ export default {
 			// dataStore: computed(() => this.dataStore),
 			root: this,
 			dataStore: this.dataStore,
-			storageStore: this.storageStore
+			storageStore: this.storageStore,
 		};
 	},
 	components: {
-		Player
+		Player,
 	},
 	methods: {
 		search(e) {
 			this.$router.push({
 				path: "/music",
-				query: { q: this.dataStore.searchQuery }
+				query: { q: this.dataStore.searchQuery },
 			});
 			e.preventDefault();
 		},
@@ -35,12 +35,12 @@ export default {
 			//   e => e.ui == ui
 			// ).tk.forEach(i=>this.dataStore.queue.push(i));
 			// this.dataStore.all.album.find(e => e.ui == ui).tk;
-			this.playAll(this.dataStore.all.album.find(e => e.ui == ui).tk);
+			this.playAll(this.dataStore.all.album.find((e) => e.ui == ui).tk);
 		},
 		// NOTE playAll: playArtist, playAlbum
 		playAll(e) {
 			this.dataStore.queue = [];
-			e.forEach(i => this.dataStore.queue.push(i));
+			e.forEach((i) => this.dataStore.queue.push(i));
 			// this.play();
 			this.playNow(this.dataStore.queue[0].i);
 		},
@@ -51,7 +51,7 @@ export default {
 			if (this.dataStore.queue.length) {
 				if (this.playerId) {
 					var activeQueueIndex = this.dataStore.queue.findIndex(
-						track => track.i == this.playerId
+						(track) => track.i == this.playerId
 					);
 					var index = (activeQueueIndex + 1) % this.dataStore.queue.length;
 					if (this.dataStore.queue[index]) {
@@ -67,7 +67,7 @@ export default {
 			if (this.dataStore.queue.length) {
 				if (this.playerId) {
 					var activeQueueIndex = this.dataStore.queue.findIndex(
-						track => track.i == this.playerId
+						(track) => track.i == this.playerId
 					);
 					var index = (activeQueueIndex - 1) % this.dataStore.queue.length;
 					if (this.dataStore.queue[index]) {
@@ -92,7 +92,7 @@ export default {
 			//   return true;
 			// }
 			// return false;
-			var e = await this.dataStore.queue.find(track => track.i == Id);
+			var e = await this.dataStore.queue.find((track) => track.i == Id);
 			if (e) {
 				this.player.track = e;
 				return true;
@@ -101,28 +101,28 @@ export default {
 		},
 
 		isQueued(Id) {
-			return this.dataStore.queue.filter(track => track.i == Id).length;
+			return this.dataStore.queue.filter((track) => track.i == Id).length;
 		},
 
 		albumArtist(album) {
 			// var o = e.map((a) => a.ar );
 			// return new Set([].concat.apply([], o));
-			var o = [...new Set([].concat(...album.tk.map(i => i.a)))];
+			var o = [...new Set([].concat(...album.tk.map((i) => i.a)))];
 			return o
-				.map(i => this.dataStore.all.artist[i])
-				.map(a => (album.lg == 2 && a.aka ? a.aka : a.name));
+				.map((i) => this.dataStore.all.artist[i])
+				.map((a) => (album.lg == 2 && a.aka ? a.aka : a.name));
 		},
 		albumGenre(album) {
-			return album.gr.map(i => this.dataStore.all.genre[i].name);
+			return album.gr.map((i) => this.dataStore.all.genre[i].name);
 		},
 		albumByTrackId(id) {
 			return this.dataStore.all.album.find(
-				album => album.tk.filter(a => a.i == id).length
+				(album) => album.tk.filter((a) => a.i == id).length
 			);
 		},
 
 		artistName(o) {
-			return o.a.map(i => {
+			return o.a.map((i) => {
 				var artist = this.dataStore.all.artist[i];
 				if (artist) {
 					return artist.aka && this.dataStore.utf8(o.t)
@@ -155,7 +155,7 @@ export default {
 			// trk.b=(album)?album.ab:'testing'
 			trk.a = this.artistName(o);
 			return trk;
-		}
+		},
 
 		// sortTrackNumber(e){
 		//   // return e.sort((a, b) => (a.n > b.n) ? 1 : -1)
@@ -185,7 +185,7 @@ export default {
 		playerId() {
 			// @ts-ignore
 			return this.player.id;
-		}
+		},
 	},
 	// beforeCreate() {},
 	async created() {
@@ -214,16 +214,16 @@ export default {
 		// });
 
 		this.dataStore.all.album
-			.filter(e => e.lg == 2)
+			.filter((e) => e.lg == 2)
 			.slice(0, 10)
-			.forEach(album => {
+			.forEach((album) => {
 				// album.tk.slice(0, 2).forEach(e=>{
 				//   this.addQueue(this.track(e));
 				// });
 				album.tk
 					.sort((a, b) => (a.p < b.p ? 1 : -1))
 					.slice(0, 2)
-					.forEach(e => {
+					.forEach((e) => {
 						this.addQueue(e);
 						// this.addQueue(this.track(e));
 					});
@@ -252,7 +252,7 @@ export default {
 		// ).sort((a, b) => (a.plays < b.plays) ? 1 : -1).slice(0, 10);
 		// // console.log(abc)
 		// abc.forEach(e=>console.log(e.name,e.plays))
-	}
+	},
 	// destroyed () {},
 	// mounted () {},
 };

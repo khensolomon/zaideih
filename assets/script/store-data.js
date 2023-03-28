@@ -18,6 +18,13 @@ export const useDataStore = defineStore("data", {
 			genre: [],
 			artist: [],
 			lang: [],
+			artistType: [
+				{ name: "unknown" },
+				{ name: "various" },
+				{ name: "male" },
+				{ name: "female" },
+				{ name: "duet" },
+			],
 		},
 		total: {
 			track: 0,

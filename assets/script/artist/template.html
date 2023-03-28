@@ -62,9 +62,19 @@
   <template v-else>
     <div class="container list">
       <div v-if="dataStore.all.lang.length" class="row center tag show-lang badge-tag-">
-        <router-link v-for="(lang,index) in dataStore.all.lang" :to="{ path: '/artist/'+lang.name}" :key="index"
+        <!-- <router-link :to="{ path: '/artist'}" class="icon-lightbulb">All</router-link> -->
+        <!-- <router-link v-for="(lang,index) in dataStore.all.lang" :to="{ path: '/artist/'+lang.name}" :key="index"
+          class="icon-lightbulb">{{lang.name}}</router-link> -->
+        <router-link v-for="(lang,index) in dataStore.all.lang" :to="{ path: linkPath('artist',lang.name)}" :key="index"
           class="icon-lightbulb">{{lang.name}}</router-link>
       </div>
+      <!-- <div v-if="dataStore.all.artistType.length" class="row center tag show-lang badge-tag-">
+        <router-link v-for="(lang,index) in dataStore.all.artistType"
+          :to="{ path: linkPath('artist',artistName,lang.name)}" :key="index"
+          class="icon-lightbulb">{{lang.name}}</router-link>
+      </div> -->
+
+
       <!-- artists -->
       <!-- v-if="isNaN(category.cluster)" -->
       <div class="z-artists" v-if="artistCategory.length">
