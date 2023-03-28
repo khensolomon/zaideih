@@ -1,15 +1,50 @@
 import { db } from "lethil";
 
-const tableTrack = "_track";
-const tableFile = "file";
+// import { config, TypeOfTablefile } from "./env.js";
+import * as env from "./env.js";
+
+const table = env.config.table;
+
+/**
+ * @typedef {Object} TypeOfSelectTrackFile
+ * @property {number} id
+ * @property {string} uid
+ * @property {number} plays
+ * @property {number} lang
+ * @property {string} dir
+ *
+ * @typedef {Object} TypeOfSelectTrackView
+ * @property {number} id
+ * @property {string} uid
+ * @property {number} plays
+ * @property {string} dir
+ *
+ * @typedef {Object} TypeOfInserts
+ * @property {number} fieldCount
+ * @property {number} affectedRows
+ * @property {number} insertId
+ * @property {string} info
+ * @property {number} serverStatus
+ * @property {number} warningStatus
+ *
+ * @typedef {Object} TypeOfUpdate
+ * @property {number} fieldCount
+ * @property {number} affectedRows
+ * @property {number} insertId
+ * @property {string} info
+ * @property {number} serverStatus
+ * @property {number} warningStatus
+ * @property {number} changedRows
+ */
 
 /**
  * @param {string} uid
  * @param {string} dir
+ * @returns {Promise<TypeOfSelectTrackView>}
  */
 export async function selectTrack(uid, dir) {
 	return await db.mysql.query("SELECT * FROM ?? WHERE uid = ? AND dir = ?;", [
-		tableTrack,
+		table.trackView,
 		uid,
 		dir,
 	]);
@@ -19,44 +54,45 @@ export async function selectTrack(uid, dir) {
  * @param {string} uid
  * @param {number} langId
  * @param {string} dir
+ * @returns {Promise<TypeOfInserts>}
  */
 export async function insertTrack(uid, langId, dir) {
 	return await db.mysql.query("INSERT INTO ?? (uid,lang,dir) VALUES (?,?,?);", [
-		tableFile,
+		table.trackFile,
 		uid,
 		langId,
 		dir,
 	]);
 }
 
+/**
+ * @returns {Promise<TypeOfSelectTrackFile[]>}
+ */
 export async function selectTrackAll() {
-	return await db.mysql.query("SELECT * FROM ??;", [tableFile]);
+	return await db.mysql.query("SELECT * FROM ??;", [table.trackFile]);
 }
 
-// NOTE: use in production
 /**
- * @param {string} id
+ * NOTE: use in production
+ * @param {number} id
+ * @returns {Promise<TypeOfUpdate>}
  */
 export async function trackPlaysUpdate(id) {
 	return db.mysql.query("UPDATE ?? SET plays = plays + 1 WHERE id=?;", [
-		tableFile,
+		table.trackFile,
 		id,
 	]);
 }
 
-export async function trackListTmp() {
-	return await db.mysql.query("SELECT ??,?? FROM ??;", [
-		"id",
-		"plays",
-		tableTrack,
-	]);
-}
-
 /**
- * @param {any} id
+ * @param {number} id
+ * @returns {Promise<TypeOfSelectTrackView>}
  */
 export async function trackById(id) {
-	return await db.mysql.query("SELECT * FROM ?? WHERE id=?;", [tableTrack, id]);
+	return await db.mysql.query("SELECT * FROM ?? WHERE id=?;", [
+		table.trackView,
+		id,
+	]);
 }
 
 // exports.selectDatabase = async function() {
