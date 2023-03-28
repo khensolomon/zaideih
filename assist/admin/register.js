@@ -1,21 +1,25 @@
 import path from "path";
-import { config, store, db } from "../anchor/index.js";
+import { env, store, db } from "../anchor/index.js";
 
-const { template, bucketAvailable } = config;
+const { template, bucketAvailable } = env;
 
 /**
- * track and its plays count
- * register-:bucketName/:albumId?
+ * Track meta and its plays count update for production,
+ * see documentation [register](./command.md)
  * @param {any} req
- * `node run register [bucket] [albumID(optional)]`
- * zola e8b619fa098dd5039452
- * [bucket] [albumID(optional)]
+ * @example
+ * register-bucketName/albumId?
+ * register-[bucket]/[albumID(optional)]
+ * node run register-zola
+ * node run register-myanmar
+ * node run register-mizo
+ * node run register-falam
+ * node run register-zola/617119a809b161d81cee
  */
-export default async function (req) {
-	var bucketName = req.params.bucketName;
+export async function individual(req) {
 	var albumId = req.params.albumId;
 
-	store.bucket.id = bucketName;
+	store.bucket.id = req.params.bucketName;
 	store.bucket.check();
 
 	if (store.bucket.invalid) return store.bucket.invalid;
@@ -41,11 +45,12 @@ export default async function (req) {
 		dirAlbum.shift();
 		const langName = dirAlbum.shift();
 		const langId = bucketAvailable.findIndex(
-			(e) => e == langName.toLowerCase()
+			(e) => e == langName?.toLowerCase()
 		);
 
 		// dirAlbum = dirAlbum.join('/');
-		console.log(">", album.id, langId, album.dir);
+		// console.log(">", album.id, langId, album.dir);
+		console.log(">", "uid:", album.id, "lang:", langId, "dir:", album.dir);
 
 		for (const track of album.track) {
 			// var dir = [album.dir,track.file].join('/');
@@ -70,6 +75,7 @@ export default async function (req) {
 				track.year = album.meta.year;
 			}
 			track.track = parseInt(track.track || 0);
+
 			track.artist = await indexArtists(track.artist);
 			track.genre = await indexGenres(track.genre);
 
@@ -83,34 +89,41 @@ export default async function (req) {
 				// track.status=row.status;
 			} else {
 				insert++;
-				var row = await db.insertTrack(album.id, langId, dir);
-				track.id = row.insertId;
+				var raw = await db.insertTrack(album.id, langId, dir);
+				track.id = raw.insertId;
 				track.plays = 0;
 				// track.status=0;
 			}
 		}
-		var isOk = album.track.length == update + insert;
-		var msgTemplate = "total:insert/update status";
+
+		var status = album.track.length == update + insert;
 		console.log(
-			" ",
-			msgTemplate,
-			msgTemplate
-				.replace("total", album.track.length)
-				.replace("insert", insert.toString())
-				.replace("update", update.toString())
-				.replace("status", isOk.toString())
+			" >",
+			"total:",
+			album.track.length,
+			"inserted:",
+			insert,
+			"updated:",
+			update,
+			"status:",
+			status
 		);
 	}
 
-	await taskAlbum(taskBucket);
-	await store.artist.write();
-	await store.genre.write();
-	await store.album.write();
+	try {
+		await taskAlbum(taskBucket);
+		await store.artist.write();
+		await store.genre.write();
+		await store.album.write();
+	} catch (error) {
+		console.log("??", error);
+	}
+
 	return taskBucket.length ? "done" : "nothing todo";
 }
 
 /**
- * @param {*} taskBucket
+ * @param {env.TypeOfBucket[]} taskBucket
  */
 async function taskAlbum(taskBucket) {
 	for (const album of taskBucket) {
@@ -120,17 +133,32 @@ async function taskAlbum(taskBucket) {
 			albumTemplate.ui = album.id;
 			albumTemplate.ab = await albumNameCollection(album.track[0].album);
 
-			var albumGenre = album.track
-				.map((row) => row.genre)
+			const albumGenre = album.track
+				.map(function (e) {
+					return e.genre.filter((e) => e);
+				})
 				.reduce((prev, next) => prev.concat(next), []);
-			albumTemplate.gr = [...new Set(albumGenre)].sort();
+			albumTemplate.gr = [...new Set(albumGenre)]
+				.sort()
+				.map((e) => parseInt(e));
 
-			var albumYear = album.track
-				.map((row) => parseInt(row.year))
+			/**
+			 * @type {string[]}
+			 */
+			const albumYear = album.track
+				.map((row) => row.year)
+				.filter(function (e) {
+					return e;
+				})
 				.reduce((prev, next) => prev.concat(next), []);
-			albumTemplate.yr = [...new Set(albumYear)].sort();
 
-			albumTemplate.lg = album.track[0].lang;
+			// var albumYearUnique = albumYear.filter(
+			// 	(value, index, array) => array.indexOf(value) === index
+			// );
+
+			albumTemplate.yr = [...new Set(albumYear)].sort().map((e) => parseInt(e));
+
+			albumTemplate.lg = album.track[0].lang || 0;
 			// var albumLanguage = album.track.map(row => row.language).reduce((prev, next) => prev.concat(next),[])
 			// albumTemplate.lg = [...new Set(albumLanguage)].sort();
 
@@ -143,13 +171,19 @@ async function taskAlbum(taskBucket) {
 			for (const track of album.track) {
 				var trackTemplate = Object.assign({}, template.albumTrack);
 				// albumTrack:{i:'?', t:'?', a:[], n: 0, d: "?", p: 1, s:0}
-				trackTemplate.i = track.id;
+				trackTemplate.i = track.id || 0;
 				trackTemplate.t = await trackNameCollection(track.title);
 				trackTemplate.a = track.artist;
 				// trackTemplate.n=track.track;
 				// trackTemplate.n=parseInt(track.track||0);
-				trackTemplate.d = convert2Seconds(track.duration);
-				trackTemplate.p = track.plays;
+				try {
+					trackTemplate.d = convert2Seconds(track.duration);
+				} catch (error) {
+					trackTemplate.d = 0;
+					console.log("convert2Seconds", album.id, track.id, track.duration);
+				}
+				// trackTemplate.d = convert2Seconds(track.duration);
+				trackTemplate.p = track.plays || 1;
 				// trackTemplate.s=track.status;
 				albumTemplate.tk.push(trackTemplate);
 			}
@@ -207,10 +241,13 @@ async function trackNameCollection(i) {
 }
 
 /**
- * @param {*} artists
+ * @param {any[]} artists
  */
 async function indexArtists(artists) {
 	var result = artists.map((i) => {
+		if (typeof i == "number") {
+			return i;
+		}
 		var name = i.trim().replace(/ {1,}/g, " ");
 		var nlc = name.toLowerCase();
 		var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
@@ -241,6 +278,7 @@ async function indexArtists(artists) {
 				name: name,
 				correction: correction,
 				thesaurus: [],
+				type: 0,
 			});
 			index = store.artist.data.length - 1;
 		}
@@ -250,10 +288,16 @@ async function indexArtists(artists) {
 }
 
 /**
- * @param {*} genres
+ * @param {any[]} genres
  */
 async function indexGenres(genres) {
+	if (genres.length == 0) {
+		return [0];
+	}
 	var result = genres.map((i) => {
+		if (typeof i == "number") {
+			return i;
+		}
 		var name = i.trim().replace(/ {1,}/g, " ");
 		var nlc = name.toLowerCase();
 		var nwd = nlc.includes(".") ? nlc.replace(/\./g, "") : null;
@@ -288,14 +332,33 @@ async function indexGenres(genres) {
 
 /**
  * eg. (HH:MM:SS) 3:23 to 203
- * @param {*} time
+ * @param {any} time
  */
 function convert2Seconds(time) {
-	var num = parseInt(
-		time
-			.toString()
-			.split(":")
-			.reduce((a, b) => 60 * a + +b)
-	);
-	return isNaN(num) ? 0 : num;
+	if (typeof time == "number") {
+		return time;
+	}
+	// @ts-ignore
+	var ab = time.split(":").reduce((a, b) => 60 * a + +b);
+	return ab ? parseInt(ab) : 0;
 }
+
+/**
+ * All from bucketAvailable
+ * @param {any} req
+ * @example
+ * node run register-all
+ */
+export async function all(req) {
+	for (let index = 0; index < bucketAvailable.length; index++) {
+		const element = bucketAvailable[index];
+		try {
+			await individual({ params: { bucketName: element } });
+		} catch (error) {
+			console.log("all", element, error);
+		}
+	}
+	return "done";
+}
+
+export default individual;
