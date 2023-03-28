@@ -34,7 +34,7 @@ node run register mizo
 node run register falam
 
 node run register-zola
-node run register-zola/e8b619fa098dd5039452
+node run register-zola/617119a809b161d81cee
 node run register-myanmar
 node run register-mizo
 node run register-falam

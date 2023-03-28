@@ -1,11 +1,10 @@
-import { command, config } from "lethil";
+import { command, db } from "lethil";
 
 const app = command();
 const routes = app.routes();
 
-routes.register("", function (_req) {
-	console.log("framework.config.name is");
-	return config.name;
+routes.register("", async function (req) {
+	return req;
 });
 
 routes.register("apple", () => "Did you know apple is fruit?");
@@ -22,8 +21,13 @@ routes.register("environment", async function (req) {
 });
 
 routes.register(
+	"register-all",
+	async (req) => await import("./admin/register.js").then((e) => e.all(req))
+);
+routes.register(
 	"register-:bucketName/:albumId?",
-	async (req) => await import("./admin/register.js").then((e) => e.default(req))
+	async (req) =>
+		await import("./admin/register.js").then((e) => e.individual(req))
 );
 
 routes.register(
