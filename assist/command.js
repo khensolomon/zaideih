@@ -1,4 +1,4 @@
-import { command, db } from "lethil";
+import { command } from "lethil";
 
 const app = command();
 const routes = app.routes();
