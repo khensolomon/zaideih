@@ -44,7 +44,7 @@
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
     "helmet": "^6.1.5",
-    "lethil": "^1.3.3",
+    "lethil": "^1.3.4",
     "mysql2": "^3.2.3",
     "pug": "^3.0.2",
     "tar": "^6.1.13"
