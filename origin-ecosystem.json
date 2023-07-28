@@ -15,7 +15,7 @@
       "listen-timeout": 10000,
       "restart_delay": 10000,
       "autorestart": true,
-      "max_memory_restart": "300M",
+      "max_memory_restart": "250M",
       "env": {
         "NODE_ENV": "production"
       },
