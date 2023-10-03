@@ -38,20 +38,20 @@ class Cloud {
 		return storage.bucket(config.bucket);
 	}
 	async buckets() {
-		return await storage.getBuckets();
+		return storage.getBuckets();
 	}
 	/**
 	 * @param {string} file
 	 */
 	async download(file) {
-		return await this.bucket.file(file).download();
+		return this.bucket.file(file).download();
 	}
 	/**
 	 * @param {string} file
 	 * @param {any} destination
 	 */
 	async upload(file, destination) {
-		return await this.bucket.upload(file, { destination: destination });
+		return this.bucket.upload(file, { destination: destination });
 	}
 	/**
 	 * @param {string} file

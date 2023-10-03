@@ -262,6 +262,7 @@ audio.getMetadata().then(
   ()=>res.status(404).end()
 )
 */
+
 /*
 routes.get('/audio-cloud-stream', function(req, res) {
   const contentType = 'audio/mpeg';
@@ -296,6 +297,7 @@ routes.get('/audio-cloud-stream', function(req, res) {
   )
 });
 */
+
 /*
 routes.get('/audio-cloud-download', function(req, res) {
   Cloud.bucket.file('music/myanmar/MMGSL/Never.Say.Die/03.mp3').createReadStream({
@@ -313,6 +315,7 @@ routes.get('/audio-cloud-download', function(req, res) {
   ).pipe(res);
 });
 */
+
 /*
 routes.get('/audio-local-stream/:trackId', function(req, res) {
   const contentType = 'audio/mpeg';
@@ -345,6 +348,7 @@ routes.get('/audio-local-stream/:trackId', function(req, res) {
   });
 });
 */
+
 /*
 routes.get('/audio-not-in-used/:id', (req, res) => {
   var music = path.resolve(storage,'music/tmp',req.params.id);
