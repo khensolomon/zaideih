@@ -7,6 +7,8 @@ core.config.root(process.cwd());
 // core.config.hostname("localhost");
 // core.config.port(8081);
 
+core.environment();
+
 core.config.mysql(mysql);
 // core.config.mongo(mongodb);
 // core.config.merge({});

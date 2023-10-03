@@ -1,5 +1,9 @@
 # Version
 
+## 1.3.3
+
+- environment before `run` & `serve`
+
 ## 1.2.0
 
 Package

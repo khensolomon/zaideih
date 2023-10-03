@@ -8,7 +8,7 @@ import core from "./core.js";
 import "./assist/command.js";
 
 const app = core.command();
-app.environment();
+// app.environment();
 
 app.listen(function (msg) {
 	// const usage = app.memoryUsage();

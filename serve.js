@@ -5,7 +5,7 @@ import "./middleware.js";
 import "./route.js";
 
 const app = core.server();
-app.environment();
+// app.environment();
 
 app.pug((file) => pug.compileFile(file));
 // app.use(helmet());

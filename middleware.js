@@ -9,11 +9,19 @@ app.disable("x-powered-by");
 app.use(cookieParser());
 
 if (config.development) {
-	app.use(app.middleware.static("static"));
+	// app.use(app.middleware.static("static"));
 	// import("./webpack.middleware.js").then((mwa) => {
 	// 	app.use(mwa.dev);
 	// 	app.use(mwa.hot);
 	// });
+	if (app.config.hasOwnProperty("hotReload")) {
+		import("./webpack.middleware.js").then((mwa) => {
+			app.use(mwa.hot);
+			app.use(mwa.dev);
+		});
+	} else {
+		app.use(app.middleware.static("static"));
+	}
 }
 
 // app.use(app.middleware.menu);
