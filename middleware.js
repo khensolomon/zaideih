@@ -14,6 +14,7 @@ if (config.development) {
 	// 	app.use(mwa.dev);
 	// 	app.use(mwa.hot);
 	// });
+
 	if (app.config.hasOwnProperty("hotReload")) {
 		import("./webpack.middleware.js").then((mwa) => {
 			app.use(mwa.hot);
