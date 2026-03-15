@@ -1,0 +1,330 @@
+{
+  "lang": [
+    {
+      "id": 0,
+      "name": "untitle"
+    },
+    {
+      "id": 1,
+      "name": "zola"
+    },
+    {
+      "id": 2,
+      "name": "myanmar"
+    },
+    {
+      "id": 3,
+      "name": "mizo"
+    },
+    {
+      "id": 4,
+      "name": "falam"
+    },
+    {
+      "id": 5,
+      "name": "haka"
+    },
+    {
+      "id": 6,
+      "name": "english"
+    },
+    {
+      "id": 7,
+      "name": "chin"
+    },
+    {
+      "id": 8,
+      "name": "korea"
+    },
+    {
+      "id": 9,
+      "name": "norwegian"
+    },
+    {
+      "id": 10,
+      "name": "collection"
+    }
+  ],
+  "lang@desc": "album/track/artist language",
+  "artist": [
+    {
+      "id": 0,
+      "name": "Unknown"
+    },
+    {
+      "id": 1,
+      "name": "Various"
+    },
+    {
+      "id": 2,
+      "name": "Male"
+    },
+    {
+      "id": 3,
+      "name": "Female"
+    }
+  ],
+  "artist@desc": "type of Artist gender",
+  "album": [
+    {
+      "id": 0,
+      "name": "Unknown"
+    },
+    {
+      "id": 1,
+      "name": "Compilations"
+    },
+    {
+      "id": 2,
+      "name": "Single"
+    },
+    {
+      "id": 3,
+      "name": "Duet"
+    }
+  ],
+  "album@desc": "type of Album",
+  "genre": [
+    {
+      "name": "Alternative",
+      "correction": [
+        "alternative",
+        "(20)",
+        "other",
+        "(1)",
+        "(0)",
+        "(12)",
+        "(42)",
+        "genre",
+        "mizo",
+        "default",
+        "(20)alternative",
+        "unknown genre",
+        "unknown",
+        ""
+      ],
+      "thesaurus": [],
+      "id": 3
+    },
+    {
+      "name": "Gospel",
+      "correction": [
+        "mizo kristian hla"
+      ],
+      "thesaurus": [],
+      "id": 2
+    },
+    {
+      "name": "Tribal",
+      "correction": [],
+      "thesaurus": [],
+      "id": 4
+    },
+    {
+      "name": "Classical",
+      "correction": [
+        "(32)classical",
+        "(32)"
+      ],
+      "thesaurus": [],
+      "id": 5
+    },
+    {
+      "name": "Contemporary Christian",
+      "correction": [],
+      "thesaurus": [],
+      "id": 6
+    },
+    {
+      "name": "Folk",
+      "correction": [],
+      "thesaurus": [],
+      "id": 7
+    },
+    {
+      "name": "Ethnic",
+      "correction": [],
+      "thesaurus": [],
+      "id": 8
+    },
+    {
+      "name": "Vocal",
+      "correction": [],
+      "thesaurus": [],
+      "id": 9
+    },
+    {
+      "name": "Blues",
+      "correction": [
+        "blue"
+      ],
+      "thesaurus": [],
+      "id": 10
+    },
+    {
+      "name": "Soul",
+      "correction": [],
+      "thesaurus": [],
+      "id": 11
+    },
+    {
+      "name": "Country",
+      "correction": [],
+      "thesaurus": [],
+      "id": 1
+    },
+    {
+      "name": "Cult",
+      "correction": [],
+      "thesaurus": [],
+      "id": 12
+    },
+    {
+      "name": "Classic Rock",
+      "correction": [],
+      "thesaurus": [],
+      "id": 13
+    },
+    {
+      "name": "Comedy",
+      "correction": [],
+      "thesaurus": [],
+      "id": 14
+    },
+    {
+      "name": "Sound Clip",
+      "correction": [],
+      "thesaurus": [],
+      "id": 15
+    },
+    {
+      "name": "Pop",
+      "correction": [],
+      "thesaurus": [],
+      "id": 16
+    },
+    {
+      "name": "Hip-Hop",
+      "correction": [
+        "hiphop",
+        "hip hop"
+      ],
+      "thesaurus": [],
+      "id": 17
+    },
+    {
+      "name": "Rap",
+      "correction": [],
+      "thesaurus": [],
+      "id": 18
+    },
+    {
+      "name": "Funk",
+      "correction": [],
+      "thesaurus": [],
+      "id": 19
+    },
+    {
+      "name": "Ballad",
+      "correction": [],
+      "thesaurus": [],
+      "id": 20
+    },
+    {
+      "name": "Praise & Worship",
+      "correction": [
+        "praise and worship",
+        "praise n worship"
+      ],
+      "thesaurus": [],
+      "id": 21
+    },
+    {
+      "name": "Rock",
+      "correction": [
+        "(17)rock",
+        "(17)"
+      ],
+      "thesaurus": [],
+      "id": 22
+    },
+    {
+      "name": "Slow Rock",
+      "correction": [],
+      "thesaurus": [],
+      "id": 23
+    },
+    {
+      "name": "Praise",
+      "correction": [],
+      "thesaurus": [],
+      "id": 26
+    },
+    {
+      "name": "Worship",
+      "correction": [],
+      "thesaurus": [],
+      "id": 27
+    },
+    {
+      "name": "Christian Rock",
+      "correction": [],
+      "thesaurus": [],
+      "id": 28
+    },
+    {
+      "name": "Crossover",
+      "correction": [],
+      "thesaurus": [],
+      "id": 29
+    },
+    {
+      "name": "Speech",
+      "correction": [],
+      "thesaurus": [],
+      "id": 30
+    },
+    {
+      "name": "Instrumental",
+      "correction": [],
+      "thesaurus": [],
+      "id": 31
+    },
+    {
+      "name": "Hymn",
+      "correction": [],
+      "thesaurus": [],
+      "id": 32
+    },
+    {
+      "name": "Dance",
+      "correction": [],
+      "thesaurus": [],
+      "id": 33
+    },
+    {
+      "name": "Christian Gangsta Rap",
+      "correction": [],
+      "thesaurus": [],
+      "id": 34
+    },
+    {
+      "name": "Disco",
+      "correction": [],
+      "thesaurus": [],
+      "id": 35
+    },
+    {
+      "name": "Couple Songs",
+      "correction": [],
+      "thesaurus": [],
+      "id": 25
+    },
+    {
+      "name": "Religion",
+      "correction": [],
+      "thesaurus": [],
+      "id": 24
+    }
+  ]
+}
