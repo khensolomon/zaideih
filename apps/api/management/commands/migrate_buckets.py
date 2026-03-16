@@ -1,3 +1,20 @@
+"""
+Bucket Migrator Command (migrate_buckets.py)
+============================================
+
+Description:
+A one-time structural migration script that transforms legacy 
+`bucket.[lang].json` files into the new, highly optimized schema. 
+
+Features:
+- Hash Generation: Regenerates the 16-character MD5 Album ID based on the cleaned folder path.
+- Path Cleanup: Automatically strips redundant "music/" and language prefixes from directory strings.
+- Track Sorting: Re-sorts all tracks internally by their mathematical track number.
+- Weight Reduction: Silently discards heavy, unused legacy keys (raw, task, meta).
+
+Usage:
+python manage.py migrate_buckets
+"""
 import json
 import hashlib
 from pathlib import Path
@@ -29,21 +46,20 @@ class Command(BaseCommand):
             new_data = []
             
             for album in old_data:
-                # 3. Fix the "dir" (Remove "music/zola/" or just "zola/")
+                # Fix the "dir" (Remove "music/zola/" or just "zola/")
                 old_dir = album.get(catalog_config.B_ALBUM_DIR, '')
                 clean_dir = old_dir.replace(f"{catalog_config.DIR_MUSIC}/{lang}/", "")
                 clean_dir = clean_dir.replace(f"{lang}/", "").strip('/')
 
-                # 1. Regenerate ID using MD5 Hash
+                # Regenerate ID using MD5 Hash
                 full_relative_dir = f"{lang}/{clean_dir}"
                 new_id = hashlib.md5(full_relative_dir.encode('utf-8')).hexdigest()[:16]
 
-                # 4. Sort Tracks Safely (handles empty strings or "1/12" formats)
+                # Sort Tracks Safely
                 raw_tracks = album.get(catalog_config.B_ALBUM_TRACKS, [])
                 sorted_tracks = sorted(raw_tracks, key=lambda x: self.safe_int(x.get(catalog_config.B_TRACK_NUM, '0')))
 
-                # 2, 5 & 6. Reposition & Filter using our Central Config Template
-                # This automatically drops "raw", "task", and "meta" because they aren't in the template!
+                # Reposition & Filter using Central Config Template
                 new_album = catalog_config.get_bucket_album_template(
                     album_id=new_id,
                     album_dir=clean_dir,
@@ -53,7 +69,7 @@ class Command(BaseCommand):
                 
                 new_data.append(new_album)
 
-            # Overwrite the old bucket with the newly formatted data
+            # Overwrite the old bucket
             with open(bucket_path, 'w', encoding='utf-8') as f:
                 json.dump(new_data, f, indent=2, ensure_ascii=False)
 
@@ -65,9 +81,7 @@ class Command(BaseCommand):
         """Safely parses track numbers into integers for accurate sorting."""
         try:
             if isinstance(value, str):
-                # Handle cases where track is written as "1/12"
                 value = value.split('/')[0]
             return int(value)
         except (ValueError, TypeError):
-            # Fallback for tracks without a valid number so they go to the bottom
             return 999
