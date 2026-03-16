@@ -1,3 +1,25 @@
+"""
+Library Compiler Command (compile_catalog.py)
+=============================================
+
+Description:
+The core engine of the music catalog. It reads raw `bucket.[lang].json` files,
+cross-references them with human-curated typo dictionaries, and compiles a 
+highly optimized, minified `albums.json` file to be consumed by the Vue SPA.
+
+Features:
+- Dictionary Resolution: Automatically fixes typos in track/album names, and maps string artists to Integer IDs.
+- Auto ID Generation: Assigns new Integer IDs to newly discovered Artists or Genres and saves them back to the dictionary.
+- DB Synchronization: Creates new `Album` and `Track` records in the MySQL database to preserve historical play counts.
+- Minification: Can strip indentation to produce a lightweight payload for fast frontend delivery.
+
+Usage:
+# Compile all buckets with readable formatting
+python manage.py compile_catalog --lang all
+
+# Compile a specific language and minify it for production
+python manage.py compile_catalog --lang zola --minify
+"""
 import os
 import json
 import re
@@ -229,7 +251,6 @@ class Command(BaseCommand):
         if not raw_string: return "Unknown"
         raw_string_lower = raw_string.strip().lower()
         
-        # --- NEW: Using Centralized Dictionary Keys ---
         for item in dictionary_list:
             match_list = [
                 item.get(catalog_config.DICT_NAME, '').lower(), 
@@ -247,7 +268,6 @@ class Command(BaseCommand):
         clean_name = raw_name.strip()
         search_name = clean_name.lower()
 
-        # --- NEW: Using Centralized Dictionary Keys ---
         id_key = catalog_config.DICT_ARTIST_ID if entity_type == 'Artist' else catalog_config.DICT_GENRE_ID
 
         def get_next_id():
