@@ -1,3 +1,24 @@
+"""
+Library Scanner Command (scan_library.py)
+=========================================
+
+Description:
+Scans MP3 files from either Local Disk or Google Cloud Storage, extracts 
+their ID3 tags (Title, Artist, Duration, etc.) using Mutagen, and merges 
+them into a language-specific `bucket.[lang].json` file.
+
+Features:
+- Dual Environment: Seamlessly scans local folders or downloads temporary blobs from GCS.
+- Auto-Healing: Gracefully handles missing ID3 tags or broken MP3 durations.
+- Smart Merging: Updates existing bucket JSONs by directory path without overwriting other albums.
+
+Usage:
+# Scan a specific folder from the local storage
+python manage.py scan_library --src zola/Lengtong
+
+# Scan a specific folder directly from Google Cloud Storage
+python manage.py scan_library --src zola/Lengtong --cloud
+"""
 import os
 import json
 import hashlib
