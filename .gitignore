@@ -2,7 +2,8 @@
 *tmp/
 /static
 core/static
-/cache
+/cache/*
+!/cache/README.md
 
 
 # Byte-compiled / optimized / DLL files
