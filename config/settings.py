@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'corsheaders',
+
+    'webpack_loader',
     
     # Local apps inside the 'apps/' folder
     'core',
@@ -61,7 +63,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'frontend_dist')], 
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -69,6 +71,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                "api.context_processors.app_info",
             ],
         },
     },
@@ -92,14 +95,29 @@ DATABASES = {
 STORAGE_DIR = os.environ.get('STORAGE_DIR')
 CACHE_DIR = os.environ.get('CACHE_DIR')
 MEDIA_DIR = os.environ.get('MEDIA_DIR')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 MEDIA_ROOT = MEDIA_DIR
 
 # --- STATIC FILES ---
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'frontend_dist'), 
+    # os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, STATIC_URL), # for webpack-stats.json
 ]
+
+# Add Webpack Loader Configuration
+WEBPACK_LOADER = {
+    'DEFAULT': {
+        # 'BUNDLE_DIR_NAME': 'bundles/',
+        # 'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
+        # 'BUNDLE_DIR_NAME': 'core/bundles/', # must match webpack's output.path relative to a static dir
+        'BUNDLE_DIR_NAME': '', # must match webpack's output.path relative to a static dir
+        # 'STATS_FILE': os.path.join(BASE_DIR, 'assets', 'webpack-stats.json'),
+        'STATS_FILE': os.path.join(BASE_DIR, STATIC_URL, 'webpack-stats.json'),
+    }
+}
+
 
 # --- GOOGLE CLOUD CONFIGURATION ---
 GS_BUCKET_NAME = os.environ.get('GS_BUCKET_NAME')

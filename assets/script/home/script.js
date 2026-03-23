@@ -52,8 +52,8 @@ export default {
 		this.dataStore.all.lang.forEach(l => {
 			this.popularArtist[l.id] = artists
 				.filter(
-					a => a.lang[0] == l.id
-					// a=>a.lang.find(i=>i == l.id) && most(a.id).length == 0
+					a => a.l[0] == l.id
+					// a=>a.l.find(i=>i == l.id) && most(a.id).length == 0
 				)
 				.slice(0, 15);
 		});

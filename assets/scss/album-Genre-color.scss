@@ -1,0 +1,88 @@
+@use "sass:color";
+@use "Config" as *;
+@mixin css {
+	&.gospel {
+		border-bottom-color: color.adjust(bisque, $lightness: 5%);
+		&::before {
+			color: color.adjust(bisque, $lightness: 5%);
+		}
+	}
+	&.alternative {
+		border-bottom-color: color.adjust($ColorBackground, $lightness: 4%);
+		&::before {
+			color: color.adjust($ColorBackground, $lightness: 4%);
+		}
+	}
+	&.classical {
+		border-bottom-color: color.adjust($ColorBackground, $lightness: 25%);
+		&::before {
+			color: color.adjust($ColorBackground, $lightness: 25%);
+		}
+	}
+	&.contemporary {
+		border-bottom-color: color.adjust($ColorBackground, $lightness: 10%);
+		&::before {
+			color: color.adjust($ColorBackground, $lightness: 10%);
+		}
+	}
+	&.christian {
+		border-bottom-color: color.adjust(azure, $lightness: -7%);
+		&::before {
+			color: color.adjust(azure, $lightness: -7%);
+		}
+	}
+	&.rock {
+		border-bottom-color: color.adjust(red, $lightness: 40%);
+		&::before {
+			color: color.adjust(red, $lightness: 40%);
+		}
+	}
+	&.classic {
+		border-bottom-color: color.adjust(beige, $lightness: 7%);
+		&::before {
+			color: color.adjust(beige, $lightness: 7%);
+		}
+	}
+	&.blues {
+		border-bottom-color: color.adjust(azure, $lightness: 7%);
+		&::before {
+			color: color.adjust(azure, $lightness: 7%);
+		}
+	}
+	&.country {
+		border-bottom-color: color.adjust(beige, $lightness: -2%);
+		&::before {
+			color: color.adjust(beige, $lightness: -2%);
+		}
+	}
+	&.pop {
+		border-bottom-color: color.adjust(beige, $lightness: -7%);
+		&::before {
+			color: color.adjust(beige, $lightness: -7%);
+		}
+	}
+	&.tribal {
+		border-bottom-color: azure;
+		&::before {
+			color: azure;
+		}
+	}
+	&.worship {
+		border-bottom-color: azure;
+		&::before {
+			color: azure;
+		}
+	}
+	&.hymn {
+		border-bottom-color: antiquewhite;
+		&::before {
+			color: antiquewhite;
+		}
+	}
+	&.religious {
+		border-bottom-color: aquamarine;
+		&::before {
+			color: aquamarine;
+		}
+	}
+}

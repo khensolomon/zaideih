@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Vue Audio Player</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8 font-sans">
+
+<div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl p-6">
+    <h1 class="text-2xl font-bold mb-4 text-gray-800">Secure Album Player</h1>
+    
+    <!-- Custom Audio Player UI -->
+    <div class="bg-blue-50 p-4 rounded-lg mb-6 text-center">
+        <h2 class="text-lg font-semibold text-blue-800">
+            {{ currentSong ? currentSong.title : 'Select a song to play' }}
+        </h2>
+        <p class="text-sm text-blue-600 mb-4">
+            {{ currentSong ? currentSong.artist : '---' }}
+        </p>
+        
+        <!-- The actual HTML5 Audio Element (Hidden controls, we use custom buttons) -->
+        <audio ref="audioPlayer" @ended="playNext" class="hidden"></audio>
+        
+        <div class="flex justify-center space-x-4">
+            <button @click="playPrevious" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50" :disabled="!currentSong">
+                Prev
+            </button>
+            
+            <button @click="togglePlay" class="px-6 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 disabled:opacity-50">
+                {{ isLoading ? 'Loading...' : (isPlaying ? 'Pause' : 'Play') }}
+            </button>
+            
+            <button @click="playNext" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50" :disabled="!currentSong">
+                Next
+            </button>
+        </div>
+    </div>
+
+    <!-- Tracklist -->
+    <ul class="divide-y divide-gray-200">
+        <li v-for="song in playlist" :key="song.id" class="py-3 flex justify-between items-center">
+            <div>
+                <p class="font-medium text-gray-900">{{ song.title }}</p>
+                <p class="text-sm text-gray-500">{{ song.artist }}</p>
+            </div>
+            <button @click="requestTicketAndPlay(song)" class="text-blue-600 hover:text-blue-800 text-sm font-semibold">
+                {{ currentSong?.id === song.id && isPlaying ? 'Playing' : 'Play' }}
+            </button>
+        </li>
+    </ul>
+</div>
+
+<script>
+    const { createApp, ref, computed } = Vue
+
+    createApp({
+        setup() {
+            const audioPlayer = ref(null);
+            const isPlaying = ref(false);
+            const isLoading = ref(false);
+            const currentSong = ref(null);
+            
+            // 1. We load the metadata ONLY. No signed URLs yet!
+            const playlist = ref([
+                { id: 1, title: 'Intro (Secure)', artist: 'The Devs' },
+                { id: 2, title: 'HMAC Groove', artist: 'The Devs' },
+                { id: 3, title: 'Token Bypass (Remix)', artist: 'The Devs' }
+            ]);
+
+            // 2. The Just-In-Time (JIT) Fetching Logic
+            const requestTicketAndPlay = async (song) => {
+                currentSong.value = song;
+                isLoading.value = true;
+                
+                try {
+                    console.log(`Asking Django for ticket to audio ${song.id}...`);
+                    
+                    // STEP 1: Ask Django for the VIP Ticket.
+                    // We point this directly to where Django runs locally.
+                    const response = await fetch(`http://localhost:8000/api/audio/${song.id}/request`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    // STEP 2: Put the signed URL directly into the audio player
+                    // Since Django returns a relative path (e.g., "/api/audio/1?..."), 
+                    // we need to attach the localhost domain to it so the browser knows where to go.
+                    const audioUrl = data.url.startsWith('/') 
+                        ? `http://localhost:8000${data.url}` 
+                        : data.url;
+
+                    console.log(`Django gave us URL: ${audioUrl}`);
+                    audioPlayer.value.src = audioUrl;
+                    
+                    // Start playing immediately!
+                    audioPlayer.value.play();
+                    isPlaying.value = true;
+                    
+                } catch (error) {
+                    console.error("Failed to get audio ticket:", error);
+                    alert("Could not load audio. Check your console and make sure Django is running!");
+                } finally {
+                    isLoading.value = false;
+                }
+            };
+
+            const togglePlay = () => {
+                if (!currentSong.value && playlist.value.length > 0) {
+                    requestTicketAndPlay(playlist.value[0]);
+                    return;
+                }
+                
+                if (isPlaying.value) {
+                    audioPlayer.value.pause();
+                } else {
+                    audioPlayer.value.play();
+                }
+                isPlaying.value = !isPlaying.value;
+            };
+
+            const playNext = () => {
+                if (!currentSong.value) return;
+                const currentIndex = playlist.value.findIndex(s => s.id === currentSong.value.id);
+                if (currentIndex < playlist.value.length - 1) {
+                    requestTicketAndPlay(playlist.value[currentIndex + 1]);
+                } else {
+                    isPlaying.value = false; // End of playlist
+                }
+            };
+            
+            const playPrevious = () => {
+                if (!currentSong.value) return;
+                const currentIndex = playlist.value.findIndex(s => s.id === currentSong.value.id);
+                if (currentIndex > 0) {
+                    requestTicketAndPlay(playlist.value[currentIndex - 1]);
+                }
+            };
+
+            return {
+                playlist,
+                currentSong,
+                isPlaying,
+                isLoading,
+                audioPlayer,
+                requestTicketAndPlay,
+                togglePlay,
+                playNext,
+                playPrevious
+            }
+        }
+    }).mount('#app')
+</script>
+</body>
+</html>

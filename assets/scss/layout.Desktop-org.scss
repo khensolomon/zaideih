@@ -34,7 +34,7 @@ div {
         align-content: center;
       }
       &.bg{
-        background-color: darken($ColorBackground,7);
+        background-color: color.adjust($ColorBackground, $lightness: -7%);
         position: relative;
         overflow: hidden;
         // &::before{
@@ -46,8 +46,8 @@ div {
         //   left: 0;
         //   right: 0;
         //   margin: 0 auto;
-        //   color: darken($ColorBackground,2);
-        //   @include text-shadow(0px,1px,3px,darken($ColorBackground,15));
+        //   color: color.adjust($ColorBackground, $lightness: -2%);
+        //   @include text-shadow(0px,1px,3px,color.adjust($ColorBackground, $lightness: -15%));
         //   // font-size:100vw;
         //   font-size:30em;
         // }
@@ -61,8 +61,8 @@ div {
         h1{
           font-size: 4em;
           text-align: center;
-          color: darken($Color,10);
-          @include text-shadow(0px,1px,1px,darken($ColorBackground,40));
+          color: color.adjust($Color, $lightness: -10%);
+          @include text-shadow(0px,1px,1px,color.adjust($ColorBackground, $lightness: -40%));
           @media #{$media-mobile} {
             font-size: 3em;
           }
@@ -88,21 +88,21 @@ div {
             padding:30px 20px;
             font-size: 1.4em;
             // font-size:5vw;
-            color: lighten($Color,100);
+            color: color.adjust($Color, $lightness: 100%);
             &::after{
               content:'...';
-              color: lighten($Color,50);
+              color: color.adjust($Color, $lightness: 50%);
             }
             span {
-              color: lighten($Color,80);
-              @include text-shadow(0px,1px,1px,lighten($Color,30));
+              color: color.adjust($Color, $lightness: 80%);
+              @include text-shadow(0px,1px,1px,color.adjust($Color, $lightness: 30%));
             }
           }
           &:hover {
-            background-color:darken($ColorMain,6);
+            background-color:color.adjust($ColorMain, $lightness: -6%);
             a {
               &::before{
-                color: lighten($Color,40);
+                color: color.adjust($Color, $lightness: 40%);
               }
             }
           }
@@ -114,14 +114,14 @@ div {
           padding: 2px 10px;
           // border-radius: 3px;
           // background-color:$ColorMain;
-          // background-color:darken($ColorBackground,10);
-          // background-color:darken($ColorMain,12);
+          // background-color:color.adjust($ColorBackground, $lightness: -10%);
+          // background-color:color.adjust($ColorMain, $lightness: -12%);
           // @include box-shadow(0px 0px 2px 0px,rgba(0,0,0,0.8));
           p {
             // font-size: 1.4em;
             font-size: 1.3em;
-            color: darken($Color,10);
-            @include text-shadow(0px,1px,1px,darken($ColorBackground,30));
+            color: color.adjust($Color, $lightness: -10%);
+            @include text-shadow(0px,1px,1px,color.adjust($ColorBackground, $lightness: -30%));
             text-align: center;
             &::before {
               // display: block;
@@ -129,8 +129,8 @@ div {
               margin: 0;
               margin-bottom: 10px;
               font-size: 1.5em;
-              color: darken($Color,20);
-              // @include text-shadow(0px,1px,1px,darken($ColorBackground,30));
+              color: color.adjust($Color, $lightness: -20%);
+              // @include text-shadow(0px,1px,1px,color.adjust($ColorBackground, $lightness: -30%));
             }
           }
         }
@@ -156,8 +156,8 @@ div {
             text-align: center;
             font-size: 1.3em;
             // font-size:5vw;
-            color: lighten($Color,40);
-            // @include text-shadow(0px,1px,1px,lighten($Color,20));
+            color: color.adjust($Color, $lightness: 40%);
+            // @include text-shadow(0px,1px,1px,color.adjust($Color, $lightness: 20%));
           }
         }
       }
@@ -179,13 +179,13 @@ div {
           flex:1 1 170px;
           margin:5px;
           border-radius: 3px;
-          background-color:darken($ColorBackground,10);
+          background-color:color.adjust($ColorBackground, $lightness: -10%);
           @include box-shadow(0px 1px 2px 0px,rgba(0,0,0,0.6));
           div {
             // display: block;
             padding:30px 20px;
             // font-size:5vw;
-            color: lighten($Color,100);
+            color: color.adjust($Color, $lightness: 100%);
 
             span,em {
               display: inline-block;
@@ -232,7 +232,7 @@ div {
               max-width: 1000px;
               margin: 0 auto;
 
-              // background-color:darken($ColorBackground,0);
+              // background-color:color.adjust($ColorBackground, $lightness: -0%);
             }
           }
           div.genre{
@@ -245,7 +245,7 @@ div {
             a{
               padding: 2px 4px;
               border-radius: 2px;
-              background-color:darken($ColorBackground,10);
+              background-color:color.adjust($ColorBackground, $lightness: -10%);
             }
           }
 

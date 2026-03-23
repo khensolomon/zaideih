@@ -1,4 +1,4 @@
-import { createApp, h } from "vue";
+import { createApp, h, markRaw } from "vue";
 import { createPinia, mapStores } from "pinia";
 
 import axios from "axios";
@@ -31,93 +31,184 @@ const app = createApp({
 			for (const i of Object.keys(this.dataStore.meta))
 				if (d.hasOwnProperty(i))
 					this.dataStore.meta[i] = d[i].includes(",")
-						? d[i].split(",")
+						? d[i].split(",").map((info) => info.trim())
 						: parseInt(d[i]);
 			// await this.$http.get('/api').then(e=>this.dataStore.meta = e.data, e=>this.error = e.statusText);
 		},
-		async fetch(uri) {
-			uri = uri
-				.split("")
-				.reverse()
-				.join("");
-			var id = uri.split("/").slice(-1)[0],
-				k = id
-					.split("")
-					.reverse()
-					.join("");
+
+		/**
+		 * @param {string} id
+		 */
+		async json(id) {
+			return axios.get("/api/" + id);
+		},
+
+		/**
+		 * v = value, k = key, h = hash, u = url
+		 * api/album
+		 * api/albums
+		 * @param {string} id
+		 * kH kV
+		 */
+		async fetch(id) {
+			const kH = id.split("").reverse().join("");
+			// const kH = kH.concat("s");
+
+			const uK = id;
+
+			// console.log("identity:", id);
+			// console.log("key (kH):", kH, ", hash (uK):", uK);
+
+			// const kV = kH.concat("s");
+			const kV = "s" + kH;
+			const uV = kV.split("").reverse().join("");
+			// console.log("key (kV):", kV, ", hash (uV):", uV);
 
 			try {
-				var o = await this.getItem(k);
-				if (o.length == this.dataStore.meta[id]) {
-					this.dataStore.all[id] = o;
-				} else {
-					// NOTE: throw error, so that catch can request a new data. This happen when local storage has no data
-					this.error = "error";
-					throw "error";
+				const localHash = this.storageStore.getItem(kH);
+				const localData = await this.getItem(kV);
+
+				const resp = await this.json(uK);
+				const serverHash = resp.data.hash;
+
+				// console.log("localHash", localHash, "for", kH, serverHash);
+
+				if (serverHash) {
+					if (serverHash != localHash) {
+						// NOTE: localhash is outdated, update it to server hash. This happen when local storage has old data
+						this.storageStore.setItem(kH, serverHash);
+					}
+					if (serverHash === localHash && localData) {
+						// NOTE: local data is up to date, use it
+						this.dataStore.all[id] = Array.isArray(localData) ? markRaw(localData) : localData;
+					} else {
+						// NOTE: throw error, so that catch can request a new data. This happen when local storage has no data
+						this.error = "error";
+						throw "error";
+					}
 				}
 			} catch (error) {
-				// NOTE: This happened because local storage is empty or user has modified. So we just simply request fresh data.
-				// await this.$http.get(uri).then(
-				// 	response => {
-				// 		this.dataStore.all[id] = response.data;
-				// 	},
-				// 	error => {
-				// 		this.error = error.statusText;
-				// 	}
-				// );
-				await axios
-					.get(uri)
-					.then(response => {
-						this.dataStore.all[id] = response.data;
+				await this.json(uV)
+					.then((response) => {
+						this.dataStore.all[id] = Array.isArray(response.data) ? markRaw(response.data) : response.data;
 					})
-					.catch(error => {
+					.catch((error) => {
 						this.error = error.statusText;
 					});
-				await this.setItem(k, this.dataStore.all[id]);
+				this.setItem(kV, this.dataStore.all[id]);
 			}
 		},
+		/**
+		 * /api/artist -> tsitra/ipa/
+		 * /api/genre -> erneg/ipa/
+		 * /api/album -> mubla/ipa
+		 */
 		async init() {
 			this.metadata();
-			await this.fetch("tsitra/ipa/");
-			await this.fetch("erneg/ipa/");
-			await this.fetch("mubla/ipa");
-			for (const album of this.dataStore.all.album) {
-				for (const track of album.tk) {
-					this.dataStore.total.track++;
-					// if (this.dataStore.all.lang.indexOf(album.lg) < 0){
-					//   this.dataStore.all.lang.push(album.lg)
-					// }
-					// track.l = album.lg;
-					if (!this.dataStore.all.lang.find(e => e.id == album.lg)) {
-						this.dataStore.all.lang.push({
-							id: album.lg,
-							name: this.dataStore.meta.lang[album.lg]
-						});
-					}
-					track.a.forEach(index => {
-						var artist = this.dataStore.all.artist[index];
-						if (!artist.id) artist.id = index;
-						if (!artist.plays) artist.plays = 0;
-						// if (!artist.album) artist.album = 0;
-						if (!artist.track) artist.track = 0;
-						if (!artist.lang) artist.lang = [];
-						if (artist.lang.indexOf(album.lg) < 0) {
-							artist.lang.push(album.lg);
+			await this.fetch("artist");
+			await this.fetch("genre");
+			await this.fetch("album");
+
+			// =========================================================
+			// FALLBACK METHOD: Runs if Web Worker fails to load or clone
+			// =========================================================
+			const runFallbackProcess = () => {
+				console.warn("Web Worker failed or unavailable. Falling back to processBatch()...");
+				
+				const artistMap = new Map(this.dataStore.all.artist.map(a => [a.id, a]));
+				const albums = this.dataStore.all.album;
+				const batchSize = 500;
+				let index = 0;
+
+				const processBatch = () => {
+					const end = Math.min(index + batchSize, albums.length);
+					
+					for (; index < end; index++) {
+						const album = albums[index];
+						for (const track of album.tk) {
+							this.dataStore.total.track++;
+							
+							if (!this.dataStore.all.lang.find((e) => e.id == album.lg)) {
+								this.dataStore.all.lang.push({
+									id: album.lg,
+									name: this.dataStore.meta.lang[album.lg],
+								});
+							}
+							
+							track.a.forEach((id) => {
+								const artist = artistMap.get(id);
+								if (artist) {
+									if (!artist.plays) artist.plays = 0;
+									if (!artist.track) artist.track = 0;
+									if (!artist.l) artist.l = [];
+									if (artist.l.indexOf(album.lg) < 0) {
+										artist.l.push(album.lg);
+									}
+									artist.plays += track.p || 0;
+									artist.track++;
+								}
+							});
 						}
-						// NOTE: total artist play
-						artist.plays += track.p;
-						// NOTE: total artist track
-						artist.track++;
-					});
-				}
-				// NOTE: total album play
-				album.tp = album.tk.reduce((a, b) => a + parseInt(b.p), 0);
+						album.tp = album.tk.reduce((a, b) => a + parseInt(b.p), 0);
+					}
+
+					if (index < albums.length) {
+						requestAnimationFrame(processBatch);
+					} else {
+						this.dataStore.total.album = this.dataStore.all.album.length;
+						this.dataStore.total.artist = this.dataStore.all.artist.length;
+						this.dataStore.total.lang = this.dataStore.all.lang.length;
+						this.dataStore.all.album = markRaw([...this.dataStore.all.album].sort((a, b) => (a.tp < b.tp ? 1 : -1)));
+						this.dataStore.ready = true;
+					}
+				};
+
+				processBatch();
+			};
+
+			// =========================================================
+			// PRIMARY METHOD: Try using the highly optimized Web Worker
+			// =========================================================
+			try {
+				// Depending on your bundler, you may need to adjust the path here to '/data-worker.js'
+				// const worker = new Worker(new URL('./data-worker.js', import.meta.url), { type: 'module' });
+				const worker = new Worker('/sw-album.js');
+
+				worker.onmessage = (e) => {
+					const { albums, artists, langs, totalTracks } = e.data;
+
+					this.dataStore.all.album = markRaw(albums);
+					this.dataStore.all.artist = markRaw(artists);
+					this.dataStore.all.lang = markRaw(langs);
+
+					this.dataStore.total.track = totalTracks;
+					this.dataStore.total.album = albums.length;
+					this.dataStore.total.artist = artists.length;
+					this.dataStore.total.lang = langs.length;
+
+					this.dataStore.ready = true;
+					worker.terminate();
+				};
+
+				// If worker errors out after instantiation (e.g. clone errors, internal logic error)
+				worker.onerror = (err) => {
+					worker.terminate();
+					runFallbackProcess();
+				};
+
+				// Strip Vue Reactivity using JSON.parse(JSON.stringify) before sending
+				const cleanDataForWorker = JSON.parse(JSON.stringify({
+					albums: this.dataStore.all.album,
+					artists: this.dataStore.all.artist,
+					metaLangs: this.dataStore.meta.lang
+				}));
+
+				worker.postMessage(cleanDataForWorker);
+
+			} catch (err) {
+				// If worker completely fails to initialize (e.g. Webpack path resolving error)
+				runFallbackProcess();
 			}
-			this.dataStore.total.album = this.dataStore.all.album.length;
-			this.dataStore.total.artist = this.dataStore.all.artist.length;
-			this.dataStore.total.lang = this.dataStore.all.lang.length;
-			this.dataStore.all.album.sort((a, b) => (a.tp < b.tp ? 1 : -1));
-			this.dataStore.ready = true;
 		},
 		/**
 		 * @param {string} k
@@ -136,7 +227,7 @@ const app = createApp({
 		},
 		testDelete() {
 			console.log("testDelete from index");
-		}
+		},
 	},
 	watch: {},
 	// template: "",
@@ -150,8 +241,8 @@ const app = createApp({
 	computed: {
 		// note we are not passing an array, just one store after the other
 		// each store will be accessible as its id + 'Store'
-		...mapStores(useDataStore, useStorageStore)
-	}
+		...mapStores(useDataStore, useStorageStore),
+	},
 	// NOTE: without setup {useDataStore} can be accessed at {dataStore}
 	// setup() {
 	// 	const dataStore = useDataStore();

@@ -1,5 +1,17 @@
-@import 'Config';
-@import 'font.Face';
+@charset "charset";
+@use "sass:color";
+@use "Config" as *;
+@use "font.Face" as *;
+
+@use 'Common';
+@use 'layout-Desktop';
+@use 'content-Desktop';
+
+@use 'bar-Desktop';
+@use 'search-Desktop';
+@use 'player-Desktop';
+
+
 html{
   touch-action: manipulation;
   @include scrollbar()
@@ -18,13 +30,16 @@ a, span{
 body {
   @extend html; font-family:$Font; color:$Color;font-size:$FontSize;
   // background-color: $ColorBackground;
-  background-color: lighten($ColorMain,10);
+  background-color: color.adjust($ColorMain, $lightness: 10%);
   // display: flex;
   // flex-direction: column;
 }
-@import 'Common';
-@import 'layout.Desktop';
-@import 'content.Desktop';
+
+@include Common.css;
+@include layout-Desktop.css;
+@include content-Desktop.css;
+
+
 
 div#app{
   box-sizing: content-box;
@@ -60,12 +75,12 @@ div#app{
       margin: 0 auto;
     }
     div.bar{
-      // border-top:3px solid lighten($ColorMain,10);
+      // border-top:3px solid color.adjust($ColorMain, $lightness: 10%);
       // margin-top:3px;
       // @include box-shadow( 0px 0px 3px 0px,rgba(0,0,0,0.8));
       // padding-bottom:20px;
       // margin-bottom: 10px;
-      // background-color: darken($ColorBackground,5);
+      // background-color: color.adjust($ColorBackground, $lightness: -5%);
       >div {
         display: table;
         width: 96%;
@@ -84,7 +99,7 @@ div#app{
               width: 600px;
             }
           }
-          @import 'bar.Desktop';
+          @include bar-Desktop.css;
 
         }
 
@@ -95,7 +110,7 @@ div#app{
       max-width: 600px;
       margin: 0 auto;
       padding: 20px;
-      @import 'search.Desktop';
+      @include search-Desktop.css;
     }
     &.player{
       left: 0;
@@ -103,11 +118,11 @@ div#app{
       height: 70px;
       bottom: 0;
       z-index:5;
-      // background-color:lighten($ColorMain,10);
-      background-color:darken($ColorBackground,0);
+      // background-color:color.adjust($ColorMain, $lightness: 10%);
+      background-color:color.adjust($ColorBackground, $lightness: -0%);
       // background-color: rgba($ColorBackground,0.95);
-      @include box-shadow(inset, 0px 2px 3px 0px, darken($ColorBackground,10));
-      @import 'player.Desktop';
+      @include box-shadow(inset, 0px 2px 3px 0px, color.adjust($ColorBackground, $lightness: -10%));
+      @include player-Desktop.css;
     }
     &.primary{
       z-index: 4;
@@ -116,9 +131,9 @@ div#app{
       bottom: 70px;
       -webkit-overflow-scrolling: touch;
       max-height: 100%;
-      // border-top:3px solid lighten($ColorMain,10);
+      // border-top:3px solid color.adjust($ColorMain, $lightness: 10%);
       margin-top: 3px;
-      background-color:darken($ColorBackground,0);
+      background-color:color.adjust($ColorBackground, $lightness: -0%);
       -webkit-text-size-adjust: 100%;
       -moz-text-size-adjust: 100%;
       -ms-text-size-adjust: 100%;
@@ -131,12 +146,12 @@ div#app{
   @media #{$media-mobile} {
     div.zd{
       &.primary{
-        @include box-shadow(0px 2px 3px 0px, darken($ColorBackground,40));
+        @include box-shadow(0px 2px 3px 0px, color.adjust($ColorBackground, $lightness: -40%));
         position:static;
         margin-bottom: 70px;
         margin-top: 1px;
         bottom: 0;
-        // border-top:1px solid lighten($ColorMain,10);
+        // border-top:1px solid color.adjust($ColorMain, $lightness: 10%);
       }
     }
   }

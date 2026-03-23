@@ -40,7 +40,7 @@ DICT_NAME = 'name'
 DICT_AKA = 'aka'
 DICT_CORRECTION = 'correction'
 DICT_THESAURUS = 'thesaurus'
-DICT_ARTIST_ID = 'i'
+DICT_ARTIST_ID = 'id'
 DICT_GENRE_ID = 'id'
 
 

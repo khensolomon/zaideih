@@ -1,0 +1,47 @@
+{
+  "name": "zaideih",
+  "version": "26.3.22",
+  "description": "Zaideih Music Station",
+  "scripts": {
+    "start": "concurrently \"npm run dev\" \"npm run django\"",
+    "dev": "webpack serve --mode development --config ./assets/webpack/config.js",
+    "build": "webpack --mode production --config ./assets/webpack/config.js",
+    "dev-watch": "webpack --mode development --watch --config ./assets/webpack/config.js",
+    "django:linux": "./venv/bin/python manage.py runserver",
+    "django:win": ".\\venv\\Scripts\\python manage.py runserver",
+    "django": "if [ -f \"./venv/bin/python\" ]; then ./venv/bin/python manage.py runserver; else .\\venv\\Scripts\\python manage.py runserver; fi"
+  },
+  "dependencies": {
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@vue/compiler-sfc": "^3.4.21",
+    "axios": "^1.13.6",
+    "babel-loader": "^10.1.1",
+    "concurrently": "^9.2.1",
+    "css-loader": "^6.10.0",
+    "css-minimizer-webpack-plugin": "^8.0.0",
+    "mini-css-extract-plugin": "^2.8.1",
+    "sass": "^1.71.1",
+    "sass-loader": "^14.1.1",
+    "sharp": "^0.34.5",
+    "style-loader": "^3.3.4",
+    "vue-loader": "^17.4.2",
+    "webpack": "^5.90.3",
+    "webpack-bundle-tracker": "^3.1.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khensolomon/zaideih.git"
+  },
+  "author": "Khen Solomon Lethil",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/khensolomon/zaideih/issues"
+  },
+  "homepage": "https://github.com/khensolomon/zaideih#readme"
+}

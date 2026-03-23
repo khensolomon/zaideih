@@ -1,14 +1,9 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-// @ts-ignore
 import Home from "./home/index.vue";
-// @ts-ignore
 import Queue from "./queue/index.vue";
-// @ts-ignore
 import Music from "./music/index.vue";
-// @ts-ignore
 import Artist from "./artist/index.vue";
-// @ts-ignore
 import Album from "./album/index.vue";
 // import Hello from './components/Hello';
 // import Goodbye from './components/Goodbye';

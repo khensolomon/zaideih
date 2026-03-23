@@ -1,51 +1,77 @@
-
 import os
 import re
+import hmac
+import hashlib
+import time
 from wsgiref.util import FileWrapper
-from django.http import JsonResponse, HttpResponse, StreamingHttpResponse, Http404
+from django.conf import settings
+from django.http import HttpResponse, HttpResponseForbidden, StreamingHttpResponse, Http404, FileResponse
+
 from django.db.models import F
 from django.conf import settings
 from google.cloud import storage
-import json
 
-from .store import read_json_store
-from .models import Track
-from . import catalog_config
+from ..models import Track
+from .. import catalog_config
 
-def read_asset_json(filename):
-    """Helper to read human-curated JSON files from the assets/data directory."""
-    filepath = os.path.join(settings.BASE_DIR, 'assets', 'data', filename)
+def _generate_signed_audio_url(track_id: int, expiration_window_seconds: int = 300) -> str:
+    expires = int(time.time()) + expiration_window_seconds
+    message = f"{track_id}:{expires}".encode('utf-8')
+    secret = settings.SECRET_KEY.encode('utf-8')
+    signature = hmac.new(secret, message, hashlib.sha256).hexdigest()
+    return f"/api/audio/{track_id}?expires={expires}&sig={signature}"
+
+def _verify_signature(track_id: int, expires: int, provided_signature: str) -> bool:
+    if int(time.time()) > expires:
+        return False
+    message = f"{track_id}:{expires}".encode('utf-8')
+    secret = settings.SECRET_KEY.encode('utf-8')
+    expected_signature = hmac.new(secret, message, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected_signature, provided_signature)
+
+def requests(request, track_id):
+    # TEMPORARILY COMMENTED OUT FOR TESTING
+    # if not request.user.is_authenticated:
+    #     return HttpResponseForbidden("Not authorized")
+        
+    signed_url = _generate_signed_audio_url(track_id, 300)
+    return HttpResponse(f'{{"url": "{signed_url}"}}', content_type="application/json")
+
+def streams(request, track_id):
+    expires = request.GET.get('expires', 0)
+    signature = request.GET.get('sig', '')
+    
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+        expires = int(expires)
+    except ValueError:
+        return HttpResponseForbidden("Invalid expiration format")
 
-# --- JSON CATALOG ENDPOINTS ---
-def get_albums(request):
-    # Reads from MEDIA_DIR/store/albums.json
-    return JsonResponse(read_json_store(catalog_config.FILE_ALBUMS), safe=False)
+    if not _verify_signature(track_id, expires, signature):
+        return HttpResponseForbidden("Invalid or expired signature")
+        
+    # # --- THE FIX IS HERE ---
+    
+    # # 1. Find a REAL mp3 file on your computer. 
+    # # For this test, place a file named "test.mp3" in the exact 
+    # # same folder as your Django manage.py file.
+    # file_path = "cache/test.mp3" 
+    
+    # if not os.path.exists(file_path):
+    #     return HttpResponse("Error: You need to put a real test.mp3 file in your Django folder!", status=404)
 
-def get_genres(request):
-    # Reads assets/data/category.json, and strictly returns the 'genre' array
-    category_data = read_asset_json(catalog_config.FILE_CATEGORY)
-    genres = category_data.get('genre', []) if isinstance(category_data, dict) else []
-    return JsonResponse(genres, safe=False)
+    # # 2. Use FileResponse instead of HttpResponse. 
+    # # FileResponse automatically handles streaming, range-requests, 
+    # # and tells the browser exactly how long the audio file is.
+    # try:
+    #     audio_file = open(file_path, 'rb')
+    #     return FileResponse(audio_file, content_type="audio/mpeg")
+    # except Exception as e:
+    #     return HttpResponse(f"Server error loading file: {e}", status=500)
 
-def get_artists(request):
-    # Reads assets/data/artist.name.json
-    return JsonResponse(read_asset_json(catalog_config.FILE_ARTIST_CORRECTIONS), safe=False)
-
-def get_track_list(request):
-    # Reads assets/data/track.name.json
-    return JsonResponse(read_asset_json(catalog_config.FILE_TRACK_CORRECTIONS), safe=False)
-
-def test_api(request):
-    return JsonResponse({"status": "success", "message": "Zaideih API is online!"})
-
+    return _streamer(request, track_id)
 
 # --- AUDIO STREAMING ENDPOINT ---
-def stream_audio(request, track_id):
+def _streamer(request, track_id):
     """
     Handles streaming audio to the client. Tries GCS first, falls back to local disk.
     Supports HTTP Range requests for audio scrubbing.
@@ -68,16 +94,16 @@ def stream_audio(request, track_id):
         blob = bucket.get_blob(f"{catalog_config.DIR_MUSIC}/{full_track_path}")
 
         if blob is not None:
-            return _stream_from_gcs(request, blob, track)
+            return _streamer_from_gcs(request, blob, track)
         else:
-            return _stream_from_local_disk(request, track, full_track_path)
+            return _streamer_from_local_disk(request, track, full_track_path)
 
     except Exception as e:
         print(f"GCS Error: {e}")
-        return _stream_from_local_disk(request, track, full_track_path)
+        return _streamer_from_local_disk(request, track, full_track_path)
 
 # --- INTERNAL HELPERS ---
-def _stream_from_gcs(request, blob, track):
+def _streamer_from_gcs(request, blob, track):
     print("using GCS stream")
     size = blob.size
     range_header = request.META.get('HTTP_RANGE', '').strip()
@@ -109,7 +135,7 @@ def _stream_from_gcs(request, blob, track):
     return response
 
 
-def _stream_from_local_disk(request, track, full_track_path):
+def _streamer_from_local_disk(request, track, full_track_path):
     # Fixed: Injected 'music' into the local storage path using config
     local_path = os.path.join(settings.STORAGE_DIR, catalog_config.DIR_MUSIC, full_track_path)
     

@@ -1,5 +1,7 @@
 # ?
 
+Would you be so kind to add docstring of description, features, complete usage for future reference?
+
 ```bash
 source venv/bin/activate
 python manage.py runserver
@@ -20,6 +22,42 @@ python manage.py compile_catalog --lang all --minify
 
 python manage.py migrate_plays
 python manage.py migrate_buckets
+
+python manage.py sync_library --download zola/Lengtong/Ka.Zua.Ngaih
+python manage.py sync_library --upload zola/Lengtong/Ka.Zua.Ngaih
+
+
+python manage.py check --artist "Lengtong Pauno"
+python manage.py check --artist 171
+python manage.py check --track "ခွဲခွာခြင်း"
+python manage.py check --track "Damlai Nite"
+python manage.py check --album "Ka Zua Ngaih"
+
+```
+
+VENV
+
+```bash
+python -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+Find and Replace
+
+```js
+// For Lighten:
+lighten\(([^,]+),\s*(\d+)%?\)
+color.adjust($1, $lightness: $2%)
+
+// For Darken:
+
+darken\(([^,]+),\s*(\d+)%?\)
+color.adjust($1, $lightness: -$2%)
+
+
 ```
 
 SQL

@@ -8,12 +8,18 @@ import '../img/favicon-16x16.png';
 import '../img/app.webmanifest';
 import '../img/robots.txt';
 
-// NOTE: icons && loader animation
-import '../icon/animation.css'
-import '../icon/zaideih.css'
+// // NOTE: icons && loader animation
+import '../icon/animation.css';
+import '../icon/zaideih.css';
 
-// NOTE: layout and design
+// // NOTE: layout and design
 import '../scss/style.scss';
+
+// NOTE: serviceWorker
+// We removed sw.js and data-worker.js imports. They are now built as separate 
+// files via webpack entries. sw.register.js can remain here if you want the 
+// registration logic to run as part of the main UI thread.
+import '../script/sw-register.js';
 
 // NOTE: script
 import '../script/index.js';

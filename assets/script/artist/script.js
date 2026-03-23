@@ -129,12 +129,12 @@ export default {
 				.map(
 					(e) =>
 						(this.dataStore.utf8(this.artistName) ||
-							this.dataStore.artist.lang.find((e) => e == 2)) &&
+							this.dataStore.artist.l.find((e) => e == 2)) &&
 						e.aka
 							? e.aka
 							: e.name
 					// e=>this.dataStore.utf8(this.artistName) && e.aka?e.aka:e.name
-					// e=>this.dataStore.artist.lang.find(e=>e == 2) && e.aka?e.aka:e.name
+					// e=>this.dataStore.artist.l.find(e=>e == 2) && e.aka?e.aka:e.name
 				);
 
 			this.artistRecommended = this.dataStore.artistRecommendedIndex

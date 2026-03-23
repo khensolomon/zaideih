@@ -233,7 +233,7 @@ export const useDataStore = defineStore("data", {
 			return this.artistAlphabetically(
 				(artist) =>
 					artist.id > 1 &&
-					artist.lang.find((e) =>
+					artist.l.find((e) =>
 						this.artistActiveLang ? e == this.artistActiveLang : true
 					)
 				// artist=> artist.id > 1 && artist.lang.find(e=> this.artistActiveLang?e == this.artistActiveLang:true) && artist.plays > 3000

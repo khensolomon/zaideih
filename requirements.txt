@@ -18,6 +18,9 @@ django-cors-headers>=4.3.0
 google-cloud-storage>=2.16.0
 python-dotenv>=1.0.1
 
+django-cors-headers
+django-webpack-loader
+
 python-decouple
 
 django-redis

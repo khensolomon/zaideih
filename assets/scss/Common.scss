@@ -1,165 +1,201 @@
-.t1{
-  font-size: 4em;
-  color: darken($Color,10);
-  @include text-shadow(0px,1px,1px,darken($ColorBackground,40));
-  @media #{$media-mobile} {
-    font-size: 2em;
-  }
-  @media #{$media-tablet} {
-    font-size: 3em;
-  }
-}
-.t2{
-  font-size: 2em;
-  // font-size:5vw;
-  color: darken($Color,20);
-  @include text-shadow(0px,1px,1px,darken($ColorBackground,30));
-  font-weight: lighter;
-  &.trial{
-    &::before{
-      content: '...';
-    }
-  }
-  a {
-    font-size: 1em;
-    line-height: 2em;
-    display: inline-block;
-    padding: 0px 20px;
-    margin: 1px 2px;
-    border: 0;
-    outline: none;
-    border-radius: 5px;
-    // font-size: 13px;
-    color: darken($Color,10);
-    background-color: lighten($ColorBackground,5);
-    border: 1px solid lighten($ColorBackground,15);
-    @include text-shadow(0px,1px,1px,darken($ColorBackground,30));
-    &:hover{
-      // background-color: darken($ColorBackground,17);
-      color: darken($Color,25);
-    }
-  }
-}
-span.play{
-  // background-color: red;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  @include text-shadow(1px,1px,1px,lighten($ColorMain,10));
-  color: darken($Color,5);
-  // &:hover{
-  //   color: lighten($Color,20);
-  // }
-  &::before{
-    @include text-shadow(1px,1px,1px,lighten($ColorMain,10));
-    color: darken($Color,5);
-  }
-  &.all{
-    padding: 7px 35px;
-    font-size: 1.7em;
-    color: darken($Color,5);
-    background-color: darken($ColorBackground,30);
-    border-radius: 100px;
-    cursor: pointer;
-    text-transform: capitalize;
-    &:hover{
-      background-color: darken($ColorBackground,20);
-    }
-  }
+@use "sass:color";
+@use "Config" as *;
+@mixin css {
+	.t1 {
+		font-size: 4em;
+		color: color.adjust($Color, $lightness: -10%);
+		@include text-shadow(
+			0px,
+			1px,
+			1px,
+			color.adjust($ColorBackground, $lightness: -40%)
+		);
+		@media #{$media-mobile} {
+			font-size: 2em;
+		}
+		@media #{$media-tablet} {
+			font-size: 3em;
+		}
+	}
+	.t2 {
+		font-size: 2em;
+		// font-size:5vw;
+		color: color.adjust($Color, $lightness: -20%);
+		@include text-shadow(
+			0px,
+			1px,
+			1px,
+			color.adjust($ColorBackground, $lightness: -30%)
+		);
+		font-weight: lighter;
+		&.trial {
+			&::before {
+				content: "...";
+			}
+		}
+		a {
+			font-size: 1em;
+			line-height: 2em;
+			display: inline-block;
+			padding: 0px 20px;
+			margin: 1px 2px;
+			border: 0;
+			outline: none;
+			border-radius: 5px;
+			// font-size: 13px;
+			color: color.adjust($Color, $lightness: -10%);
+			background-color: color.adjust($ColorBackground, $lightness: 5%);
+			border: 1px solid color.adjust($ColorBackground, $lightness: 15%);
+			@include text-shadow(
+				0px,
+				1px,
+				1px,
+				color.adjust($ColorBackground, $lightness: -30%)
+			);
+			&:hover {
+				// background-color: color.adjust($ColorBackground, $lightness: -17%);
+				color: color.adjust($Color, $lightness: -25%);
+			}
+		}
+	}
+	span.play {
+		// background-color: red;
+		transition: all 0.3s ease;
+		cursor: pointer;
+		@include text-shadow(
+			1px,
+			1px,
+			1px,
+			color.adjust($ColorMain, $lightness: 10%)
+		);
+		color: color.adjust($Color, $lightness: -5%);
+		// &:hover{
+		//   color: color.adjust($Color, $lightness: 20%);
+		// }
+		&::before {
+			@include text-shadow(
+				1px,
+				1px,
+				1px,
+				color.adjust($ColorMain, $lightness: 10%)
+			);
+			color: color.adjust($Color, $lightness: -5%);
+		}
+		&.all {
+			padding: 7px 35px;
+			font-size: 1.7em;
+			color: color.adjust($Color, $lightness: -5%);
+			background-color: color.adjust($ColorBackground, $lightness: -30%);
+			border-radius: 100px;
+			cursor: pointer;
+			text-transform: capitalize;
+			&:hover {
+				background-color: color.adjust($ColorBackground, $lightness: -20%);
+			}
+		}
 
+		&.icon-play {
+			background-color: color.adjust($ColorBackground, $lightness: -10%);
+		}
+		&.icon-pause {
+			background-color: color.adjust($ColorGold, $lightness: -13%);
+			&::before {
+				@include text-shadow(
+					1px,
+					1px,
+					1px,
+					color.adjust($ColorMain, $lightness: 10%)
+				);
+				color: color.adjust($Color, $lightness: 10%);
+			}
+		}
+		// &.icon-play{}
+		// &.icon-pause{}
+		// &.track{}
+		// &.artist{}
+		// &.album{}
+	}
+	.name-artist {
+		q,
+		a {
+			padding: 5px 20px;
+			font-size: 1.3em;
+			line-height: 1.3em;
+			margin: 2px;
+		}
+		q {
+			color: color.adjust($Color, $lightness: -15%);
+		}
+		a {
+			border-radius: 100px;
+			text-transform: capitalize;
+			transition: all 0.3s ease;
+			color: color.adjust($Color, $lightness: -5%);
+			background-color: color.adjust($ColorBackground, $lightness: -5%);
+			// &:link {
+			//   background-color: color.adjust($ColorBackground, $lightness: -11%);
+			// }
+			&:visited {
+				color: color.adjust($ColorBackground, $lightness: -30%);
+				background-color: color.adjust($ColorBackground, $lightness: 10%);
+			}
+			&:active {
+				background-color: color.adjust($ColorGreen, $lightness: 20%);
+			}
+			&:hover {
+				color: color.adjust($Color, $lightness: -4%);
+				background-color: color.adjust($ColorBackground, $lightness: -15%);
+			}
+		}
+		&.recommended {
+			q,
+			a {
+				font-size: 1.4em;
+			}
+		}
+		&.related {
+			q,
+			a {
+				font-size: 1em;
+			}
+		}
+	}
 
-  &.icon-play{
-    background-color: darken($ColorBackground,10);
-  }
-  &.icon-pause{
-    background-color: darken($ColorGold,13);
-    &::before{
-      @include text-shadow(1px,1px,1px,lighten($ColorMain,10));
-      color: lighten($Color,10);
-    }
-  }
-  // &.icon-play{}
-  // &.icon-pause{}
-  // &.track{}
-  // &.artist{}
-  // &.album{}
+	// a{
+	//   font-size:1.2em;
+	//   line-height: 1.5em;
+	//   // color: color.adjust($Color, $lightness: -15%);
+	//   // color: color.adjust($Color, $lightness: -25%);
+	//   // quotes: "“" "”" "‘" "’";
+	//   margin: 2px;
+	//   // border-radius: 100px;
+	//   // transition: all 0.3s ease;
+	//   color: color.adjust($Color, $lightness: -0%);
+	//   // background-color: color.adjust($ColorBackground, $lightness: -15%);
+	//   // &:before,&:after {
+	//   //   color: color.adjust($ColorBackground, $lightness: -7%);
+	//   // }
+	//   // &:before {
+	//   //   content: open-quote;
+	//   // }
+	//   // &:after {
+	//   //   content: close-quote;
+	//   // }
+	//   &:not(:last-child) {
+	//     // <span v-if="index != 0">, </span>
+	//     margin-right: 15px;
+	//     position: relative;
+	//     &::after {
+	//       color: color.adjust($ColorBackground, $lightness: -10%);
+	//       position: absolute;
+	//       right: -14px;
+	//       font-size: 0.9em;
+	//       content: "\25cf";
+	//     }
+	//   }
+	//   &:hover{
+	//     color: color.adjust($Color, $lightness: -7%);
+	//     text-decoration: underline;
+	//   }
+	// }
 }
-.name-artist{
-  q,a{
-    padding: 5px 20px;
-    font-size:1.3em;
-    line-height: 1.3em;
-    margin: 2px;
-  }
-  q{
-    color: darken($Color,15);
-  }
-  a{
-    border-radius: 100px;
-    text-transform: capitalize;
-    transition: all 0.3s ease;
-    color: darken($Color,5);
-    background-color: darken($ColorBackground,5);
-    // &:link {
-    //   background-color: darken($ColorBackground,11);
-    // }
-    &:visited {
-      color: darken($ColorBackground,30);
-      background-color: lighten($ColorBackground,10);
-    }
-    &:active {
-      background-color: lighten($ColorGreen,20);
-    }
-    &:hover{
-      color: darken($Color,4);
-      background-color: darken($ColorBackground,15);
-    }
-  }
-  &.recommended{
-    q,a{
-      font-size:1.4em;
-    }
-  }
-  &.related{
-    q,a{
-      font-size:1em;
-    }
-  }
-}
-
-// a{
-//   font-size:1.2em;
-//   line-height: 1.5em;
-//   // color: darken($Color,15);
-//   // color: darken($Color,25);
-//   // quotes: "“" "”" "‘" "’";
-//   margin: 2px;
-//   // border-radius: 100px;
-//   // transition: all 0.3s ease;
-//   color: darken($Color,0);
-//   // background-color: darken($ColorBackground,15);
-//   // &:before,&:after {
-//   //   color: darken($ColorBackground,7);
-//   // }
-//   // &:before {
-//   //   content: open-quote;
-//   // }
-//   // &:after {
-//   //   content: close-quote;
-//   // }
-//   &:not(:last-child) {
-//     // <span v-if="index != 0">, </span>
-//     margin-right: 15px;
-//     position: relative;
-//     &::after {
-//       color: darken($ColorBackground,10);
-//       position: absolute;
-//       right: -14px;
-//       font-size: 0.9em;
-//       content: "\25cf";
-//     }
-//   }
-//   &:hover{
-//     color: darken($Color,7);
-//     text-decoration: underline;
-//   }
-// }
