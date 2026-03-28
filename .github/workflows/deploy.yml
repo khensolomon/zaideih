@@ -1,4 +1,4 @@
-name: Zaideih Django Production Deployment
+name: Zaideih
 
 on:
   push:
@@ -6,9 +6,7 @@ on:
 
 jobs:
   deploy:
-    # Only runs if "deploy" is in the commit message
-    # if: "contains(github.event.head_commit.message, 'deploy')"
-    # This regex ensures the message starts with "deploy:" followed by text
+    # Rule: Commit must start with "deploy:" and have a description
     if: "startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8"
     runs-on: ubuntu-latest
     
@@ -16,30 +14,55 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Server via SSH
+      # --- STEP 1: BUILD VITE ASSETS (On GitHub) ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install & Build Frontend
+        run: |
+          npm install
+          npm run build 
+
+      # --- STEP 2: UPLOAD BUILT ASSETS (To Server) ---
+      # We do this BEFORE the SSH step so the files are ready on the disk
+      - name: Copy Built Assets to Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist/*" 
+          target: "/var/www/zaideih/static/"
+          strip_components: 1
+
+      # --- STEP 3: UPDATE CODE & RESTART (On Server) ---
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /path/to/your/app-root
+            cd /var/www/zaideih
             
-            # 1. Pull latest code
+            # 1. Pull the Python code changes
             git pull origin master
             
-            # 2. Automatically Inject/Update the .env for Production
-            # This overwrites the DB_HOST to 'db' regardless of what's in git
+            # 2. Inject/Update the .env (Matches your standardized names)
             echo "DB_NAME=${{ secrets.DB_NAME }}" > .env
             echo "DB_USER=${{ secrets.DB_USER }}" >> .env
             echo "DB_PWD=${{ secrets.DB_PWD }}" >> .env
+            echo "DB_ROOT_PWD=${{ secrets.DB_ROOT_PWD }}" >> .env
             echo "DB_HOST=db" >> .env
             echo "DB_PORT=3306" >> .env
             echo "SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}" >> .env
             
-            # 3. Restart Containers
+            # 3. Build/Restart Containers
             docker-compose up --build -d
             
-            # 4. Run Django Housekeeping
+            # 4. Django Housekeeping
+            # This moves the Vite files from /static/ to /static_root/ for Nginx
             docker-compose exec -T web python manage.py migrate
             docker-compose exec -T web python manage.py collectstatic --no-input

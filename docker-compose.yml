@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PWD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PWD}
+    networks:
+      default:
+        aliases:
+          - localhost  # This tells Docker: "This container is also known as localhost"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  web:
+    build: .
+    restart: always
+    env_file: .env
+    volumes:
+      # Map the formal server path to the virtual /code folder
+      - /var/www/zaideih:/code
+      - static_volume:/code/static_root
+    depends_on:
+      - db
+
+  nginx:
+    build: ./nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      # Share the static_root with Nginx
+      - static_volume:/code/static_root:ro
+      # Map the cache folder specifically
+      - /var/www/zaideih/cache:/code/cache
+    depends_on:
+      - web
+
+volumes:
+  mysql_data:
+  static_volume:
