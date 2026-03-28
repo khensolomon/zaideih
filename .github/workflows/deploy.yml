@@ -1,0 +1,45 @@
+name: Zaideih Django Production Deployment
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  deploy:
+    # Only runs if "deploy" is in the commit message
+    # if: "contains(github.event.head_commit.message, 'deploy')"
+    # This regex ensures the message starts with "deploy:" followed by text
+    if: "startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /path/to/your/app-root
+            
+            # 1. Pull latest code
+            git pull origin master
+            
+            # 2. Automatically Inject/Update the .env for Production
+            # This overwrites the DB_HOST to 'db' regardless of what's in git
+            echo "DB_NAME=${{ secrets.DB_NAME }}" > .env
+            echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+            echo "DB_PWD=${{ secrets.DB_PWD }}" >> .env
+            echo "DB_HOST=db" >> .env
+            echo "DB_PORT=3306" >> .env
+            echo "SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}" >> .env
+            
+            # 3. Restart Containers
+            docker-compose up --build -d
+            
+            # 4. Run Django Housekeeping
+            docker-compose exec -T web python manage.py migrate
+            docker-compose exec -T web python manage.py collectstatic --no-input
