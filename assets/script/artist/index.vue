@@ -1,2 +1,110 @@
-<template src="./template.html"></template>
-<script src="./script.js"></script>
+<template>
+  <div class="artist">
+
+    <template v-if="artistName && init">
+      <div v-if="dataStore.tracks.length" class="container detail">
+        <div class="row center count">
+          <div class="plays">
+            <p class="icon-headphones" v-bind:class="{ active: trackPlays }"><span v-text="trackPlays"></span></p>
+          </div>
+          <div class="time">
+            <p class="icon-time" v-bind:class="{ active: trackDuration }"><span v-text="trackDuration"></span></p>
+          </div>
+          <div class="track">
+            <p class="icon-music" v-bind:class="{ active: trackCount }"><span v-text="trackCount"></span></p>
+          </div>
+          <div class="album">
+            <p class="icon-cd" v-bind:class="{ active: albumCount }"><span v-text="albumCount"></span></p>
+          </div>
+        </div>
+        <div class="row center head">
+          <h1>{{ dataStore.artist.name }} <span v-if="dataStore.artist.aka">({{ dataStore.artist.aka }})</span></h1>
+        </div>
+        <div v-if="artistYear.length" class="row center year">
+          <a v-for="year in artistYear" :key="year">{{ year }}</a>
+        </div>
+        <div class="row center play">
+          <span @click="playArtist" class="play all">Play all</span>
+        </div>
+        <div v-if="artistRecommended.length" class="row center name-artist artists recommended">
+          <q>Recommended</q>
+          <router-link v-for="artist in artistRecommended" :to="{ path: '/artist/' + artist }"
+            :key="artist">{{ artist }}</router-link>
+        </div>
+        <div class="row center- tracks bg sh">
+          <div class="track-row">
+            <!-- <track-row v-for="track in dataStore.tracks" v-bind:track="track" :key="track.id" /> -->
+            <track-row v-for="(n, index) in dataStore.artistTracksLimit" v-bind:track="dataStore.tracks[index]"
+              :key="index" />
+            <div v-if="dataStore.tracks.length > dataStore.artistTracksLimit" class="show-more">
+              <p @click="dataStore.artistTracksLimit += 9" class="icon-right">
+                <span v-text="dataStore.artistTracksLimit" class="limit"></span><span v-text="dataStore.tracks.length"
+                  class="total"></span><span class="more">more</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <div v-if="artistRelated.length" class="row center name-artist artists related">
+          <q>Related</q>
+          <router-link v-for="artist in artistRelated" :to="{ path: '/artist/' + artist }"
+            :key="artist">{{ artist }}</router-link>
+        </div>
+      </div>
+      <!-- albums -->
+      <div v-if="dataStore.albums.length" class="container list">
+        <div>
+          <div class="album-raw center">
+            <album-raw v-for="album in dataStore.albums" v-bind:album="album" :key="album.ui" />
+          </div>
+        </div>
+      </div>
+
+    </template>
+    <template v-else>
+      <div class="container list">
+        <div v-if="dataStore.all.lang.length" class="row center tag show-lang badge-tag-">
+          <!-- <router-link :to="{ path: '/artist'}" class="icon-lightbulb">All</router-link> -->
+          <!-- <router-link v-for="(lang,index) in dataStore.all.lang" :to="{ path: '/artist/'+lang.name}" :key="index"
+          class="icon-lightbulb">{{lang.name}}</router-link> -->
+          <router-link v-for="(lang, index) in dataStore.all.lang" :to="{ path: linkPath('artist', lang.name) }"
+            :key="index" class="icon-lightbulb">{{ lang.name }}</router-link>
+        </div>
+        <!-- <div v-if="dataStore.all.artistType.length" class="row center tag show-lang badge-tag-">
+        <router-link v-for="(lang,index) in dataStore.all.artistType"
+          :to="{ path: linkPath('artist',artistName,lang.name)}" :key="index"
+          class="icon-lightbulb">{{lang.name}}</router-link>
+      </div> -->
+
+
+        <!-- artists -->
+        <!-- v-if="isNaN(category.cluster)" -->
+        <div class="z-artists" v-if="artistCategory.length">
+          <div v-for="category in artistCategory" :key="category.cluster">
+            <div v-if="isNaN(category.cluster)">
+              <h3>{{ category.cluster }}</h3>
+              <p v-if="category.artists.length">
+                <router-link v-for="artist in category.artists" :key="artist.id"
+                  :to="{ path: '/artist/' + artist.name }">{{ artist.name }}</router-link>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>
+
+<script>
+// Option A: Keep pointing to your external file
+import script from './script.js';
+export default script;
+
+// Option B: If you prefer to paste your script.js content here, 
+// remove the import above and paste the export default { ... } block here.
+</script>
+
+<style scoped>
+/* If you have an external CSS file, you can also import it here:
+@import "./style.css"; 
+*/
+</style>

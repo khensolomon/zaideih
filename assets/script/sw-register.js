@@ -1,8 +1,8 @@
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw-installer.js').catch(function (err) {
+  navigator.serviceWorker.register('/static/sw-installer.js', { type: 'module' }).catch(function (err) {
     console.log("sw", err);
   });
-  navigator.serviceWorker.register('/sw-album.js').catch(function (err) {
+  navigator.serviceWorker.register('/static/sw-album.js', { type: 'module' }).catch(function (err) {
     console.log("sw", err);
   });
 }

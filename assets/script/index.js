@@ -172,7 +172,7 @@ const app = createApp({
 			try {
 				// Depending on your bundler, you may need to adjust the path here to '/data-worker.js'
 				// const worker = new Worker(new URL('./data-worker.js', import.meta.url), { type: 'module' });
-				const worker = new Worker('/sw-album.js');
+				const worker = new Worker('/static/sw-album.js', { type: 'module' });
 
 				worker.onmessage = (e) => {
 					const { albums, artists, langs, totalTracks } = e.data;
