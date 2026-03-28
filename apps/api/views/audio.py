@@ -68,10 +68,10 @@ def streams(request, track_id):
     # except Exception as e:
     #     return HttpResponse(f"Server error loading file: {e}", status=500)
 
-    return _streamer(request, track_id)
+    return streamer(request, track_id)
 
-# --- AUDIO STREAMING ENDPOINT ---
-def _streamer(request, track_id):
+# Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
+def streamer(request, track_id):
     """
     Handles streaming audio to the client. Tries GCS first, falls back to local disk.
     Supports HTTP Range requests for audio scrubbing.

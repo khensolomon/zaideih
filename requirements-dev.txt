@@ -20,4 +20,5 @@ pytest>=7.0.0
 
 # For running experiments and analysis in Jupyter notebooks
 Faker
-django-webpack-loader
+# django-webpack-loader
+django-vite

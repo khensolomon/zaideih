@@ -1,5 +1,10 @@
 # Todo
 
+- [ ] CSS Modules (or more broadly, "Class Name Mangling" or "CSS Scoping")
+- [ ] Migrate webpack to vite
+- [ ] Django-Ratelimit: A simple Python package that says "If a single IP address asks for more than 10 songs in a minute, block them."
+- [ ] Cloudflare: A free service that sits in front of your server and automatically blocks spam bots before they even reach Django.
+
 ## utilities
 
 - [x] search bar

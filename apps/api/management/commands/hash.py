@@ -1,45 +1,50 @@
 import hashlib
-# import os
-# import json
-# from pathlib import Path
-# from mutagen.easyid3 import EasyID3
-# from mutagen.mp3 import MP3
-# from mutagen.id3 import ID3NoHeaderError
-
 from django.core.management.base import BaseCommand
-from django.conf import settings
-
 
 class Command(BaseCommand):
-    help = 'Scans the STORAGE_DIR for MP3s, extracts ID3 tags, and registers them to the DB and JSON stores.'
+    help = 'Tests various hashing algorithms (MD5, SHA-1, SHA-256, SHA-512) on a string.'
 
-    def handle(self, *args, **kwargs):
-        # self.stdout.write(self.style.SUCCESS('Starting Library Scan...'))
-        # self.stdout.write('hash...')
-        # self.stderr.write(self.style.ERROR(f"STORAGE_DIR '{storage_path}' does not exist."))
-        # self.stdout.write(self.style.SUCCESS(f'Scan Complete! Added {added_count} new tracks.'))
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '-s', '--string', 
+            type=str, 
+            help='The string to hash. Uses a default if not provided.'
+        )
+        parser.add_argument(
+            '-t', '--trim', 
+            type=int, 
+            help='Number of characters to trim the hash to. Omit for the full hash.'
+        )
 
-        # data = "music/zola/Agape/Agape No.1"
-        data = "zola/Agape/Agape No.1"
+    def handle(self, *args, **options):
+        default_string = "zola/Agape/Agape No.1"
+        target_string = options.get('string') or default_string
+        trim_length = options.get('trim')
 
-        # Encode the string to bytes using utf-8
-        encoded_data = data.encode('utf-8')
+        self.stdout.write(self.style.WARNING(f"Original string: '{target_string}'"))
+        if trim_length:
+            self.stdout.write(self.style.WARNING(f"Trimming to:     {trim_length} characters\n"))
+        else:
+            self.stdout.write(self.style.WARNING("Outputting:      Full length hashes\n"))
 
-        # Create an MD5 hash object and update it with the data
-        md5_hash = hashlib.md5(encoded_data)
+        encoded_data = target_string.encode('utf-8')
 
-        # Get the hash in a human-readable hexadecimal format
-        md5_hex_digest = md5_hash.hexdigest()[:16]
+        # Dictionary mapping the display name to the hashlib function
+        algorithms = {
+            'MD5': hashlib.md5,
+            'SHA-1': hashlib.sha1,
+            'SHA-256': hashlib.sha256,
+            'SHA-512': hashlib.sha512
+        }
 
-        self.stdout.write(f"Original string: {data}")
-        self.stdout.write(f"MD5 hash: {md5_hex_digest}")
-
-
-        # Create an SHA-1 hash object and update it with the data
-        sha1_hash = hashlib.sha1(encoded_data)
-
-        # Get the hash digest in hexadecimal format
-        sha1_hex_digest = sha1_hash.hexdigest()[:16]
-
-        # Print the result
-        self.stdout.write(f"SHA-1 hash: {sha1_hex_digest}")
+        for name, algo_func in algorithms.items():
+            # Generate the hash
+            hash_obj = algo_func(encoded_data)
+            hex_digest = hash_obj.hexdigest()
+            
+            # Apply trimming if the argument was provided
+            if trim_length:
+                hex_digest = hex_digest[:trim_length]
+                
+            # .ljust(8) keeps the output cleanly aligned in your terminal
+            self.stdout.write(self.style.SUCCESS(f"{name.ljust(8)}: {hex_digest}"))

@@ -39,7 +39,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
 
-    'webpack_loader',
+    'django_vite',
     
     # Local apps inside the 'apps/' folder
     'core',
@@ -101,21 +101,29 @@ MEDIA_ROOT = MEDIA_DIR
 
 # --- STATIC FILES ---
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'static_root'
 STATICFILES_DIRS = [
     # os.path.join(BASE_DIR, 'static'),
-    os.path.join(BASE_DIR, STATIC_URL), # for webpack-stats.json
+    os.path.join(BASE_DIR, STATIC_URL),
 ]
 
 # Add Webpack Loader Configuration
-WEBPACK_LOADER = {
-    'DEFAULT': {
-        # 'BUNDLE_DIR_NAME': 'bundles/',
-        # 'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
-        # 'BUNDLE_DIR_NAME': 'core/bundles/', # must match webpack's output.path relative to a static dir
-        'BUNDLE_DIR_NAME': '', # must match webpack's output.path relative to a static dir
-        # 'STATS_FILE': os.path.join(BASE_DIR, 'assets', 'webpack-stats.json'),
-        'STATS_FILE': os.path.join(BASE_DIR, STATIC_URL, 'webpack-stats.json'),
-    }
+# WEBPACK_LOADER = {
+#     'DEFAULT': {
+#         # 'BUNDLE_DIR_NAME': 'bundles/',
+#         # 'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
+#         # 'BUNDLE_DIR_NAME': 'core/bundles/', # must match webpack's output.path relative to a static dir
+#         'BUNDLE_DIR_NAME': '', # must match webpack's output.path relative to a static dir
+#         # 'STATS_FILE': os.path.join(BASE_DIR, 'assets', 'webpack-stats.json'),
+#         'STATS_FILE': os.path.join(BASE_DIR, STATIC_URL, 'webpack-stats.json'),
+#     }
+# }
+DJANGO_VITE = {
+  "default": {
+    "dev_mode": DEBUG,
+    "dev_server_port": 8081,
+    "manifest_path": os.path.join(BASE_DIR, STATIC_URL, ".vite", "manifest.json"),
+  }
 }
 
 

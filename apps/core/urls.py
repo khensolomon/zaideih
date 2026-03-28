@@ -1,10 +1,12 @@
 import re
 from django.conf import settings
-from django.urls import re_path
 from django.views.static import serve
+from django.urls import re_path
 from .views import general
 
-urlpatterns = []
+urlpatterns = [
+#   re_path(r'^.*$', general.home, name='spa_index'),
+]
 
 if settings.DEBUG:
     # 1. DEFINE YOUR STATIC FILTER FIRST
@@ -16,7 +18,7 @@ if settings.DEBUG:
 
     ALLOWED_EXTS = r'(?:js|json|ico|txt|css|png|svg|map|webmanifest)'
     SPECIAL_FILES = '|'.join(map(re.escape, [
-        'webpack-stats.json', 'robots.txt', 'favicon.ico', 'ads.txt'
+        'robots.txt', 'favicon.ico', 'ads.txt'
     ]))
 
     STATIC_FILE_REGEX = (
