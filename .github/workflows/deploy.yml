@@ -6,7 +6,6 @@ on:
 
 jobs:
   build:
-    # Trigger only on commits starting with 'deploy:'
     if: startsWith(github.event.head_commit.message, 'deploy:')
     runs-on: ubuntu-latest
     permissions:
@@ -19,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Updated to Node 22 to address deprecation warnings
+          node-version: '22'
 
       - name: Install & Build Frontend
         run: |
@@ -64,12 +63,9 @@ jobs:
 
       - name: Pull Latest Images
         run: |
-          # Robust export logic to prevent exit code 125
-          set -a
-          [ -f .env ] && . ./.env
-          set +a
+          # Use --env-file flag directly with docker compose pull
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+          docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
 
       - name: Run Database Migrations
         run: |
@@ -80,9 +76,8 @@ jobs:
 
       - name: Deploy Swarm Stack
         run: |
-          # Robust export logic for the stack deployment
-          set -a
-          [ -f .env ] && . ./.env
-          set +a
+          # For Swarm, we must export variables to the shell. 
+          # We use a safer 'export' that handles common .env formatting better.
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
+          export $(envsubst < .env | grep -v '^#' | xargs)
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
