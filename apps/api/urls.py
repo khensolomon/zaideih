@@ -21,6 +21,8 @@ urlpatterns = [
     path('track', general.get_track_list),
     path('tracks', general.get_track_list, {'return_format': 'json'}),
     
+    path('track/<int:track_id>', audio.track_test, name='track_test'),
+
     # Audio Streamer + Play Counter
     # path('audio/<int:track_id>/', general.stream_audio), 
 
