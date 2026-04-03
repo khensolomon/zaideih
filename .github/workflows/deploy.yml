@@ -65,31 +65,36 @@ jobs:
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          if docker compose version >/dev/null 2>&1; then
-            docker compose -f docker-compose.prod.yml pull
-          else
-            docker-compose -f docker-compose.prod.yml pull
-          fi
+          docker compose -f docker-compose.prod.yml pull
 
       - name: Initialize/Update Stack
         run: |
-          export GITHUB_REPOSITORY=${{ github.repository }}
+          # 1. Load variables from .env
           export $(grep -v '^#' .env | xargs)
+          
+          # 2. FORCE ABSOLUTE PATHS for Swarm
+          # Swarm fails if these are relative. We use $PWD to get the full path on your VM.
+          export GITHUB_REPOSITORY=${{ github.repository }}
+          export DB_DIR=$PWD/mysql
+          export STORAGE_DIR=$PWD/storage
+          export MEDIA_DIR=$PWD/media
+          
+          # 3. Create directories if they don't exist to prevent "bind source path does not exist"
+          mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
+          
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations (with Diagnostics)
+      - name: Run Database Migrations (with DNS Check)
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
           echo "Waiting for DNS resolution of 'db'..."
           
-          for i in {1..12}; do
-            # Diagnostic: Show service status every 3 attempts
+          for i in {1..15}; do
             if [ $((i % 3)) -eq 0 ]; then
               echo "--- DIAGNOSTIC: Service Status ---"
               docker stack ps zaideih --no-trunc
-              docker service logs zaideih_db --tail 20
             fi
 
             if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
@@ -97,10 +102,9 @@ jobs:
               break
             fi
             
-            if [ $i -eq 12 ]; then
+            if [ $i -eq 15 ]; then
               echo "CRITICAL ERROR: 'db' hostname never resolved."
-              echo "--- FINAL DIAGNOSTIC ---"
-              docker service inspect zaideih_db
+              docker service logs zaideih_db --tail 50
               exit 1
             fi
             echo "Attempt $i: DNS not ready. Sleeping 10s..."
