@@ -61,63 +61,53 @@ jobs:
           echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
           chmod 600 .env
 
-      - name: Pull Latest Images
-        run: |
-          export GITHUB_REPOSITORY=${{ github.repository }}
-          export $(grep -v '^#' .env | xargs)
-          docker compose -f docker-compose.prod.yml pull
-
       - name: Initialize/Update Stack
         run: |
-          # 1. Load variables from .env
+          # 1. Load variables
           export $(grep -v '^#' .env | xargs)
-          
-          # 2. FORCE ABSOLUTE PATHS for Swarm
-          # Swarm fails if these are relative. We use $PWD to get the full path on your VM.
           export GITHUB_REPOSITORY=${{ github.repository }}
+          
+          # 2. Setup Absolute Paths (Critical for Swarm mounts)
           export DB_DIR=$PWD/mysql
           export STORAGE_DIR=$PWD/storage
           export MEDIA_DIR=$PWD/media
-          
-          # 3. Create directories if they don't exist to prevent "bind source path does not exist"
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
+          # 3. Pull and Deploy
+          docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations (with DNS Check)
+      - name: Run Database Migrations
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          echo "Waiting for DNS resolution of 'db'..."
-          
+          echo "Waiting for 'db' to resolve..."
           for i in {1..15}; do
-            if [ $((i % 3)) -eq 0 ]; then
-              echo "--- DIAGNOSTIC: Service Status ---"
-              docker stack ps zaideih --no-trunc
-            fi
-
             if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
-              echo "DNS Resolved! 'db' is now visible."
+              echo "DNS Resolved!"
               break
             fi
-            
-            if [ $i -eq 15 ]; then
-              echo "CRITICAL ERROR: 'db' hostname never resolved."
-              docker service logs zaideih_db --tail 50
-              exit 1
-            fi
-            echo "Attempt $i: DNS not ready. Sleeping 10s..."
             sleep 10
           done
 
-          echo "Running Django Migrations..."
           docker run --rm \
             --network $NETWORK_NAME \
             --env-file .env \
             $IMAGE_NAME \
             python manage.py migrate --noinput
 
-      - name: Refresh Web Service
+      - name: Final Service Update
         run: |
-          docker service update --force zaideih_web
+          # We must re-export the paths here so the service update knows where the volumes are
+          export $(grep -v '^#' .env | xargs)
+          export GITHUB_REPOSITORY=${{ github.repository }}
+          export STORAGE_DIR=$PWD/storage
+          export MEDIA_DIR=$PWD/media
+          
+          # Update the service. If it fails, show logs immediately.
+          if ! docker service update --force --detach=false zaideih_web; then
+            echo "--- ERROR: Service update failed. Showing logs: ---"
+            docker service logs zaideih_web --tail 50
+            exit 1
+          fi
