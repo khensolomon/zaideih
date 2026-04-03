@@ -11,15 +11,15 @@ services:
         condition: on-failure
 
   web:
-    build: "" # Swarm doesn't support 'build', it uses the image below
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/django-app:latest
+    build: "" # Swarm doesn't support 'build'
+    # FIXED: Added the repository name to the path to match the GitHub Action push
+    image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
     restart: ""
-    # Zero-Downtime Logic
     deploy:
       replicas: 2
       update_config:
         parallelism: 1
-        order: start-first  # Start new container before killing old one
+        order: start-first
         failure_action: rollback
         delay: 10s
       restart_policy:
@@ -27,7 +27,8 @@ services:
 
   nginx:
     build: ""
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/nginx-prod:latest
+    # FIXED: Added the repository name to the path to match the GitHub Action push
+    image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
     restart: ""
     deploy:
       replicas: 1

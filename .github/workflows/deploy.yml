@@ -6,6 +6,7 @@ on:
 
 jobs:
   build:
+    # Trigger only on commits starting with 'deploy:'
     if: startsWith(github.event.head_commit.message, 'deploy:')
     runs-on: ubuntu-latest
     permissions:
@@ -18,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22' # Address deprecation warnings
 
       - name: Install & Build Frontend
         run: |
@@ -63,11 +64,11 @@ jobs:
 
       - name: Pull Latest Images
         run: |
-          # Robust environment loading (skips the 'source' command to avoid 'command not found' errors)
-          export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+          # Load variables for the Compose file to see ${VARIABLES}
+          export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
           
-          # Detect if we should use 'docker compose' or 'docker-compose'
+          # Detect modern 'docker compose' or older 'docker-compose'
           if docker compose version >/dev/null 2>&1; then
             DOCKER_COMPOSE="docker compose"
           else
@@ -85,9 +86,9 @@ jobs:
 
       - name: Deploy Swarm Stack
         run: |
-          # Load variables for the stack deployment (interpolation)
-          export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+          # Load variables for Swarm interpolation
+          export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
           
-          # Swarm uses 'docker stack deploy' which always uses -c (config), not -f (file)
+          # Deploy with correct Swarm syntax (-c instead of -f)
           docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
