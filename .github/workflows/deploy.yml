@@ -77,33 +77,33 @@ jobs:
           export $(grep -v '^#' .env | xargs)
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations (with DNS Check)
+      - name: Run Database Migrations (with Diagnostics)
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          echo "Verifying network '$NETWORK_NAME' exists..."
-          if ! docker network ls | grep -q "$NETWORK_NAME"; then
-             echo "Error: Network $NETWORK_NAME not found. Swarm might still be initializing it."
-             exit 1
-          fi
-
-          echo "Waiting for DNS resolution of 'db' within the overlay network..."
+          echo "Waiting for DNS resolution of 'db'..."
           
-          # Retry loop to verify DNS resolution before running migrations
-          # We use a tiny alpine container to 'nslookup' the DB host
           for i in {1..12}; do
-            echo "Attempt $i: Checking if 'db' is resolvable..."
+            # Diagnostic: Show service status every 3 attempts
+            if [ $((i % 3)) -eq 0 ]; then
+              echo "--- DIAGNOSTIC: Service Status ---"
+              docker stack ps zaideih --no-trunc
+              docker service logs zaideih_db --tail 20
+            fi
+
             if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
               echo "DNS Resolved! 'db' is now visible."
               break
             fi
             
             if [ $i -eq 12 ]; then
-              echo "Error: 'db' hostname never became resolvable in the network."
+              echo "CRITICAL ERROR: 'db' hostname never resolved."
+              echo "--- FINAL DIAGNOSTIC ---"
+              docker service inspect zaideih_db
               exit 1
             fi
-            echo "DNS not ready. Sleeping 10s..."
+            echo "Attempt $i: DNS not ready. Sleeping 10s..."
             sleep 10
           done
 
