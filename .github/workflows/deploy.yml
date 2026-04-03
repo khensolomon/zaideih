@@ -63,12 +63,18 @@ jobs:
 
       - name: Pull Latest Images
         run: |
-          # Use allexport to safely load .env variables for the pull command
-          set -o allexport
-          source .env
-          set +o allexport
+          # Robust environment loading (skips the 'source' command to avoid 'command not found' errors)
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+          export $(grep -v '^#' .env | xargs)
+          
+          # Detect if we should use 'docker compose' or 'docker-compose'
+          if docker compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE="docker compose"
+          else
+            DOCKER_COMPOSE="docker-compose"
+          fi
+          
+          $DOCKER_COMPOSE -f docker-compose.yml -f docker-compose.prod.yml pull
 
       - name: Run Database Migrations
         run: |
@@ -79,9 +85,9 @@ jobs:
 
       - name: Deploy Swarm Stack
         run: |
-          # Use allexport for stack deployment interpolation
-          set -o allexport
-          source .env
-          set +o allexport
+          # Load variables for the stack deployment (interpolation)
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+          export $(grep -v '^#' .env | xargs)
+          
+          # Swarm uses 'docker stack deploy' which always uses -c (config), not -f (file)
           docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
