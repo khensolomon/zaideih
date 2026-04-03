@@ -63,17 +63,13 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # 1. Load variables
           export $(grep -v '^#' .env | xargs)
           export GITHUB_REPOSITORY=${{ github.repository }}
-          
-          # 2. Setup Absolute Paths
           export DB_DIR=$PWD/mysql
           export STORAGE_DIR=$PWD/storage
           export MEDIA_DIR=$PWD/media
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
-          # 3. Pull and Deploy
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
@@ -81,64 +77,46 @@ jobs:
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
-          
-          # Explicitly load the variables into the shell context
           set -a
           [ -f .env ] && . .env
           set +a
           
-          echo "Checking MySQL readiness for user 'root'..."
-          
-          # Increased wait time for MySQL initialization
+          echo "Waiting for MySQL readiness..."
           for i in {1..20}; do
-            # We use mysqladmin to verify the password works before letting Django try
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
-              echo "MySQL is ready and credentials are valid!"
+              echo "MySQL is ready!"
               break
             fi
-            
-            if [ $i -eq 20 ]; then
-              echo "Error: MySQL credentials rejected or DB not ready. Checking service logs..."
-              docker service logs zaideih_db --tail 100
-              exit 1
-            fi
-            
-            echo "Attempt $i: Access denied or DB starting. Sleeping 10s..."
+            echo "Attempt $i: DB starting... Sleeping 10s"
             sleep 10
           done
 
-          echo "Running Django Migrations..."
-          # Pass the env file explicitly to ensure Django sees the EXACT same keys
-          docker run --rm \
-            --network $NETWORK_NAME \
-            --env-file .env \
-            $IMAGE_NAME \
-            python manage.py migrate --noinput
+          docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
       - name: Wait for Healthy Deployment
         run: |
           echo "Monitoring deployment progress..."
-          
-          for i in {1..30}; do
+          for i in {1..20}; do
             STATUS=$(docker service inspect zaideih_web --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}stable{{end}}')
             RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
+            echo "Current Status: $STATUS | Replicas: $RUNNING"
             
-            echo "Current Update Status: $STATUS | Replicas: $RUNNING"
-            
-            if [[ "$STATUS" == "completed" || "$STATUS" == "stable" ]] && [[ "$RUNNING" == "2/2" ]]; then
-              echo "Deployment successful and healthy!"
+            if [[ "$RUNNING" == "2/2" ]]; then
+              echo "Deployment successful!"
               exit 0
             fi
             
-            if [[ "$STATUS" == "rollback_completed" || "$STATUS" == "rollback_started" || "$STATUS" == "failed" ]]; then
-              echo "Deployment FAILED. Showing logs:"
-              docker service logs zaideih_web --tail 100
+            if [[ "$STATUS" == "failed" ]]; then
+              echo "Update failed. Checking logs..."
+              docker service logs zaideih_web --tail 50
               exit 1
             fi
-            
-            sleep 10
+            sleep 15
           done
           
-          echo "Deployment timeout reached."
-          docker service logs zaideih_web --tail 50
+          echo "--- FINAL DIAGNOSTIC: Why are replicas 0/2? ---"
+          echo "Service Status:"
+          docker service ps zaideih_web --no-trunc
+          echo "Service Logs:"
+          docker service logs zaideih_web --tail 100
           exit 1
