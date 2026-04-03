@@ -58,24 +58,36 @@ jobs:
 
       - name: Recreate .env file from Secret
         run: |
-          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
+          # Use printf to avoid trailing newline issues and ensure Unix line endings
+          printf "%s" "${{ secrets.ENV_FILE_CONTENT }}" > .env
           chmod 600 .env
 
       - name: Initialize/Update Stack
         run: |
-          # Load variables from .env
-          set -a
-          [ -f .env ] && . .env
-          set +a
-          
+          # 1. Manually parse .env to handle potential formatting issues
+          # This removes carriage returns and exports each non-empty/non-comment line
+          while IFS='=' read -r key value; do
+            if [[ ! $key =~ ^# && -n $key ]]; then
+              # Remove potential quotes and trailing CR
+              value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e 's/\r$//')
+              export "$key=$value"
+            fi
+          done < .env
+
           export GITHUB_REPOSITORY=${{ github.repository }}
           
-          # Use paths from .env, but fall back to $PWD if they are empty
-          export DB_DIR=${DB_DIR:-$PWD/mysql}
-          export STORAGE_DIR=${STORAGE_DIR:-$PWD/storage}
-          export MEDIA_DIR=${MEDIA_DIR:-$PWD/media}
+          # 2. Critical Check: If DB_DIR is still empty after parsing, fallback to $PWD/mysql
+          # This prevents the '//mysql' error
+          if [ -z "$DB_DIR" ] || [ "$DB_DIR" = "/" ]; then
+            echo "Warning: DB_DIR was empty or invalid in .env. Falling back to local directory."
+            export DB_DIR="$PWD/mysql"
+          fi
+          if [ -z "$STORAGE_DIR" ]; then export STORAGE_DIR="$PWD/storage"; fi
+          if [ -z "$MEDIA_DIR" ]; then export MEDIA_DIR="$PWD/media"; fi
           
-          # Create directories only if they don't exist
+          echo "Using Paths: DB_DIR=$DB_DIR | STORAGE=$STORAGE_DIR"
+          
+          # 3. Create directories
           mkdir -p "$DB_DIR" "$STORAGE_DIR" "$MEDIA_DIR"
           
           docker compose -f docker-compose.prod.yml pull
@@ -86,10 +98,17 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          set -a
-          [ -f .env ] && . .env
-          set +a
+          # Re-parse .env for this step's context
+          while IFS='=' read -r key value; do
+            if [[ ! $key =~ ^# && -n $key ]]; then
+              value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e 's/\r$//')
+              export "$key=$value"
+            fi
+          done < .env
           
+          # Re-apply fallback logic to find latest.sql
+          export DB_DIR=${DB_DIR:-$PWD/mysql}
+
           echo "Waiting for MySQL readiness..."
           for i in {1..20}; do
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
@@ -100,18 +119,15 @@ jobs:
           done
 
           # 1. FORCE SQL IMPORT
-          # Use the path defined in .env
           SQL_FILE="${DB_DIR}/latest.sql"
           DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
           
           if [ -f "$SQL_FILE" ]; then
             echo "Found $SQL_FILE. Importing..."
-            # Using MYSQL_PWD env var suppresses the insecure CLI warning
             docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" < "$SQL_FILE"
             echo "Import complete."
           else
             echo "!!! ERROR: latest.sql not found at $SQL_FILE !!!"
-            echo "Check your .env DB_DIR value."
           fi
 
           # 2. RUN DJANGO MIGRATIONS
