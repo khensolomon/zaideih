@@ -1,14 +1,39 @@
+version: '3.8'
+
 services:
-  web:
-    image: ghcr.io/your-username/your-repo:latest
-    ports:
-      - "80:80"
+  db:
+    restart: "" # Swarm uses deploy.restart_policy instead
     deploy:
-      replicas: 2 # Keeps two instances running
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  web:
+    build: "" # Swarm doesn't support 'build', it uses the image below
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/django-app:latest
+    restart: ""
+    # Zero-Downtime Logic
+    deploy:
+      replicas: 2
       update_config:
         parallelism: 1
-        order: start-first  # THIS IS THE MAGIC: Starts new container BEFORE stopping old
+        order: start-first  # Start new container before killing old one
         failure_action: rollback
         delay: 10s
       restart_policy:
         condition: on-failure
+
+  nginx:
+    build: ""
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/nginx-prod:latest
+    restart: ""
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+# In Production Swarm, we typically don't mount the local folder (.) 
+# because the code is already inside the image.
+# We keep only the persistent data volumes.
