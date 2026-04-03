@@ -124,10 +124,23 @@ def track_test(request, track_id):
     try:
         Track.objects.filter(id=track_id).update(plays=F('plays') + 1)
         track = Track.objects.select_related('album').get(id=track_id)
-        full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
-        return HttpResponse(f"ID: {track_id}, Plays: {track.plays} Path: {full_track_path}")
     except Track.DoesNotExist:
         raise Http404("Track not found")
+
+    client = storage.Client()
+    bucket = client.bucket(settings.BUCKETNAME)
+    
+    # FIX: Use get_blob() instead of blob(). 
+    # This securely fetches the file AND its size metadata in one API call.
+    blob = bucket.get_blob(f"{catalog_config.DIR_MUSIC}/{full_track_path}")
+
+    blob_test = 'local'
+
+    if blob is not None:
+        blob_test = 'gcs'
+
+    full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
+    return HttpResponse(f"ID: {track_id}, Plays: {track.plays} Path: {full_track_path} Blob: {blob_test}, bucket: {settings.BUCKETNAME}")
 
 # Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
 def streamer(request, track_id):
