@@ -14,7 +14,7 @@ services:
     build: ""
     image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
     restart: ""
-    # FIXED: Overriding the complex depends_on from base file with a simple list for Swarm
+    # Override complex depends_on from base file with a simple list
     depends_on:
       - db
     deploy:
@@ -31,7 +31,7 @@ services:
     build: ""
     image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
     restart: ""
-    # FIXED: Overriding complex depends_on for Swarm compatibility
+    # FIXED: Overriding complex depends_on for Nginx as well
     depends_on:
       - web
     deploy:
@@ -39,6 +39,4 @@ services:
       restart_policy:
         condition: on-failure
 
-# In Production Swarm, we typically don't mount the local folder (.) 
-# because the code is already inside the image.
-# We keep only the persistent data volumes.
+# Note: Swarm handles cross-service communication via the stack network automatically.
