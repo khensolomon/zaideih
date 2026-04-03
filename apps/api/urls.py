@@ -28,7 +28,7 @@ urlpatterns = [
     # path('request-audio/<int:track_id>', audio.requests, name='request_audio'),
     # 2. The browser automatically calls this when Vue sets the <audio src="...">
     # path('audio/<int:track_id>', audio.streams, name='serve_audio'),
-    path('audio/<int:track_id>', audio.streams_v2, name='serve_audio'),
+    path('audio/<int:track_id>', audio.streamer, name='serve_audio'),
 
     # # 1. Get the ticket (RESTful Action)
     # path('audio/<int:track_id>/request', audio.requests, name='request_audio'),
