@@ -6,7 +6,6 @@ on:
 
 jobs:
   build:
-    # Trigger only on commits starting with 'deploy:'
     if: startsWith(github.event.head_commit.message, 'deploy:')
     runs-on: ubuntu-latest
     permissions:
@@ -19,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Address deprecation warnings
+          node-version: '22'
 
       - name: Install & Build Frontend
         run: |
@@ -64,31 +63,34 @@ jobs:
 
       - name: Pull Latest Images
         run: |
-          # Load variables for the Compose file to see ${VARIABLES}
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          
-          # Detect modern 'docker compose' or older 'docker-compose'
           if docker compose version >/dev/null 2>&1; then
             DOCKER_COMPOSE="docker compose"
           else
             DOCKER_COMPOSE="docker-compose"
           fi
-          
           $DOCKER_COMPOSE -f docker-compose.yml -f docker-compose.prod.yml pull
 
       - name: Run Database Migrations
         run: |
+          # The migration container needs to be on the same network as the DB service.
+          # If this is your first deploy, the network 'zaideih_default' might not exist yet.
+          # We check if the network exists, otherwise we run without it (assuming DB is local or reachable via IP).
+          NETWORK_NAME="zaideih_default"
+          NET_FLAG=""
+          if [ "$(docker network ls -q -f name=$NETWORK_NAME)" ]; then
+            NET_FLAG="--network $NETWORK_NAME"
+          fi
+
           docker run --rm \
+            $NET_FLAG \
             --env-file .env \
             ghcr.io/${{ github.repository }}/django-app:latest \
             python manage.py migrate --noinput
 
       - name: Deploy Swarm Stack
         run: |
-          # Load variables for Swarm interpolation
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          
-          # Deploy with correct Swarm syntax (-c instead of -f)
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
