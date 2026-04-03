@@ -63,23 +63,15 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # 1. Simple .env loading (assuming static values)
           set -a
           [ -f .env ] && . .env
           set +a
-
           export GITHUB_REPOSITORY=${{ github.repository }}
-          
-          # 2. Path verification
-          echo "Final Resolved Paths:"
-          echo "DB_DIR: $DB_DIR"
-          echo "STORAGE_DIR: $STORAGE_DIR"
-          
-          # 3. Create directories
           mkdir -p "$DB_DIR" "$STORAGE_DIR" "$MEDIA_DIR"
           
           docker compose -f docker-compose.prod.yml pull
-          docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
+          # --detach=false ensures the command waits for the update to finish/fail
+          docker stack deploy -c docker-compose.prod.yml --with-registry-auth --detach=false zaideih
 
       - name: Wait for MySQL readiness
         run: |
@@ -87,50 +79,21 @@ jobs:
           set -a
           [ -f .env ] && . .env
           set +a
-
-          echo "Waiting for MySQL readiness..."
           for i in {1..20}; do
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
               echo "MySQL is ready!"
               break
             fi
-            sleep 10
+            sleep 5
           done
-
-      # - name: Force SQL Import
-      #   run: |
-      #     set -a
-      #     [ -f .env ] && . .env
-      #     set +a
-
-      #     SQL_FILE="${DB_DIR}/latest.sql"
-      #     DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
-          
-      #     if [ -f "$SQL_FILE" ]; then
-      #       echo "Found $SQL_FILE. Importing..."
-            
-      #       # Create a temporary config file inside the container to handle auth safely
-      #       docker exec -u root $DB_CONTAINER sh -c "printf '[client]\nuser=root\npassword=\"$MYSQL_ROOT_PASSWORD\"\n' > /tmp/temp_import.cnf"
-            
-      #       # Run import using the config file
-      #       docker exec -i $DB_CONTAINER mysql --defaults-extra-file=/tmp/temp_import.cnf "$DB_NAME" < "$SQL_FILE"
-            
-      #       # Cleanup config
-      #       docker exec $DB_CONTAINER rm /tmp/temp_import.cnf
-      #       echo "Import complete."
-      #     else
-      #       echo "Note: latest.sql not found at $SQL_FILE. Relying on existing volume data."
-      #     fi
 
       - name: Run Database Migrations
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
-          
           set -a
           [ -f .env ] && . .env
           set +a
-
           docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
       - name: Verify Data Import
@@ -138,7 +101,6 @@ jobs:
           set -a
           [ -f .env ] && . .env
           set +a
-
           DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
           echo "--- DATA VERIFICATION ---"
           docker exec -i $DB_CONTAINER mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
@@ -146,15 +108,14 @@ jobs:
       - name: Verify Healthy Deployment
         run: |
           echo "Monitoring deployment health..."
-          for i in {1..15}; do
-            RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
-            echo "Replicas: $RUNNING"
-            if [[ "$RUNNING" == "2/2" ]]; then
-              echo "Deployment successful!"
-              exit 0
-            fi
-            sleep 10
-          done
-          
-          docker service logs zaideih_web --tail 50
-          exit 1
+          # Since we use --detach=false, we just check final state
+          RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
+          echo "Final Replicas: $RUNNING"
+          if [[ "$RUNNING" == "2/2" ]]; then
+            echo "Deployment successful!"
+            exit 0
+          else
+            echo "Deployment failed health checks. Showing logs..."
+            docker service logs zaideih_web --tail 50
+            exit 1
+          fi

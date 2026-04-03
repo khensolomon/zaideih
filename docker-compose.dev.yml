@@ -16,8 +16,8 @@ services:
     # volumes:
     #   - .:/code
     #   - static_volume:/code/static
-    #   - root_storage:/app/storage/:rw
-    #   - root_media:/app/media:rw
+    #   - storage_volume:/app/storage/:rw
+    #   - media_volume:/app/media:rw
 
     # If you ever had permission weirdness, this helps:
     stdin_open: true

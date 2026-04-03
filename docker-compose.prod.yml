@@ -7,7 +7,8 @@ services:
       - MYSQL_PASSWORD=${DB_PWD}
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
-      timeout: 20s
+      interval: 10s
+      timeout: 5s
       retries: 5
     networks:
       - default
@@ -26,25 +27,23 @@ services:
       - "${APP_PORT}:${APP_PORT}"
     volumes:
       - static_volume:/code/static
-      - root_storage:${STORAGE_DIR}:rw
-      - root_media:${MEDIA_DIR}:rw
+      - storage_volume:${STORAGE_DIR}:rw
+      - media_volume:${MEDIA_DIR}:rw
     depends_on:
       - db
     healthcheck:
+      # CRITICAL for ZDD: Swarm uses this to know when the NEW container is ready
       test: ["CMD", "python", "manage.py", "healthcheck"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 2
-      start_period: 5s
+      retries: 3
+      start_period: 15s
     environment:
-      # Django Core & App Info
       - DEBUG=${DEBUG:-false}
       - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - APP_NAME=${APP_NAME}
       - APP_PORT=${APP_PORT}
-      
-      # Database
       - MYSQL_DATABASE=${DB_NAME}
       - MYSQL_USER=${DB_USER}
       - MYSQL_PASSWORD=${DB_PWD}
@@ -56,26 +55,26 @@ services:
       - DB_HOST=${DB_HOST:-db}
       - DB_PORT=${DB_PORT:-3306}
       - DB_DIR=${DB_DIR}
-      
-      # Storage & Paths
       - STORAGE_DIR=${STORAGE_DIR}
       - CACHE_DIR=${CACHE_DIR}
       - MEDIA_DIR=${MEDIA_DIR}
-      
-      # Infrastructure & Cloud
       - GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
       - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
-      
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn --workers 3
     deploy:
       replicas: 2
       update_config:
-        parallelism: 1
+        # CRITICAL for ZDD: Start the new container before killing the old one
         order: start-first
+        # Only update one at a time so at least 1 (or 2) old ones stay alive
+        parallelism: 1
+        # Wait for the healthcheck to pass before moving to the next container
+        delay: 15s
         failure_action: rollback
-        delay: 10s
+        monitor: 30s
+        max_failure_ratio: 0.1
       restart_policy:
         condition: on-failure
 
@@ -92,6 +91,8 @@ services:
       - web
     deploy:
       replicas: 1
+      update_config:
+        order: start-first
       restart_policy:
         condition: on-failure
 
@@ -103,13 +104,13 @@ networks:
 volumes:
   mysql_data:
   static_volume:
-  root_storage:
+  storage_volume:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ${STORAGE_DIR}
-  root_media:
+  media_volume:
     driver: local
     driver_opts:
       type: none

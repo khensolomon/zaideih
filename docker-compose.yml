@@ -35,8 +35,8 @@ services:
       # Changed: Use current folder (.) instead of /var/www/zaideih
       - .:/code
       - static_volume:/code/static
-      - root_storage:${STORAGE_DIR}:rw
-      - root_media:${MEDIA_DIR}:rw
+      - storage_volume:${STORAGE_DIR}:rw
+      - media_volume:${MEDIA_DIR}:rw
     depends_on:
       db:
         condition: service_healthy
@@ -87,14 +87,14 @@ services:
 volumes:
   mysql_data: # Defines a persistent storage area managed by Docker
   static_volume:
-  root_storage:
+  storage_volume:
     driver: local
     driver_opts:
       type: none
       o: bind
       # This points to the actual physical location
       device: ${STORAGE_DIR}
-  root_media:
+  media_volume:
     driver: local
     driver_opts:
       type: none
