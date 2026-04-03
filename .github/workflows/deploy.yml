@@ -7,7 +7,8 @@ on:
 jobs:
   build:
     # MOVE FILTER HERE: This prevents the build from running at all unless you want a deployment
-    if: startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8
+    # if: startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8
+    if: startsWith(github.event.head_commit.message, 'deploy:')
     runs-on: ubuntu-latest
     permissions:
       contents: read
