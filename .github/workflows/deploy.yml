@@ -82,28 +82,33 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          # Load env for MySQL credentials
-          export $(grep -v '^#' .env | xargs)
+          # Explicitly load the variables into the shell context
+          set -a
+          [ -f .env ] && . .env
+          set +a
           
-          echo "Waiting for MySQL to be ready for connections..."
-          # We use the mysql client image to check readiness
+          echo "Checking MySQL readiness for user 'root'..."
+          
+          # Increased wait time for MySQL initialization
           for i in {1..20}; do
+            # We use mysqladmin to verify the password works before letting Django try
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
-              echo "MySQL is ready!"
+              echo "MySQL is ready and credentials are valid!"
               break
             fi
             
             if [ $i -eq 20 ]; then
-              echo "MySQL never became ready. Checking logs:"
-              docker service logs zaideih_db --tail 50
+              echo "Error: MySQL credentials rejected or DB not ready. Checking service logs..."
+              docker service logs zaideih_db --tail 100
               exit 1
             fi
             
-            echo "Attempt $i: MySQL not ready yet. Sleeping 10s..."
+            echo "Attempt $i: Access denied or DB starting. Sleeping 10s..."
             sleep 10
           done
 
-          # Run migration
+          echo "Running Django Migrations..."
+          # Pass the env file explicitly to ensure Django sees the EXACT same keys
           docker run --rm \
             --network $NETWORK_NAME \
             --env-file .env \
@@ -126,7 +131,7 @@ jobs:
             fi
             
             if [[ "$STATUS" == "rollback_completed" || "$STATUS" == "rollback_started" || "$STATUS" == "failed" ]]; then
-              echo "Deployment FAILED or Rolling Back. Showing logs:"
+              echo "Deployment FAILED. Showing logs:"
               docker service logs zaideih_web --tail 100
               exit 1
             fi
