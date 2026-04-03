@@ -29,7 +29,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          # Use the explicit context to avoid interpolation errors
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Django App
@@ -54,7 +55,7 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Log in to GHCR on VM
-        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Recreate .env file from Secret
         run: |
@@ -65,23 +66,26 @@ jobs:
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
+          
           if docker compose version >/dev/null 2>&1; then
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            DOCKER_COMPOSE="docker compose"
           else
-            docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            DOCKER_COMPOSE="docker-compose"
           fi
+          
+          $DOCKER_COMPOSE -f docker-compose.prod.yml pull
 
       - name: Initialize/Update Stack
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
+          docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
       - name: Run Database Migrations
         run: |
           NETWORK_NAME="zaideih_default"
-          # Wait for network and DB to be ready
           sleep 10
+
           docker run --rm \
             --network $NETWORK_NAME \
             --env-file .env \
@@ -90,5 +94,4 @@ jobs:
 
       - name: Refresh Web Service
         run: |
-          # Force the web service to pick up migration changes
           docker service update --force zaideih_web

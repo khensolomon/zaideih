@@ -1,102 +1,92 @@
-name: Build and Deploy
+# REMOVED: version: '3.8' (Attribute is obsolete and causes warnings)
 
-on:
-  push:
-    branches: [ master ]
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PWD}
+      - MYSQL_PASSWORD=${DB_PWD}
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 5
+    networks:
+      - default
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ${DB_DIR}:/docker-entrypoint-initdb.d:ro
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
 
-jobs:
-  build:
-    if: startsWith(github.event.head_commit.message, 'deploy:')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
+    ports: 
+      - "${APP_PORT}:${APP_PORT}"
+    volumes:
+      - static_volume:/code/static
+      - root_storage:${STORAGE_DIR}:rw
+      - root_media:${MEDIA_DIR}:rw
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
+    environment:
+      - DEBUG=false
+      - APP_PORT=${APP_PORT}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PWD}
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+        delay: 10s
+      restart_policy:
+        condition: on-failure
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+  nginx:
+    image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
+    ports:
+      - "80:80"
+    volumes:
+      - static_volume:/code/static:ro
+      - ./cache:/code/cache
+    environment:
+      - APP_PORT=${APP_PORT}
+    depends_on:
+      - web
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
 
-      - name: Install & Build Frontend
-        run: |
-          npm install
-          npm run build 
+networks:
+  default:
+    driver: overlay
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push Django App
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository }}/django-app:latest
-
-      - name: Build and Push Nginx
-        uses: docker/build-push-action@v5
-        with:
-          context: ./nginx
-          push: true
-          tags: ghcr.io/${{ github.repository }}/nginx-prod:latest
-
-  deploy:
-    needs: build
-    runs-on: self-hosted
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Log in to GHCR on VM
-        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Recreate .env file from Secret
-        run: |
-          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
-          chmod 600 .env
-
-      - name: Pull Latest Images
-        run: |
-          # Use standalone prod file to avoid merge conflicts with base file
-          export GITHUB_REPOSITORY=${{ github.repository }}
-          export $(grep -v '^#' .env | xargs)
-          
-          if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE="docker compose"
-          else
-            DOCKER_COMPOSE="docker-compose"
-          fi
-          
-          $DOCKER_COMPOSE -f docker-compose.prod.yml pull
-
-      - name: Initialize/Update Stack
-        run: |
-          # Deploying with ONLY the standalone production file
-          export GITHUB_REPOSITORY=${{ github.repository }}
-          export $(grep -v '^#' .env | xargs)
-          docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
-
-      - name: Run Database Migrations
-        run: |
-          # Network name is usually [stack_name]_default
-          NETWORK_NAME="zaideih_default"
-          
-          # Give the network and DB a moment to initialize if this is a fresh stack
-          sleep 10
-
-          docker run --rm \
-            --network $NETWORK_NAME \
-            --env-file .env \
-            ghcr.io/${{ github.repository }}/django-app:latest \
-            python manage.py migrate --noinput
-
-      - name: Refresh Web Service
-        run: |
-          # Ensure the web service picks up migration changes and healthy state
-          docker service update --force zaideih_web
+volumes:
+  mysql_data:
+  static_volume:
+  root_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${STORAGE_DIR}
+  root_media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_DIR}
