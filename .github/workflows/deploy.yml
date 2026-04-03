@@ -82,14 +82,24 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          echo "Waiting for 'db' to resolve and be ready for connections..."
-          # Increased wait time for MySQL initialization
+          # Load env for MySQL credentials
+          export $(grep -v '^#' .env | xargs)
+          
+          echo "Waiting for MySQL to be ready for connections..."
+          # We use the mysql client image to check readiness
           for i in {1..20}; do
-            if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
-              echo "DNS Resolved! Checking MySQL readiness..."
-              # Optional: Check if MySQL is actually accepting connections
+            if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
+              echo "MySQL is ready!"
               break
             fi
+            
+            if [ $i -eq 20 ]; then
+              echo "MySQL never became ready. Checking logs:"
+              docker service logs zaideih_db --tail 50
+              exit 1
+            fi
+            
+            echo "Attempt $i: MySQL not ready yet. Sleeping 10s..."
             sleep 10
           done
 
