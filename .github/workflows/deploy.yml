@@ -77,30 +77,42 @@ jobs:
           export $(grep -v '^#' .env | xargs)
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations (with Retry)
+      - name: Run Database Migrations (with DNS Check)
         run: |
           NETWORK_NAME="zaideih_default"
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          echo "Waiting for database service 'db' to become discoverable..."
+          echo "Verifying network '$NETWORK_NAME' exists..."
+          if ! docker network ls | grep -q "$NETWORK_NAME"; then
+             echo "Error: Network $NETWORK_NAME not found. Swarm might still be initializing it."
+             exit 1
+          fi
+
+          echo "Waiting for DNS resolution of 'db' within the overlay network..."
           
-          # We try to run the migration up to 5 times with a 10-second gap
-          # This handles the delay while Swarm brings up the MySQL container
-          for i in {1..6}; do
-            echo "Attempt $i: Running migrations..."
-            if docker run --rm \
-              --network $NETWORK_NAME \
-              --env-file .env \
-              ghcr.io/${{ github.repository }}/django-app:latest \
-              python manage.py migrate --noinput; then
-              echo "Migrations successful!"
-              exit 0
+          # Retry loop to verify DNS resolution before running migrations
+          # We use a tiny alpine container to 'nslookup' the DB host
+          for i in {1..12}; do
+            echo "Attempt $i: Checking if 'db' is resolvable..."
+            if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
+              echo "DNS Resolved! 'db' is now visible."
+              break
             fi
-            echo "Database not ready yet. Sleeping 10s..."
+            
+            if [ $i -eq 12 ]; then
+              echo "Error: 'db' hostname never became resolvable in the network."
+              exit 1
+            fi
+            echo "DNS not ready. Sleeping 10s..."
             sleep 10
           done
 
-          echo "Error: Migrations failed after multiple attempts."
-          exit 1
+          echo "Running Django Migrations..."
+          docker run --rm \
+            --network $NETWORK_NAME \
+            --env-file .env \
+            $IMAGE_NAME \
+            python manage.py migrate --noinput
 
       - name: Refresh Web Service
         run: |
