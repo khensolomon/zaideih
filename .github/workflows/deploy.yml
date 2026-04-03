@@ -6,8 +6,7 @@ on:
 
 jobs:
   build:
-    # MOVE FILTER HERE: This prevents the build from running at all unless you want a deployment
-    # if: startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8
+    # Trigger only on commits starting with 'deploy:'
     if: startsWith(github.event.head_commit.message, 'deploy:')
     runs-on: ubuntu-latest
     permissions:
@@ -20,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22' # Updated to Node 22 to address deprecation warnings
 
       - name: Install & Build Frontend
         run: |
@@ -49,7 +48,6 @@ jobs:
           tags: ghcr.io/${{ github.repository }}/nginx-prod:latest
 
   deploy:
-    # This job only runs if 'build' succeeds and the filter passed
     needs: build
     runs-on: self-hosted
     steps:
@@ -64,13 +62,13 @@ jobs:
           echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
           chmod 600 .env
 
-      - name: Load Environment Variables
-        run: |
-          # We use GITHUB_ENV to make variables available to all subsequent steps
-          grep -v '^#' .env >> $GITHUB_ENV
-
       - name: Pull Latest Images
         run: |
+          # Robust export logic to prevent exit code 125
+          set -a
+          [ -f .env ] && . ./.env
+          set +a
+          export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
           docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 
       - name: Run Database Migrations
@@ -82,6 +80,9 @@ jobs:
 
       - name: Deploy Swarm Stack
         run: |
-          # The variables loaded in the 'Load Environment Variables' step
-          # are automatically available here for YAML interpolation.
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
+          # Robust export logic for the stack deployment
+          set -a
+          [ -f .env ] && . ./.env
+          set +a
+          export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
