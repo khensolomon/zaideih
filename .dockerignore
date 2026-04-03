@@ -1,4 +1,18 @@
 # .dockerignore - Optimized for Django + MySQL (mysqlclient) + Node.js/npm
+*.v[0-9]*.*
+*tmp/
+
+# Ignore ONLY the assets folder at the root of the project
+# cache/
+docs/
+assets/
+*.md
+
+# But do NOT ignore the data subfolder inside it
+!assets/data/
+!assets/data/*.json
+.editorconfig
+!README.md
 
 # Version control
 .git
