@@ -63,33 +63,38 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # 1. Robust .env parsing with recursive variable expansion
-          # We use a temporary file to handle the order of operations
+          # 1. Multi-pass recursive variable expansion
           cp .env .env.tmp
-          
-          # Clean up the file first (remove CR and spaces around =)
           sed -i 's/\r//g' .env.tmp
           sed -i 's/[[:space:]]*=[[:space:]]*/=/g' .env.tmp
 
-          # Export variables and resolve them recursively
-          while read -r line || [ -n "$line" ]; do
-            [[ $line =~ ^#.* ]] && continue
-            [[ -z $line ]] && continue
-            
-            key=$(echo "$line" | cut -d '=' -f 1)
-            # Use 'eval' to expand variables already in the environment
-            raw_value=$(echo "$line" | cut -d '=' -f 2- | sed 's/^"//;s/"$//')
-            expanded_value=$(eval echo "$raw_value")
-            
-            export "$key=$expanded_value"
-          done < .env.tmp
+          # Load initial values
+          set -a
+          source .env.tmp
+          set +a
+
+          # Recursive expansion: Loop up to 3 times to resolve nested variables
+          for i in {1..3}; do
+            while IFS='=' read -r key value || [ -n "$key" ]; do
+              [[ $key =~ ^#.* ]] && continue
+              [[ -z $key ]] && continue
+              # Expand the current value using variables already in the environment
+              expanded_value=$(eval echo "$value")
+              export "$key=$expanded_value"
+            done < .env.tmp
+          done
 
           export GITHUB_REPOSITORY=${{ github.repository }}
           
-          # 2. Final Sanity Check for paths
+          # 2. Safety Check: If DB_DIR still starts with //, fix it
           if [[ "$DB_DIR" == "//"* ]] || [ -z "$DB_DIR" ]; then
-            echo "Detected invalid path expansion. Forcing local fallback."
-            export DB_DIR="$PWD/mysql"
+            echo "Warning: Expansion failed for DB_DIR ($DB_DIR). Fixing path..."
+            # Try to build it manually as a last resort if vars exist
+            if [ -n "$STORAGE_DIR" ] && [ -n "$APP_NAME" ]; then
+               export DB_DIR="$STORAGE_DIR/$APP_NAME/mysql"
+            else
+               export DB_DIR="$PWD/mysql"
+            fi
           fi
           
           echo "Final Resolved Paths:"
@@ -107,20 +112,23 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          # Re-load env for this shell context using the same logic
+          # Re-load env with expansion for this shell context
           cp .env .env.tmp
           sed -i 's/\r//g' .env.tmp
           sed -i 's/[[:space:]]*=[[:space:]]*/=/g' .env.tmp
-          while read -r line || [ -n "$line" ]; do
-            [[ $line =~ ^#.* ]] && continue
-            [[ -z $line ]] && continue
-            key=$(echo "$line" | cut -d '=' -f 1)
-            raw_value=$(echo "$line" | cut -d '=' -f 2- | sed 's/^"//;s/"$//')
-            expanded_value=$(eval echo "$raw_value")
-            export "$key=$expanded_value"
-          done < .env.tmp
+          set -a
+          source .env.tmp
+          set +a
+          for i in {1..3}; do
+            while IFS='=' read -r key value || [ -n "$key" ]; do
+              [[ $key =~ ^#.* ]] && continue
+              [[ -z $key ]] && continue
+              expanded_value=$(eval echo "$value")
+              export "$key=$expanded_value"
+            done < .env.tmp
+          done
           
-          # Ensure DB_DIR is set for the file check
+          # Ensure DB_DIR is set
           export DB_DIR=${DB_DIR:-$PWD/mysql}
 
           echo "Waiting for MySQL readiness..."
@@ -138,6 +146,7 @@ jobs:
           
           if [ -f "$SQL_FILE" ]; then
             echo "Found $SQL_FILE. Importing..."
+            # Using -e MYSQL_PWD to fix the 'password: NO' error
             docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" < "$SQL_FILE"
             echo "Import complete."
           else
@@ -149,6 +158,7 @@ jobs:
 
           # 3. VERIFY IMPORT
           echo "--- DATA VERIFICATION ---"
+          # Fixed verification command with -e MYSQL_PWD
           docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
 
       - name: Verify Healthy Deployment
