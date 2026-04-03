@@ -48,6 +48,7 @@ services:
       - MYSQL_DATABASE=${DB_NAME}
       - MYSQL_USER=${DB_USER}
       - MYSQL_PASSWORD=${DB_PWD}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PWD}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PWD=${DB_PWD}
