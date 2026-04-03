@@ -63,33 +63,36 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # 1. Advanced .env parsing with variable expansion
-          # First, export raw values
-          while IFS='=' read -r key value || [ -n "$key" ]; do
-            if [[ ! $key =~ ^# && -n $key ]]; then
-              value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e 's/\r$//')
-              export "$key=$value"
-            fi
-          done < .env
+          # 1. Robust .env parsing with recursive variable expansion
+          # We use a temporary file to handle the order of operations
+          cp .env .env.tmp
+          
+          # Clean up the file first (remove CR and spaces around =)
+          sed -i 's/\r//g' .env.tmp
+          sed -i 's/[[:space:]]*=[[:space:]]*/=/g' .env.tmp
 
-          # Second pass: Re-export variables to resolve internal references (like ${STORAGE_DIR})
-          # We use 'perl' for a reliable cross-platform expansion of environment variables
-          while IFS='=' read -r key value || [ -n "$key" ]; do
-             if [[ ! $key =~ ^# && -n $key ]]; then
-               expanded_value=$(echo "$value" | perl -pe 's/\$\{?(\w+)\}?/$ENV{$1}/g')
-               export "$key=$expanded_value"
-             fi
-          done < .env
+          # Export variables and resolve them recursively
+          while read -r line || [ -n "$line" ]; do
+            [[ $line =~ ^#.* ]] && continue
+            [[ -z $line ]] && continue
+            
+            key=$(echo "$line" | cut -d '=' -f 1)
+            # Use 'eval' to expand variables already in the environment
+            raw_value=$(echo "$line" | cut -d '=' -f 2- | sed 's/^"//;s/"$//')
+            expanded_value=$(eval echo "$raw_value")
+            
+            export "$key=$expanded_value"
+          done < .env.tmp
 
           export GITHUB_REPOSITORY=${{ github.repository }}
           
-          # 2. Safety Checks
-          if [ -z "$DB_DIR" ] || [[ "$DB_DIR" == "/"* ]] && [[ ! -d "${DB_DIR%/*}" ]] && [[ "$DB_DIR" == "//"* ]]; then
-            echo "Warning: DB_DIR ($DB_DIR) looks invalid. Falling back to local mysql dir."
+          # 2. Final Sanity Check for paths
+          if [[ "$DB_DIR" == "//"* ]] || [ -z "$DB_DIR" ]; then
+            echo "Detected invalid path expansion. Forcing local fallback."
             export DB_DIR="$PWD/mysql"
           fi
           
-          echo "Using Resolved Paths:"
+          echo "Final Resolved Paths:"
           echo "DB_DIR: $DB_DIR"
           echo "STORAGE_DIR: $STORAGE_DIR"
           
@@ -104,20 +107,20 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          # Re-parse with expansion
-          while IFS='=' read -r key value || [ -n "$key" ]; do
-            if [[ ! $key =~ ^# && -n $key ]]; then
-              value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e 's/\r$//')
-              export "$key=$value"
-            fi
-          done < .env
-          while IFS='=' read -r key value || [ -n "$key" ]; do
-             if [[ ! $key =~ ^# && -n $key ]]; then
-               expanded_value=$(echo "$value" | perl -pe 's/\$\{?(\w+)\}?/$ENV{$1}/g')
-               export "$key=$expanded_value"
-             fi
-          done < .env
+          # Re-load env for this shell context using the same logic
+          cp .env .env.tmp
+          sed -i 's/\r//g' .env.tmp
+          sed -i 's/[[:space:]]*=[[:space:]]*/=/g' .env.tmp
+          while read -r line || [ -n "$line" ]; do
+            [[ $line =~ ^#.* ]] && continue
+            [[ -z $line ]] && continue
+            key=$(echo "$line" | cut -d '=' -f 1)
+            raw_value=$(echo "$line" | cut -d '=' -f 2- | sed 's/^"//;s/"$//')
+            expanded_value=$(eval echo "$raw_value")
+            export "$key=$expanded_value"
+          done < .env.tmp
           
+          # Ensure DB_DIR is set for the file check
           export DB_DIR=${DB_DIR:-$PWD/mysql}
 
           echo "Waiting for MySQL readiness..."
