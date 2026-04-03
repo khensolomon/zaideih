@@ -1,5 +1,3 @@
-# REMOVED: version: '3.8' (Attribute is obsolete and causes warnings)
-
 services:
   db:
     image: mysql:8.0
@@ -39,11 +37,36 @@ services:
       retries: 2
       start_period: 5s
     environment:
-      - DEBUG=false
+      # Django Core & App Info
+      - DEBUG=${DEBUG:-false}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - APP_NAME=${APP_NAME}
       - APP_PORT=${APP_PORT}
+      
+      # Database
       - MYSQL_DATABASE=${DB_NAME}
       - MYSQL_USER=${DB_USER}
       - MYSQL_PASSWORD=${DB_PWD}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PWD=${DB_PWD}
+      - DB_ROOT_PWD=${DB_ROOT_PWD}
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_DIR=${DB_DIR}
+      
+      # Storage & Paths
+      - STORAGE_DIR=${STORAGE_DIR}
+      - CACHE_DIR=${CACHE_DIR}
+      - MEDIA_DIR=${MEDIA_DIR}
+      
+      # Infrastructure & Cloud
+      - GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}
+      - BUCKETNAME=${BUCKETNAME}
+      - BUCKETCRED=${BUCKETCRED}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-${BUCKETCRED}}
+      
     command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn
     deploy:
       replicas: 2
@@ -74,7 +97,6 @@ services:
 networks:
   default:
     driver: overlay
-    # CRITICAL: This allows 'docker run' to join the network
     attachable: true
 
 volumes:

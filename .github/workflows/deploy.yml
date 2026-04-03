@@ -63,17 +63,18 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # Load variables from .env to be used for stack interpolation
-          export $(grep -v '^#' .env | xargs)
-          export GITHUB_REPOSITORY=${{ github.repository }}
+          # Export all variables from .env to the shell session
+          set -a
+          [ -f .env ] && . .env
+          set +a
           
-          # Setup Absolute Paths for Swarm
+          export GITHUB_REPOSITORY=${{ github.repository }}
           export DB_DIR=$PWD/mysql
-          export STORAGE_DIR=$PWD/storage
-          export MEDIA_DIR=$PWD/media
+          # Ensure dirs exist
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
           docker compose -f docker-compose.prod.yml pull
+          # Now 'docker stack deploy' can find the variables to interpolate the YAML
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
       - name: Run Database Migrations
@@ -81,46 +82,34 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          # Load env for MySQL credentials and app settings
           set -a
           [ -f .env ] && . .env
           set +a
           
-          echo "Waiting for MySQL readiness..."
+          echo "Waiting for MySQL..."
           for i in {1..20}; do
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
-              echo "MySQL is ready!"
+              echo "MySQL Ready!"
               break
             fi
-            echo "Attempt $i: DB starting... Sleeping 10s"
             sleep 10
           done
 
           docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
-      - name: Wait for Healthy Deployment
+      - name: Verify Healthy Deployment
         run: |
-          echo "Monitoring deployment progress..."
-          for i in {1..20}; do
-            # Safely check UpdateStatus
-            STATUS=$(docker service inspect zaideih_web --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}stable{{end}}')
+          echo "Monitoring deployment health..."
+          for i in {1..15}; do
             RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
-            echo "Current Status: $STATUS | Replicas: $RUNNING"
-            
+            echo "Replicas: $RUNNING"
             if [[ "$RUNNING" == "2/2" ]]; then
               echo "Deployment successful!"
               exit 0
             fi
-            
-            if [[ "$STATUS" == "failed" || "$STATUS" == "rollback_completed" ]]; then
-              echo "Update failed. Checking logs..."
-              docker service logs zaideih_web --tail 100
-              exit 1
-            fi
-            sleep 15
+            sleep 10
           done
           
-          echo "--- FINAL DIAGNOSTIC: Deployment Timeout ---"
-          docker service ps zaideih_web --no-trunc
-          docker service logs zaideih_web --tail 100
+          echo "Final Diagnostic Logs:"
+          docker service logs zaideih_web --tail 50
           exit 1
