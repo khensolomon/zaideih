@@ -65,7 +65,6 @@ jobs:
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          # Use standard docker-compose if 'docker compose' plugin is missing
           if docker compose version >/dev/null 2>&1; then
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
           else
@@ -74,21 +73,15 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # We deploy the stack FIRST to ensure the overlay network exists.
-          # The DB will start, but the 'web' service might fail temporarily 
-          # until migrations are finished. This is fine for zero-downtime.
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
           docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
 
       - name: Run Database Migrations
         run: |
-          # Now that the stack is deployed, the network 'zaideih_default' definitely exists.
           NETWORK_NAME="zaideih_default"
-          
-          # Wait a few seconds for the network to stabilize if it was just created
-          sleep 5
-
+          # Wait for network and DB to be ready
+          sleep 10
           docker run --rm \
             --network $NETWORK_NAME \
             --env-file .env \
@@ -97,6 +90,5 @@ jobs:
 
       - name: Refresh Web Service
         run: |
-          # After migrations, we tell Swarm to update the web service 
-          # to ensure it has the latest schema and is running correctly.
+          # Force the web service to pick up migration changes
           docker service update --force zaideih_web

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    restart: "" # Swarm uses deploy.restart_policy instead
+    restart: "" # Swarm uses deploy.restart_policy
     deploy:
       placement:
         constraints:
@@ -11,10 +11,12 @@ services:
         condition: on-failure
 
   web:
-    build: "" # Swarm doesn't support 'build'
-    # FIXED: Added the repository name to the path to match the GitHub Action push
+    build: ""
     image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
     restart: ""
+    # FIXED: Overriding the complex depends_on from base file with a simple list for Swarm
+    depends_on:
+      - db
     deploy:
       replicas: 2
       update_config:
@@ -27,9 +29,11 @@ services:
 
   nginx:
     build: ""
-    # FIXED: Added the repository name to the path to match the GitHub Action push
     image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
     restart: ""
+    # FIXED: Overriding complex depends_on for Swarm compatibility
+    depends_on:
+      - web
     deploy:
       replicas: 1
       restart_policy:
