@@ -122,12 +122,12 @@ def streams_v2(request, track_id):
 
 def track_test(request, track_id):
     try:
+        Track.objects.filter(id=track_id).update(plays=F('plays') + 1)
         track = Track.objects.select_related('album').get(id=track_id)
+        full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
+        return HttpResponse(f"ID: {track_id}, Plays: {track.plays} Path: {full_track_path}")
     except Track.DoesNotExist:
         raise Http404("Track not found")
-
-    full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
-    return HttpResponse(f"Track ID: {track_id}, Full Path: {full_track_path}")
 
 # Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
 def streamer(request, track_id):
