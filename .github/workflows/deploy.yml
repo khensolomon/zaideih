@@ -63,15 +63,20 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
+          # Load variables from .env
           set -a
           [ -f .env ] && . .env
           set +a
           
           export GITHUB_REPOSITORY=${{ github.repository }}
-          export DB_DIR=$PWD/mysql
-          export STORAGE_DIR=$PWD/storage
-          export MEDIA_DIR=$PWD/media
-          mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
+          
+          # Use paths from .env, but fall back to $PWD if they are empty
+          export DB_DIR=${DB_DIR:-$PWD/mysql}
+          export STORAGE_DIR=${STORAGE_DIR:-$PWD/storage}
+          export MEDIA_DIR=${MEDIA_DIR:-$PWD/media}
+          
+          # Create directories only if they don't exist
+          mkdir -p "$DB_DIR" "$STORAGE_DIR" "$MEDIA_DIR"
           
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
@@ -95,25 +100,26 @@ jobs:
           done
 
           # 1. FORCE SQL IMPORT
-          # We use the service name 'db' via the network or find the container ID
-          SQL_FILE="$PWD/mysql/latest.sql"
+          # Use the path defined in .env
+          SQL_FILE="${DB_DIR}/latest.sql"
+          DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
+          
           if [ -f "$SQL_FILE" ]; then
-            echo "Found $SQL_FILE. Importing schema and data..."
-            # Note: We pipe the file directly into the mysql client
-            cat "$SQL_FILE" | docker exec -i $(docker ps -q -f name=zaideih_db) mysql -u root --password="$MYSQL_ROOT_PASSWORD" "$DB_NAME"
+            echo "Found $SQL_FILE. Importing..."
+            # Using MYSQL_PWD env var suppresses the insecure CLI warning
+            docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" < "$SQL_FILE"
             echo "Import complete."
           else
-            echo "No latest.sql found in $PWD/mysql/ - skipping import."
+            echo "!!! ERROR: latest.sql not found at $SQL_FILE !!!"
+            echo "Check your .env DB_DIR value."
           fi
 
           # 2. RUN DJANGO MIGRATIONS
-          # This will create Django internal tables (session, admin, auth) 
-          # and link your 'album' table if you have the models/migrations ready.
           docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
           # 3. VERIFY IMPORT
           echo "--- DATA VERIFICATION ---"
-          docker exec -i $(docker ps -q -f name=zaideih_db) mysql -u root --password="$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT 'album_count' as '', COUNT(*) FROM album;" || echo "Table 'album' not found yet."
+          docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
 
       - name: Verify Healthy Deployment
         run: |
@@ -128,6 +134,5 @@ jobs:
             sleep 10
           done
           
-          echo "Final Diagnostic Logs:"
           docker service logs zaideih_web --tail 50
           exit 1
