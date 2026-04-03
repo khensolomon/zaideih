@@ -67,13 +67,14 @@ jobs:
           export $(grep -v '^#' .env | xargs)
           export GITHUB_REPOSITORY=${{ github.repository }}
           
-          # 2. Setup Absolute Paths (Critical for Swarm mounts)
+          # 2. Setup Absolute Paths
           export DB_DIR=$PWD/mysql
           export STORAGE_DIR=$PWD/storage
           export MEDIA_DIR=$PWD/media
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
           # 3. Pull and Deploy
+          # 'stack deploy' handles the update automatically.
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
@@ -97,17 +98,30 @@ jobs:
             $IMAGE_NAME \
             python manage.py migrate --noinput
 
-      - name: Final Service Update
+      - name: Wait for Healthy Deployment
         run: |
-          # We must re-export the paths here so the service update knows where the volumes are
-          export $(grep -v '^#' .env | xargs)
-          export GITHUB_REPOSITORY=${{ github.repository }}
-          export STORAGE_DIR=$PWD/storage
-          export MEDIA_DIR=$PWD/media
+          # Instead of forcing an update, we wait for the existing update to finish.
+          echo "Monitoring deployment progress..."
           
-          # Update the service. If it fails, show logs immediately.
-          if ! docker service update --force --detach=false zaideih_web; then
-            echo "--- ERROR: Service update failed. Showing logs: ---"
-            docker service logs zaideih_web --tail 50
-            exit 1
-          fi
+          # This loop checks if the service has finished updating
+          for i in {1..30}; do
+            STATUS=$(docker service inspect zaideih_web --format '{{.UpdateStatus.State}}')
+            echo "Current Update Status: $STATUS"
+            
+            if [ "$STATUS" = "completed" ] || [ "$STATUS" = "" ]; then
+              echo "Deployment successful!"
+              exit 0
+            fi
+            
+            if [ "$STATUS" = "rollback_completed" ] || [ "$STATUS" = "rollback_started" ]; then
+              echo "Deployment FAILED. Showing logs:"
+              docker service logs zaideih_web --tail 50
+              exit 1
+            fi
+            
+            sleep 10
+          done
+          
+          echo "Deployment timed out. Check logs."
+          docker service logs zaideih_web --tail 50
+          exit 1
