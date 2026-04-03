@@ -74,7 +74,6 @@ jobs:
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
           # 3. Pull and Deploy
-          # 'stack deploy' handles the update automatically.
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
@@ -100,28 +99,32 @@ jobs:
 
       - name: Wait for Healthy Deployment
         run: |
-          # Instead of forcing an update, we wait for the existing update to finish.
           echo "Monitoring deployment progress..."
           
-          # This loop checks if the service has finished updating
           for i in {1..30}; do
-            STATUS=$(docker service inspect zaideih_web --format '{{.UpdateStatus.State}}')
-            echo "Current Update Status: $STATUS"
+            # Safely check UpdateStatus only if it exists
+            STATUS=$(docker service inspect zaideih_web --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}stable{{end}}')
+            # Also check if actual replicas match desired replicas
+            RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
             
-            if [ "$STATUS" = "completed" ] || [ "$STATUS" = "" ]; then
-              echo "Deployment successful!"
+            echo "Current Update Status: $STATUS | Replicas: $RUNNING"
+            
+            # If status is stable or completed, and replicas are 2/2, we are good
+            if [[ "$STATUS" == "completed" || "$STATUS" == "stable" ]] && [[ "$RUNNING" == "2/2" ]]; then
+              echo "Deployment successful and healthy!"
               exit 0
             fi
             
-            if [ "$STATUS" = "rollback_completed" ] || [ "$STATUS" = "rollback_started" ]; then
-              echo "Deployment FAILED. Showing logs:"
-              docker service logs zaideih_web --tail 50
+            if [[ "$STATUS" == "rollback_completed" || "$STATUS" == "rollback_started" || "$STATUS" == "failed" ]]; then
+              echo "Deployment FAILED or Rolling Back. Showing logs:"
+              docker service logs zaideih_web --tail 100
               exit 1
             fi
             
             sleep 10
           done
           
-          echo "Deployment timed out. Check logs."
+          echo "Deployment timeout reached. Final service state:"
           docker service logs zaideih_web --tail 50
+          docker stack ps zaideih --no-trunc
           exit 1
