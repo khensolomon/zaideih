@@ -25,7 +25,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 
 # --- SECURITY WARNING: don't run with debug turned on in production! ---
 # DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 'yes']
+# DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 'yes']
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 # Default to 8000 if not found
@@ -136,7 +136,7 @@ DJANGO_VITE = {
 
 # --- GOOGLE CLOUD CONFIGURATION ---
 BUCKETNAME = os.environ.get('BUCKETNAME')
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED')
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED', '/tmp/credentials.json') 
 
 # --- CORS SETTINGS ---
 CORS_ALLOW_ALL_ORIGINS = True
