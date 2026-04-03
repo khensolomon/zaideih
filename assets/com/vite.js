@@ -1,13 +1,14 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "path";
 
 import vitePluginDynamicSvg from "./svg-loader.js";
 
 export default defineConfig(({ mode }) => {
+	const env = loadEnv(mode, process.cwd(), "");
 	const isProduction = mode === "production";
 	const devServerPort = 8081;
-	const djangoPort = 8000;
+	const djangoPort = env.APP_PORT || 8000;
 
 	return {
 		// 1. ADD THIS LINE: It must exactly match your Django STATIC_URL
@@ -32,21 +33,33 @@ export default defineConfig(({ mode }) => {
 		// Translates your devServer setup
 		server: {
 			port: devServerPort,
-			host: "0.0.0.0",
+			// host: "0.0.0.0",
 			cors: true, // Translates your Access-Control-Allow-Origin setup
+			strictPort: true,
+			host: true,
 			// 1. ADD THIS MAGIC LINE:
 			// It forces all asset URLs inside CSS to point to the Vite server during dev
 			origin: `http://localhost:${devServerPort}`,
+			watch: {
+				// Needed if your OS (Windows/macOS) doesn't propagate file events to Docker
+				usePolling: true,
+			},
+			hmr: {
+				// Tell the browser to connect to Nginx for HMR updates
+				// clientPort: 80,
+				// Tell the browser to connect to Vite directly for HMR updates
+				clientPort: devServerPort,
+			},
 			proxy: {
 				// 1. Explicitly catch the exact root URL and send it to Django
 				"^/$": {
-					target: `http://127.0.0.1:${djangoPort}`,
+					target: `http://web:${djangoPort}`,
 					changeOrigin: true,
 				},
 				// 2. Your existing rules for other Django paths
 				// Proxies Django requests so you only need to look at port 8081
 				"^/(admin|api|media)": {
-					target: `http://127.0.0.1:${djangoPort}`,
+					target: `http://web:${djangoPort}`,
 					changeOrigin: true,
 				},
 			},
@@ -122,7 +135,8 @@ export default defineConfig(({ mode }) => {
 						// Rollup 4 API: Use .names[0] or .originalFileName instead of the deprecated .name
 						// const fileName = assetInfo.names?.[0] || assetInfo.originalFileName || "";
 						// Strictly use the plural arrays (names, originalFileNames) to satisfy TypeScript and Rollup 4
-            const fileName = assetInfo.names?.[0] ?? assetInfo.originalFileNames?.[0] ?? '';
+						const fileName =
+							assetInfo.names?.[0] ?? assetInfo.originalFileNames?.[0] ?? "";
 
 						const noHashFiles = [
 							"favicon",

@@ -1,0 +1,14 @@
+services:
+  web:
+    image: ghcr.io/your-username/your-repo:latest
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 2 # Keeps two instances running
+      update_config:
+        parallelism: 1
+        order: start-first  # THIS IS THE MAGIC: Starts new container BEFORE stopping old
+        failure_action: rollback
+        delay: 10s
+      restart_policy:
+        condition: on-failure

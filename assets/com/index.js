@@ -11,10 +11,11 @@ import '../img/robots.txt';
 // NOTE: icons for manifest and other uses
 import "../psd/icon.svg?as=favicon&w=32&format=ico";
 import "../psd/icon.svg?as=favicon&w=32&format=png";
-import "../psd/icon.svg?as=icon-16x16&format=png";
-import "../psd/icon.svg?as=icon-32x32&format=png";
-import "../psd/icon.svg?as=icon-192x192&format=png";
-import "../psd/icon.svg?as=icon-512x512&format=png";
+import "../psd/icon.svg?as=logo-16x16&format=png";
+import "../psd/icon.svg?as=logo-32x32&format=png";
+import "../psd/icon.svg?as=logo-192x192&format=png";
+import "../psd/icon.svg?as=logo&w=60&format=png";
+import "../psd/icon.svg?as=logo-512x512&format=png";
 
 // NOTE: apple-touch-icon
 import "../psd/icon.svg?as=apple-touch-icon&format=png";
