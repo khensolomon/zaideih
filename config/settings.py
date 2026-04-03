@@ -136,7 +136,7 @@ DJANGO_VITE = {
 
 # --- GOOGLE CLOUD CONFIGURATION ---
 BUCKETNAME = os.environ.get('BUCKETNAME')
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED', '/tmp/credentials.json') 
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED') 
 
 # --- CORS SETTINGS ---
 CORS_ALLOW_ALL_ORIGINS = True

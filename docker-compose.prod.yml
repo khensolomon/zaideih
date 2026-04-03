@@ -66,7 +66,7 @@ services:
       - GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-${BUCKETCRED}}
+      - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
       
     command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn
     deploy:
