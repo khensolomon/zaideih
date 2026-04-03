@@ -1,20 +1,21 @@
-name: Zaideih
+name: Build and Deploy
 
 on:
   push:
     branches: [ master ]
 
 jobs:
-  deploy:
-    # Rule: Commit must start with "deploy:" and have a description
-    if: "startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8"
+  build:
+    # MOVE FILTER HERE: This prevents the build from running at all unless you want a deployment
+    if: startsWith(github.event.head_commit.message, 'deploy:') && length(github.event.head_commit.message) > 8
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- STEP 1: BUILD VITE ASSETS (On GitHub) ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,44 +26,61 @@ jobs:
           npm install
           npm run build 
 
-      # --- STEP 2: UPLOAD BUILT ASSETS (To Server) ---
-      # We do this BEFORE the SSH step so the files are ready on the disk
-      - name: Copy Built Assets to Server
-        uses: appleboy/scp-action@master
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "dist/*" 
-          target: "/var/www/zaideih/static/"
-          strip_components: 1
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- STEP 3: UPDATE CODE & RESTART (On Server) ---
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@master
+      - name: Build and Push Django App
+        uses: docker/build-push-action@v5
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /var/www/zaideih
-            
-            # 1. Pull the Python code changes
-            git pull origin master
-            
-            # 2. Inject/Update the .env (Matches your standardized names)
-            echo "DB_NAME=${{ secrets.DB_NAME }}" > .env
-            echo "DB_USER=${{ secrets.DB_USER }}" >> .env
-            echo "DB_PWD=${{ secrets.DB_PWD }}" >> .env
-            echo "DB_ROOT_PWD=${{ secrets.DB_ROOT_PWD }}" >> .env
-            echo "DB_HOST=db" >> .env
-            echo "DB_PORT=3306" >> .env
-            echo "SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}" >> .env
-            
-            # 3. Build/Restart Containers
-            docker-compose up --build -d
-            
-            # 4. Django Housekeeping
-            # This moves the Vite files from /static/ to /static_root/ for Nginx
-            docker-compose exec -T web python manage.py migrate
-            docker-compose exec -T web python manage.py collectstatic --no-input
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}/django-app:latest
+
+      - name: Build and Push Nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          push: true
+          tags: ghcr.io/${{ github.repository }}/nginx-prod:latest
+
+  deploy:
+    # This job only runs if 'build' succeeds and the filter passed
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to GHCR on VM
+        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Recreate .env file from Secret
+        run: |
+          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
+          chmod 600 .env
+
+      - name: Load Environment Variables
+        run: |
+          # We use GITHUB_ENV to make variables available to all subsequent steps
+          grep -v '^#' .env >> $GITHUB_ENV
+
+      - name: Pull Latest Images
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+
+      - name: Run Database Migrations
+        run: |
+          docker run --rm \
+            --env-file .env \
+            ghcr.io/${{ github.repository }}/django-app:latest \
+            python manage.py migrate --noinput
+
+      - name: Deploy Swarm Stack
+        run: |
+          # The variables loaded in the 'Load Environment Variables' step
+          # are automatically available here for YAML interpolation.
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
