@@ -119,7 +119,10 @@ def streams_v2(request, track_id):
 
     return streamer(request, track_id)
 
-
+"""
+A simple test endpoint to verify that track retrieval and play counting works correctly, without involving the complexity of streaming or GCS. It also checks if the track's audio file exists in GCS or
+locally, and reports that back in the response for debugging purposes.
+"""
 def track_test(request, track_id):
     try:
         Track.objects.filter(id=track_id).update(plays=F('plays') + 1)

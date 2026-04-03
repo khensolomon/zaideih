@@ -1,6 +1,11 @@
 services:
   db:
     image: mysql:8.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - MYSQL_DATABASE=${DB_NAME}
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PWD}
@@ -23,6 +28,11 @@ services:
 
   web:
     image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
     ports: 
       - "${APP_PORT}:${APP_PORT}"
     volumes:
@@ -32,7 +42,6 @@ services:
     depends_on:
       - db
     healthcheck:
-      # CRITICAL for ZDD: Swarm uses this to know when the NEW container is ready
       test: ["CMD", "python", "manage.py", "healthcheck"]
       interval: 5s
       timeout: 3s
@@ -66,11 +75,8 @@ services:
     deploy:
       replicas: 2
       update_config:
-        # CRITICAL for ZDD: Start the new container before killing the old one
         order: start-first
-        # Only update one at a time so at least 1 (or 2) old ones stay alive
         parallelism: 1
-        # Wait for the healthcheck to pass before moving to the next container
         delay: 15s
         failure_action: rollback
         monitor: 30s
@@ -80,6 +86,11 @@ services:
 
   nginx:
     image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
     ports:
       - "80:80"
     volumes:
