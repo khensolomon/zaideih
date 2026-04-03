@@ -57,7 +57,7 @@ class Command(BaseCommand):
 
         # Initialize GCS Client
         client = storage.Client()
-        bucket = client.bucket(settings.GS_BUCKET_NAME)
+        bucket = client.bucket(settings.BUCKETNAME)
         
         # Base Local Directory: settings.STORAGE_DIR / 'music'
         base_local_dir = Path(settings.STORAGE_DIR) / catalog_config.DIR_MUSIC

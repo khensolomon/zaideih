@@ -6,6 +6,7 @@ import time
 from wsgiref.util import FileWrapper
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseForbidden, StreamingHttpResponse, Http404, FileResponse
+from urllib.parse import urlparse
 
 from django.db.models import F
 from django.conf import settings
@@ -70,6 +71,54 @@ def streams(request, track_id):
 
     return streamer(request, track_id)
 
+"""
+Streaming endpoint with multiple layers of protection to ensure only real browsers can access the audio, and that scrapers/bots are blocked at the door.
+Also supports HTTP Range requests for proper audio scrubbing in the player.
+"""
+def streams_v2(request, track_id):
+    """
+    Validates requests for audio media to prevent unauthorized 
+    scraping and hotlinking.
+    """
+
+    # Only active if DEBUG is True and the correct key is provided in the URL.
+    if settings.DEBUG:
+        bypass_value = request.GET.get('dev_bypass')
+        if bypass_value and bypass_value == settings.DEV_BYPASS_KEY:
+            return streamer(request, track_id)
+
+    meta = request.META
+    host = request.get_host()
+    user_agent = meta.get('HTTP_USER_AGENT', '').lower()
+    referer = meta.get('HTTP_REFERER')
+    fetch_dest = meta.get('HTTP_SEC_FETCH_DEST')
+
+    # 1. Scraper Client Filter
+    # Identifies and blocks common automated tools.
+    scrapers = ['curl', 'wget', 'python', 'go-http-client', 'libwww-perl', 'postman']
+    if any(s in user_agent for s in scrapers):
+        return Http404("Resource unavailable")
+
+    # 2. Origin Validation
+    # Ensures the request originates from the local domain.
+    if not referer or urlparse(referer).netloc != host:
+        return HttpResponseForbidden("Direct access restricted")
+
+    # 3. Request Destination Validation
+    # Validates that the request is initiated by a media element.
+    if fetch_dest and fetch_dest not in ['audio', 'empty']:
+        return Http404("Invalid request context")
+
+    # 4. RANGE HEADER CHECK (The "HTML5 Player" behavior)
+    # Real browsers almost always request a byte range to start playback.
+    # Standard scrapers usually just ask for the whole file at once.
+    if 'HTTP_RANGE' not in meta:
+        # Optional: You can be extra strict here, but some mobile browsers 
+        # might skip the range on the very first request.
+        pass 
+
+    return streamer(request, track_id)
+
 # Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
 def streamer(request, track_id):
     """
@@ -87,7 +136,7 @@ def streamer(request, track_id):
 
     try:
         client = storage.Client()
-        bucket = client.bucket(settings.GS_BUCKET_NAME)
+        bucket = client.bucket(settings.BUCKETNAME)
         
         # FIX: Use get_blob() instead of blob(). 
         # This securely fetches the file AND its size metadata in one API call.

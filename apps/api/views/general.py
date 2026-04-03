@@ -118,7 +118,7 @@ def stream_audio(request, track_id):
 
     try:
         client = storage.Client()
-        bucket = client.bucket(settings.GS_BUCKET_NAME)
+        bucket = client.bucket(settings.BUCKETNAME)
         
         # FIX: Use get_blob() instead of blob(). 
         # This securely fetches the file AND its size metadata in one API call.

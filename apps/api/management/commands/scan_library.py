@@ -75,11 +75,11 @@ class Command(BaseCommand):
 
         # --- MODE 1: CLOUD SCANNING ---
         if is_cloud:
-            self.stdout.write(self.style.SUCCESS(f"Scanning Scope: GCS Bucket '{settings.GS_BUCKET_NAME}' -> {catalog_config.DIR_MUSIC}/{src_arg}"))
+            self.stdout.write(self.style.SUCCESS(f"Scanning Scope: GCS Bucket '{settings.BUCKETNAME}' -> {catalog_config.DIR_MUSIC}/{src_arg}"))
             self.stdout.write("Fetching Cloud Directory Tree...")
             
             client = storage.Client()
-            bucket = client.bucket(settings.GS_BUCKET_NAME)
+            bucket = client.bucket(settings.BUCKETNAME)
             prefix = f"{catalog_config.DIR_MUSIC}/{src_arg}"
             
             blobs = bucket.list_blobs(prefix=prefix)

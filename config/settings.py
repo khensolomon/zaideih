@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+load_dotenv(interpolate=True)
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,7 +24,12 @@ sys.path.insert(0, APPS_DIR)
 SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 
 # --- SECURITY WARNING: don't run with debug turned on in production! ---
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+# DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 'yes']
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
+
+# Default to 8000 if not found
+APP_PORT = os.environ.get('APP_PORT', '8000')
 
 ALLOWED_HOSTS = ['*']
 
@@ -128,8 +135,8 @@ DJANGO_VITE = {
 
 
 # --- GOOGLE CLOUD CONFIGURATION ---
-GS_BUCKET_NAME = os.environ.get('GS_BUCKET_NAME')
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('GS_CREDENTIALS')
+BUCKETNAME = os.environ.get('BUCKETNAME')
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED')
 
 # --- CORS SETTINGS ---
 CORS_ALLOW_ALL_ORIGINS = True
