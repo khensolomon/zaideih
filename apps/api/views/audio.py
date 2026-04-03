@@ -127,17 +127,17 @@ def track_test(request, track_id):
     except Track.DoesNotExist:
         raise Http404("Track not found")
 
-    client = storage.Client()
-    bucket = client.bucket(settings.BUCKETNAME)
+    # client = storage.Client()
+    # bucket = client.bucket(settings.BUCKETNAME)
     
     # FIX: Use get_blob() instead of blob(). 
     # This securely fetches the file AND its size metadata in one API call.
-    blob = bucket.get_blob(f"{catalog_config.DIR_MUSIC}/{full_track_path}")
+    # blob = bucket.get_blob(f"{catalog_config.DIR_MUSIC}/{full_track_path}")
 
     blob_test = 'local'
 
-    if blob is not None:
-        blob_test = 'gcs'
+    # if blob is not None:
+    #     blob_test = 'gcs'
 
     full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
     return HttpResponse(f"ID: {track_id}, Plays: {track.plays} Path: {full_track_path} Blob: {blob_test}, bucket: {settings.BUCKETNAME}")
