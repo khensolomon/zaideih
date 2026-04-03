@@ -86,7 +86,6 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          # Load env for this shell context
           set -a
           [ -f .env ] && . .env
           set +a
@@ -101,16 +100,18 @@ jobs:
           done
 
           # 1. FORCE SQL IMPORT
+          # We use -p followed DIRECTLY by the password (no space). 
+          # This is the most reliable way to bypass "Access Denied" in scripts.
           SQL_FILE="${DB_DIR}/latest.sql"
           DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
           
           if [ -f "$SQL_FILE" ]; then
             echo "Found $SQL_FILE. Importing..."
-            # Use MYSQL_PWD environment variable inside docker exec to handle password correctly
-            docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" < "$SQL_FILE"
+            # Stream the file into the container and provide the password directly to the mysql command
+            cat "$SQL_FILE" | docker exec -i $DB_CONTAINER mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME"
             echo "Import complete."
           else
-            echo "!!! ERROR: latest.sql not found at $SQL_FILE !!!"
+            echo "Note: latest.sql not found at $SQL_FILE. Relying on existing volume data."
           fi
 
           # 2. RUN DJANGO MIGRATIONS
@@ -118,7 +119,7 @@ jobs:
 
           # 3. VERIFY IMPORT
           echo "--- DATA VERIFICATION ---"
-          docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
+          docker exec -i $DB_CONTAINER mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
 
       - name: Verify Healthy Deployment
         run: |
