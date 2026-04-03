@@ -1,13 +1,14 @@
 from django.db import models
 
 class Lang(models.Model):
-    id = models.IntegerField(primary_key=True, default=0)
+    # id = models.IntegerField(primary_key=True, default=0)
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=50)
     dir = models.TextField()
 
     class Meta:
         db_table = 'lang'
-        managed = False # Binds to existing MySQL table
+        managed = True # Binds to existing MySQL table
 
     def __str__(self):
         return self.name
@@ -21,7 +22,7 @@ class File(models.Model):
 
     class Meta:
         db_table = 'file'
-        managed = False
+        managed = True
 
     def __str__(self):
         return self.dir
@@ -36,7 +37,7 @@ class Visit(models.Model):
 
     class Meta:
         db_table = 'visits'
-        managed = False
+        managed = True
 
     def __str__(self):
         return self.ip
