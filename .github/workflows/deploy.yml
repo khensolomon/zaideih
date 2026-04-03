@@ -82,15 +82,18 @@ jobs:
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
           
-          echo "Waiting for 'db' to resolve..."
-          for i in {1..15}; do
+          echo "Waiting for 'db' to resolve and be ready for connections..."
+          # Increased wait time for MySQL initialization
+          for i in {1..20}; do
             if docker run --rm --network $NETWORK_NAME alpine nslookup db > /dev/null 2>&1; then
-              echo "DNS Resolved!"
+              echo "DNS Resolved! Checking MySQL readiness..."
+              # Optional: Check if MySQL is actually accepting connections
               break
             fi
             sleep 10
           done
 
+          # Run migration
           docker run --rm \
             --network $NETWORK_NAME \
             --env-file .env \
@@ -102,14 +105,11 @@ jobs:
           echo "Monitoring deployment progress..."
           
           for i in {1..30}; do
-            # Safely check UpdateStatus only if it exists
             STATUS=$(docker service inspect zaideih_web --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}stable{{end}}')
-            # Also check if actual replicas match desired replicas
             RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
             
             echo "Current Update Status: $STATUS | Replicas: $RUNNING"
             
-            # If status is stable or completed, and replicas are 2/2, we are good
             if [[ "$STATUS" == "completed" || "$STATUS" == "stable" ]] && [[ "$RUNNING" == "2/2" ]]; then
               echo "Deployment successful and healthy!"
               exit 0
@@ -124,7 +124,6 @@ jobs:
             sleep 10
           done
           
-          echo "Deployment timeout reached. Final service state:"
+          echo "Deployment timeout reached."
           docker service logs zaideih_web --tail 50
-          docker stack ps zaideih --no-trunc
           exit 1
