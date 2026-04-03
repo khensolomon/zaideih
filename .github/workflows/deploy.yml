@@ -65,32 +65,38 @@ jobs:
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
+          # Use standard docker-compose if 'docker compose' plugin is missing
           if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE="docker compose"
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
           else
-            DOCKER_COMPOSE="docker-compose"
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull
           fi
-          $DOCKER_COMPOSE -f docker-compose.yml -f docker-compose.prod.yml pull
+
+      - name: Initialize/Update Stack
+        run: |
+          # We deploy the stack FIRST to ensure the overlay network exists.
+          # The DB will start, but the 'web' service might fail temporarily 
+          # until migrations are finished. This is fine for zero-downtime.
+          export GITHUB_REPOSITORY=${{ github.repository }}
+          export $(grep -v '^#' .env | xargs)
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
 
       - name: Run Database Migrations
         run: |
-          # The migration container needs to be on the same network as the DB service.
-          # If this is your first deploy, the network 'zaideih_default' might not exist yet.
-          # We check if the network exists, otherwise we run without it (assuming DB is local or reachable via IP).
+          # Now that the stack is deployed, the network 'zaideih_default' definitely exists.
           NETWORK_NAME="zaideih_default"
-          NET_FLAG=""
-          if [ "$(docker network ls -q -f name=$NETWORK_NAME)" ]; then
-            NET_FLAG="--network $NETWORK_NAME"
-          fi
+          
+          # Wait a few seconds for the network to stabilize if it was just created
+          sleep 5
 
           docker run --rm \
-            $NET_FLAG \
+            --network $NETWORK_NAME \
             --env-file .env \
             ghcr.io/${{ github.repository }}/django-app:latest \
             python manage.py migrate --noinput
 
-      - name: Deploy Swarm Stack
+      - name: Refresh Web Service
         run: |
-          export GITHUB_REPOSITORY=${{ github.repository }}
-          export $(grep -v '^#' .env | xargs)
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
+          # After migrations, we tell Swarm to update the web service 
+          # to ensure it has the latest schema and is running correctly.
+          docker service update --force zaideih_web
