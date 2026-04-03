@@ -81,11 +81,9 @@ jobs:
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations & Data Import
+      - name: Wait for MySQL readiness
         run: |
           NETWORK_NAME="zaideih_default"
-          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
-          
           set -a
           [ -f .env ] && . .env
           set +a
@@ -99,32 +97,51 @@ jobs:
             sleep 10
           done
 
-          # 1. FORCE SQL IMPORT
-          # SQL_FILE="${DB_DIR}/latest.sql"
-          # DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
-          
-          # if [ -f "$SQL_FILE" ]; then
-          #   echo "Found $SQL_FILE. Importing..."
-            
-          #   # Create a temporary config file inside the container to handle auth safely
-          #   docker exec -u root $DB_CONTAINER sh -c "printf '[client]\nuser=root\npassword=\"$MYSQL_ROOT_PASSWORD\"\n' > /tmp/temp_import.cnf"
-            
-          #   # Run import using the config file
-          #   docker exec -i $DB_CONTAINER mysql --defaults-extra-file=/tmp/temp_import.cnf "$DB_NAME" < "$SQL_FILE"
-            
-          #   # Cleanup config
-          #   docker exec $DB_CONTAINER rm /tmp/temp_import.cnf
-          #   echo "Import complete."
-          # else
-          #   echo "Note: latest.sql not found at $SQL_FILE. Relying on existing volume data."
-          # fi
+      # - name: Force SQL Import
+      #   run: |
+      #     set -a
+      #     [ -f .env ] && . .env
+      #     set +a
 
-          # 2. RUN DJANGO MIGRATIONS
+      #     SQL_FILE="${DB_DIR}/latest.sql"
+      #     DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
+          
+      #     if [ -f "$SQL_FILE" ]; then
+      #       echo "Found $SQL_FILE. Importing..."
+            
+      #       # Create a temporary config file inside the container to handle auth safely
+      #       docker exec -u root $DB_CONTAINER sh -c "printf '[client]\nuser=root\npassword=\"$MYSQL_ROOT_PASSWORD\"\n' > /tmp/temp_import.cnf"
+            
+      #       # Run import using the config file
+      #       docker exec -i $DB_CONTAINER mysql --defaults-extra-file=/tmp/temp_import.cnf "$DB_NAME" < "$SQL_FILE"
+            
+      #       # Cleanup config
+      #       docker exec $DB_CONTAINER rm /tmp/temp_import.cnf
+      #       echo "Import complete."
+      #     else
+      #       echo "Note: latest.sql not found at $SQL_FILE. Relying on existing volume data."
+      #     fi
+
+      - name: Run Database Migrations
+        run: |
+          NETWORK_NAME="zaideih_default"
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
+          
+          set -a
+          [ -f .env ] && . .env
+          set +a
+
           docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
-          # 3. VERIFY IMPORT
+      - name: Verify Data Import
+        run: |
+          set -a
+          [ -f .env ] && . .env
+          set +a
+
+          DB_CONTAINER=$(docker ps -q -f name=zaideih_db)
           echo "--- DATA VERIFICATION ---"
-          # docker exec -i $DB_CONTAINER mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
+          docker exec -i $DB_CONTAINER mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT COUNT(*) as album_count FROM album;" || echo "Table 'album' not found."
 
       - name: Verify Healthy Deployment
         run: |

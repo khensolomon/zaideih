@@ -195,7 +195,7 @@ def _streamer_from_gcs(request, blob, track):
             response = HttpResponse(data, status=206, content_type='audio/mpeg')
             response['Content-Length'] = str(length)
             response['Content-Range'] = f'bytes {first_byte}-{last_byte}/{size}'
-            response['Content-Play'] = str(track.plays)
+            response['Content-Plays'] = str(track.plays)
             return response
 
     def file_iterator():
@@ -205,7 +205,7 @@ def _streamer_from_gcs(request, blob, track):
 
     response = StreamingHttpResponse(file_iterator(), content_type='audio/mpeg')
     response['Content-Length'] = str(size)
-    response['Content-Play'] = str(track.plays)
+    response['Content-Plays'] = str(track.plays)
     response['Accept-Ranges'] = 'bytes'
     return response
 
@@ -236,12 +236,12 @@ def _streamer_from_local_disk(request, track, full_track_path):
             response = HttpResponse(data, status=206, content_type='audio/mpeg')
             response['Content-Length'] = str(length)
             response['Content-Range'] = f'bytes {first_byte}-{last_byte}/{size}'
-            response['Content-Play'] = str(track.plays)
+            response['Content-Plays'] = str(track.plays)
             return response
 
     f = open(local_path, 'rb')
     response = StreamingHttpResponse(FileWrapper(f, 8192), content_type='audio/mpeg')
     response['Content-Length'] = str(size)
-    response['Content-Play'] = str(track.plays)
+    response['Content-Plays'] = str(track.plays)
     response['Accept-Ranges'] = 'bytes'
     return response
