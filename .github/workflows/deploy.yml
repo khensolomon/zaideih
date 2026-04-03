@@ -63,21 +63,20 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
-          # Export all variables from .env to the shell session
           set -a
           [ -f .env ] && . .env
           set +a
           
           export GITHUB_REPOSITORY=${{ github.repository }}
           export DB_DIR=$PWD/mysql
-          # Ensure dirs exist
+          export STORAGE_DIR=$PWD/storage
+          export MEDIA_DIR=$PWD/media
           mkdir -p $DB_DIR $STORAGE_DIR $MEDIA_DIR
           
           docker compose -f docker-compose.prod.yml pull
-          # Now 'docker stack deploy' can find the variables to interpolate the YAML
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations
+      - name: Run Database Migrations & Data Import
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
@@ -86,16 +85,35 @@ jobs:
           [ -f .env ] && . .env
           set +a
           
-          echo "Waiting for MySQL..."
+          echo "Waiting for MySQL readiness..."
           for i in {1..20}; do
             if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root --password="$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
-              echo "MySQL Ready!"
+              echo "MySQL is ready!"
               break
             fi
             sleep 10
           done
 
+          # 1. FORCE SQL IMPORT
+          # We use the service name 'db' via the network or find the container ID
+          SQL_FILE="$PWD/mysql/latest.sql"
+          if [ -f "$SQL_FILE" ]; then
+            echo "Found $SQL_FILE. Importing schema and data..."
+            # Note: We pipe the file directly into the mysql client
+            cat "$SQL_FILE" | docker exec -i $(docker ps -q -f name=zaideih_db) mysql -u root --password="$MYSQL_ROOT_PASSWORD" "$DB_NAME"
+            echo "Import complete."
+          else
+            echo "No latest.sql found in $PWD/mysql/ - skipping import."
+          fi
+
+          # 2. RUN DJANGO MIGRATIONS
+          # This will create Django internal tables (session, admin, auth) 
+          # and link your 'album' table if you have the models/migrations ready.
           docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
+
+          # 3. VERIFY IMPORT
+          echo "--- DATA VERIFICATION ---"
+          docker exec -i $(docker ps -q -f name=zaideih_db) mysql -u root --password="$MYSQL_ROOT_PASSWORD" "$DB_NAME" -e "SELECT 'album_count' as '', COUNT(*) FROM album;" || echo "Table 'album' not found yet."
 
       - name: Verify Healthy Deployment
         run: |
