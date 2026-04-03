@@ -63,8 +63,11 @@ jobs:
 
       - name: Initialize/Update Stack
         run: |
+          # Load variables from .env to be used for stack interpolation
           export $(grep -v '^#' .env | xargs)
           export GITHUB_REPOSITORY=${{ github.repository }}
+          
+          # Setup Absolute Paths for Swarm
           export DB_DIR=$PWD/mysql
           export STORAGE_DIR=$PWD/storage
           export MEDIA_DIR=$PWD/media
@@ -77,6 +80,8 @@ jobs:
         run: |
           NETWORK_NAME="zaideih_default"
           IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
+          
+          # Load env for MySQL credentials and app settings
           set -a
           [ -f .env ] && . .env
           set +a
@@ -97,6 +102,7 @@ jobs:
         run: |
           echo "Monitoring deployment progress..."
           for i in {1..20}; do
+            # Safely check UpdateStatus
             STATUS=$(docker service inspect zaideih_web --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{else}}stable{{end}}')
             RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
             echo "Current Status: $STATUS | Replicas: $RUNNING"
@@ -106,17 +112,15 @@ jobs:
               exit 0
             fi
             
-            if [[ "$STATUS" == "failed" ]]; then
+            if [[ "$STATUS" == "failed" || "$STATUS" == "rollback_completed" ]]; then
               echo "Update failed. Checking logs..."
-              docker service logs zaideih_web --tail 50
+              docker service logs zaideih_web --tail 100
               exit 1
             fi
             sleep 15
           done
           
-          echo "--- FINAL DIAGNOSTIC: Why are replicas 0/2? ---"
-          echo "Service Status:"
+          echo "--- FINAL DIAGNOSTIC: Deployment Timeout ---"
           docker service ps zaideih_web --no-trunc
-          echo "Service Logs:"
           docker service logs zaideih_web --tail 100
           exit 1
