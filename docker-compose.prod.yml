@@ -1,42 +1,102 @@
-version: '3.8'
+name: Build and Deploy
 
-services:
-  db:
-    restart: "" # Swarm uses deploy.restart_policy
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: on-failure
+on:
+  push:
+    branches: [ master ]
 
-  web:
-    build: ""
-    image: ghcr.io/${GITHUB_REPOSITORY}/django-app:latest
-    restart: ""
-    # Override complex depends_on from base file with a simple list
-    depends_on:
-      - db
-    deploy:
-      replicas: 2
-      update_config:
-        parallelism: 1
-        order: start-first
-        failure_action: rollback
-        delay: 10s
-      restart_policy:
-        condition: on-failure
+jobs:
+  build:
+    if: startsWith(github.event.head_commit.message, 'deploy:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  nginx:
-    build: ""
-    image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:latest
-    restart: ""
-    # FIXED: Overriding complex depends_on for Nginx as well
-    depends_on:
-      - web
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
-# Note: Swarm handles cross-service communication via the stack network automatically.
+      - name: Install & Build Frontend
+        run: |
+          npm install
+          npm run build 
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Django App
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}/django-app:latest
+
+      - name: Build and Push Nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          push: true
+          tags: ghcr.io/${{ github.repository }}/nginx-prod:latest
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to GHCR on VM
+        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Recreate .env file from Secret
+        run: |
+          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
+          chmod 600 .env
+
+      - name: Pull Latest Images
+        run: |
+          # Use standalone prod file to avoid merge conflicts with base file
+          export GITHUB_REPOSITORY=${{ github.repository }}
+          export $(grep -v '^#' .env | xargs)
+          
+          if docker compose version >/dev/null 2>&1; then
+            DOCKER_COMPOSE="docker compose"
+          else
+            DOCKER_COMPOSE="docker-compose"
+          fi
+          
+          $DOCKER_COMPOSE -f docker-compose.prod.yml pull
+
+      - name: Initialize/Update Stack
+        run: |
+          # Deploying with ONLY the standalone production file
+          export GITHUB_REPOSITORY=${{ github.repository }}
+          export $(grep -v '^#' .env | xargs)
+          docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
+
+      - name: Run Database Migrations
+        run: |
+          # Network name is usually [stack_name]_default
+          NETWORK_NAME="zaideih_default"
+          
+          # Give the network and DB a moment to initialize if this is a fresh stack
+          sleep 10
+
+          docker run --rm \
+            --network $NETWORK_NAME \
+            --env-file .env \
+            ghcr.io/${{ github.repository }}/django-app:latest \
+            python manage.py migrate --noinput
+
+      - name: Refresh Web Service
+        run: |
+          # Ensure the web service picks up migration changes and healthy state
+          docker service update --force zaideih_web
