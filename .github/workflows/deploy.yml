@@ -29,7 +29,6 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          # Use the explicit context to avoid interpolation errors
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -66,14 +65,11 @@ jobs:
         run: |
           export GITHUB_REPOSITORY=${{ github.repository }}
           export $(grep -v '^#' .env | xargs)
-          
           if docker compose version >/dev/null 2>&1; then
-            DOCKER_COMPOSE="docker compose"
+            docker compose -f docker-compose.prod.yml pull
           else
-            DOCKER_COMPOSE="docker-compose"
+            docker-compose -f docker-compose.prod.yml pull
           fi
-          
-          $DOCKER_COMPOSE -f docker-compose.prod.yml pull
 
       - name: Initialize/Update Stack
         run: |
@@ -83,8 +79,9 @@ jobs:
 
       - name: Run Database Migrations
         run: |
+          # Use the attachable network created by the stack
           NETWORK_NAME="zaideih_default"
-          sleep 10
+          sleep 15 # Increased sleep to ensure DB is fully ready
 
           docker run --rm \
             --network $NETWORK_NAME \

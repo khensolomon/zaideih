@@ -74,6 +74,8 @@ services:
 networks:
   default:
     driver: overlay
+    # FIXED: This allows 'docker run' to attach to the Swarm network for migrations
+    attachable: true
 
 volumes:
   mysql_data:
