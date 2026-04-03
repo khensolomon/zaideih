@@ -77,17 +77,30 @@ jobs:
           export $(grep -v '^#' .env | xargs)
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
 
-      - name: Run Database Migrations
+      - name: Run Database Migrations (with Retry)
         run: |
-          # Use the attachable network created by the stack
           NETWORK_NAME="zaideih_default"
-          sleep 15 # Increased sleep to ensure DB is fully ready
+          
+          echo "Waiting for database service 'db' to become discoverable..."
+          
+          # We try to run the migration up to 5 times with a 10-second gap
+          # This handles the delay while Swarm brings up the MySQL container
+          for i in {1..6}; do
+            echo "Attempt $i: Running migrations..."
+            if docker run --rm \
+              --network $NETWORK_NAME \
+              --env-file .env \
+              ghcr.io/${{ github.repository }}/django-app:latest \
+              python manage.py migrate --noinput; then
+              echo "Migrations successful!"
+              exit 0
+            fi
+            echo "Database not ready yet. Sleeping 10s..."
+            sleep 10
+          done
 
-          docker run --rm \
-            --network $NETWORK_NAME \
-            --env-file .env \
-            ghcr.io/${{ github.repository }}/django-app:latest \
-            python manage.py migrate --noinput
+          echo "Error: Migrations failed after multiple attempts."
+          exit 1
 
       - name: Refresh Web Service
         run: |

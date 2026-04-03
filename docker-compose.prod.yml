@@ -74,7 +74,7 @@ services:
 networks:
   default:
     driver: overlay
-    # FIXED: This allows 'docker run' to attach to the Swarm network for migrations
+    # CRITICAL: This allows 'docker run' to join the network
     attachable: true
 
 volumes:
