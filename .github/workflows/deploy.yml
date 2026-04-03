@@ -76,7 +76,7 @@ jobs:
           echo "STORAGE_DIR: $STORAGE_DIR"
           
           # 3. Create directories
-          # mkdir -p "$DB_DIR" "$STORAGE_DIR" "$MEDIA_DIR"
+          mkdir -p "$DB_DIR" "$STORAGE_DIR" "$MEDIA_DIR"
           
           docker compose -f docker-compose.prod.yml pull
           docker stack deploy -c docker-compose.prod.yml --with-registry-auth zaideih
@@ -106,6 +106,7 @@ jobs:
           
           if [ -f "$SQL_FILE" ]; then
             echo "Found $SQL_FILE. Importing..."
+            # Use MYSQL_PWD environment variable inside docker exec to handle password correctly
             docker exec -i -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" $DB_CONTAINER mysql -u root "$DB_NAME" < "$SQL_FILE"
             echo "Import complete."
           else
