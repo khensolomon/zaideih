@@ -63,9 +63,12 @@ jobs:
 
       - name: Pull Latest Images
         run: |
-          # Use --env-file flag directly with docker compose pull
+          # Use allexport to safely load .env variables for the pull command
+          set -o allexport
+          source .env
+          set +o allexport
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-          docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 
       - name: Run Database Migrations
         run: |
@@ -76,8 +79,9 @@ jobs:
 
       - name: Deploy Swarm Stack
         run: |
-          # For Swarm, we must export variables to the shell. 
-          # We use a safer 'export' that handles common .env formatting better.
+          # Use allexport for stack deployment interpolation
+          set -o allexport
+          source .env
+          set +o allexport
           export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-          export $(envsubst < .env | grep -v '^#' | xargs)
-          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth zaideih
+          docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml --with-registry-auth my_app
