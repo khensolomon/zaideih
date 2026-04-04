@@ -7,8 +7,8 @@ import vitePluginDynamicSvg from "./svg-loader.js";
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const isProduction = mode === "production";
-	const devServerPort = 3011; // Port for Vite's dev server
-	const djangoPort = env.APP_PORT || 3010;
+	const portCore = env.APP_PORT || 3010;
+	const portVite = 3011; // Port for Vite's dev server
 
 	return {
 		// 1. ADD THIS LINE: It must exactly match your Django STATIC_URL
@@ -32,14 +32,14 @@ export default defineConfig(({ mode }) => {
 
 		// Translates your devServer setup
 		server: {
-			port: devServerPort,
+			port: portVite,
 			// host: "0.0.0.0",
 			cors: true, // Translates your Access-Control-Allow-Origin setup
 			strictPort: true,
 			host: true,
 			// 1. ADD THIS MAGIC LINE:
 			// It forces all asset URLs inside CSS to point to the Vite server during dev
-			origin: `http://localhost:${devServerPort}`,
+			origin: `http://localhost:${portVite}`,
 			watch: {
 				// Needed if your OS (Windows/macOS) doesn't propagate file events to Docker
 				usePolling: true,
@@ -48,18 +48,18 @@ export default defineConfig(({ mode }) => {
 				// Tell the browser to connect to Nginx for HMR updates
 				// clientPort: 80,
 				// Tell the browser to connect to Vite directly for HMR updates
-				clientPort: devServerPort,
+				clientPort: portVite,
 			},
 			proxy: {
 				// 1. Explicitly catch the exact root URL and send it to Django
 				"^/$": {
-					target: `http://web:${djangoPort}`,
+					target: `http://web:${portCore}`,
 					changeOrigin: true,
 				},
 				// 2. Your existing rules for other Django paths
-				// Proxies Django requests so you only need to look at port 3011
+				// Proxies Django requests so you only need to look at port 3021
 				"^/(admin|api|media)": {
-					target: `http://web:${djangoPort}`,
+					target: `http://web:${portCore}`,
 					changeOrigin: true,
 				},
 			},
@@ -95,8 +95,7 @@ export default defineConfig(({ mode }) => {
 				input: {
 					main: path.resolve(__dirname, "./index.js"),
 					"sw-register": path.resolve(__dirname, "../script/sw-register.js"),
-					"sw-installer": path.resolve(__dirname, "../script/sw-installer.js"),
-					"sw-album": path.resolve(__dirname, "../script/sw-album.js"),
+					"sw-installer": path.resolve(__dirname, "../script/sw-installer.js")
 				},
 				output: {
 					// // Translates your filename and chunkFilename logic exactly
