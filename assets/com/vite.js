@@ -7,8 +7,8 @@ import vitePluginDynamicSvg from "./svg-loader.js";
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const isProduction = mode === "production";
-	const devServerPort = 8081;
-	const djangoPort = env.APP_PORT || 8000;
+	const devServerPort = 3011; // Port for Vite's dev server
+	const djangoPort = env.APP_PORT || 3010;
 
 	return {
 		// 1. ADD THIS LINE: It must exactly match your Django STATIC_URL
@@ -57,7 +57,7 @@ export default defineConfig(({ mode }) => {
 					changeOrigin: true,
 				},
 				// 2. Your existing rules for other Django paths
-				// Proxies Django requests so you only need to look at port 8081
+				// Proxies Django requests so you only need to look at port 3011
 				"^/(admin|api|media)": {
 					target: `http://web:${djangoPort}`,
 					changeOrigin: true,

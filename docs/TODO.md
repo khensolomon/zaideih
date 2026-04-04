@@ -189,7 +189,7 @@ direct: api/audio/3606?d1v=l1
 
 ```json
 {
-  host: 'localhost:8081',
+  host: 'localhost:3010',
   connection: 'keep-alive',
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (K
 HTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
@@ -198,7 +198,7 @@ HTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
   'sec-fetch-site': 'same-origin',
   'sec-fetch-mode': 'no-cors',
   'sec-fetch-dest': 'video',
-  referer: 'http://localhost:8081/api/audio/3606?d1v=l1',
+  referer: 'http://localhost:3010/api/audio/3606?d1v=l1',
   'accept-language': 'en-US,en;q=0.9,nb-NO;q=0.8,nb;q=0.7',
   cookie: '_ga=GA1.1.1439059404.1607746462; _gid=GA1.1.370901501.1608006104; key
 ofcookie=valueofcookie-1',
@@ -206,7 +206,7 @@ ofcookie=valueofcookie-1',
 }
 
 {
-  host: 'localhost:8081',
+  host: 'localhost:3010',
   connection: 'keep-alive',
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (K
 HTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
@@ -215,7 +215,7 @@ HTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
   'sec-fetch-site': 'same-origin',
   'sec-fetch-mode': 'no-cors',
   'sec-fetch-dest': 'audio',
-  referer: 'http://localhost:8081/artist/Ciakhai',
+  referer: 'http://localhost:3010/artist/Ciakhai',
   'accept-language': 'en-US,en;q=0.9,nb-NO;q=0.8,nb;q=0.7',
   cookie: '_ga=GA1.1.1439059404.1607746462; _gid=GA1.1.370901501.1608006104; key
 ofcookie=valueofcookie-1',

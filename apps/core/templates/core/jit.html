@@ -80,7 +80,7 @@
                     
                     // STEP 1: Ask Django for the VIP Ticket.
                     // We point this directly to where Django runs locally.
-                    const response = await fetch(`http://localhost:8000/api/audio/${song.id}/request`);
+                    const response = await fetch(`http://localhost:3010/api/audio/${song.id}/request`);
                     
                     if (!response.ok) {
                         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
@@ -92,7 +92,7 @@
                     // Since Django returns a relative path (e.g., "/api/audio/1?..."), 
                     // we need to attach the localhost domain to it so the browser knows where to go.
                     const audioUrl = data.url.startsWith('/') 
-                        ? `http://localhost:8000${data.url}` 
+                        ? `http://localhost:3010${data.url}` 
                         : data.url;
 
                     console.log(`Django gave us URL: ${audioUrl}`);

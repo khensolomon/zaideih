@@ -28,8 +28,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 # DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 'yes']
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
-# Default to 8000 if not found
-APP_PORT = os.environ.get('APP_PORT', '8000')
+# Default to 3010 if not found
+APP_PORT = os.environ.get('APP_PORT', '3010')
 
 ALLOWED_HOSTS = ['*']
 
@@ -84,6 +84,12 @@ TEMPLATES = [
     },
 ]
 
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+    },
+}
+
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database Setup (Mapped directly from your .env)
@@ -128,7 +134,7 @@ STATICFILES_DIRS = [
 DJANGO_VITE = {
   "default": {
     "dev_mode": DEBUG,
-    "dev_server_port": 8081,
+    "dev_server_port": 3011, # Must match Vite's dev server port
     "manifest_path": os.path.join(BASE_DIR, STATIC_URL, ".vite", "manifest.json"),
   }
 }

@@ -29,7 +29,7 @@ services:
       - prod
 
   frontend:
-    image: node:22
+    image: node:24-alpine
     working_dir: /code
     # command: npm run dev
     # command: npm run dev -- --host 0.0.0.0
@@ -40,7 +40,7 @@ services:
       - .:/code
       - frontend_node_modules:/code/node_modules # Changed to a NAMED volume
     ports:
-      - "8081:8081"
+      - "3011:3011"
 
 volumes:
   frontend_node_modules: # Define the named volume here
