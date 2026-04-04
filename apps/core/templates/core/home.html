@@ -1,61 +1,60 @@
-{% load static %}
-{% load django_vite %}
-{% comment %} Keep this line at the top {% endcomment %}
-<!DOCTYPE html>
+{% load static %} {% load django_vite %}
+<!doctype html>
 <html lang="en">
 {% block head %}
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="index, follow">
-    <meta name="theme-color" content="#5a5a5a">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#5a5a5a" />
 
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="{{ appName }}">
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="{{ appName }}" />
 
     {% if title %}
     <title>{{ title }}</title>
-    {% endif %}
-    {% if keywords %}
-    <meta name="keywords" content="{{ keywords }}">
-    {% endif %}
-    {% if description %}
-    <meta name="description" content="{{ description }}" data-env="{{ environment }}">
+    {% endif %} {% if keywords %}
+    <meta name="keywords" content="{{ keywords }}" />
+    {% endif %} {% if description %}
+    <meta name="description" content="{{ description }}" data-env="{{ environment }}" />
     {% endif %}
     <meta name="application-name" content="{{ appName }}" data-version="{{ appVersion }}" data-album="{{ raw.album }}"
-        data-artist="{{ raw.artist }}" data-genre="{{ raw.genre }}" data-lang="{{ raw.lang }}">
+        data-artist="{{ raw.artist }}" data-genre="{{ raw.genre }}" data-lang="{{ raw.lang }}" />
 
-    <base href="/">
-    <link rel="api" href="api">
+    <base href="/" />
+    <link rel="api" href="api" />
 
-	{% if revised %}
-	<meta name="revised" content="{{ revised }}">{% endif %}
+    {% if revised %}
+    <meta name="revised" content="{{ revised }}" />
+    {% endif %}
 
-	<link rel="apple-touch-icon" sizes="180x180" href="{% static 'apple-touch-icon.png' %}">
-	<link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon.png' %}">
-	<link rel="manifest" href="{% static 'app.webmanifest' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'apple-touch-icon.png' %}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon.png' %}" />
+    <link rel="manifest" href="{% static 'app.webmanifest' %}" />
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-65TTKMZEGC"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
-        function gtag() { dataLayer.push(arguments); }
-        gtag('js', new Date());
-        gtag('config', 'G-65TTKMZEGC');
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+        gtag("js", new Date());
+        gtag("config", "G-65TTKMZEGC");
     </script>
     {% vite_hmr_client %}
-
 </head>
 {% endblock %}
 
 <body class="{{ pageClass|default:'zaideih' }}">
     <noscript>
         <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PBZSB96" height="0" width="0"
-            style="display:none;visibility:hidden"></iframe>
+            style="display: none; visibility: hidden"></iframe>
     </noscript>
     <!-- Mount point for SPA -->
     <div id="app"></div>
     {% vite_asset 'index.js' %}
 </body>
+
 </html>
