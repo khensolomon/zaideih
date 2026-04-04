@@ -8,8 +8,8 @@ ifneq (,$(wildcard ./.env))
 endif
 
 # --- CONFIGURATION ---
-# Check if docker-compose.prod.yml exists
-PROD_CONF := $(wildcard docker-compose.prod.yml)
+# Check if docker.production.yml exists
+PROD_CONF := $(wildcard docker.production.yml)
 PROD_FLAG := $(if $(PROD_CONF),-f $(PROD_CONF),)
 
 # Capture all arguments after the first word
@@ -36,7 +36,7 @@ production: ## Production Mode: Uses base + prod (if exists)
 	@echo "Running in Production Mode (Prod config detected: $(if $(PROD_CONF),Yes,No))"
 
 development: ## Development Mode: Uses base + dev config
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d $(EXTRA_ARGS)
+	docker compose -f docker-compose.yml -f docker.development.yml up -d $(EXTRA_ARGS)
 	docker compose exec web python manage.py makemigrations
 	docker compose exec web python manage.py migrate
 	@echo "Running in Development Mode"
@@ -71,7 +71,7 @@ run: ## Docker Run: Run a command in a specific service (e.g., 'make run fronten
 	docker compose run --rm $(EXTRA_ARGS)
 
 ssh-dev: ## SSH into the development container
-	ssh -t $(SSH_USER)@$(SSH_HOST)
+	ssh $(SSH_USER)@$(SSH_HOST)
 
 # --- UTILITY / TESTING ---
 

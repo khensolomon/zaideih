@@ -4,6 +4,7 @@ static/*
 !static/README.md
 /cache/*
 !/cache/README.md
+frontend/*
 
 
 # Byte-compiled / optimized / DLL files

@@ -7,8 +7,6 @@ services:
       - MYSQL_DATABASE=${DB_NAME}
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PWD}
       - MYSQL_PASSWORD=${DB_PWD}
-    # ports:
-    #   - "3306:3306"
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
       interval: 10s
@@ -19,7 +17,7 @@ services:
         aliases:
           - localhost
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_volume:/var/lib/mysql
       - ${DB_DIR}:/docker-entrypoint-initdb.d:ro
 
   web:
@@ -27,12 +25,9 @@ services:
     restart: always
     env_file: .env
     ports: 
-      - "${APP_PORT}:${APP_PORT}" # Host:Container
+      - "${APP_PORT}:${APP_PORT}"
     user: "${UID:-1000}:${GID:-1000}"
-
     volumes:
-      # Format is HOST_PATH : CONTAINER_PATH
-      # Changed: Use current folder (.) instead of /var/www/zaideih
       - .:/code
       - static_volume:/code/static
       - storage_volume:${STORAGE_DIR}:rw
@@ -41,34 +36,26 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      # test: ["CMD-SHELL", "curl -f http://localhost:${APP_PORT}/ || exit 1"]
-      # test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${APP_PORT}/ || exit 1"]
-      # test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${APP_PORT}/')"]
-      # test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:${APP_PORT}/')"
       test: ["CMD", "python", "manage.py", "healthcheck"]
-      # This command first checks if the PORT is open, 
-      # then runs the Django logic. Both must pass.
-      # test: python3 -c "import socket; s = socket.socket(); s.connect(('localhost', int('${APP_PORT}')))" && python3 manage.py healthcheck
-      interval: 10s       # Check every 10 seconds instead of 30
-      timeout: 3s         # If manage.py takes >3s, something is wrong
-      retries: 2          # Fail after 2 consecutive strikes instead of 3
-      start_period: 5s    # Start checking almost immediately
-    # Ensure Gunicorn doesn't try to write to / (root)
-    working_dir: /code  # Ensure this matches where manage.py is
+      interval: 10s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
+    working_dir: /code
     environment:
       - DEBUG=false
-      - HOME=/tmp
       - PYTHONPATH=/code
       - APP_PORT=${APP_PORT}
-      - MYSQL_DATABASE:${DB_NAME}
-      - MYSQL_USER:${DB_USER}
-      - MYSQL_PASSWORD:${DB_PWD}
-    # Use the /tmp/gunicorn folder you created in the Dockerfile
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PWD=${DB_PWD}
+      # FIXED: Force Gunicorn/Python to use /tmp for temporary files/heartbeats
+      - TMPDIR=/tmp
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp
 
   nginx:
     image: nginx:latest
-    env_file: .env
     build: ./nginx
     restart: always
     ports:
@@ -79,25 +66,22 @@ services:
       - ./nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
     environment:
       - APP_PORT=${APP_PORT}
-      - NGINX_ENVSUBST_FILTER=APP_PORT
     depends_on:
       web:
         condition: service_healthy
 
 volumes:
-  mysql_data: # Defines a persistent storage area managed by Docker
+  mysql_volume:
   static_volume:
   storage_volume:
     driver: local
     driver_opts:
       type: none
       o: bind
-      # This points to the actual physical location
       device: ${STORAGE_DIR}
   media_volume:
     driver: local
     driver_opts:
       type: none
       o: bind
-      # This points to the actual physical location
       device: ${MEDIA_DIR}

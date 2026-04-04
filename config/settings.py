@@ -6,34 +6,25 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(interpolate=True)
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load the .env file from the root directory
-env_path = os.path.join(BASE_DIR, '.env')
-load_dotenv(dotenv_path=env_path)
+# Load environment variables
+load_dotenv(os.path.join(BASE_DIR, '.env'), interpolate=True)
 
-# --- CRITICAL FOLDER STRUCTURE SETUP ---
-# Add the 'apps' directory to the Python path 
-APPS_DIR = os.path.join(BASE_DIR, 'apps')
-sys.path.insert(0, APPS_DIR)
+# --- APPS DIRECTORY SETUP ---
+# Ensures local apps in 'apps/' can be imported directly
+APPS_DIR = BASE_DIR / 'apps'
+sys.path.insert(0, str(APPS_DIR))
 
-# --- SECURITY WARNING: keep the secret key used in production secret! ---
-SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key')
-
-# --- SECURITY WARNING: don't run with debug turned on in production! ---
-# DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-# DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 'yes']
+# --- CORE SECURITY ---
+SECRET_KEY = os.environ.get('SECRET_KEY', 'unsafe-fallback-key-change-me')
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
-# Default to 3010 if not found
-APP_PORT = os.environ.get('APP_PORT', '3010')
+# Split ALLOWED_HOSTS and remove empty entries
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '*').split(',') if host.strip()]
 
-ALLOWED_HOSTS = ['*']
-
-# Application definition
+# --- APP DEFINITION ---
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -42,19 +33,18 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     
-    # Third-party apps
+    # Third-party
     'rest_framework',
     'corsheaders',
-
     'django_vite',
     
-    # Local apps inside the 'apps/' folder
+    # Local
     'core',
     'api',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # CORS must be at the top
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -66,7 +56,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'config.urls'
 
-# Vue frontend templates setup
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -84,65 +73,96 @@ TEMPLATES = [
     },
 ]
 
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
-    },
-}
-
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# Database Setup (Mapped directly from your .env)
+# --- DATABASE ---
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.environ.get('DB_NAME'),
         'USER': os.environ.get('DB_USER'),
         'PASSWORD': os.environ.get('DB_PWD'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'HOST': os.environ.get('DB_HOST', 'db'),
         'PORT': os.environ.get('DB_PORT', '3306'),
+        'CONN_MAX_AGE': 60,
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+        },
     }
 }
+
+# --- STATIC & MEDIA ---
+STATIC_URL = 'static/'
+# STATIC_ROOT must be separate from STATICFILES_DIRS during dev
+STATIC_ROOT = BASE_DIR / 'static'
+STATICFILES_DIRS = []
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.environ.get('MEDIA_DIR', str(BASE_DIR / 'media'))
 
 # --- CUSTOM DIRECTORIES ---
 STORAGE_DIR = os.environ.get('STORAGE_DIR')
 CACHE_DIR = os.environ.get('CACHE_DIR')
-MEDIA_DIR = os.environ.get('MEDIA_DIR')
-SECRET_KEY = os.environ.get('SECRET_KEY')
+MEDIA_DIR = MEDIA_ROOT
 
-MEDIA_ROOT = MEDIA_DIR
-
-# --- STATIC FILES ---
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'static_root'
-STATICFILES_DIRS = [
-    # os.path.join(BASE_DIR, 'static'),
-    os.path.join(BASE_DIR, STATIC_URL),
-]
-
-# Add Webpack Loader Configuration
-# WEBPACK_LOADER = {
-#     'DEFAULT': {
-#         # 'BUNDLE_DIR_NAME': 'bundles/',
-#         # 'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
-#         # 'BUNDLE_DIR_NAME': 'core/bundles/', # must match webpack's output.path relative to a static dir
-#         'BUNDLE_DIR_NAME': '', # must match webpack's output.path relative to a static dir
-#         # 'STATS_FILE': os.path.join(BASE_DIR, 'assets', 'webpack-stats.json'),
-#         'STATS_FILE': os.path.join(BASE_DIR, STATIC_URL, 'webpack-stats.json'),
-#     }
-# }
+# --- VITE CONFIGURATION ---
 DJANGO_VITE = {
   "default": {
     "dev_mode": DEBUG,
-    "dev_server_port": 3011, # Must match Vite's dev server port
-    "manifest_path": os.path.join(BASE_DIR, STATIC_URL, ".vite", "manifest.json"),
+    "dev_server_port": 3011,
+    # The path to manifest.json should stay absolute
+    "manifest_path": os.path.join(STATIC_ROOT, ".vite", "manifest.json"),
+    # FIXED: Removing the prefix or setting to None prevents /static/static duplication
+    # django-vite appends this to the manifest paths. Since STATIC_URL is already 'static/',
+    # we leave this empty to avoid doubling up.
+    "static_url_prefix": "", 
   }
 }
 
+# --- LOGGING ---
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
 
-# --- GOOGLE CLOUD CONFIGURATION ---
+# --- GOOGLE CLOUD ---
 BUCKETNAME = os.environ.get('BUCKETNAME')
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED') 
+if os.environ.get('BUCKETCRED'):
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED')
 
-# --- CORS SETTINGS ---
-CORS_ALLOW_ALL_ORIGINS = True
+# --- CORS & SECURITY ---
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+if not DEBUG:
+    def normalize_origin(origin):
+        """Helper to ensure origins have schemes and no empty strings."""
+        origin = origin.strip()
+        if not origin:
+            return None
+        if not origin.startswith(('http://', 'https://')):
+            return f'http://{origin}'
+        return origin
+
+    raw_cors = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
+    CORS_ALLOWED_ORIGINS = [o for o in map(normalize_origin, raw_cors) if o]
+    
+    raw_csrf = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    CSRF_TRUSTED_ORIGINS = [o for o in map(normalize_origin, raw_csrf) if o]
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
