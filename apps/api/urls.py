@@ -6,7 +6,7 @@ from .views import general
 from .views import audio
 
 urlpatterns = [
-    path('test', general.test_api),
+    path('test', general.home, name='api-home'),
     
     # JSON Store APIs
     path('album', general.get_albums),
