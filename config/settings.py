@@ -1,5 +1,5 @@
 """
-Django settings for Zaideih project.
+Django settings for Zaideih
 """
 import os
 import sys
@@ -52,6 +52,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # Custom middleware for HTML minification
+    'config.middleware.HtmlMinifyMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -67,6 +70,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+
+                # Custom context processors
                 "api.context_processors.app_info",
             ],
         },
