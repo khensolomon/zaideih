@@ -27,8 +27,7 @@ django_vite>=3.1.0
 
 google-cloud-storage>=2.16.0
 
-
+minify-html
 inflect
-htmlmin
 
 mutagen
