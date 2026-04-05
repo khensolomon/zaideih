@@ -29,9 +29,12 @@ help: ## Show this help menu with all available commands
 	@echo "  make stop -v"
 	@echo "-----------------------------------------------------------------------"
 
-# --- CORE COMMANDS ---
+# Generate .env from origin.env if it doesn't exist
+env: ## Load environment variables from origin.env (if it exists) and export them for use in the Makefile
+	~/dev/notes/scripts/env.sh ./origin.env
 
-production: ## Production Mode: Uses base + prod (if exists)
+# --- CORE COMMANDS ---
+production: ## Production Mode: Uses docker-compose.yml
 	docker compose -f docker-compose.yml $(PROD_FLAG) up -d $(EXTRA_ARGS)
 	@echo "Running in Production Mode (Prod config detected: $(if $(PROD_CONF),Yes,No))"
 
@@ -66,9 +69,6 @@ run: ## Docker Run: Run a command in a specific service (e.g., 'make run fronten
 mysqldump: ## MySQL Dump: Run mysqldump in the database service
 # 	mysqldump -u $(DB_USER) -p $(DB_NAME) > $(STORAGE_DIR)/$(APP_NAME)/mysql/latest.sql
 	@echo "mysqldump -u $(DB_USER) -p $(DB_NAME) > $(DB_DIR)/latest.sql"
-
-run: ## Docker Run: Run a command in a specific service (e.g., 'make run frontend npm install')
-	docker compose run --rm $(EXTRA_ARGS)
 
 ssh-dev: ## SSH into the development container
 	ssh $(SSH_USER)@$(SSH_HOST)
