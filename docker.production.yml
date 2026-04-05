@@ -70,14 +70,26 @@ services:
       - STORAGE_DIR=${STORAGE_DIR}
       - CACHE_DIR=${CACHE_DIR}
       - MEDIA_DIR=${MEDIA_DIR}
-      - GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}
+      - REPOSITORY=${REPOSITORY}
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
       - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
     # FIXED: Added collectstatic to the entry command to refresh the shared volume
-    command: >
-      sh -c "python manage.py collectstatic --noinput && 
-             gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp/gunicorn --workers 3"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # 1. Standard Static Collection
+        python manage.py collectstatic --noinput --clear
+        
+        # 2. Custom Initialization Command
+        python manage.py initialize_project
+        
+        echo "Starting Gunicorn..."
+        exec gunicorn config.wsgi:application \
+             --bind 0.0.0.0:${APP_PORT} \
+             --worker-tmp-dir /tmp/gunicorn \
+             --workers 3
     deploy:
       replicas: 2
       update_config:

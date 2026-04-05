@@ -46,13 +46,28 @@ services:
       - DEBUG=false
       - PYTHONPATH=/code
       - APP_PORT=${APP_PORT}
-      - DB_HOST=db
+      - DB_HOST=${DB_HOST:-db}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PWD=${DB_PWD}
       # FIXED: Force Gunicorn/Python to use /tmp for temporary files/heartbeats
       - TMPDIR=/tmp
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:${APP_PORT} --worker-tmp-dir /tmp
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # 1. Standard Static Collection
+        python manage.py collectstatic --noinput --clear
+        
+        # 2. Custom Initialization Command
+        python manage.py initialize_project
+        
+        # --worker-tmp-dir /dev/shm
+        # --pid /tmp/gunicorn.pid
+        echo "Starting Gunicorn..."
+        exec gunicorn config.wsgi:application \
+             --bind 0.0.0.0:${APP_PORT} \
+             --worker-tmp-dir /tmp/gunicorn
 
   nginx:
     image: nginx:latest
