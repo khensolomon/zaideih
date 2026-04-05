@@ -110,17 +110,22 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
-    ports:
-      - "80:80"
+    # ports:
+    #   - "80:80" (NPM will handle port 80 now)
     volumes:
       - static_volume:/code/static:ro
       - ./cache:/code/cache
     environment:
       - APP_PORT=${APP_PORT}
+    networks:
+      - default
+      - gateway # Add this to let NPM "see" this container
     depends_on:
       - web
     deploy:
       replicas: 1
+      # IMPORTANT: In Swarm, use this for NPM to find the service by name
+      endpoint_mode: dnsrr
       update_config:
         order: start-first
       restart_policy:
@@ -131,6 +136,8 @@ networks:
   default:
     driver: overlay
     attachable: true
+  gateway:
+    external: true
 
 volumes:
   mysql_data:
