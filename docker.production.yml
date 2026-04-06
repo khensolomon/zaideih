@@ -41,7 +41,7 @@ services:
     ports: 
       - "${APP_PORT}:${APP_PORT}"
     volumes:
-      # - static_volume:/code/static
+      - static_volume:/code/staticfiles
       - storage_volume:${STORAGE_DIR}:rw
       - media_volume:${MEDIA_DIR}:rw
     depends_on:
