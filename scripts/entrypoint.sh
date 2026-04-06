@@ -9,13 +9,19 @@ echo "--- Starting Entrypoint Script ---"
 # echo "Collecting static files..."
 # python manage.py collectstatic --noinput
 python manage.py collectstatic --clear --noinput
+# python manage.py collectstatic --clear --noinput --no-default-ignore
 
 
-# 2. Custom Initialization Command
+# 2. Cleanup "static" folder except for .vite ---
+echo "Cleaning up static directory (preserving .vite)..."
+find static -mindepth 1 ! -path "static/.vite*" -delete
+# ------------------------------------------------
+
+# 3. Custom Initialization Command
 echo "Running custom project initialization..."
 python manage.py initialize_project
 
-# 3. Handle Command Overrides
+# 4. Handle Command Overrides
 # This is the fix! If a command is passed to 'docker run' (like migrate),
 # we execute that command instead of starting Gunicorn.
 if [ "$#" -gt 0 ]; then
@@ -23,7 +29,7 @@ if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
-# 4. Default: Start Gunicorn
+# 5. Default: Start Gunicorn
 echo "No command provided, starting Gunicorn on port ${APP_PORT}..."
 exec gunicorn config.wsgi:application \
      --bind 0.0.0.0:${APP_PORT} \
