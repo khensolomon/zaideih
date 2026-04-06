@@ -57,7 +57,7 @@ services:
       - -c
       - |
         # 1. Standard Static Collection
-        python manage.py collectstatic --noinput --clear
+        python manage.py collectstatic --noinput
         
         # 2. Custom Initialization Command
         python manage.py initialize_project
