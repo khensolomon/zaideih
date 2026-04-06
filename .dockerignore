@@ -1,9 +1,7 @@
 # .dockerignore - Optimized for Django + MySQL (mysqlclient) + Node.js/npm
-*.v[0-9]*.*
-
-!frontend_build/
-!frontend_build/.vite/
-!frontend_build/.vite/manifest.json
+!static/
+!static/.vite/
+!static/.vite/manifest.json
 
 # Ignore ONLY the assets folder at the root of the project
 # cache/
