@@ -81,7 +81,7 @@ export default defineConfig(({ mode }) => {
 		// Translates your output, optimization, and chunks logic
 		build: {
 			// Where Django expects to find the built files
-			outDir: path.resolve(__dirname, "../../static/vite"),
+			outDir: path.resolve(__dirname, "../../frontend_build"),
 			emptyOutDir: true, // Translates clean: true
 			manifest: true, // CRITICAL: This replaces webpack-bundle-tracker!
 			sourcemap: !isProduction,

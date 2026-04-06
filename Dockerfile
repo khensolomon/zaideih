@@ -21,6 +21,11 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # Copy project
 COPY . .
 
+# ---> NEW STEP: Run Collectstatic <---
+# We pass a dummy SECRET_KEY just in case your settings.py requires one to boot.
+# This gathers the Vite manifest and puts it into your STATIC_ROOT.
+RUN SECRET_KEY="dummy-key-for-build" DATABASE_URL="sqlite:///" python manage.py collectstatic --noinput
+
 # Create tmp directory for Gunicorn heartbeat (prevents worker timeouts in some environments)
 RUN mkdir -p /tmp/gunicorn && chmod 777 /tmp/gunicorn
 

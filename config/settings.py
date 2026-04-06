@@ -102,7 +102,7 @@ STATIC_URL = 'static/'
 # STATIC_ROOT must be separate from STATICFILES_DIRS during dev
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
-    BASE_DIR / 'static' / 'vite',
+    BASE_DIR / 'frontend_build',
 ]
 
 MEDIA_URL = '/media/'
