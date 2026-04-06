@@ -99,8 +99,8 @@ services:
         max-size: "20m"
         max-file: "3"
     volumes:
-      - static_volume:/code/staticfiles:ro
-      - ./cache:/code/cache
+      # - static_volume:/code/staticfiles:ro
+      # - ./cache:/code/cache
     environment:
       - APP_PORT=${APP_PORT}
     networks:
@@ -126,7 +126,7 @@ networks:
 
 volumes:
   mysql_data:
-  static_volume:
+  # static_volume:
   storage_volume:
     driver: local
     driver_opts:
