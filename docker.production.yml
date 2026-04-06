@@ -20,7 +20,7 @@ services:
     networks:
       - default
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_volume:/var/lib/mysql
       - ${DB_DIR}:/docker-entrypoint-initdb.d:ro
     deploy:
       placement:
@@ -100,7 +100,7 @@ services:
         max-file: "3"
     volumes:
       - static_volume:/code/staticfiles:ro
-      # - ./cache:/code/cache
+      - cache_volume:/code/cache:ro
     environment:
       - APP_PORT=${APP_PORT}
     networks:
@@ -125,8 +125,9 @@ networks:
     external: true
 
 volumes:
-  mysql_data:
+  mysql_volume:
   static_volume:
+  cache_volume:
   storage_volume:
     driver: local
     driver_opts:
