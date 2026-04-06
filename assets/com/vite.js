@@ -82,7 +82,7 @@ export default defineConfig(({ mode }) => {
 		build: {
 			manifest: 'manifest.json',
 			// Where Django expects to find the built files
-			outDir: path.resolve(__dirname, "../../static"),
+			outDir: path.resolve(__dirname, "../../staticfiles"),
 			emptyOutDir: true, // Translates clean: true
 			manifest: true, // CRITICAL: This replaces webpack-bundle-tracker!
 			sourcemap: !isProduction,

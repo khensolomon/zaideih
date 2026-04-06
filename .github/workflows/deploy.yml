@@ -22,8 +22,19 @@ jobs:
 
       - name: Install & Build Frontend
         run: |
+          npm ci
           npm install
-          npm run build 
+          npm run build
+          echo "=== Vite Build Output ==="
+          ls -la staticfiles/          # or wherever your outDir points to
+          ls -la staticfiles/.vite/ 2>/dev/null || echo "No .vite folder"
+          find staticfiles -name "manifest.json" || echo "No manifest found"
+
+      - name: Verify built assets before Docker build
+        run: |
+          echo "Static files size:"
+          du -sh staticfiles/
+          ls -R staticfiles/ | head -30
 
       - name: Login to GHCR
         uses: docker/login-action@v3
