@@ -23,12 +23,13 @@ jobs:
       - name: Install & Build Frontend
         run: |
           npm ci
-          npm install
           npm run build
           echo "=== Vite Build Output ==="
-          ls -la staticfiles/          # or wherever your outDir points to
+          ls -la staticfiles/ || echo "staticfiles folder not found"
           ls -la staticfiles/.vite/ 2>/dev/null || echo "No .vite folder"
-          find staticfiles -name "manifest.json" || echo "No manifest found"
+          ls -la staticfiles/manifest.json 2>/dev/null || echo "No manifest.json"
+          echo "=== Size of staticfiles ==="
+          du -sh staticfiles/
 
       - name: Verify built assets before Docker build
         run: |

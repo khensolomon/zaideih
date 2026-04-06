@@ -22,12 +22,19 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy the entire project into the container
 # This includes the frontend build artifacts (provided .dockerignore allows them)
-COPY . .
+# COPY . .
+COPY . /code/
 
 # ---> BUILD STEP: Static Collection <---
 # This ensures the Vite manifest is gathered into the image layers.
 # We use dummy variables to bypass Django settings checks during build.
 # RUN SECRET_KEY="dummy-key-for-build" DATABASE_URL="sqlite:///" python manage.py collectstatic --noinput
+
+# Install Node deps + Build frontend (safety net)
+RUN npm ci --omit=dev && npm run build
+
+# Critical: Run collectstatic
+RUN python manage.py collectstatic --clear --noinput
 
 # Setup the entrypoint script
 # We ensure the script has execution permissions
