@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   db:
     image: mysql:8.0
@@ -74,22 +76,8 @@ services:
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
       - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
-    # FIXED: Added collectstatic to the entry command to refresh the shared volume
-    command:
-      - /bin/sh
-      - -c
-      - |
-        # 1. Standard Static Collection
-        python manage.py collectstatic --noinput
-        
-        # 2. Custom Initialization Command
-        python manage.py initialize_project
-        
-        echo "Starting Gunicorn..."
-        exec gunicorn config.wsgi:application \
-             --bind 0.0.0.0:${APP_PORT} \
-             --worker-tmp-dir /tmp/gunicorn \
-             --workers 3
+    # We removed the inline command block. 
+    # The Dockerfile ENTRYPOINT will handle the startup logic.
     deploy:
       replicas: 2
       update_config:
@@ -110,8 +98,6 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
-    # ports:
-    #   - "80:80" (NPM will handle port 80 now)
     volumes:
       - static_volume:/code/static:ro
       - ./cache:/code/cache
@@ -119,12 +105,11 @@ services:
       - APP_PORT=${APP_PORT}
     networks:
       - default
-      - gateway # Add this to let NPM "see" this container
+      - gateway 
     depends_on:
       - web
     deploy:
       replicas: 1
-      # IMPORTANT: In Swarm, use this for NPM to find the service by name
       endpoint_mode: dnsrr
       update_config:
         order: start-first

@@ -9,6 +9,8 @@ assets/
 *.md
 
 # But do NOT ignore the data subfolder inside it
+!assets/dist/
+!assets/dist/.vite/
 !assets/data/
 !assets/data/*.json
 .editorconfig
@@ -54,7 +56,6 @@ media/
 # Build artifacts from local compilation (especially useful for mysqlclient)
 *.egg-info/
 build/
-dist/
 *.whl
 *.tar.gz
 pip-wheel-metadata/
@@ -72,7 +73,6 @@ yarn-error.log*
 .next/
 out/
 build/
-dist/
 *.min.js
 *.bundle.js
 
