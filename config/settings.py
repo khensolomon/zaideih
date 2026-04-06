@@ -129,7 +129,8 @@ DJANGO_VITE = {
     # The path to manifest.json should stay absolute
     # "manifest_path": os.path.join(BASE_DIR, 'static', ".vite", "manifest.json"),
     # "manifest_path": os.path.join(STATIC_ROOT, ".vite", "manifest.json"),
-    "manifest_path": BASE_DIR / 'static' / ".vite" / "manifest.json",
+    "manifest_path": STATIC_ROOT / ".vite" / "manifest.json",
+    # "manifest_path": BASE_DIR / 'static' / ".vite" / "manifest.json",
     # "manifest_path": BASE_DIR / 'cache' / 'static' / ".vite" / "manifest.json",
     # FIXED: Removing the prefix or setting to None prevents /static/static duplication
     # django-vite appends this to the manifest paths. Since STATIC_URL is already 'static/',
