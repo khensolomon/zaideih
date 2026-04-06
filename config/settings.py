@@ -101,9 +101,7 @@ DATABASES = {
 STATIC_URL = 'static/'
 # STATIC_ROOT must be separate from STATICFILES_DIRS during dev
 STATIC_ROOT = BASE_DIR / 'static'
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+STATICFILES_DIRS = []
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('MEDIA_DIR', str(BASE_DIR / 'media'))
