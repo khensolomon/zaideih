@@ -96,7 +96,8 @@ export default defineConfig(({ mode }) => {
 				input: {
 					main: path.resolve(__dirname, "./index.js"),
 					"sw-register": path.resolve(__dirname, "../script/sw-register.js"),
-					"sw-installer": path.resolve(__dirname, "../script/sw-installer.js")
+					"sw-installer": path.resolve(__dirname, "../script/sw-installer.js"),
+					"sw-album": path.resolve(__dirname, "../script/sw-album.js")
 				},
 				output: {
 					// // Translates your filename and chunkFilename logic exactly

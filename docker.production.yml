@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
@@ -76,7 +74,7 @@ services:
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
       - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
-    # We removed the inline command block. 
+    # Removed the inline command block. 
     # The Dockerfile ENTRYPOINT will handle the startup logic.
     deploy:
       replicas: 2
