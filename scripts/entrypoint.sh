@@ -8,8 +8,8 @@ echo "--- Starting Entrypoint Script ---"
 # 1. Standard Static Collection
 # Note: We do this here as well to ensure shared volumes (static_volume) 
 # are fully populated if they were empty on the host.
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+# echo "Collecting static files..."
+# python manage.py collectstatic --noinput
 
 # 2. Custom Initialization Command
 echo "Running custom project initialization..."
