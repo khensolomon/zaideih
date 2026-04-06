@@ -27,7 +27,7 @@ COPY . .
 # ---> BUILD STEP: Static Collection <---
 # This ensures the Vite manifest is gathered into the image layers.
 # We use dummy variables to bypass Django settings checks during build.
-RUN SECRET_KEY="dummy-key-for-build" DATABASE_URL="sqlite:///" python manage.py collectstatic --noinput
+# RUN SECRET_KEY="dummy-key-for-build" DATABASE_URL="sqlite:///" python manage.py collectstatic --noinput
 
 # Setup the entrypoint script
 # We ensure the script has execution permissions
