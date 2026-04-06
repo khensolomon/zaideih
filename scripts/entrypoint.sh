@@ -9,12 +9,13 @@ echo "--- Starting Entrypoint Script ---"
 # echo "Collecting static files..."
 # python manage.py collectstatic --noinput
 # python manage.py collectstatic --clear --noinput
-python manage.py collectstatic --clear --noinput --no-default-ignore
+# python manage.py collectstatic --clear --noinput --no-default-ignore
+python manage.py collectstatic --noinput --no-default-ignore
 
 
 # 2. Cleanup "static" folder except for .vite ---
-echo "Cleaning up static directory (preserving .vite)..."
-find /code/static -mindepth 1 ! -path "/code/static/.vite*" -delete
+# echo "Cleaning up static directory (preserving .vite)..."
+# find /code/static -mindepth 1 ! -path "/code/static/.vite*" -delete
 # ------------------------------------------------
 
 # 3. Custom Initialization Command
