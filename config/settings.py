@@ -113,6 +113,9 @@ STORAGE_DIR = os.environ.get('STORAGE_DIR')
 CACHE_DIR = os.environ.get('CACHE_DIR')
 MEDIA_DIR = MEDIA_ROOT
 
+# Force Django to collect hidden files/folders
+COLLECTSTATIC_IGNORE = []  # or use --no-default-ignore flag
+
 # --- VITE CONFIGURATION ---
 DJANGO_VITE = {
   "default": {
@@ -121,7 +124,7 @@ DJANGO_VITE = {
     # The path to manifest.json should stay absolute
     # "manifest_path": os.path.join(BASE_DIR, 'static', ".vite", "manifest.json"),
     # "manifest_path": os.path.join(STATIC_ROOT, ".vite", "manifest.json"),
-    "manifest_path": STATIC_ROOT / ".vite" / "manifest.json",
+    "manifest_path": BASE_DIR / "staticfiles" / ".vite" / "manifest.json",
     # FIXED: Removing the prefix or setting to None prevents /static/static duplication
     # django-vite appends this to the manifest paths. Since STATIC_URL is already 'static/',
     # we leave this empty to avoid doubling up.
