@@ -100,8 +100,10 @@ DATABASES = {
 # --- STATIC & MEDIA ---
 STATIC_URL = 'static/'
 # STATIC_ROOT must be separate from STATICFILES_DIRS during dev
-STATIC_ROOT = BASE_DIR / 'static'
-STATICFILES_DIRS = []
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('MEDIA_DIR', str(BASE_DIR / 'media'))
@@ -117,9 +119,9 @@ DJANGO_VITE = {
     "dev_mode": DEBUG,
     "dev_server_port": 3011,
     # The path to manifest.json should stay absolute
-    "manifest_path": os.path.join(BASE_DIR, 'static', ".vite", "manifest.json"),
+    # "manifest_path": os.path.join(BASE_DIR, 'static', ".vite", "manifest.json"),
     # "manifest_path": os.path.join(STATIC_ROOT, ".vite", "manifest.json"),
-    # "manifest_path": STATIC_ROOT / ".vite" / "manifest.json",
+    "manifest_path": STATIC_ROOT / ".vite" / "manifest.json",
     # FIXED: Removing the prefix or setting to None prevents /static/static duplication
     # django-vite appends this to the manifest paths. Since STATIC_URL is already 'static/',
     # we leave this empty to avoid doubling up.
