@@ -7,7 +7,7 @@ echo "--- Starting Entrypoint Script ---"
 
 # 1. Standard Static Collection
 # echo "Collecting static files..."
-# python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput
 
 # 2. Custom Initialization Command
 echo "Running custom project initialization..."
