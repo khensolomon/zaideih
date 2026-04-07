@@ -31,7 +31,7 @@
     "concurrently": "^9.2.1",
     "sass": "^1.99.0",
     "sharp": "^0.34.5",
-    "vite": "^8.0.3"
+    "vite": "^8.0.5"
   },
   "homepage": "https://github.com/khensolomon/zaideih#readme",
   "bugs": {
