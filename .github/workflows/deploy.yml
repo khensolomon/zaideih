@@ -49,6 +49,8 @@ jobs:
   deploy:
     needs: build
     runs-on: self-hosted
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
