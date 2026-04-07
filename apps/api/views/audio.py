@@ -143,7 +143,7 @@ def track_test(request, track_id):
     #     blob_test = 'gcs'
 
     full_track_path = f"{track.album.folder_path}/{track.mp3}".strip('/')
-    return HttpResponse(f"ID: {track_id}, Plays: {track.plays} Path: {full_track_path} Blob: {blob_test}, bucket: {settings.BUCKETNAME}")
+    return HttpResponse(f"ID: *, Plays: {track.plays} Path: {full_track_path} Blob: {blob_test}, bucket: {settings.BUCKETNAME}")
 
 """
 Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
