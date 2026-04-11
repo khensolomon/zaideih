@@ -5,11 +5,9 @@ from typing import Callable
 from django.http import HttpRequest, HttpResponse
 from django.conf import settings
 import logging
+import minify_html
 
 logger = logging.getLogger(__name__)
-
-# Make sure to run: pip install minify-html
-import minify_html
 
 class HtmlMinifyMiddleware:
     """
