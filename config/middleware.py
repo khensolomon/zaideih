@@ -45,9 +45,7 @@ class HtmlMinifyMiddleware:
                     html_content,
                     minify_js=True,
                     minify_css=True,
-                    keep_closing_tags=True,  # Safer if you use JS frameworks like Vue/React
-                    do_not_minify_doctype=True,
-                    ensure_spec_compliant_unquoted_attribute_values=True
+                    keep_closing_tags=True  # Safer if you use JS frameworks like Vue/React
                 )
                 
                 # Re-encode the minified content
