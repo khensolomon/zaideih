@@ -2,11 +2,14 @@
 middleware.py
 """
 from typing import Callable
-from django.http import (
-    HttpRequest, HttpResponse
-)
-import minify_html
+from django.http import HttpRequest, HttpResponse
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Make sure to run: pip install minify-html
+import minify_html
 
 class HtmlMinifyMiddleware:
     """
@@ -24,11 +27,13 @@ class HtmlMinifyMiddleware:
 
         # We only want to minify valid HTML responses in a production setting.
         # We check for DEBUG=False, the 'text/html' content type, 
-        # ensure it's not streaming, and ensure there is actual content.
+        # ensure it's not streaming, ensure there is actual content,
+        # and ensure it hasn't already been compressed (e.g., gzip or brotli).
         if (
             not settings.DEBUG 
             and 'text/html' in response.get('Content-Type', '') 
             and not getattr(response, 'streaming', False)
+            and not response.has_header('Content-Encoding')
             and response.content
         ):
             try:
@@ -53,9 +58,9 @@ class HtmlMinifyMiddleware:
                 if 'Content-Length' in response:
                     response['Content-Length'] = str(len(response.content))
                     
-            except Exception:
-                # If minification fails for any reason (e.g., severe syntax errors),
-                # we'll just return the original response to avoid breaking the site.
+            except Exception as e:
+                # Log the exact error to your server logs instead of failing silently
+                logger.error(f"HTML Minification failed: {e}")
                 pass
 
         return response
