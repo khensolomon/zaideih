@@ -24,6 +24,11 @@ DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 # Split ALLOWED_HOSTS and remove empty entries
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '*').split(',') if host.strip()]
 
+SECURE_REFERRER_POLICY = None       # stops Referrer-Policy from Django
+SECURE_CONTENT_TYPE_NOSNIFF = False # stops X-Content-Type-Options from Django  
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
+SECURE_BROWSER_XSS_FILTER = False
+
 # --- APP DEFINITION ---
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -51,7 +56,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     # Custom middleware for HTML minification
     'config.middleware.HtmlMinifyMiddleware',

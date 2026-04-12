@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
 			extensions: [".js", ".vue", ".json"],
 			alias: {
 				vue: "vue/dist/vue.esm-bundler.js",
+				// vue: "vue/dist/vue.runtime.esm-bundler.js",
 			},
 		},
 
@@ -74,6 +75,10 @@ export default defineConfig(({ mode }) => {
 					quietDeps: true,
 				},
 			},
+		},
+
+		html: {
+			cspNonce: "{NONCE}", // Vite will replace this
 		},
 
 		assetsInclude: ["**/*.webmanifest", "**/*.txt"],
@@ -158,6 +163,10 @@ export default defineConfig(({ mode }) => {
 						return "assets/[name]-[hash][extname]";
 					},
 				},
+				onwarn(warning, warn) {
+            console.log('ROLLUP WARNING:', warning.code, warning.message)
+            warn(warning)
+        }
 			},
 		},
 	};
