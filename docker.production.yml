@@ -74,8 +74,7 @@ services:
       - BUCKETNAME=${BUCKETNAME}
       - BUCKETCRED=${BUCKETCRED}
       - GOOGLE_APPLICATION_CREDENTIALS=${BUCKETCRED}
-    # Removed the inline command block. 
-    # The Dockerfile ENTRYPOINT will handle the startup logic.
+
     deploy:
       replicas: 2
       update_config:
