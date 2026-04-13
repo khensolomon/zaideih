@@ -10,9 +10,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
-      start_period: 180s
+      start_period: 300s
     networks:
       default:
         aliases:
@@ -39,15 +39,15 @@ services:
     healthcheck:
       test: ["CMD", "python", "manage.py", "check"]
       interval: 10s
-      timeout: 3s
+      timeout: 10s
       retries: 2
-      start_period: 5s
+      start_period: 180s
     working_dir: /code
     environment:
       - DEBUG=false
       - PYTHONPATH=/code
       - APP_PORT=${APP_PORT}
-      - DB_HOST=${DB_HOST:-db}
+      - DB_HOST=db
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PWD=${DB_PWD}
