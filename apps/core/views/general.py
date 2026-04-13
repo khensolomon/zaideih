@@ -8,10 +8,11 @@
 #     """
 #     template_name = "home.html"
 
+from django.http import  HttpRequest, HttpResponse
 from django.shortcuts import render
 from api.store import AssetJSONReader
 
-def home(request):
+def home(request: HttpRequest) -> HttpResponse:
     albums = AssetJSONReader('albums.json', location='media')
     artists = AssetJSONReader('artist.name.json')
     category = AssetJSONReader('category.json')
@@ -33,3 +34,6 @@ def home(request):
         }
     }
     return render(request, 'core/home.html', context)
+
+def health(request: HttpRequest) -> HttpResponse:
+    return HttpResponse("ok")
