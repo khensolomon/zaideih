@@ -15,13 +15,14 @@ Zaideih (meaning **"Sing Proud"**) is a multi-platform music station designed to
 - 📂 **Open Source** foundation for custom library building
 - 📻 **Broadcast ready** with Bluetooth and background play support
 
-## About Zaideih
+## About
 
 In Zolai, *Zaideih* means **"sing proud."** Zolai is the written language of the [Zo people](https://en.wikipedia.org/wiki/Zo_people) across Myanmar and India (*Zomi, Mizo, Chin, Tedim, Falam, Hakha, Paite, Kuki, and more*). Despite different dialects like Zopau or Zokam, our music and traditions bridge the borders between us.
 
-Initiated in 2006 and officially launched in 2007, Zaideih has evolved from ASP to Flash, PHP, and Node.js, reaching its current modern implementation with Python + Flutter to ensure your heritage is accessible on any device.
+Initiated in 2006 and officially launched in 2007, Zaideih has evolved through several eras:
+ASP 🕸️ ➔ Flash ⚡ ➔ PHP 🐘 ➔ Node.js 🟢 ➔ Python 🐍 + Flutter 💙
 
-
+This journey ensures your heritage remains accessible on any modern device.
 
 ## Features & Capabilities
 
