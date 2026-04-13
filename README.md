@@ -7,6 +7,7 @@ Zaideih (meaning **"Sing Proud"**) is a multi-platform music station designed to
 ![GitHub stars](https://img.shields.io/github/stars/khensolomon/zaideih)
 ![License](https://img.shields.io/github/license/khensolomon/zaideih)
 ![Last commit](https://img.shields.io/github/last-commit/khensolomon/zaideih)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/khensolomon/zaideih/deploy.yml)
 
 - ⚡ **Multi-platform support** powered by Flutter
 - 🌍 **Global access** to rare ethnic music collections
