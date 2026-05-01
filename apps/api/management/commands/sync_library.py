@@ -59,8 +59,8 @@ class Command(BaseCommand):
         client = storage.Client()
         bucket = client.bucket(settings.BUCKETNAME)
         
-        # Base Local Directory: settings.STORAGE_DIR / 'music'
-        base_local_dir = Path(settings.STORAGE_DIR) / catalog_config.DIR_MUSIC
+        # Base Local Directory: settings.STORAGE_ROOT / 'music'
+        base_local_dir = Path(settings.STORAGE_ROOT) / catalog_config.DIR_MUSIC
 
         # --- MODE 1: DOWNLOAD FROM CLOUD ---
         if download_target:

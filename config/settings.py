@@ -120,9 +120,11 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('MEDIA_DIR', str(BASE_DIR / 'media'))
 
 # --- CUSTOM DIRECTORIES ---
-STORAGE_DIR = os.environ.get('STORAGE_DIR')
+STORAGE_ROOT = os.environ.get('STORAGE_ROOT','/tmp/storage')
+STORAGE_DIR =  os.path.join(STORAGE_ROOT,'zaideih')
 CACHE_DIR = os.environ.get('CACHE_DIR')
 MEDIA_DIR = MEDIA_ROOT
+
 
 # Force Django to collect hidden files/folders
 # COLLECTSTATIC_IGNORE = ['.vite']  # or use --no-default-ignore flag

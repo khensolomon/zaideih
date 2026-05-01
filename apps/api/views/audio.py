@@ -215,7 +215,7 @@ def _streamer_from_gcs(request, blob, track):
 
 def _streamer_from_local_disk(request, track, full_track_path):
     # Fixed: Injected 'music' into the local storage path using config
-    local_path = os.path.join(settings.STORAGE_DIR, catalog_config.DIR_MUSIC, full_track_path)
+    local_path = os.path.join(settings.STORAGE_ROOT, catalog_config.DIR_MUSIC, full_track_path)
     
     if not os.path.exists(local_path):
         raise Http404("Audio file not found in local disk fallback")

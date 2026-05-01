@@ -68,4 +68,13 @@ Zaideih is a labor of love supported by the community and friends (special thank
 
 ---
 
+## Todo
+
+- [ ] `MEDIA_DIR` and `MEDIA_ROOT` scattering
+- Away to  dynamically for dev environment
+  - [ ] `DEBUG`
+  - [ ] `DB_HOST`
+
+---
+
 *Zaideih — Preserving the melody of the Zo people for generations to come.*

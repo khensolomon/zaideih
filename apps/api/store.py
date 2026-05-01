@@ -34,8 +34,9 @@ class AssetJSONReader:
         
         # Explicit location assignment instead of fallback searching
         if location == 'media':
-            media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(getattr(settings, 'BASE_DIR', ''), 'media'))
-            self._filepath = os.path.join(media_root, 'store', filename)
+            # media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(getattr(settings, 'BASE_DIR', ''), 'media'))
+            # media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(getattr(settings, 'BASE_DIR', ''), 'media'))
+            self._filepath = os.path.join(settings.STORAGE_DIR, 'store', filename)
         else:
             self._filepath = os.path.join(settings.BASE_DIR, 'assets', 'data', filename)
             

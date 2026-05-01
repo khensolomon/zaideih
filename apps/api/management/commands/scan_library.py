@@ -109,7 +109,7 @@ class Command(BaseCommand):
 
         # --- MODE 2: LOCAL SCANNING ---
         else:
-            base_music_dir = Path(settings.STORAGE_DIR) / catalog_config.DIR_MUSIC
+            base_music_dir = Path(settings.STORAGE_ROOT) / catalog_config.DIR_MUSIC
             target_dir = base_music_dir / src_arg
             lang_dir = base_music_dir / lang
             
