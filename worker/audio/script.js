@@ -128,6 +128,11 @@ export default {
 		if (dest && dest !== "audio" && dest !== "video") {
 			return new Response("Forbidden", { status: 403 });
 		}
+		// Alongside the sec-fetch-dest check
+		// const site = request.headers.get("sec-fetch-site");
+		// if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
+		// 	return new Response("Forbidden", { status: 403 });
+		// }
 
 		try {
 			return await handleAudioRequest(trackId, request, env, ctx);
