@@ -1,4 +1,4 @@
-name = "streamer"
+name = "audio"
 main = "script.js"
 compatibility_date = "2026-05-01"
 
@@ -10,3 +10,7 @@ database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "media"
+
+[[routes]]
+pattern = "api.zaideih.com"
+custom_domain = true

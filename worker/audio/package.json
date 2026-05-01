@@ -1,5 +1,5 @@
 {
-  "name": "@zaideih/streamer",
+  "name": "@zaideih/audio",
   "type": "module",
   "devDependencies": {
     "wrangler": "latest"
