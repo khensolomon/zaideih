@@ -19,12 +19,42 @@
 </template>
 
 <script>
-// Option A: Keep pointing to your external file
-import script from './script.js';
-export default script;
+// @ts-ignore
+import trackRow from "./components/track-row.vue";
 
-// Option B: If you prefer to paste your script.js content here, 
-// remove the import above and paste the export default { ... } block here.
+export default {
+  name: "Queue",
+  props: ["albumId", "language"],
+  data: () => ({
+    trackLimit: 10
+  }),
+
+  inject: ["root", "dataStore", "storageStore"],
+  provide() {
+    return {
+      root: this.root,
+      dataStore: this.dataStore,
+      storageStore: this.storageStore
+    };
+  },
+
+  components: {
+    trackRow
+  },
+  methods: {},
+  computed: {
+    $() {
+      return this.$parent;
+    }
+    // trackLimit(){
+    //   if (this.$.queue.length < this.limit){
+    //     return this.$.queue.length
+    //   }
+    //   return this.limit
+    // }
+  }
+};
+
 </script>
 
 <style scoped>

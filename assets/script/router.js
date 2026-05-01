@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-import Home from "./home/index.vue";
-import Queue from "./queue/index.vue";
-import Music from "./music/index.vue";
-import Artist from "./artist/index.vue";
-import Album from "./album/index.vue";
+import Home from "./home.vue";
+import Queue from "./queue.vue";
+import Music from "./music.vue";
+import Artist from "./artist.vue";
+import Album from "./album.vue";
 // import Hello from './components/Hello';
 // import Goodbye from './components/Goodbye';
 
