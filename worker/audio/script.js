@@ -124,10 +124,10 @@ export default {
 		// audio or video — that rejects browsers embedding the URL in <img>,
 		// <script>, or fetch() from other origins. If the header is absent
 		// (curl, native players, older browsers), we allow the request.
-		// const dest = request.headers.get("sec-fetch-dest");
-		// if (dest && dest !== "audio" && dest !== "video") {
-		// 	return new Response("Forbidden", { status: 403 });
-		// }
+		const dest = request.headers.get("sec-fetch-dest");
+		if (dest && dest !== "audio" && dest !== "video") {
+			return new Response("Forbidden", { status: 403 });
+		}
 
 		try {
 			return await handleAudioRequest(trackId, request, env, ctx);

@@ -41,7 +41,8 @@ export const useDataStore = defineStore("data", {
 			// 	.split("")
 			// 	.reverse()
 			// 	.join("")
-			audio: "*/oidua/ipa/".split("").reverse().join(""),
+			// audio: "*/oidua/ipa/".split("").reverse().join(""),
+			audio: "*/oidua/moc.hiediaz.ipa//".split("").reverse().join(""),
 		},
 		queue: [
 			// {
