@@ -1,0 +1,3 @@
+name = "@zaideih/test"
+main = "script.js"
+compatibility_date = "2026-05-01"

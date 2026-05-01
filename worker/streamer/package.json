@@ -1,0 +1,11 @@
+{
+  "name": "@zaideih/test",
+  "version": "1.0.0",
+  "private": true,
+  "main": "script.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest"
+  }
+}
