@@ -1,3 +1,12 @@
-name = "@zaideih/test"
+name = "streamer"
 main = "script.js"
 compatibility_date = "2026-05-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "audio"
+database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "media"
