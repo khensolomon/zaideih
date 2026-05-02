@@ -1,18 +1,34 @@
 <template>
-  <div v-if="track" :class="[playerId == track.i? 'active':root.isQueued(track.i)?'queued':null]" @click="play">
+  <div
+    v-if="track"
+    :class="rowClasses"
+    @click="onClick"
+    @keydown.enter="onClick"
+    role="button"
+    tabindex="0"
+    :aria-label="ariaLabel"
+  >
     <div class="at art">
-      <span class="play track" :class="[playerId == track.i && playing? 'icon-pause':'icon-play']"></span>
+      <span class="play track" :class="playIconClass"></span>
     </div>
     <div class="begin">
       <span class="trk"></span>
-      <span class="count icon-headphones" v-text="track.p > 0 ? dataStore.digitShortenTesting(track.p):''"></span>
+      <span
+        class="count icon-headphones"
+        v-text="track.p > 0 ? dataStore.digitShortenTesting(track.p) : ''"
+      ></span>
     </div>
     <div class="meta">
-      <p class="title"><a>{{track.t}}</a></p>
-      <p class="artist"><router-link v-for="(artist,index) in root.artistName(track)" :to="{ path: '/artist/'+artist}" :key="index">{{artist}}</router-link></p>
+      <p class="title"><a>{{ track.t }}</a></p>
+      <p class="artist">
+        <router-link
+          v-for="(artist, index) in artistNames"
+          :to="{ path: '/artist/' + artist }"
+          :key="index"
+        >{{ artist }}</router-link>
+      </p>
     </div>
     <div class="end">
-      <!-- <span v-text="track.d"></span> -->
       <span v-text="dataStore.trackDuration(track.d)"></span>
     </div>
     <div class="at mre">
@@ -20,47 +36,67 @@
     </div>
   </div>
 </template>
-<script>
-export default {
-  name: 'track-row',
-  props: {
-    track: Object,
-    queued: Boolean,
-    // title: String,
-    // likes: Number,
-    // isPublished: Boolean,
-    // commentIds: Array,
-    // author: Object,
-    // callback: Function,
-    // contactsPromise: Promise // or any other constructor
-  },
-  inject: ["root", "dataStore", "storageStore"],
-  methods: {
-    play(event){
-      if (event.target.nodeName != 'A'){
-        if (this.queued){
-          if (this.playerId != this.track.i) this.root.player.stop();
-          this.root.playNow(this.track.i);
-        } else {
-          this.root.addQueue(this.track).then(
-            isQueued => {
-              if (isQueued || this.playing == false) {
-                this.root.playNow(this.track.i);
-              }
-            }
-          );
-        }
-      }
-    }
-  },
-  computed: {
 
-    playerId(){
-      return this.root.playerId;
+<script>
+import { mapStores } from "pinia";
+import { useDataStore } from "../store-data.js";
+import { usePlayerStore } from "../store-player.js";
+
+export default {
+  name: "track-row",
+  props: {
+    track: { type: Object, required: true },
+  },
+
+  inject: ["root"],
+
+  computed: {
+    ...mapStores(useDataStore, usePlayerStore),
+
+    isCurrent() {
+      return this.playerStore.current?.i === this.track.i;
     },
-    playing(){
-      return this.dataStore.playing;
-    }
-  }
-}
+
+    isQueued() {
+      return this.playerStore.isInQueue(this.track.i);
+    },
+
+    rowClasses() {
+      if (this.isCurrent) return "active";
+      if (this.isQueued) return "queued";
+      return null;
+    },
+
+    playIconClass() {
+      if (this.isCurrent && this.playerStore.playing) return "icon-pause";
+      return "icon-play";
+    },
+
+    artistNames() {
+      return this.root.artistName(this.track);
+    },
+
+    ariaLabel() {
+      const title = this.track.t || "track";
+      if (this.isCurrent && this.playerStore.playing) return `Pause ${title}`;
+      if (this.playerStore.current && this.playerStore.playing) {
+        return `Play ${title} next`;
+      }
+      return `Play ${title}`;
+    },
+  },
+
+  methods: {
+    onClick(event) {
+      // Don't trigger play when the user clicks an artist link inside the row.
+      if (event.target.nodeName === "A") return;
+
+      // smartPlay handles all three cases:
+      //   - same track → toggle pause/resume
+      //   - nothing playing → play immediately
+      //   - something playing → enqueue right after current
+      this.playerStore.smartPlay(this.track);
+    },
+  },
+};
 </script>
