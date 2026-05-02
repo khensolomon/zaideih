@@ -28,7 +28,7 @@
 
 <script>
 import { mapStores } from "pinia";
-import trackRow from "./components/track-row.vue";
+import trackRow from "./track-row.vue";
 import { useDataStore } from "./store-data.js";
 import { usePlayerStore } from "./store-player.js";
 

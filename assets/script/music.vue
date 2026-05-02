@@ -130,9 +130,9 @@
 
 <script>
 // @ts-ignore
-import trackRow from "./components/track-row.vue";
+import trackRow from "./track-row.vue";
 // @ts-ignore
-import albumRaw from "./components/album-raw.vue";
+import albumRaw from "./album-raw.vue";
 
 export default {
   name: "Track",

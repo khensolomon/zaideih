@@ -16,11 +16,11 @@
         <div class="row center head">
           <h1 v-text="album.ab"></h1>
         </div>
-        <div v-if="album.yr.length" class="row center year">
-          <a v-for="year in album.yr" :key="year" v-text="year"></a>
+        <div v-if="album.yr && album.yr.length" class="row center year">
+          <a v-for="year in dataStore.yearRanges(album.yr)" :key="year" v-text="year"></a>
         </div>
         <div class="row center play">
-          <span @click="root.playAlbum(album.ui)" class="play all">Play all</span>
+          <span @click="root.playAlbum(album.ui)" class="play all" role="button" tabindex="0" @keydown.enter="root.playAlbum(album.ui)">Play all</span>
         </div>
         <div v-if="album.gr.length" class="row center genre">
           <a v-for="genre in root.albumGenre(album)" :key="genre" v-text="genre"></a>
@@ -59,91 +59,62 @@
 </template>
 
 <script>
-// @ts-ignore
-import trackRow from "./components/track-row.vue";
-// @ts-ignore
-import albumRaw from "./components/album-raw.vue";
+import { mapStores } from "pinia";
+import trackRow from "./track-row.vue";
+import albumRaw from "./album-raw.vue";
+import { useDataStore } from "./store-data.js";
 
-// album-box, album-detail album-list, album-row
 export default {
   name: "Album",
   props: ["albumId", "language"],
 
-  inject: ["root", "dataStore", "storageStore"],
-  provide() {
-    return {
-      root: this.root,
-      dataStore: this.dataStore,
-      storageStore: this.storageStore
-    };
-  },
+  inject: ["root"],
 
   components: {
     trackRow,
-    albumRaw
+    albumRaw,
   },
-  // watch: {},
-  methods: {
-    // playAlbum(ui){
-    //   var albums = this.$parent.old.filter((e) => {
-    //     return e.ui == ui;
-    //   });
-    //   this.$parent.queue=[];
-    //   for (const album of albums) {
-    //     for (const trk of album.tk) {
-    //       this.$parent.queue.push(trk);
-    //     }
-    //   }
-    // },
-  },
-  // filters:{
-  //   sumplay: function(e){
-  //     return e.reduce((a, b) => a + parseInt(b.p), 0);
-  //   }
-  // },
+
   computed: {
-    // $() {
-    // 	return this.$parent;
-    // },
+    ...mapStores(useDataStore),
+
     albums() {
-      return this.dataStore.all.album.filter(e =>
+      return this.dataStore.all.album.filter((e) =>
         this.dataStore.albumActiveLang
           ? e.lg == this.dataStore.albumActiveLang
           : true
       );
     },
+
+    /**
+     * Resolve the URL param to either a list of matching albums (when
+     * the param is an album id or title) or set the language filter
+     * (when the param is a language name).
+     *
+     * Side-effect note: this computed sets `dataStore.albumActiveLang`
+     * when a language is matched. Inherited from the original code.
+     * Worth refactoring to a watcher in a future pass — same pattern
+     * we cleaned up in artist.vue.
+     */
     activeAlbum() {
       if (this.albumId) {
-        var lg = this.dataStore.all.lang.find(
-          e => e.name.toLowerCase() == this.albumId.toLowerCase()
+        const lg = this.dataStore.all.lang.find(
+          (e) => e.name.toLowerCase() == this.albumId.toLowerCase()
         );
         if (lg) {
           this.dataStore.albumActiveLang = lg.id;
         } else {
           return this.dataStore.all.album
             .filter(
-              e =>
+              (e) =>
                 e.ui == this.albumId ||
                 e.ab.toLowerCase() == this.albumId.toLowerCase()
             )
-            .filter(
-              // e=>e.tk.sort((a, b) => (a.n > b.n) ? 1 : -1)
-              e => e.tk
-            );
+            .filter((e) => e.tk);
         }
       }
       return [];
-    }
-  }
-  // created() {},
-  // beforeMount() {}
-  // mounted () {},
+    },
+  },
 };
-
 </script>
-
-<style scoped>
-/* If you have an external CSS file, you can also import it here:
-@import "./style.css"; 
-*/
-</style>

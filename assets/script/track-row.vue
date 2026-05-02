@@ -39,8 +39,8 @@
 
 <script>
 import { mapStores } from "pinia";
-import { useDataStore } from "../store-data.js";
-import { usePlayerStore } from "../store-player.js";
+import { useDataStore } from "./store-data.js";
+import { usePlayerStore } from "./store-player.js";
 
 export default {
   name: "track-row",

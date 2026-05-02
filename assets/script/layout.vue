@@ -100,24 +100,22 @@ import { useDataStore } from "./store-data.js";
 import { usePlayerStore } from "./store-player.js";
 
 /**
- * Layout component.
- *
- * After the player refactor, this no longer mediates between track rows
- * and the player. Components that need to play tracks call usePlayerStore()
- * directly. Layout still provides `root` for legacy methods that resolve
- * artist names (artistName, albumArtist) — those will eventually move to
- * the data store or a util module.
+ * Map of route name → which `searchAt` value to default to when the user
+ * lands on that route. Routes not in this map fall through to "avekpi"
+ * (search all). Per the user's spec: "auto select base on the current
+ * page, if not suitable fall back to default (all)".
  */
+const SEARCH_AT_BY_ROUTE = {
+  "artist-index": "artist",
+  artist: "artist",
+  album: "album",
+};
+
 export default {
   components: { Player },
 
   provide() {
-    return {
-      // `root` is still used by other components (artist.vue, album.vue,
-      // music.vue, track-row.vue) for the artistName/albumArtist helpers.
-      // We can remove this once those helpers move out of layout.
-      root: this,
-    };
+    return { root: this };
   },
 
   computed: {
@@ -128,17 +126,45 @@ export default {
     },
   },
 
+  watch: {
+    /**
+     * Auto-select the search radio based on the route. Runs on every
+     * route change. We only override `searchAt` when it doesn't already
+     * match the route's preference — so if the user manually picks a
+     * different option, we don't fight them on the same page.
+     */
+    "$route.name": {
+      immediate: true,
+      handler(routeName) {
+        const preferred = SEARCH_AT_BY_ROUTE[routeName] || "avekpi";
+        // Only auto-set on initial entry to a relevant route. We track
+        // the last route we auto-set on so we don't overwrite manual
+        // changes the user made within the same page.
+        if (this._lastAutoRoute !== routeName) {
+          this.dataStore.searchAt = preferred;
+          this._lastAutoRoute = routeName;
+        }
+      },
+    },
+  },
+
   methods: {
+    /**
+     * Submit the search. Always navigates to /search with the current
+     * query and searchAt as URL params. Search results live on /search;
+     * /artist and /album are pure browsing pages.
+     */
     search() {
+      const q = (this.dataStore.searchQuery || "").trim();
+      if (!q) return;
       this.$router.push({
-        path: "/music",
-        query: { q: this.dataStore.searchQuery },
+        path: "/search",
+        query: { q, at: this.dataStore.searchAt },
       });
     },
 
-    // --- Helpers used by other views (artist.vue, album.vue, music.vue) ---
-    // These wrap data store lookups and stay here for backwards compatibility.
-    // Candidate for moving to a `utils/track.js` module.
+    // --- Helpers used by other views (kept on `root` for now) ---
+    // Candidates for moving to a `utils/track.js` module later.
 
     artistName(track) {
       if (!track || !track.a) return [];
@@ -169,10 +195,6 @@ export default {
       );
     },
 
-    /**
-     * "Play this album/artist/whatever" — replaces the queue and starts
-     * playing the first track.
-     */
     playAll(tracks) {
       this.playerStore.playAll(tracks);
     },
@@ -186,7 +208,7 @@ export default {
   async created() {
     await this.$parent.init();
 
-    // Pre-populate the queue with a few popular tracks.
+    // Pre-populate the queue with a few popular tracks (existing behaviour).
     this.dataStore.all.album
       .filter((a) => a.lg === 2)
       .slice(0, 10)
