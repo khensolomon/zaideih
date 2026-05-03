@@ -1,199 +1,130 @@
 /**
- * Audio streaming Worker.
+ * Audio Worker — Architecture A.
  *
- * Serves MP3 files from R2, looking up the file path in D1 by track ID,
- * and incrementing a play counter on the initial request.
+ * Responsibilities:
+ *   1. /audio/:id (GET, HEAD) — stream MP3 from R2.
+ *      - Path lookup from D1 (cached aggressively).
+ *      - On initial requests: fire-and-forget Django call to increment plays.
+ *      - Records telemetry to D1 (success/timeout/failure + latency).
  *
- * Routes:
- *   GET/HEAD /audio/:id    Stream the MP3 for the given track ID.
- *   *        /*            404.
+ *   2. /sync/track/:id (POST) — receive path updates from Django.
+ *      - HMAC-signed by Django.
+ *      - Writes to D1 `tracks` table.
+ *
+ *   3. /sync/track/:id (DELETE) — receive deletions from Django.
+ *      - HMAC-signed.
+ *      - Removes from D1.
+ *
+ *   4. /sync/ping (GET) — sanity check; returns 200 OK if HMAC verifies.
+ *      - Used by Django's setup-check command.
  *
  * Bindings (configure in wrangler.toml):
- *   DB      - D1 database with `track` and `album` tables (see schema below).
- *   BUCKET  - R2 bucket whose layout is `music/<album.folder_path>/<track.mp3>`.
+ *   DB                  - D1 database (tracks + play_telemetry tables)
+ *   BUCKET              - R2 bucket
+ *   AUDIO_SIGNING_KEY   - Secret for signed-URL verification (audio-worker→browser)
+ *   WORKER_SECRET_SHARED - Secret shared with Django (HMAC for both directions)
+ *   APP_URL     - Plain var, e.g. "https://example.com"
  *
- * Expected D1 schema:
- *   CREATE TABLE album (
- *     id          INTEGER PRIMARY KEY,
- *     folder_path TEXT NOT NULL
- *   );
- *   CREATE TABLE track (
- *     id       INTEGER PRIMARY KEY,
- *     album_id INTEGER NOT NULL REFERENCES album(id),
- *     mp3      TEXT NOT NULL,
- *     plays    INTEGER NOT NULL DEFAULT 0
- *   );
- *   CREATE INDEX idx_track_album_id ON track(album_id);
- *
- * Caching strategy (three layers, fastest first):
- *   1. In-isolate memory cache for track metadata. Lives as long as the
- *      isolate; gives zero-latency lookups for hot tracks within a region.
- *   2. Workers Cache API for track metadata, 24h TTL. Survives isolate
- *      recycling and is shared across requests on the same data center.
- *   3. Cloudflare edge cache for the audio response itself, controlled by
- *      `Cache-Control: public, max-age=..., immutable` on the response.
- *      Same-byte-range requests for the same URL are served from edge
- *      cache without invoking the Worker's R2 fetch path.
- *
- *   Negative results (track not found in D1) are also memory-cached briefly
- *   so a burst of requests for a non-existent ID doesn't repeatedly hit D1.
- *
- *   Note: only range continuations are edge-cached. Initial requests carry
- *   a varying X-Track-Plays header and use `private, max-age=60` so the
- *   client gets a fresh play count on each new playback.
- *
- * Play counting:
- *   A "play" is counted only on the initial request (no Range header, or
- *   `Range: bytes=0-`). Subsequent range requests during playback do not
- *   increment the counter, so a single listen counts as one play. The
- *   increment uses `UPDATE ... RETURNING plays` so the new count comes
- *   back in the same statement, and runs in parallel with the R2 fetch
- *   via Promise.all so it doesn't add to response latency.
- *
- *   The new play count is exposed to the client via the `X-Track-Plays`
- *   response header on initial requests. CORS clients see it via
- *   `Access-Control-Expose-Headers`.
- *
- * Hotlink protection:
- *   Requests with a `sec-fetch-dest` header that is not `audio` or `video`
- *   are rejected with 403. Requests without the header (curl, native audio
- *   players, older clients) are allowed through. This is a low-cost filter
- *   against casual hotlinking from `<img>` tags or cross-origin `fetch()`,
- *   not a real authorization mechanism — use signed URLs for that.
+ * D1 schema (see migrations/0001_initial.sql):
+ *   tracks         - (id, folder_path, mp3, updated_at)
+ *   play_telemetry - (track_id, status, latency_ms, recorded_at)
  */
 
-// How long the edge can cache an audio response. Audio files are immutable
-// once uploaded, so we set this aggressively. If you ever replace a file,
-// upload it under a new key (or purge the cache) rather than overwriting.
-const AUDIO_CACHE_MAX_AGE = 86400; // 24 hours
-
-// How long to cache track metadata (folder_path, mp3) in the Cache API.
-// Track rows rarely change after creation, so a long TTL is safe.
-const TRACK_META_TTL_SECONDS = 86400; // 24 hours
-
-// How long to cache "track not found" in memory, in milliseconds. Short,
-// because someone might create the missing track shortly after a 404.
+const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
-
-// Soft cap on the in-isolate memory cache. Each entry is tiny (~100 bytes),
-// so 5000 entries is well under the 128 MB isolate limit.
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
+const AUDIO_CACHE_MAX_AGE = 86400;
 
-/**
- * In-isolate memory cache for track metadata. Map iteration order is
- * insertion order, which lets us evict the oldest entry when full.
- *
- * @type {Map<number, { value: { folder_path: string, mp3: string } | null, expiresAt: number }>}
- */
+// How long the Worker waits for Django to respond before giving up.
+// Keep well under Cloudflare's 30s background task limit.
+const DJANGO_TIMEOUT_MS = 5_000;
+
+// Reject sync requests whose timestamp is more than this old, to
+// prevent replay attacks.
+const SYNC_TIMESTAMP_WINDOW_SECONDS = 300;
+
+/** @type {Map<number, { value: object | null, expiresAt: number }>} */
 const memoryCache = new Map();
+
+/** Cached HMAC keys (one per secret). */
+const keyCache = { audio: null, django: null };
 
 export default {
 	/**
 	 * @param {Request} request
-	 * @param {{ DB: D1Database, BUCKET: R2Bucket }} env
+	 * @param {object} env
 	 * @param {ExecutionContext} ctx
 	 */
 	async fetch(request, env, ctx) {
-		// Fast path: reject anything that isn't an /audio/ URL without
-		// allocating a URL object. Cuts overhead on bot/probe traffic.
-		const urlString = request.url;
-		if (!urlString.includes("/audio/")) {
-			return new Response("Not Found", { status: 404 });
+		const url = new URL(request.url);
+
+		// Sync routes from Django. HMAC-protected.
+		if (url.pathname.startsWith("/sync/")) {
+			return handleSync(url, request, env, ctx);
 		}
 
-		// Only GET and HEAD are meaningful for media streaming.
-		if (request.method !== "GET" && request.method !== "HEAD") {
-			return new Response("Method Not Allowed", {
-				status: 405,
-				headers: { Allow: "GET, HEAD" },
-			});
+		// Audio streaming.
+		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
+		if (audioMatch) {
+			if (request.method !== "GET" && request.method !== "HEAD") {
+				return new Response("Method Not Allowed", {
+					status: 405,
+					headers: { Allow: "GET, HEAD" },
+				});
+			}
+
+			const trackId = Number.parseInt(audioMatch[1], 10);
+			if (!Number.isInteger(trackId) || trackId <= 0) {
+				return new Response("Invalid track ID", { status: 400 });
+			}
+
+			// Light hotlinking filter — same as before.
+			const dest = request.headers.get("sec-fetch-dest");
+			if (dest && dest !== "audio" && dest !== "video") {
+				return new Response("Forbidden", { status: 403 });
+			}
+
+			try {
+				return await handleAudioRequest(trackId, request, env, ctx);
+			} catch (err) {
+				console.error("audio request failed", { trackId, err });
+				return new Response("Internal Server Error", { status: 500 });
+			}
 		}
 
-		const url = new URL(urlString);
-		const match = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
-		if (!match) {
-			return new Response("Not Found", { status: 404 });
-		}
-
-		const trackId = Number.parseInt(match[1], 10);
-		if (!Number.isInteger(trackId) || trackId <= 0) {
-			return new Response("Invalid track ID", { status: 400 });
-		}
-
-		// Block casual hotlinking. If sec-fetch-dest is present, it must be
-		// audio or video — that rejects browsers embedding the URL in <img>,
-		// <script>, or fetch() from other origins. If the header is absent
-		// (curl, native players, older browsers), we allow the request.
-		const dest = request.headers.get("sec-fetch-dest");
-		if (dest && dest !== "audio" && dest !== "video") {
-			return new Response("Forbidden", { status: 403 });
-		}
-		// Alongside the sec-fetch-dest check
-		// const site = request.headers.get("sec-fetch-site");
-		// if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
-		// 	return new Response("Forbidden", { status: 403 });
-		// }
-
-		try {
-			return await handleAudioRequest(trackId, request, env, ctx);
-		} catch (err) {
-			// Log full detail server-side; return a generic message to the client.
-			console.error("audio request failed", { trackId, err });
-			return new Response("Internal Server Error", { status: 500 });
-		}
+		return new Response("Not Found", { status: 404 });
 	},
 };
 
-/**
- * Look up the track in D1 (via cache layers), optionally increment plays,
- * then stream the file from R2.
- *
- * @param {number} trackId
- * @param {Request} request
- * @param {{ DB: D1Database, BUCKET: R2Bucket }} env
- * @param {ExecutionContext} ctx
- */
+// ============================================================================
+// Audio streaming
+// ============================================================================
+
 async function handleAudioRequest(trackId, request, env, ctx) {
 	const range = request.headers.get("range");
 	const isInitialRequest = !range || range === "bytes=0-";
 
+	// Look up path from D1 (with caching).
 	const track = await getTrackMeta(trackId, env, ctx);
 	if (!track) {
 		return new Response("Not Found", { status: 404 });
 	}
 
-	// Count a play only on the initial request. We use RETURNING so the
-	// same statement that increments also gives us back the new count,
-	// avoiding a second D1 round-trip.
-	//
-	// We await this on the initial request (so we can include the count
-	// in the response header), but it runs in parallel with the R2 fetch
-	// below — see Promise.all further down.
-	let playsPromise = null;
+	// Initial requests: fire-and-forget Django call to increment plays.
+	// We don't block streaming; ctx.waitUntil keeps the Worker alive
+	// long enough to record telemetry after the stream starts.
 	if (isInitialRequest) {
-		playsPromise = env.DB
-			.prepare("UPDATE track SET plays = plays + 1 WHERE id = ? RETURNING plays")
-			.bind(trackId)
-			.first()
-			.catch((err) => {
-				console.error("plays increment failed", { trackId, err });
-				return null;
-			});
+		ctx.waitUntil(
+			notifyPlayWithTelemetry(trackId, env).catch((err) => {
+				console.error("notifyPlay error", { trackId, err });
+			}),
+		);
 	}
 
 	const objectKey = `music/${track.folder_path}/${track.mp3}`;
-	const getOptions = parseRangeOption(range);
-
-	// Run the R2 fetch and the plays UPDATE in parallel — they're
-	// independent. On range continuations, playsPromise is null and this
-	// just resolves to the R2 object.
-	const [object, playsResult] = await Promise.all([
-		env.BUCKET.get(objectKey, getOptions),
-		playsPromise,
-	]);
+	const object = await env.BUCKET.get(objectKey, parseRangeOption(range));
 
 	if (!object) {
-		// Don't leak the bucket key to the client.
 		console.error("R2 object missing", { trackId, objectKey });
 		return new Response("Not Found", { status: 404 });
 	}
@@ -203,21 +134,11 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 	headers.set("Accept-Ranges", "bytes");
 	headers.set("Content-Type", "audio/mpeg");
 	headers.set("X-Content-Type-Options", "nosniff");
+	if (object.httpEtag) headers.set("ETag", object.httpEtag);
 
-	// Expose the updated play count to the client on initial requests.
-	// Range continuations skip this — the client already has the value
-	// from the initial response.
-	if (playsResult && typeof playsResult.plays === "number") {
-		headers.set("X-Track-Plays", playsResult.plays.toString());
-		headers.set("Access-Control-Expose-Headers", "X-Track-Plays");
-	}
-
-	// Cache-Control strategy:
-	//   - Range continuations are byte-identical for everyone and have no
-	//     varying headers, so we cache them aggressively at the edge.
-	//   - Initial requests carry the X-Track-Plays header which changes on
-	//     every play, so we don't let the edge cache them. Browsers can
-	//     still cache for a short window via max-age.
+	// Range continuations are byte-identical for everyone — cache them
+	// aggressively at the edge. Initial requests aren't cached so each
+	// triggers a fresh play increment.
 	if (range) {
 		headers.set(
 			"Cache-Control",
@@ -227,14 +148,7 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 		headers.set("Cache-Control", "private, max-age=60");
 	}
 
-	// ETag lets browsers revalidate with If-None-Match for a cheap 304.
-	if (object.httpEtag) {
-		headers.set("ETag", object.httpEtag);
-	}
-
 	let status = 200;
-	let body = object.body;
-
 	if (object.range) {
 		const offset = object.range.offset ?? 0;
 		const length = object.range.length ?? object.size - offset;
@@ -246,40 +160,76 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 		headers.set("Content-Length", object.size.toString());
 	}
 
-	// HEAD must not include a body.
-	if (request.method === "HEAD") {
-		body = null;
-	}
-
+	const body = request.method === "HEAD" ? null : object.body;
 	return new Response(body, { headers, status });
 }
 
 /**
- * Fetch track metadata using a three-layer cache:
- *   1. In-isolate memory (instant)
- *   2. Workers Cache API (per-data-center, persists across isolates)
- *   3. D1 (via session API for read replicas)
- *
- * Negative results are memory-cached for a short TTL so a flood of
- * requests for an unknown ID doesn't hammer D1.
- *
- * @param {number} trackId
- * @param {{ DB: D1Database }} env
- * @param {ExecutionContext} ctx
- * @returns {Promise<{ folder_path: string, mp3: string } | null>}
+ * Fire the play notification to Django, then record the outcome to the
+ * D1 telemetry table. Records success, timeout, http_<code>, or error
+ * along with latency in ms.
  */
-async function getTrackMeta(trackId, env, ctx) {
-	// Layer 1: in-isolate memory.
-	const memHit = memoryCache.get(trackId);
-	if (memHit && memHit.expiresAt > Date.now()) {
-		return memHit.value;
-	}
-	if (memHit) {
-		// Expired — drop it.
-		memoryCache.delete(trackId);
+async function notifyPlayWithTelemetry(trackId, env) {
+	const start = Date.now();
+	let status = "error";
+	let httpStatus = null;
+
+	try {
+		const path = `/api/internal/track/${trackId}/play/`;
+		const ts = Math.floor(Date.now() / 1000).toString();
+		const sig = await hmacHex(
+			await getKey(env.WORKER_SECRET_SHARED, "django"),
+			`${path}.${ts}`,
+		);
+
+		const res = await fetch(`${env.APP_URL}${path}`, {
+			method: "POST",
+			headers: {
+				"X-Worker-Signature": sig,
+				"X-Worker-Timestamp": ts,
+			},
+			signal: AbortSignal.timeout(DJANGO_TIMEOUT_MS),
+		});
+
+		httpStatus = res.status;
+		status = res.ok ? "success" : `http_${res.status}`;
+	} catch (err) {
+		if (err && err.name === "TimeoutError") {
+			status = "timeout";
+		} else if (err && err.name === "AbortError") {
+			status = "timeout";
+		} else {
+			status = "error";
+		}
 	}
 
-	// Layer 2: Cache API.
+	const latency = Date.now() - start;
+
+	// Best-effort telemetry write. If telemetry itself fails, we just
+	// log and move on — telemetry failures shouldn't cascade.
+	try {
+		await env.DB.prepare(
+			`INSERT INTO play_telemetry (track_id, status, latency_ms, recorded_at)
+			 VALUES (?, ?, ?, ?)`,
+		)
+			.bind(trackId, status, latency, Math.floor(Date.now() / 1000))
+			.run();
+	} catch (err) {
+		console.error("telemetry write failed", { trackId, status, err });
+	}
+}
+
+// ============================================================================
+// Track metadata lookup (D1 + cache layers)
+// ============================================================================
+
+async function getTrackMeta(trackId, env, ctx) {
+	// L1: in-isolate memory.
+	const memHit = memoryCache.get(trackId);
+	if (memHit && memHit.expiresAt > Date.now()) return memHit.value;
+	if (memHit) memoryCache.delete(trackId);
+
+	// L2: Cache API (per-data-center, persists across isolates).
 	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
 	const cache = caches.default;
 	const cached = await cache.match(cacheKey);
@@ -289,22 +239,14 @@ async function getTrackMeta(trackId, env, ctx) {
 		return meta;
 	}
 
-	// Layer 3: D1. Use the session API so reads can be served from the
-	// nearest replica when available; "first-unconstrained" allows any
-	// replica to answer (lowest latency).
+	// L3: D1.
 	const session = env.DB.withSession("first-unconstrained");
 	const result = await session
-		.prepare(
-			`SELECT a.folder_path, t.mp3
-			 FROM album a JOIN track t ON t.album_id = a.id
-			 WHERE t.id = ?`,
-		)
+		.prepare("SELECT folder_path, mp3 FROM tracks WHERE id = ?")
 		.bind(trackId)
 		.first();
 
 	if (!result) {
-		// Negative cache: short TTL, memory only (don't pollute the Cache
-		// API with negative entries that are harder to invalidate).
 		setMemoryCache(trackId, null, NEGATIVE_CACHE_TTL_MS);
 		return null;
 	}
@@ -319,21 +261,11 @@ async function getTrackMeta(trackId, env, ctx) {
 		},
 	});
 	ctx.waitUntil(cache.put(cacheKey, cacheResponse));
-
 	return meta;
 }
 
-/**
- * Insert into the in-isolate memory cache, evicting the oldest entry if
- * we're at the soft cap.
- *
- * @param {number} trackId
- * @param {{ folder_path: string, mp3: string } | null} value
- * @param {number} ttlMs
- */
 function setMemoryCache(trackId, value, ttlMs) {
 	if (memoryCache.size >= MEMORY_CACHE_MAX_ENTRIES) {
-		// Evict the oldest entry (first insertion in Map iteration order).
 		const oldestKey = memoryCache.keys().next().value;
 		if (oldestKey !== undefined) memoryCache.delete(oldestKey);
 	}
@@ -341,18 +273,158 @@ function setMemoryCache(trackId, value, ttlMs) {
 }
 
 /**
- * Parse a Range header into an R2 GetOptions object. Returns undefined
- * (not an empty object) when there's no usable range, so callers can
- * pass it directly to env.BUCKET.get(key, parseRangeOption(...)).
- *
- * @param {string | null} range
- * @returns {R2GetOptions | undefined}
+ * Invalidate cached entries for a track. Called when Django pushes an
+ * update, so the next read sees fresh data immediately.
  */
+async function invalidateTrackCache(trackId, ctx) {
+	memoryCache.delete(trackId);
+	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
+	ctx.waitUntil(caches.default.delete(cacheKey));
+}
+
+// ============================================================================
+// Sync endpoints (Django → Worker)
+// ============================================================================
+
+async function handleSync(url, request, env, ctx) {
+	// Verify HMAC signature for any /sync/ endpoint.
+	const sigOk = await verifyDjangoSignature(url, request, env);
+	if (!sigOk) return new Response("Forbidden", { status: 403 });
+
+	// /sync/ping — health check.
+	if (url.pathname === "/sync/ping" && request.method === "GET") {
+		return new Response("pong", { status: 200 });
+	}
+
+	// /sync/track/:id — track upsert/delete.
+	const trackMatch = /^\/sync\/track\/(\d+)\/?$/.exec(url.pathname);
+	if (trackMatch) {
+		const trackId = Number.parseInt(trackMatch[1], 10);
+		if (!Number.isInteger(trackId) || trackId <= 0) {
+			return new Response("Invalid track ID", { status: 400 });
+		}
+
+		if (request.method === "POST") {
+			return handleTrackUpsert(trackId, request, env, ctx);
+		}
+		if (request.method === "DELETE") {
+			return handleTrackDelete(trackId, env, ctx);
+		}
+		return new Response("Method Not Allowed", { status: 405 });
+	}
+
+	return new Response("Not Found", { status: 404 });
+}
+
+async function handleTrackUpsert(trackId, request, env, ctx) {
+	let body;
+	try {
+		body = await request.json();
+	} catch {
+		return new Response("Invalid JSON", { status: 400 });
+	}
+
+	const folder_path = String(body.folder_path || "").trim();
+	const mp3 = String(body.mp3 || "").trim();
+	if (!folder_path || !mp3) {
+		return new Response("folder_path and mp3 required", { status: 400 });
+	}
+
+	const now = Math.floor(Date.now() / 1000);
+
+	await env.DB.prepare(
+		`INSERT INTO tracks (id, folder_path, mp3, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   folder_path = excluded.folder_path,
+		   mp3 = excluded.mp3,
+		   updated_at = excluded.updated_at`,
+	)
+		.bind(trackId, folder_path, mp3, now)
+		.run();
+
+	await invalidateTrackCache(trackId, ctx);
+
+	return new Response(
+		JSON.stringify({ id: trackId, ok: true }),
+		{ headers: { "Content-Type": "application/json" } },
+	);
+}
+
+async function handleTrackDelete(trackId, env, ctx) {
+	await env.DB.prepare("DELETE FROM tracks WHERE id = ?").bind(trackId).run();
+	await invalidateTrackCache(trackId, ctx);
+	return new Response(
+		JSON.stringify({ id: trackId, ok: true }),
+		{ headers: { "Content-Type": "application/json" } },
+	);
+}
+
+// ============================================================================
+// HMAC signing / verification
+// ============================================================================
+
+async function getKey(secret, slot) {
+	if (keyCache[slot]) return keyCache[slot];
+	keyCache[slot] = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(secret),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign", "verify"],
+	);
+	return keyCache[slot];
+}
+
+async function hmacHex(key, payload) {
+	const sig = await crypto.subtle.sign(
+		"HMAC",
+		key,
+		new TextEncoder().encode(payload),
+	);
+	return Array.from(new Uint8Array(sig))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+}
+
+/**
+ * Verify the HMAC signature on a request from Django.
+ * Django signs `${path}.${timestamp}` with the shared secret and sends
+ * X-Worker-Signature (hex) and X-Worker-Timestamp (unix seconds) headers.
+ */
+async function verifyDjangoSignature(url, request, env) {
+	const sig = request.headers.get("X-Worker-Signature");
+	const ts = request.headers.get("X-Worker-Timestamp");
+	if (!sig || !ts) return false;
+
+	const tsNum = Number(ts);
+	if (!Number.isFinite(tsNum)) return false;
+
+	const now = Math.floor(Date.now() / 1000);
+	if (Math.abs(now - tsNum) > SYNC_TIMESTAMP_WINDOW_SECONDS) return false;
+
+	const expected = await hmacHex(
+		await getKey(env.WORKER_SECRET_SHARED, "django"),
+		`${url.pathname}.${ts}`,
+	);
+
+	// Constant-time comparison.
+	if (sig.length !== expected.length) return false;
+	let diff = 0;
+	for (let i = 0; i < sig.length; i++) {
+		diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+	}
+	return diff === 0;
+}
+
+// ============================================================================
+// Range parsing
+// ============================================================================
+
 function parseRangeOption(range) {
 	if (!range) return undefined;
 	const match = /^bytes=(\d+)-(\d+)?$/.exec(range);
 	if (!match) return undefined;
-
 	const offset = Number.parseInt(match[1], 10);
 	const end = match[2] ? Number.parseInt(match[2], 10) : undefined;
 	return {

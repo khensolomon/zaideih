@@ -9,7 +9,7 @@ to record plays.
 
 ## Files in this delivery
 
-```
+```bash
 worker-side/
   audio-worker.js     The Worker (audio streaming + sync endpoints).
   wrangler.toml       Worker config (replace REPLACE_ME values).
@@ -23,8 +23,8 @@ django-side/
   signals.py          post_save / post_delete handlers on Track.
   views.py            /api/internal/track/<id>/play/ endpoint.
   urls.py             URL routing.
-  sync_d1.py          Goes in worker_sync/management/commands/.
-  check_d1.py         Goes in worker_sync/management/commands/.
+  sync_d1.py          Goes in worker/management/commands/.
+  check_d1.py         Goes in worker/management/commands/.
 ```
 
 ---
@@ -52,7 +52,7 @@ both sides next.
 Copy the contents of `worker-side/` into your Worker project. Your
 project should look something like:
 
-```
+```bash
 audio-worker/
   audio-worker.js
   wrangler.toml
@@ -102,7 +102,7 @@ they never appear in your dashboard or logs.
 
 ```toml
 [vars]
-DJANGO_BASE_URL = "https://your-django-host.com"  # NO trailing slash
+APP_URL = "https://your-django-host.com"  # NO trailing slash
 ```
 
 For development you can use `http://web:3010` if running both in Docker
@@ -113,9 +113,13 @@ deployment this should be your public Django URL.
 
 ```bash
 wrangler deploy
+
+# or
+cd zaideih
+npx wrangler deploy --config worker/audio/wrangler.toml
 ```
 
-Confirm the route is mapped to your Worker:
+Confirm the route is mapped to your Worker:ce
 
 ```bash
 curl https://api.example.com/sync/ping
@@ -130,9 +134,9 @@ curl https://api.example.com/sync/ping
 
 In your Django project, create the directory layout:
 
-```
+```bash
 your_project/
-  worker_sync/
+  worker/
     __init__.py        ← from django-side/__init__.py
     apps.py            ← from django-side/apps.py
     services.py        ← from django-side/services.py
@@ -167,23 +171,23 @@ In your `settings.py`:
 ```python
 INSTALLED_APPS = [
     # ... your existing apps ...
-    "worker_sync",
+    "worker",
 ]
 
 # Where the Worker lives. Must be reachable from Django.
-WORKER_BASE_URL = "https://api.example.com"
+WORKER_URL = "https://api.example.com"
 
 # Same secret you set on the Worker.
 # Read from environment, NEVER hardcode in settings.
 import os
-WORKER_SHARED_SECRET = os.environ["WORKER_SHARED_SECRET"]
+SECRET_SHARED = os.environ["SECRET_SHARED"]
 ```
 
 Set the env var:
 
 ```bash
 # In your .env, or wherever you manage secrets
-WORKER_SHARED_SECRET=<paste the same value from Phase 1>
+SECRET_SHARED=<paste the same value from Phase 1>
 ```
 
 ### 3d. URL routing
@@ -193,7 +197,7 @@ In your project's `urls.py`:
 ```python
 urlpatterns = [
     # ... existing ...
-    path("api/internal/", include("worker_sync.urls")),
+    path("api/internal/", include("worker.urls")),
 ]
 ```
 
@@ -214,7 +218,7 @@ python manage.py check_d1
 
 Expected output:
 
-```
+```bash
 Worker URL: https://api.example.com
 Secret:     7f3a...64c8 (length 64)
 
@@ -234,7 +238,7 @@ python manage.py sync_d1 --all
 
 You'll see one line per track and a summary:
 
-```
+```bash
 Worker reachable: OK (status 200)
 Syncing 50000 track(s) to Worker...
   track 1: ok
@@ -269,6 +273,7 @@ Make a real audio request from your browser. Then in Django:
 ```
 
 The number should have incremented. If not:
+
 - Check `wrangler tail` while you make the request — you should see
   the Worker call out to Django.
 - Check Django logs — you should see the `track_play` view being hit.
@@ -387,7 +392,7 @@ python manage.py sync_d1 --all             # if uncertain
 
 If something goes wrong and you need to disable the sync:
 
-1. Comment out `from . import signals` in `worker_sync/apps.py`
+1. Comment out `from . import signals` in `worker/apps.py`
 2. Restart Django
 
 Track edits will no longer push to D1. Audio streaming continues

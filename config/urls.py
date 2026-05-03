@@ -5,7 +5,10 @@ from django.urls import path, include
 urlpatterns = [
     # 1. Django Admin 
     path('admin/', admin.site.urls),
-    
+
+    # Internal API for worker synchronization (not exposed to public)
+    path("api/internal/", include("worker.urls")),
+
     # 2. API Routes
     path('api/', include('api.urls')),
     

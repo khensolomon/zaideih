@@ -1,0 +1,162 @@
+"""
+HTTP client for talking to the Cloudflare audio Worker.
+
+This module owns:
+  - HMAC signing of outbound requests (Django → Worker)
+  - HMAC verification of inbound requests (Worker → Django)
+  - Retry/timeout policy for outbound calls
+
+Both sides must use the same secret (settings.APP_SECRET_SHARED) and
+the same signing scheme (HMAC-SHA256 over `{path}.{timestamp}`, hex-encoded).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import logging
+import time
+from typing import Any
+
+import requests
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# Outbound request timeout. Keep low — these are best-effort sync writes
+# and we don't want signal handlers blocking admin UI on a slow Worker.
+WORKER_REQUEST_TIMEOUT = 5.0  # seconds
+
+# Tolerance for clock skew between Django and Worker, in seconds. Both
+# sides reject requests with timestamps outside this window.
+TIMESTAMP_WINDOW = 300
+
+
+def _sign(path: str, timestamp: str) -> str:
+    """
+    Compute the HMAC-SHA256 hex signature for a request.
+
+    The payload format is `{path}.{timestamp}` to match the Worker's
+    expectation in audio-worker.js.
+    """
+    secret = settings.APP_SECRET_SHARED.encode()
+    payload = f"{path}.{timestamp}".encode()
+    return hmac.new(secret, payload, hashlib.sha256).hexdigest()
+
+
+def _signed_headers(path: str) -> dict[str, str]:
+    """Build the X-Worker-Signature / X-Worker-Timestamp headers."""
+    ts = str(int(time.time()))
+    return {
+        "X-Worker-Signature": _sign(path, ts),
+        "X-Worker-Timestamp": ts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Outbound: Django → Worker
+# ---------------------------------------------------------------------------
+
+
+def upsert_track(track_id: int, folder_path: str, mp3: str) -> bool:
+    """
+    Push a track's path data to the Worker. Returns True on success.
+
+    Best-effort: failures are logged but do NOT raise. The bulk re-sync
+    command can be run later to repair any drift from missed syncs.
+    """
+    path = f"/sync/track/{track_id}"
+    url = f"{settings.WORKER_URL}{path}"
+    headers = _signed_headers(path)
+
+    try:
+        res = requests.post(
+            url,
+            json={"folder_path": folder_path, "mp3": mp3},
+            headers=headers,
+            timeout=WORKER_REQUEST_TIMEOUT,
+        )
+        if res.ok:
+            return True
+        logger.warning(
+            "Worker upsert failed: track_id=%s status=%s body=%s",
+            track_id, res.status_code, res.text[:200],
+        )
+        return False
+    except requests.RequestException as exc:
+        logger.warning("Worker upsert error: track_id=%s err=%s", track_id, exc)
+        return False
+
+
+def delete_track(track_id: int) -> bool:
+    """
+    Tell the Worker a track was deleted. Returns True on success.
+
+    Best-effort, like upsert_track. Worst case: D1 has a stale row that
+    the Worker would still serve until you run the resync command.
+    """
+    path = f"/sync/track/{track_id}"
+    url = f"{settings.WORKER_URL}{path}"
+    headers = _signed_headers(path)
+
+    try:
+        res = requests.delete(url, headers=headers, timeout=WORKER_REQUEST_TIMEOUT)
+        if res.ok:
+            return True
+        logger.warning(
+            "Worker delete failed: track_id=%s status=%s",
+            track_id, res.status_code,
+        )
+        return False
+    except requests.RequestException as exc:
+        logger.warning("Worker delete error: track_id=%s err=%s", track_id, exc)
+        return False
+
+
+def ping() -> tuple[bool, str]:
+    """
+    Sanity-check connectivity and HMAC alignment with the Worker.
+    Returns (ok, message) for easy printing in management commands.
+    """
+    path = "/sync/ping"
+    url = f"{settings.WORKER_URL}{path}"
+    headers = _signed_headers(path)
+
+    try:
+        res = requests.get(url, headers=headers, timeout=WORKER_REQUEST_TIMEOUT)
+        if res.ok:
+            return True, f"OK (status {res.status_code})"
+        return False, f"Worker returned {res.status_code}: {res.text[:200]}"
+    except requests.RequestException as exc:
+        return False, f"Connection error: {exc}"
+
+
+# ---------------------------------------------------------------------------
+# Inbound: Worker → Django (the play increment endpoint)
+# ---------------------------------------------------------------------------
+
+
+def verify_worker_request(request: Any) -> bool:
+    """
+    Verify the HMAC on an inbound request from the Worker.
+
+    The Worker signs `{path}.{timestamp}` with the shared secret and sends
+    X-Worker-Signature (hex) and X-Worker-Timestamp (unix seconds) headers.
+    """
+    sig = request.headers.get("X-Worker-Signature", "")
+    ts = request.headers.get("X-Worker-Timestamp", "")
+
+    if not sig or not ts:
+        return False
+
+    try:
+        ts_num = int(ts)
+    except ValueError:
+        return False
+
+    # Reject stale requests (replay protection).
+    if abs(int(time.time()) - ts_num) > TIMESTAMP_WINDOW:
+        return False
+
+    expected = _sign(request.path, ts)
+    return hmac.compare_digest(sig, expected)

@@ -1,16 +1,33 @@
+# Audio Worker — Architecture A configuration.
+#
+# Replace placeholder values with yours and deploy with `wrangler deploy`.
+#
+# Secrets must be set separately:
+#   wrangler secret put AUDIO_SIGNING_KEY
+#   wrangler secret put SECRET_SHARED
+
 name = "audio"
 main = "script.js"
 compatibility_date = "2026-05-01"
 
+# Plain vars — visible in the dashboard, fine to commit.
+[vars]
+APP_URL = "http://localhost:8000"
+ 
+# D1 database binding. Replace database_id with yours after running:
+#   wrangler d1 create audio-paths
 [[d1_databases]]
 binding = "DB"
 database_name = "audio"
 database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
 
+# R2 bucket for audio files.
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "media"
 
+# Custom domain for the Worker (so Django can reach a stable URL).
+# You said keep it as api.example.com for now.
 [[routes]]
 pattern = "api.zaideih.com"
 custom_domain = true

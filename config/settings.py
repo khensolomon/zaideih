@@ -19,6 +19,7 @@ sys.path.insert(0, str(APPS_DIR))
 
 # --- CORE SECURITY ---
 SECRET_KEY = os.environ.get('SECRET_KEY', 'unsafe-fallback-key-change-me')
+SECRET_SHARED = os.environ.get('SECRET_SHARED', 'unsafe-fallback-worker-key-change-me')
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 # Split ALLOWED_HOSTS and remove empty entries
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     # Local
     'core',
     'api',
+    'worker',
 ]
 
 MIDDLEWARE = [
@@ -184,3 +186,6 @@ if not DEBUG:
     CSRF_TRUSTED_ORIGINS = [o for o in map(normalize_origin, raw_csrf) if o]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+WORKER_URL = os.environ.get('WORKER_URL', 'https://api.example.com')
