@@ -222,6 +222,8 @@ export default {
       const id = this.playerStore.current?.i;
       if (id == null) return undefined;
       return this.dataStore.api.audio.replace("*", id);
+
+      // return `${trackUrl}?t=${Date.now()}`;
     },
 
     artistNames() {

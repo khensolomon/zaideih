@@ -1,30 +1,26 @@
 """
-Bulk-sync command for pushing all tracks from Django to the Worker's D1.
+Bulk-sync command for pushing tracks from Django to the Worker's D1.
 
 Use cases:
   - Initial setup: push every existing track to a fresh D1.
-  - Recovery: re-sync everything if D1 drifted (signal failures, schema
-    change, etc.).
+  - Recovery: re-sync everything if D1 drifted.
   - Subset sync: re-push tracks for a specific album.
 
 Usage:
     python manage.py sync_d1 --all
     python manage.py sync_d1 --album <album_id>
     python manage.py sync_d1 --track <track_id>
-
-Output is one line per track with its result, plus a summary at the end.
+    python manage.py sync_d1 --all --quiet --limit 100
 """
 
 from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-# Replace with the actual location of your models.
+# Replace `music` with the actual app where your Track model lives.
 from api.models import Track
 
-# from worker import services
-# import worker.services as services
-import services
+from worker import services
 
 
 class Command(BaseCommand):
@@ -54,7 +50,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        # Quick sanity check: can we even reach the Worker?
         ok, msg = services.ping()
         if not ok:
             raise CommandError(f"Cannot reach Worker: {msg}")
@@ -68,7 +63,7 @@ class Command(BaseCommand):
             qs = Track.objects.select_related("album").filter(
                 album_id=options["album"]
             ).order_by("id")
-        else:  # --track
+        else:
             qs = Track.objects.select_related("album").filter(
                 id=options["track"]
             )

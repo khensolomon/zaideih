@@ -3,8 +3,9 @@
 # Replace placeholder values with yours and deploy with `wrangler deploy`.
 #
 # Secrets must be set separately:
-#   wrangler secret put AUDIO_SIGNING_KEY
 #   wrangler secret put SECRET_SHARED
+#
+# (The SECRET_SHARED value must EXACTLY match Django's APP_SECRET_SHARED.)
 
 name = "audio"
 main = "script.js"
@@ -31,3 +32,4 @@ bucket_name = "media"
 [[routes]]
 pattern = "api.zaideih.com"
 custom_domain = true
+ 

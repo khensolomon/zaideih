@@ -79,7 +79,7 @@ database_id = "<the id you just got>"
 ### 2c. Run the schema migration
 
 ```bash
-wrangler d1 execute audio-paths --file=./migrations/0001_initial.sql
+wrangler d1 execute audio --file=./migrations/0001_initial.sql
 ```
 
 This creates the `tracks` and `play_telemetry` tables.

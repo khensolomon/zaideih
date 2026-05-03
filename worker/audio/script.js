@@ -1,33 +1,24 @@
 /**
  * Audio Worker — Architecture A.
  *
- * Responsibilities:
- *   1. /audio/:id (GET, HEAD) — stream MP3 from R2.
- *      - Path lookup from D1 (cached aggressively).
- *      - On initial requests: fire-and-forget Django call to increment plays.
- *      - Records telemetry to D1 (success/timeout/failure + latency).
- *
- *   2. /sync/track/:id (POST) — receive path updates from Django.
- *      - HMAC-signed by Django.
- *      - Writes to D1 `tracks` table.
- *
- *   3. /sync/track/:id (DELETE) — receive deletions from Django.
- *      - HMAC-signed.
- *      - Removes from D1.
- *
- *   4. /sync/ping (GET) — sanity check; returns 200 OK if HMAC verifies.
- *      - Used by Django's setup-check command.
+ * Routes:
+ *   GET/HEAD /audio/:id        Stream MP3 from R2.
+ *                              On initial-play: notify Django (fire-and-forget).
+ *                              Records outcome to tracks_stats.
+ *   POST     /sync/track/:id   Receive track upsert from Django (HMAC-signed).
+ *   DELETE   /sync/track/:id   Receive track deletion from Django.
+ *   GET      /sync/ping        Health check (HMAC-signed).
  *
  * Bindings (configure in wrangler.toml):
- *   DB                  - D1 database (tracks + play_telemetry tables)
- *   BUCKET              - R2 bucket
- *   AUDIO_SIGNING_KEY   - Secret for signed-URL verification (audio-worker→browser)
- *   WORKER_SECRET_SHARED - Secret shared with Django (HMAC for both directions)
- *   APP_URL     - Plain var, e.g. "https://example.com"
+ *   DB              D1 database (tracks + tracks_stats)
+ *   BUCKET          R2 bucket
+ *   SECRET_SHARED   Secret shared with Django (HMAC for both directions).
+ *                   Must match Django's APP_SECRET_SHARED exactly.
+ *   APP_URL         Plain var, e.g. "https://example.com" or a cloudflared
+ *                   tunnel URL during development.
  *
- * D1 schema (see migrations/0001_initial.sql):
- *   tracks         - (id, folder_path, mp3, updated_at)
- *   play_telemetry - (track_id, status, latency_ms, recorded_at)
+ * (AUDIO_SIGNING_KEY for browser-side signed URLs is unchanged from the
+ *  earlier setup and is still needed if you have signed audio URLs.)
  */
 
 const TRACK_META_TTL_SECONDS = 86400;
@@ -35,19 +26,27 @@ const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
 
-// How long the Worker waits for Django to respond before giving up.
-// Keep well under Cloudflare's 30s background task limit.
+// Hard timeout on Django calls. Keep well under Cloudflare's 30s background
+// task limit so we never hit that.
 const DJANGO_TIMEOUT_MS = 5_000;
 
-// Reject sync requests whose timestamp is more than this old, to
-// prevent replay attacks.
+// Inbound /sync/* requests with timestamps older than this are rejected
+// (replay protection).
 const SYNC_TIMESTAMP_WINDOW_SECONDS = 300;
+
+// EMA weight for the new latency measurement. Lower = smoother (more weight
+// on history). Higher = more reactive (more weight on the latest sample).
+// 0.1 means the latest sample contributes 10%, history 90%.
+//
+// In integer math: new_avg = (old_avg * 9 + new_sample) / 10
+const EMA_ALPHA_NUM = 1;   // numerator   (1 part new)
+const EMA_ALPHA_DEN = 10;  // denominator (10 parts total → 9 parts old)
 
 /** @type {Map<number, { value: object | null, expiresAt: number }>} */
 const memoryCache = new Map();
 
-/** Cached HMAC keys (one per secret). */
-const keyCache = { audio: null, django: null };
+/** Cached HMAC key. Re-imported per isolate, never per request. */
+let _hmacKey = null;
 
 export default {
 	/**
@@ -58,12 +57,10 @@ export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 
-		// Sync routes from Django. HMAC-protected.
 		if (url.pathname.startsWith("/sync/")) {
 			return handleSync(url, request, env, ctx);
 		}
 
-		// Audio streaming.
 		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
 		if (audioMatch) {
 			if (request.method !== "GET" && request.method !== "HEAD") {
@@ -78,7 +75,6 @@ export default {
 				return new Response("Invalid track ID", { status: 400 });
 			}
 
-			// Light hotlinking filter — same as before.
 			const dest = request.headers.get("sec-fetch-dest");
 			if (dest && dest !== "audio" && dest !== "video") {
 				return new Response("Forbidden", { status: 403 });
@@ -104,18 +100,14 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 	const range = request.headers.get("range");
 	const isInitialRequest = !range || range === "bytes=0-";
 
-	// Look up path from D1 (with caching).
 	const track = await getTrackMeta(trackId, env, ctx);
 	if (!track) {
 		return new Response("Not Found", { status: 404 });
 	}
 
-	// Initial requests: fire-and-forget Django call to increment plays.
-	// We don't block streaming; ctx.waitUntil keeps the Worker alive
-	// long enough to record telemetry after the stream starts.
 	if (isInitialRequest) {
 		ctx.waitUntil(
-			notifyPlayWithTelemetry(trackId, env).catch((err) => {
+			notifyPlayWithStats(trackId, env).catch((err) => {
 				console.error("notifyPlay error", { trackId, err });
 			}),
 		);
@@ -136,9 +128,6 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 	headers.set("X-Content-Type-Options", "nosniff");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
 
-	// Range continuations are byte-identical for everyone — cache them
-	// aggressively at the edge. Initial requests aren't cached so each
-	// triggers a fresh play increment.
 	if (range) {
 		headers.set(
 			"Cache-Control",
@@ -165,22 +154,22 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 }
 
 /**
- * Fire the play notification to Django, then record the outcome to the
- * D1 telemetry table. Records success, timeout, http_<code>, or error
- * along with latency in ms.
+ * Fire the play notification to Django, then record the outcome in
+ * tracks_stats. Each call updates a single row keyed by (track_id, status):
+ *   - count incremented
+ *   - avg_latency_ms updated as exponential moving average
+ *   - last_latency_ms set to this sample
+ *   - last_seen updated to now
+ *   - first_seen set on insert, untouched on update
  */
-async function notifyPlayWithTelemetry(trackId, env) {
+async function notifyPlayWithStats(trackId, env) {
 	const start = Date.now();
-	let status = "error";
-	let httpStatus = null;
+	let status;
 
 	try {
 		const path = `/api/internal/track/${trackId}/play/`;
 		const ts = Math.floor(Date.now() / 1000).toString();
-		const sig = await hmacHex(
-			await getKey(env.WORKER_SECRET_SHARED, "django"),
-			`${path}.${ts}`,
-		);
+		const sig = await hmacHex(env, `${path}.${ts}`);
 
 		const res = await fetch(`${env.APP_URL}${path}`, {
 			method: "POST",
@@ -191,12 +180,9 @@ async function notifyPlayWithTelemetry(trackId, env) {
 			signal: AbortSignal.timeout(DJANGO_TIMEOUT_MS),
 		});
 
-		httpStatus = res.status;
 		status = res.ok ? "success" : `http_${res.status}`;
 	} catch (err) {
-		if (err && err.name === "TimeoutError") {
-			status = "timeout";
-		} else if (err && err.name === "AbortError") {
+		if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
 			status = "timeout";
 		} else {
 			status = "error";
@@ -204,18 +190,31 @@ async function notifyPlayWithTelemetry(trackId, env) {
 	}
 
 	const latency = Date.now() - start;
+	const now = Math.floor(Date.now() / 1000);
 
-	// Best-effort telemetry write. If telemetry itself fails, we just
-	// log and move on — telemetry failures shouldn't cascade.
+	// UPSERT into tracks_stats. On insert: count=1, avg = first sample,
+	// first_seen = now. On update: count++, avg = EMA, first_seen left alone.
+	//
+	// EMA formula in integer SQL:
+	//   new_avg = (old_avg * (DEN - NUM) + sample * NUM) / DEN
+	//   with NUM=1, DEN=10 → (old * 9 + sample) / 10
 	try {
 		await env.DB.prepare(
-			`INSERT INTO play_telemetry (track_id, status, latency_ms, recorded_at)
-			 VALUES (?, ?, ?, ?)`,
+			`INSERT INTO tracks_stats
+			    (track_id, status, count, avg_latency_ms, last_latency_ms, first_seen, last_seen)
+			 VALUES (?1, ?2, 1, ?3, ?3, ?4, ?4)
+			 ON CONFLICT(track_id, status) DO UPDATE SET
+			    count           = count + 1,
+			    avg_latency_ms  = (avg_latency_ms * ${EMA_ALPHA_DEN - EMA_ALPHA_NUM}
+			                       + ?3 * ${EMA_ALPHA_NUM}) / ${EMA_ALPHA_DEN},
+			    last_latency_ms = ?3,
+			    last_seen       = ?4`,
 		)
-			.bind(trackId, status, latency, Math.floor(Date.now() / 1000))
+			.bind(trackId, status, latency, now)
 			.run();
 	} catch (err) {
-		console.error("telemetry write failed", { trackId, status, err });
+		// Telemetry failure must never cascade to user-visible errors.
+		console.error("tracks_stats write failed", { trackId, status, err });
 	}
 }
 
@@ -224,12 +223,10 @@ async function notifyPlayWithTelemetry(trackId, env) {
 // ============================================================================
 
 async function getTrackMeta(trackId, env, ctx) {
-	// L1: in-isolate memory.
 	const memHit = memoryCache.get(trackId);
 	if (memHit && memHit.expiresAt > Date.now()) return memHit.value;
 	if (memHit) memoryCache.delete(trackId);
 
-	// L2: Cache API (per-data-center, persists across isolates).
 	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
 	const cache = caches.default;
 	const cached = await cache.match(cacheKey);
@@ -239,7 +236,6 @@ async function getTrackMeta(trackId, env, ctx) {
 		return meta;
 	}
 
-	// L3: D1.
 	const session = env.DB.withSession("first-unconstrained");
 	const result = await session
 		.prepare("SELECT folder_path, mp3 FROM tracks WHERE id = ?")
@@ -272,10 +268,6 @@ function setMemoryCache(trackId, value, ttlMs) {
 	memoryCache.set(trackId, { value, expiresAt: Date.now() + ttlMs });
 }
 
-/**
- * Invalidate cached entries for a track. Called when Django pushes an
- * update, so the next read sees fresh data immediately.
- */
 async function invalidateTrackCache(trackId, ctx) {
 	memoryCache.delete(trackId);
 	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
@@ -287,16 +279,13 @@ async function invalidateTrackCache(trackId, ctx) {
 // ============================================================================
 
 async function handleSync(url, request, env, ctx) {
-	// Verify HMAC signature for any /sync/ endpoint.
 	const sigOk = await verifyDjangoSignature(url, request, env);
 	if (!sigOk) return new Response("Forbidden", { status: 403 });
 
-	// /sync/ping — health check.
 	if (url.pathname === "/sync/ping" && request.method === "GET") {
 		return new Response("pong", { status: 200 });
 	}
 
-	// /sync/track/:id — track upsert/delete.
 	const trackMatch = /^\/sync\/track\/(\d+)\/?$/.exec(url.pathname);
 	if (trackMatch) {
 		const trackId = Number.parseInt(trackMatch[1], 10);
@@ -337,8 +326,8 @@ async function handleTrackUpsert(trackId, request, env, ctx) {
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   folder_path = excluded.folder_path,
-		   mp3 = excluded.mp3,
-		   updated_at = excluded.updated_at`,
+		   mp3         = excluded.mp3,
+		   updated_at  = excluded.updated_at`,
 	)
 		.bind(trackId, folder_path, mp3, now)
 		.run();
@@ -364,19 +353,20 @@ async function handleTrackDelete(trackId, env, ctx) {
 // HMAC signing / verification
 // ============================================================================
 
-async function getKey(secret, slot) {
-	if (keyCache[slot]) return keyCache[slot];
-	keyCache[slot] = await crypto.subtle.importKey(
+async function getKey(env) {
+	if (_hmacKey) return _hmacKey;
+	_hmacKey = await crypto.subtle.importKey(
 		"raw",
-		new TextEncoder().encode(secret),
+		new TextEncoder().encode(env.SECRET_SHARED),
 		{ name: "HMAC", hash: "SHA-256" },
 		false,
 		["sign", "verify"],
 	);
-	return keyCache[slot];
+	return _hmacKey;
 }
 
-async function hmacHex(key, payload) {
+async function hmacHex(env, payload) {
+	const key = await getKey(env);
 	const sig = await crypto.subtle.sign(
 		"HMAC",
 		key,
@@ -387,11 +377,6 @@ async function hmacHex(key, payload) {
 		.join("");
 }
 
-/**
- * Verify the HMAC signature on a request from Django.
- * Django signs `${path}.${timestamp}` with the shared secret and sends
- * X-Worker-Signature (hex) and X-Worker-Timestamp (unix seconds) headers.
- */
 async function verifyDjangoSignature(url, request, env) {
 	const sig = request.headers.get("X-Worker-Signature");
 	const ts = request.headers.get("X-Worker-Timestamp");
@@ -403,12 +388,8 @@ async function verifyDjangoSignature(url, request, env) {
 	const now = Math.floor(Date.now() / 1000);
 	if (Math.abs(now - tsNum) > SYNC_TIMESTAMP_WINDOW_SECONDS) return false;
 
-	const expected = await hmacHex(
-		await getKey(env.WORKER_SECRET_SHARED, "django"),
-		`${url.pathname}.${ts}`,
-	);
+	const expected = await hmacHex(env, `${url.pathname}.${ts}`);
 
-	// Constant-time comparison.
 	if (sig.length !== expected.length) return false;
 	let diff = 0;
 	for (let i = 0; i < sig.length; i++) {
