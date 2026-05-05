@@ -7,7 +7,7 @@
 #
 # (The SECRET_SHARED value must EXACTLY match Django's APP_SECRET_SHARED.)
 
-name = "audio"
+name = "media"
 main = "script.js"
 compatibility_date = "2026-05-01"
 
@@ -28,8 +28,8 @@ binding = "BUCKET"
 bucket_name = "media"
 
 # Custom domain for the Worker (so Django can reach a stable URL).
-# You said keep it as api.example.com for now.
+# You said keep it as media.example.com for now.
 [[routes]]
-pattern = "api.zaideih.com"
+pattern = "media.zaideih.com"
 custom_domain = true
  

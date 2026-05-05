@@ -1,24 +1,23 @@
 /**
- * Audio Worker — Architecture A.
+ * Audio Worker — Architecture A (revised).
  *
  * Routes:
- *   GET/HEAD /audio/:id        Stream MP3 from R2.
- *                              On initial-play: notify Django (fire-and-forget).
- *                              Records outcome to tracks_stats.
+ *   GET/HEAD /audio/:id        Stream MP3 from R2. Records the outcome to
+ *                              tracks_status. Does NOT call Django.
  *   POST     /sync/track/:id   Receive track upsert from Django (HMAC-signed).
  *   DELETE   /sync/track/:id   Receive track deletion from Django.
  *   GET      /sync/ping        Health check (HMAC-signed).
  *
  * Bindings (configure in wrangler.toml):
- *   DB              D1 database (tracks + tracks_stats)
+ *   DB              D1 database (tracks + tracks_status)
  *   BUCKET          R2 bucket
- *   SECRET_SHARED   Secret shared with Django (HMAC for both directions).
- *                   Must match Django's APP_SECRET_SHARED exactly.
- *   APP_URL         Plain var, e.g. "https://example.com" or a cloudflared
- *                   tunnel URL during development.
+ *   SECRET_SHARED   Shared secret with Django, only used for verifying
+ *                   inbound /sync/* requests.
  *
- * (AUDIO_SIGNING_KEY for browser-side signed URLs is unchanged from the
- *  earlier setup and is still needed if you have signed audio URLs.)
+ * Note: The Worker no longer calls Django. Plays are counted in Django via
+ * a separate POST from the SPA. The Worker is now purely:
+ *   - a file server (audio streaming from R2 with D1 path lookup)
+ *   - a sync receiver (Django pushes track updates here)
  */
 
 const TRACK_META_TTL_SECONDS = 86400;
@@ -26,26 +25,12 @@ const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
 
-// Hard timeout on Django calls. Keep well under Cloudflare's 30s background
-// task limit so we never hit that.
-const DJANGO_TIMEOUT_MS = 5_000;
-
-// Inbound /sync/* requests with timestamps older than this are rejected
-// (replay protection).
 const SYNC_TIMESTAMP_WINDOW_SECONDS = 300;
-
-// EMA weight for the new latency measurement. Lower = smoother (more weight
-// on history). Higher = more reactive (more weight on the latest sample).
-// 0.1 means the latest sample contributes 10%, history 90%.
-//
-// In integer math: new_avg = (old_avg * 9 + new_sample) / 10
-const EMA_ALPHA_NUM = 1;   // numerator   (1 part new)
-const EMA_ALPHA_DEN = 10;  // denominator (10 parts total → 9 parts old)
 
 /** @type {Map<number, { value: object | null, expiresAt: number }>} */
 const memoryCache = new Map();
 
-/** Cached HMAC key. Re-imported per isolate, never per request. */
+/** Cached HMAC key per isolate. */
 let _hmacKey = null;
 
 export default {
@@ -84,6 +69,9 @@ export default {
 				return await handleAudioRequest(trackId, request, env, ctx);
 			} catch (err) {
 				console.error("audio request failed", { trackId, err });
+				ctx.waitUntil(
+					recordStatus(env, trackId, "fetch_error").catch(() => {}),
+				);
 				return new Response("Internal Server Error", { status: 500 });
 			}
 		}
@@ -98,26 +86,35 @@ export default {
 
 async function handleAudioRequest(trackId, request, env, ctx) {
 	const range = request.headers.get("range");
-	const isInitialRequest = !range || range === "bytes=0-";
 
 	const track = await getTrackMeta(trackId, env, ctx);
 	if (!track) {
+		// Track ID not in D1. Don't record this — phantom IDs would
+		// pollute the table. Cloudflare's analytics shows raw 404 volume
+		// if you ever need it.
 		return new Response("Not Found", { status: 404 });
 	}
 
-	if (isInitialRequest) {
+	const objectKey = `music/${track.folder_path}/${track.mp3}`;
+
+	let object;
+	try {
+		object = await env.BUCKET.get(objectKey, parseRangeOption(range));
+	} catch (err) {
+		console.error("R2 get threw", { trackId, objectKey, err });
 		ctx.waitUntil(
-			notifyPlayWithStats(trackId, env).catch((err) => {
-				console.error("notifyPlay error", { trackId, err });
-			}),
+			recordStatus(env, trackId, "fetch_error").catch(() => {}),
 		);
+		return new Response("Internal Server Error", { status: 500 });
 	}
 
-	const objectKey = `music/${track.folder_path}/${track.mp3}`;
-	const object = await env.BUCKET.get(objectKey, parseRangeOption(range));
-
 	if (!object) {
+		// D1 said the track exists, R2 says no file. This is the
+		// "orphan" case — most likely a sync drift worth investigating.
 		console.error("R2 object missing", { trackId, objectKey });
+		ctx.waitUntil(
+			recordStatus(env, trackId, "not_found").catch(() => {}),
+		);
 		return new Response("Not Found", { status: 404 });
 	}
 
@@ -149,72 +146,53 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 		headers.set("Content-Length", object.size.toString());
 	}
 
+	// Successful fetch — record it. The Worker only sees first-of-cache
+	// requests; range continuations and replays come from browser cache
+	// and never reach here. So this counts fresh-fetch events, not plays.
+	ctx.waitUntil(
+		recordStatus(env, trackId, "served").catch(() => {}),
+	);
+
 	const body = request.method === "HEAD" ? null : object.body;
 	return new Response(body, { headers, status });
 }
 
 /**
- * Fire the play notification to Django, then record the outcome in
- * tracks_stats. Each call updates a single row keyed by (track_id, status):
- *   - count incremented
- *   - avg_latency_ms updated as exponential moving average
- *   - last_latency_ms set to this sample
- *   - last_seen updated to now
- *   - first_seen set on insert, untouched on update
+ * UPSERT into tracks_status. The matching counter increments; the others
+ * stay where they are. first_seen is set on insert and never touched again.
+ *
+ * @param {object} env
+ * @param {number} trackId
+ * @param {"served" | "not_found" | "fetch_error"} kind
  */
-async function notifyPlayWithStats(trackId, env) {
-	const start = Date.now();
-	let status;
-
-	try {
-		const path = `/api/internal/track/${trackId}/play/`;
-		const ts = Math.floor(Date.now() / 1000).toString();
-		const sig = await hmacHex(env, `${path}.${ts}`);
-
-		const res = await fetch(`${env.APP_URL}${path}`, {
-			method: "POST",
-			headers: {
-				"X-Worker-Signature": sig,
-				"X-Worker-Timestamp": ts,
-			},
-			signal: AbortSignal.timeout(DJANGO_TIMEOUT_MS),
-		});
-
-		status = res.ok ? "success" : `http_${res.status}`;
-	} catch (err) {
-		if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
-			status = "timeout";
-		} else {
-			status = "error";
-		}
+async function recordStatus(env, trackId, kind) {
+	// Whitelist kind to defend against future typos.
+	if (
+		kind !== "served" &&
+		kind !== "not_found" &&
+		kind !== "fetch_error"
+	) {
+		return;
 	}
 
-	const latency = Date.now() - start;
 	const now = Math.floor(Date.now() / 1000);
 
-	// UPSERT into tracks_stats. On insert: count=1, avg = first sample,
-	// first_seen = now. On update: count++, avg = EMA, first_seen left alone.
-	//
-	// EMA formula in integer SQL:
-	//   new_avg = (old_avg * (DEN - NUM) + sample * NUM) / DEN
-	//   with NUM=1, DEN=10 → (old * 9 + sample) / 10
+	// Build the per-kind INSERT statement. SQLite needs the column name
+	// literal — we can't parameterise column names. The whitelist above
+	// makes this safe.
+	const sql = `
+		INSERT INTO tracks_status
+		    (track_id, ${kind}, first_seen, last_seen)
+		VALUES (?1, 1, ?2, ?2)
+		ON CONFLICT(track_id) DO UPDATE SET
+		    ${kind}   = ${kind} + 1,
+		    last_seen = ?2
+	`;
+
 	try {
-		await env.DB.prepare(
-			`INSERT INTO tracks_stats
-			    (track_id, status, count, avg_latency_ms, last_latency_ms, first_seen, last_seen)
-			 VALUES (?1, ?2, 1, ?3, ?3, ?4, ?4)
-			 ON CONFLICT(track_id, status) DO UPDATE SET
-			    count           = count + 1,
-			    avg_latency_ms  = (avg_latency_ms * ${EMA_ALPHA_DEN - EMA_ALPHA_NUM}
-			                       + ?3 * ${EMA_ALPHA_NUM}) / ${EMA_ALPHA_DEN},
-			    last_latency_ms = ?3,
-			    last_seen       = ?4`,
-		)
-			.bind(trackId, status, latency, now)
-			.run();
+		await env.DB.prepare(sql).bind(trackId, now).run();
 	} catch (err) {
-		// Telemetry failure must never cascade to user-visible errors.
-		console.error("tracks_stats write failed", { trackId, status, err });
+		console.error("tracks_status write failed", { trackId, kind, err });
 	}
 }
 
@@ -342,6 +320,11 @@ async function handleTrackUpsert(trackId, request, env, ctx) {
 
 async function handleTrackDelete(trackId, env, ctx) {
 	await env.DB.prepare("DELETE FROM tracks WHERE id = ?").bind(trackId).run();
+	// Also remove the status row — no point keeping observations for
+	// a deleted track. (Optional; remove if you want to keep historical
+	// data.)
+	await env.DB.prepare("DELETE FROM tracks_status WHERE track_id = ?")
+		.bind(trackId).run();
 	await invalidateTrackCache(trackId, ctx);
 	return new Response(
 		JSON.stringify({ id: trackId, ok: true }),
@@ -350,7 +333,7 @@ async function handleTrackDelete(trackId, env, ctx) {
 }
 
 // ============================================================================
-// HMAC signing / verification
+// HMAC verification (only inbound /sync/* now — no outbound calls)
 // ============================================================================
 
 async function getKey(env) {

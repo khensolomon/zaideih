@@ -1,15 +1,15 @@
 """
-URL routing for worker_sync.
+URL routing for the worker app.
 
 Mount in your project's urls.py:
 
     urlpatterns = [
         ...,
-        path("api/internal/", include("worker_sync.urls")),
+        path("api/", include("worker.urls")),
     ]
 
-This puts the play-increment endpoint at:
-    POST /api/internal/track/<id>/play/
+Endpoints:
+    POST /api/track/<id>/played/   - record a play (called by SPA)
 """
 
 from django.urls import path
@@ -18,8 +18,8 @@ from . import views
 
 urlpatterns = [
     path(
-        "track/<int:track_id>/play/",
-        views.track_play,
-        name="worker_sync_track_play",
+        "track/<int:track_id>/played/",
+        views.track_played,
+        name="track_played",
     ),
 ]

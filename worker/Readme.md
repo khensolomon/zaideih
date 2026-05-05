@@ -2,4 +2,4 @@
 
 ```bash
 cd zaideih
-npx wrangler deploy --config worker/audio/wrangler.toml
+npx wrangler deploy --config worker/media/wrangler.toml

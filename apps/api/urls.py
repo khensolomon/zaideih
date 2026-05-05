@@ -4,6 +4,7 @@ from django.urls import path
 # from . import views
 from .views import general
 from .views import audio
+from .views import played
 
 urlpatterns = [
     path('test', general.home, name='api-home'),
@@ -23,7 +24,7 @@ urlpatterns = [
 
     path('test-track/<int:track_id>', audio.track_test),
     
-
+    path("audio/<int:track_id>/played/", played.track_played, name="track_played"),
     # Audio Streamer + Play Counter
     # path('audio/<int:track_id>/', general.stream_audio), 
 

@@ -115,14 +115,14 @@ deployment this should be your public Django URL.
 wrangler deploy
 
 # or
-cd zaideih
-npx wrangler deploy --config worker/audio/wrangler.toml
+cd ~/dev/zaideih
+npx wrangler deploy --config worker/media/wrangler.toml
 ```
 
 Confirm the route is mapped to your Worker:ce
 
 ```bash
-curl https://api.example.com/sync/ping
+curl https://media.example.com/sync/ping
 # → 403 Forbidden (correct — no signature)
 ```
 
@@ -175,7 +175,7 @@ INSTALLED_APPS = [
 ]
 
 # Where the Worker lives. Must be reachable from Django.
-WORKER_URL = "https://api.example.com"
+WORKER_URL = "https://media.example.com"
 
 # Same secret you set on the Worker.
 # Read from environment, NEVER hardcode in settings.
@@ -219,7 +219,7 @@ python manage.py check_d1
 Expected output:
 
 ```bash
-Worker URL: https://api.example.com
+Worker URL: https://media.example.com
 Secret:     7f3a...64c8 (length 64)
 
 Connection OK: OK (status 200)
@@ -257,7 +257,7 @@ through them.
 Pick a known track id from your database, then:
 
 ```bash
-curl -I https://api.example.com/audio/123
+curl -I https://media.example.com/audio/123
 ```
 
 Should return `200 OK` (or `206` for ranged). If `404`, the path isn't

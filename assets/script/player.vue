@@ -185,12 +185,16 @@ import { usePlayerStore } from "./store-player.js";
  * Playback flow (the part that took us a few iterations to get right):
  *
  *   1. User clicks a track or hits play.
- *   2. Store sets `current = track` and `wantsToPlay = true`.
+ *   2. Store sets `current = track` and `wantsToPlay = true`. The store
+ *      also resets `_playReported` so the upcoming onPlay will report.
  *   3. Vue updates the <audio> element's src via :src binding.
  *   4. Browser fires `loadstart` (we set loading=true), buffers data.
  *   5. Browser fires `canplay` when ready. If wantsToPlay is true,
  *      we call audio.play() here — NOT earlier.
- *   6. audio.play() succeeds, fires `play` event, store.playing becomes true.
+ *   6. audio.play() succeeds, fires `play` event, store.onPlay() fires:
+ *      - sets `playing = true`
+ *      - calls reportPlay() to tell Django (only if not already reported
+ *        for this loaded track)
  *
  * Calling audio.play() before `canplay` fires often results in a silent
  * no-op or a rejected promise, which is why the user previously had to
@@ -198,7 +202,9 @@ import { usePlayerStore } from "./store-player.js";
  * triggers playback for fresh tracks.
  *
  * For pause/resume on the same track (no src change), we don't get a new
- * `canplay` event, so the wantsToPlay watcher handles those cases.
+ * `canplay` event, so the wantsToPlay watcher handles those cases. The
+ * `_playReported` flag in the store prevents the resume from being
+ * counted as a new play.
  */
 export default {
   name: "Player",
@@ -222,8 +228,6 @@ export default {
       const id = this.playerStore.current?.i;
       if (id == null) return undefined;
       return this.dataStore.api.audio.replace("*", id);
-
-      // return `${trackUrl}?t=${Date.now()}`;
     },
 
     artistNames() {

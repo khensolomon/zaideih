@@ -23,6 +23,14 @@ import { defineStore } from "pinia";
  *   between "user clicked play" and "audio is ready to play." The
  *   `canplay` event in player.vue is what bridges them — see comments
  *   there for details.
+ *
+ * Play reporting:
+ *   The Worker can't observe most plays (after the first request, the
+ *   browser serves audio from its own cache). So plays are reported
+ *   here directly to Django when onPlay fires for the first time on a
+ *   given loaded track. The _playReported flag is reset every time
+ *   `current` changes (in the actions that change it), so each track
+ *   change is treated as a new play.
  */
 
 const VOLUME_KEY = "player.volume";
@@ -58,6 +66,18 @@ export const usePlayerStore = defineStore("player", {
 		volumeBeforeMute: 0.4,
 		command: null,
 		error: null,
+
+		/**
+		 * Internal: tracks whether we've already reported the current
+		 * track's play to Django. Reset whenever `current` changes via
+		 * any action that loads a new track. Prevents pause/resume
+		 * (which fires onPlay again) from double-counting.
+		 *
+		 * Underscore prefix signals "internal — don't read from Vue
+		 * templates." Pinia exposes it on state but we treat it as
+		 * private to this module.
+		 */
+		_playReported: false,
 	}),
 
 	getters: {
@@ -123,6 +143,7 @@ export const usePlayerStore = defineStore("player", {
 					// The next track shifted into position `i`, or wrap to 0.
 					const nextIdx = i < this.queue.length ? i : 0;
 					this.current = this.queue[nextIdx];
+					this._playReported = false;
 					this.wantsToPlay = true;
 				}
 			}
@@ -163,6 +184,7 @@ export const usePlayerStore = defineStore("player", {
 				this.queue.push(track);
 			}
 			this.current = track;
+			this._playReported = false;
 			this.wantsToPlay = true;
 			this.error = null;
 		},
@@ -175,6 +197,7 @@ export const usePlayerStore = defineStore("player", {
 			if (!tracks || tracks.length === 0) return;
 			this.setQueue(tracks);
 			this.current = tracks[0];
+			this._playReported = false;
 			this.wantsToPlay = true;
 			this.error = null;
 		},
@@ -202,6 +225,7 @@ export const usePlayerStore = defineStore("player", {
 			}
 
 			this.current = this.queue[nextIdx];
+			this._playReported = false;
 			this.wantsToPlay = true;
 			this.error = null;
 		},
@@ -228,6 +252,7 @@ export const usePlayerStore = defineStore("player", {
 			}
 
 			this.current = this.queue[prevIdx];
+			this._playReported = false;
 			this.wantsToPlay = true;
 			this.error = null;
 		},
@@ -236,6 +261,7 @@ export const usePlayerStore = defineStore("player", {
 			// Nothing loaded — start the first queued track if any.
 			if (!this.current && this.queue.length > 0) {
 				this.current = this.queue[0];
+				this._playReported = false;
 				this.wantsToPlay = true;
 				return;
 			}
@@ -265,6 +291,7 @@ export const usePlayerStore = defineStore("player", {
 			this.wantsToPlay = false;
 			this.playing = false;
 			this.current = null;
+			this._playReported = false;
 			this.currentTime = 0;
 			this.duration = 0;
 			this.buffered = 0;
@@ -305,6 +332,14 @@ export const usePlayerStore = defineStore("player", {
 		onPlay() {
 			this.playing = true;
 			this.wantsToPlay = true;
+
+			// First time the audio actually started playing for this loaded
+			// track — report the play to Django. Resume-after-pause also
+			// fires this event, but the flag prevents double-counting.
+			if (!this._playReported && this.current && this.current.i) {
+				this.reportPlay(this.current.i);
+				this._playReported = true;
+			}
 		},
 
 		onPause() {
@@ -339,6 +374,32 @@ export const usePlayerStore = defineStore("player", {
 
 		clearError() {
 			this.error = null;
+		},
+
+		/**
+		 * Tell Django that a track was played. Called from onPlay above
+		 * once per track-load. The Worker cannot count plays accurately
+		 * (browser cache hides them), so this SPA→Django POST is the
+		 * authoritative play counter.
+		 *
+		 * Fire-and-forget. If Django is down, the play silently doesn't
+		 * register but playback continues uninterrupted.
+		 *
+		 * `keepalive: true` lets the request finish even if the user
+		 * navigates away the moment after starting playback.
+		 *
+		 * @param {number} trackId
+		 */
+		reportPlay(trackId) {
+			if (!trackId || trackId <= 0) return;
+
+			fetch(`/api/audio/${trackId}/played/`, {
+				method: "POST",
+				keepalive: true,
+				credentials: "same-origin",
+			}).catch(() => {
+				// Silent — telemetry must never disrupt playback.
+			});
 		},
 	},
 });
