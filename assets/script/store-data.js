@@ -50,6 +50,7 @@ export const useDataStore = defineStore("data", {
 
 		api: {
 			audio: "https://media.zaideih.com/audio/*",
+			// audio: "/api/test-track/*",
 		},
 
 		activeLang: null,
