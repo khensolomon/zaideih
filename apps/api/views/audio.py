@@ -1,81 +1,26 @@
 import os
 import re
-import hmac
-import hashlib
-import time
+# import hmac
+# import hashlib
+# import time
 from wsgiref.util import FileWrapper
 from django.conf import settings
-from django.http import HttpResponse, HttpResponseForbidden, StreamingHttpResponse, Http404, FileResponse
+from django.http import HttpResponse, HttpResponseForbidden, StreamingHttpResponse, Http404
 from urllib.parse import urlparse
+# from django.shortcuts import redirect
 
 from django.db.models import F
 from django.conf import settings
 from google.cloud import storage
 
-from ..models import Track
-from .. import catalog_config
-
-def _generate_signed_audio_url(track_id: int, expiration_window_seconds: int = 300) -> str:
-    expires = int(time.time()) + expiration_window_seconds
-    message = f"{track_id}:{expires}".encode('utf-8')
-    secret = settings.SECRET_KEY.encode('utf-8')
-    signature = hmac.new(secret, message, hashlib.sha256).hexdigest()
-    return f"/api/audio/{track_id}?expires={expires}&sig={signature}"
-
-def _verify_signature(track_id: int, expires: int, provided_signature: str) -> bool:
-    if int(time.time()) > expires:
-        return False
-    message = f"{track_id}:{expires}".encode('utf-8')
-    secret = settings.SECRET_KEY.encode('utf-8')
-    expected_signature = hmac.new(secret, message, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected_signature, provided_signature)
-
-def requests(request, track_id):
-    # TEMPORARILY COMMENTED OUT FOR TESTING
-    # if not request.user.is_authenticated:
-    #     return HttpResponseForbidden("Not authorized")
-        
-    signed_url = _generate_signed_audio_url(track_id, 300)
-    return HttpResponse(f'{{"url": "{signed_url}"}}', content_type="application/json")
-
-def streams(request, track_id):
-    expires = request.GET.get('expires', 0)
-    signature = request.GET.get('sig', '')
-    
-    try:
-        expires = int(expires)
-    except ValueError:
-        return HttpResponseForbidden("Invalid expiration format")
-
-    if not _verify_signature(track_id, expires, signature):
-        return HttpResponseForbidden("Invalid or expired signature")
-        
-    # # --- THE FIX IS HERE ---
-    
-    # # 1. Find a REAL mp3 file on your computer. 
-    # # For this test, place a file named "test.mp3" in the exact 
-    # # same folder as your Django manage.py file.
-    # file_path = "cache/test.mp3" 
-    
-    # if not os.path.exists(file_path):
-    #     return HttpResponse("Error: You need to put a real test.mp3 file in your Django folder!", status=404)
-
-    # # 2. Use FileResponse instead of HttpResponse. 
-    # # FileResponse automatically handles streaming, range-requests, 
-    # # and tells the browser exactly how long the audio file is.
-    # try:
-    #     audio_file = open(file_path, 'rb')
-    #     return FileResponse(audio_file, content_type="audio/mpeg")
-    # except Exception as e:
-    #     return HttpResponse(f"Server error loading file: {e}", status=500)
-
-    return streamer(request, track_id)
+from api.models import Track
+from api import catalog_config
 
 """
 Streaming endpoint with multiple layers of protection to ensure only real browsers can access the audio, and that scrapers/bots are blocked at the door.
 Also supports HTTP Range requests for proper audio scrubbing in the player.
 """
-def streams_v2(request, track_id):
+def streaming(request, track_id):
     """
     Validates requests for audio media to prevent unauthorized 
     scraping and hotlinking.
@@ -85,7 +30,7 @@ def streams_v2(request, track_id):
     if settings.DEBUG:
         bypass_value = request.GET.get('dev_bypass')
         if bypass_value and bypass_value == settings.DEV_BYPASS_KEY:
-            return streamer(request, track_id)
+            return _streamer(request, track_id)
 
     meta = request.META
     host = request.get_host()
@@ -117,13 +62,13 @@ def streams_v2(request, track_id):
         # might skip the range on the very first request.
         pass 
 
-    return streamer(request, track_id)
+    return _streamer(request, track_id)
 
 """
 A simple test endpoint to verify that track retrieval and play counting works correctly, without involving the complexity of streaming or GCS. It also checks if the track's audio file exists in GCS or
 locally, and reports that back in the response for debugging purposes.
 """
-def track_test(request, track_id):
+def test(request, track_id):
     try:
         Track.objects.filter(id=track_id).update(plays=F('plays') + 1)
         track = Track.objects.select_related('album').get(id=track_id)
@@ -147,9 +92,9 @@ def track_test(request, track_id):
 
 """
 Served as both audio endpoint and play counter incrementor. But it was also the original, unprotected streaming endpoint that anyone could call.
-Now replaced by streams_v2() which adds multiple layers of protection to ensure only real browsers can access the audio, and that scrapers/bots are blocked at the door.
+Now replaced by streaming() which adds multiple layers of protection to ensure only real browsers can access the audio, and that scrapers/bots are blocked at the door.
 """
-def streamer(request, track_id):
+def _streamer(request, track_id):
     """
     Handles streaming audio to the client. Tries GCS first, falls back to local disk.
     Supports HTTP Range requests for audio scrubbing.

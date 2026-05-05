@@ -393,7 +393,7 @@ export const usePlayerStore = defineStore("player", {
 		reportPlay(trackId) {
 			if (!trackId || trackId <= 0) return;
 
-			fetch(`/api/audio/${trackId}/played/`, {
+			fetch(`/api/played/${trackId}`, {
 				method: "POST",
 				keepalive: true,
 				credentials: "same-origin",
