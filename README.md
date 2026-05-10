@@ -70,10 +70,12 @@ Zaideih is a labor of love supported by the community and friends (special thank
 
 ## Todo
 
+- [ ] Track sorting (detail of albumm, artist ) by plays, alphabetically
 - [ ] `MEDIA_DIR` and `MEDIA_ROOT` scattering
 - Away to  dynamically for dev environment
   - [ ] `DEBUG`
   - [ ] `DB_HOST`
+  - [ ] MEDIA_ROOT, STORAGE_DIR, STORE_DIR
 
 ---
 
