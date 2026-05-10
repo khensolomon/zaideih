@@ -19,7 +19,7 @@ sys.path.insert(0, str(APPS_DIR))
 
 # --- CORE SECURITY ---
 SECRET_KEY = os.environ.get('SECRET_KEY', 'unsafe-fallback-key-change-me')
-SECRET_SHARED = os.environ.get('SECRET_SHARED', 'unsafe-fallback-worker-key-change-me')
+APP_SECRET_SHARED = os.environ.get('APP_SECRET_SHARED', 'unsafe-fallback-worker-key-change-me')
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 # Split ALLOWED_HOSTS and remove empty entries
@@ -60,7 +60,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
-    # Custom middleware for HTML minification
+    # Custom middleware for HTML minification and cookie handling
     'config.middleware.HtmlMinifyMiddleware',
 ]
 
@@ -104,42 +104,6 @@ DATABASES = {
     }
 }
 
-# Force collectstatic to include hidden directories like .vite/
-# STATICFILES_FINDERS = [
-#     'django.contrib.staticfiles.finders.FileSystemFinder',
-#     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-# ]
-
-# --- STATIC & MEDIA ---
-STATIC_URL = 'static/'
-# STATIC_ROOT must be separate from STATICFILES_DIRS during dev
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-   BASE_DIR / 'static',
-]
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.environ.get('MEDIA_DIR', str(BASE_DIR / 'media'))
-
-# --- CUSTOM DIRECTORIES ---
-STORAGE_ROOT = os.environ.get('STORAGE_ROOT','/tmp/storage')
-STORAGE_DIR =  os.path.join(STORAGE_ROOT,'zaideih')
-CACHE_DIR = os.environ.get('CACHE_DIR')
-MEDIA_DIR = MEDIA_ROOT
-
-
-# Force Django to collect hidden files/folders
-# COLLECTSTATIC_IGNORE = ['.vite']  # or use --no-default-ignore flag
-# --- VITE CONFIGURATION ---
-DJANGO_VITE = {
-  "default": {
-    "dev_mode": DEBUG,
-    "dev_server_port": 3011,
-    "manifest_path": BASE_DIR / 'static' / ".vite" / "manifest.json",
-    "static_url_prefix": "", 
-  }
-}
-
 # --- LOGGING ---
 LOGGING = {
     'version': 1,
@@ -162,11 +126,6 @@ LOGGING = {
     },
 }
 
-# --- GOOGLE CLOUD ---
-BUCKETNAME = os.environ.get('BUCKETNAME')
-if os.environ.get('BUCKETCRED'):
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('BUCKETCRED')
-
 # --- CORS & SECURITY ---
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 if not DEBUG:
@@ -187,5 +146,45 @@ if not DEBUG:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- STATIC & MEDIA ---
+STATIC_URL = 'static/'
+# STATIC_ROOT must be separate from STATICFILES_DIRS during dev
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+   BASE_DIR / 'static',
+]
 
-WORKER_URL = os.environ.get('WORKER_URL', 'https://api.example.com')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT', '/tmp/zaideih/media')
+
+# --- CUSTOM DIRECTORIES ---
+STORAGE_ROOT = os.environ.get('STORAGE_ROOT','/tmp/storage')
+STORAGE_DIR =  os.path.join(STORAGE_ROOT,'zaideih')
+
+STORE_DIR = os.environ.get('STORE_DIR','/tmp/zaideih/store')
+CACHE_DIR = os.environ.get('CACHE_DIR','/tmp/zaideih/cache')
+
+# --- VITE CONFIGURATION ---
+DJANGO_VITE = {
+  "default": {
+    "dev_mode": DEBUG,
+    "dev_server_port": 3011,
+    "manifest_path": BASE_DIR / 'static' / ".vite" / "manifest.json",
+    "static_url_prefix": "", 
+  }
+}
+
+# --- Bucket ---
+STORAGE_BACKEND = os.environ.get('STORAGE_BACKEND', 'r2')
+
+# --- GCS ---
+GCS_BUCKETNAME = os.environ.get('GCS_BUCKETNAME')
+R2_BUCKETNAME = os.environ.get('R2_BUCKETNAME')
+if os.environ.get('GCS_SECRET'):
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ.get('GCS_SECRET')
+
+# --- R2 / S3 ---
+WORKER_URL = os.environ.get('WORKER_URL', 'https://media.example.com')
+R2_ACCOUNT_ID = os.environ['R2_ACCOUNT_ID']
+R2_ACCESS_ID = os.environ['R2_ACCESS_ID']
+R2_SECRET_KEY = os.environ['R2_SECRET_KEY']
