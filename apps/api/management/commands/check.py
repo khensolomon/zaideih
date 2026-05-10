@@ -76,7 +76,7 @@ class Command(BaseCommand):
 
         # --- MODE A: COMPILED CATALOG SEARCH ---
         if is_catalog_search:
-            store_dir = Path(settings.MEDIA_ROOT) / 'store'
+            store_dir = Path(settings.STORE_DIR) 
             albums_file = store_dir / catalog_config.FILE_ALBUMS
             
             try:
