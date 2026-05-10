@@ -53,7 +53,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("No language specified. Use --lang zola, --lang zola falam, or --lang all"))
             return
 
-        store_dir = Path(settings.MEDIA_ROOT) / 'store'
+        store_dir = Path(settings.STORE_DIR)
         data_dir = Path(settings.BASE_DIR) / 'assets' / 'data'
         
         # 1. RESOLVE TARGET LANGUAGES
@@ -172,6 +172,8 @@ class Command(BaseCommand):
                         db_record = db_tracks[track_key]
                         track_payload['i'] = db_record.id
                         track_payload['p'] = db_record.plays
+                        if db_record.id == 387:
+                            print(f"DEBUG: Found track in DB - { db_record.plays} with plays: {db_record.plays}")
                     else:
                         new_tracks_to_insert.append(
                             Track(
