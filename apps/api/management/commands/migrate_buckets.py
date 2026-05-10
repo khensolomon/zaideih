@@ -29,7 +29,7 @@ class Command(BaseCommand):
     help = 'Migrates legacy bucket.[lang].json files to the new highly optimized schema.'
 
     def handle(self, *args, **options):
-        store_dir = Path(settings.MEDIA_ROOT) / 'store'
+        store_dir = Path(settings.STORE_DIR)
         buckets = list(store_dir.glob('bucket.*.json'))
 
         if not buckets:
