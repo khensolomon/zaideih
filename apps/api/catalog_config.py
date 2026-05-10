@@ -4,6 +4,7 @@ Import this into any management command or view that needs to read/write catalog
 """
 
 # --- DIRECTORY NAMES ---
+# (STORAGE_BACKEND lives in .env / settings.py — see storage_backend.py)
 DIR_MUSIC = 'music'
 
 # --- FILE NAMES ---
