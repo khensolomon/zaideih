@@ -4,7 +4,10 @@
       <div v-for="album in activeAlbum" :key="album.ui" class="container detail">
         <div class="row center count">
           <div class="plays">
-            <p class="icon-headphones active"><span>{{ album.tp }}</span></p>
+            <!-- <p class="icon-headphones active"><span>{{ album.tp }}</span></p> -->
+            <p class="icon-headphones" :class="{ active: album.tp }" :title="album.tp + ' plays'">
+              <span v-text="dataStore.digitShortenTesting(album.tp)"></span>
+            </p>
           </div>
           <div class="time">
             <p class="icon-time active"><span v-text="dataStore.albumDuration(album)"></span></p>

@@ -1,7 +1,7 @@
 import { createApp, h, markRaw } from "vue";
 import { createPinia, mapStores } from "pinia";
 
-import axios from "axios";
+// import axios from "axios";
 
 import { useDataStore } from "./store-data.js";
 import { useStorageStore } from "./store-storage.js";
@@ -66,7 +66,17 @@ const app = createApp({
 		 * @param {string} id
 		 */
 		async json(id) {
-			return axios.get("/api/" + id);
+			// console.log("Fetching JSON for", id);
+			// return axios.get("/api/" + id);
+			const response = await fetch("/api/" + id, { method: "GET" });
+
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			// return await response.json();
+			const data = await response.json();
+			return { data }; // Mimics Axios response structure
 		},
 
 		/**
@@ -90,7 +100,9 @@ const app = createApp({
 						this.storageStore.setItem(kH, serverHash);
 					}
 					if (serverHash === localHash && localData) {
-						this.dataStore.all[id] = Array.isArray(localData) ? markRaw(localData) : localData;
+						this.dataStore.all[id] = Array.isArray(localData)
+							? markRaw(localData)
+							: localData;
 					} else {
 						this.error = "error";
 						throw "error";
@@ -99,7 +111,9 @@ const app = createApp({
 			} catch (error) {
 				await this.json(uV)
 					.then((response) => {
-						this.dataStore.all[id] = Array.isArray(response.data) ? markRaw(response.data) : response.data;
+						this.dataStore.all[id] = Array.isArray(response.data)
+							? markRaw(response.data)
+							: response.data;
 					})
 					.catch((error) => {
 						this.error = error.statusText;
@@ -119,9 +133,13 @@ const app = createApp({
 			// MIRROR_IN: ../script/sw-album.js
 			// =========================================================
 			const runFallbackProcess = () => {
-				console.warn("Web Worker failed or unavailable. Falling back to main-thread processing.");
+				console.warn(
+					"Web Worker failed or unavailable. Falling back to main-thread processing.",
+				);
 
-				const artistMap = new Map(this.dataStore.all.artist.map(a => [a.id, a]));
+				const artistMap = new Map(
+					this.dataStore.all.artist.map((a) => [a.id, a]),
+				);
 				const albums = this.dataStore.all.album;
 				const batchSize = 500;
 				let index = 0;
@@ -179,7 +197,9 @@ const app = createApp({
 						this.dataStore.total.lang = this.dataStore.all.lang.length;
 
 						this.dataStore.all.album = markRaw(
-							[...this.dataStore.all.album].sort((a, b) => (a.tp < b.tp ? 1 : -1))
+							[...this.dataStore.all.album].sort((a, b) =>
+								a.tp < b.tp ? 1 : -1,
+							),
 						);
 						this.dataStore.ready = true;
 					}
@@ -189,7 +209,7 @@ const app = createApp({
 			};
 
 			try {
-				const worker = new Worker('/static/sw-album.js', { type: 'module' });
+				const worker = new Worker("/static/sw-album.js", { type: "module" });
 
 				worker.onmessage = (e) => {
 					const { albums, artists, langs, totalTracks } = e.data;
@@ -213,14 +233,15 @@ const app = createApp({
 					runFallbackProcess();
 				};
 
-				const cleanDataForWorker = JSON.parse(JSON.stringify({
-					albums: this.dataStore.all.album,
-					artists: this.dataStore.all.artist,
-					metaLangs: this.dataStore.meta.lang
-				}));
+				const cleanDataForWorker = JSON.parse(
+					JSON.stringify({
+						albums: this.dataStore.all.album,
+						artists: this.dataStore.all.artist,
+						metaLangs: this.dataStore.meta.lang,
+					}),
+				);
 
 				worker.postMessage(cleanDataForWorker);
-
 			} catch (err) {
 				console.warn("Worker instantiation failed, falling back:", err);
 				runFallbackProcess();

@@ -17,8 +17,8 @@
       <div class="container detail">
         <div class="row center count">
           <div class="plays">
-            <p class="icon-headphones" :class="{ active: trackPlays }">
-              <span v-text="trackPlays"></span>
+            <p class="icon-headphones" :class="{ active: trackPlays }" :title="trackPlays + ' plays'">
+              <span v-text="dataStore.digitShortenTesting(trackPlays)"></span>
             </p>
           </div>
           <div class="time">

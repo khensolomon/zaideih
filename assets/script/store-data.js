@@ -49,8 +49,9 @@ export const useDataStore = defineStore("data", {
 		searchAt: "avekpi",
 
 		api: {
-			audio: "https://media.zaideih.com/audio/*",
+			// audio: "https://media.zaideih.com/audio/*",
 			// audio: "/api/test-track/*",
+			audio: "/api/audio/*",
 		},
 
 		activeLang: null,
