@@ -250,6 +250,14 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
+      - name: Debug Cloudflared Access
+        run: |
+          cloudflared access ssh \
+            --hostname "${{ secrets.SERVER_HOSTNAME }}" \
+            --service-token-id "${{ secrets.CF_SERVICE_TOKEN_ID }}" \
+            --service-token-secret "${{ secrets.CF_SERVICE_TOKEN_SECRET }}" \
+            --log-level debug 2>&1 | head -50 || true
+
       - name: Prepare .env file
         run: |
           printf "%s" "${{ secrets.ENV_FILE_CONTENT }}" > .env
