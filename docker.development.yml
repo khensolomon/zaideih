@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     # Use runserver for auto-reloading in dev
