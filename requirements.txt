@@ -11,10 +11,9 @@
 # Install with: pip install -r requirements.txt
 
 
-django>=5.0.0
-djangorestframework>=3.15.0
-mysqlclient>=2.2.0
-
+django>=6.0.3
+djangorestframework>=3.17.1
+mysqlclient>=2.2.8
 django-cors-headers>=4.9.0
 
 python-dotenv>=1.2.2
@@ -22,13 +21,13 @@ python-dotenv>=1.2.2
 # django-environ
 
 django-redis>=6.0.0
-
 django_vite>=3.1.0
-
-boto3
-google-cloud-storage>=2.16.0
 
 minify-html
 inflect
+
+# Object storage — currently using Cloudflare R2 (S3-compatible) via boto3.
+boto3
+# google-cloud-storage>=2.16.0
 
 mutagen
