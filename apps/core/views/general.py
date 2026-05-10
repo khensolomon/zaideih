@@ -11,6 +11,7 @@
 from django.http import  HttpRequest, HttpResponse
 from django.shortcuts import render
 from api.store import AssetJSONReader
+from config import settings
 
 def home(request: HttpRequest) -> HttpResponse:
     albums = AssetJSONReader('albums.json', location='media')
@@ -31,6 +32,9 @@ def home(request: HttpRequest) -> HttpResponse:
             # "lang": "untitle,zola,myanmar,mizo,falam,haka,english,chin,korea,norwegian,collection"
             # "lang": category.get_names('lang')
             "lang": category.get_joined_names('lang')
+        },
+        "worker":{
+            "url": settings.WORKER_URL,
         }
     }
     return render(request, 'core/home.html', context)
