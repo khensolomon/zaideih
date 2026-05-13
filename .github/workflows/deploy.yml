@@ -207,7 +207,7 @@ jobs:
       contains(github.event.head_commit.message, '[tunnel]') &&
       !contains(github.event.head_commit.message, '[ssh]')
     runs-on: ubuntu-latest
-    environment: production-tunnel
+    # environment: production-tunnel
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
