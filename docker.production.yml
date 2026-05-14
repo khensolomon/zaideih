@@ -15,7 +15,7 @@ services:
     # directly or wipe /opt/mysql/data after taking a backup with r2.py.
     environment:
       - MYSQL_DATABASE=${DB_NAME}
-      - MYSQL_USER=${DB_USER}
+      - MYSQL_USER=admin
       - MYSQL_PASSWORD=${DB_PWD}
       - MYSQL_ALLOW_EMPTY_PASSWORD=yes  # Allows root to connect without a password
     healthcheck:
@@ -66,12 +66,12 @@ services:
       - APP_PORT=${APP_PORT}
 
       - MYSQL_DATABASE=${DB_NAME}
-      - MYSQL_USER=${DB_USER}
+      - MYSQL_USER=admin
       - MYSQL_PASSWORD=${DB_PWD}
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PWD}
 
       - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
+      - DB_USER=admin
       - DB_PWD=${DB_PWD}
       - DB_ROOT_PWD=${DB_ROOT_PWD}
       - DB_HOST=db
