@@ -149,6 +149,16 @@ services:
         condition: any
         delay: 15s
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    networks:
+      - gateway
+
+    deploy:
+      restart_policy:
+        condition: any
+
 networks:
   default:
     driver: overlay
