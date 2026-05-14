@@ -39,6 +39,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Clean Docker Builder Cache
+        run: docker buildx prune -af
 
       # Images are tagged with both :latest and the commit SHA.
       # The SHA tag enables precise rollbacks — to roll back, change
@@ -48,6 +54,7 @@ jobs:
         with:
           context: .
           push: true
+          no-cache: true
           tags: |
             ghcr.io/${{ github.repository }}/django-app:latest
             ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}
@@ -57,6 +64,7 @@ jobs:
         with:
           context: ./nginx
           push: true
+          no-cache: true
           tags: |
             ghcr.io/${{ github.repository }}/nginx-prod:latest
             ghcr.io/${{ github.repository }}/nginx-prod:${{ github.sha }}
