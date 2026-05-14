@@ -25,6 +25,7 @@ django_vite>=3.1.0
 
 minify-html
 inflect
+requests
 
 # Object storage — currently using Cloudflare R2 (S3-compatible) via boto3.
 boto3
