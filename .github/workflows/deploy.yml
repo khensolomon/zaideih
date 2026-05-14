@@ -283,7 +283,7 @@ jobs:
             docker stack deploy -c docker.production.yml --with-registry-auth --detach=false zaideih
 
             NETWORK_NAME="zaideih_default"
-            IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
+            IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}"
 
             # Wait for MySQL to actually accept connections before migrating.
             # 'stack deploy --detach=false' returns when services converge,
@@ -383,6 +383,7 @@ jobs:
 
             NETWORK_NAME="zaideih_default"
             IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
+            
 
             # Wait for MySQL to actually accept connections before migrating.
             ready=0
