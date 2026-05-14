@@ -18,6 +18,7 @@ services:
       - MYSQL_USER=admin
       - MYSQL_PASSWORD=${DB_PWD}
       - MYSQL_ALLOW_EMPTY_PASSWORD=yes  # Allows root to connect without a password
+      - DB_DIR=${DB_DIR}
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root"]
       interval: 45s
@@ -133,8 +134,8 @@ services:
     networks:
       - default
       - gateway
-    # ports:
-      # - "80:80"
+    ports:
+      - "80:80"
       # - "443:443"
     depends_on:
       - web
