@@ -139,7 +139,7 @@ jobs:
           set +a
           ready=0
           for i in {1..20}; do
-            if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root > /dev/null 2>&1; then
+            if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
               echo "MySQL is ready!"
               ready=1
               break
@@ -290,7 +290,7 @@ jobs:
             # but MySQL may still be initializing inside the container.
             ready=0
             for i in $(seq 1 20); do
-              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root > /dev/null 2>&1; then
+              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
                 echo "MySQL is ready!"
                 ready=1
                 break
@@ -396,7 +396,7 @@ jobs:
             # Better MySQL readiness check
             ready=0
             for i in $(seq 1 30); do
-              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root > /dev/null 2>&1; then
+              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
                 echo "MySQL is ready!"
                 ready=1
                 break
