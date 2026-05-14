@@ -133,8 +133,8 @@ services:
     networks:
       - default
       - gateway
-    ports:
-      - "80:80"
+    # ports:
+      # - "80:80"
       # - "443:443"
     depends_on:
       - web
