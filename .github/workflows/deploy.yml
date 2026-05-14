@@ -254,7 +254,7 @@ jobs:
               IdentityFile ~/.ssh/id_rsa
               StrictHostKeyChecking accept-new
               UserKnownHostsFile ~/.ssh/known_hosts
-              ProxyCommand cloudflared access ssh --hostname %h --service-token-id ${{ secrets.CF_SERVICE_TOKEN_ID }} --service-token-secret ${{ secrets.CF_SERVICE_TOKEN_SECRET }}
+              ProxyCommand cloudflared access ssh --hostname ${{ secrets.SERVER_HOSTNAME }} --service-token-id ${{ secrets.CF_SERVICE_TOKEN_ID }} --service-token-secret ${{ secrets.CF_SERVICE_TOKEN_SECRET }}
           EOF
           chmod 600 ~/.ssh/config
 
