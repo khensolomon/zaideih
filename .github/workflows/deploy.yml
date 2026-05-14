@@ -375,39 +375,45 @@ jobs:
 
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            # 1. Export the commit SHA so the compose file can read it
             export COMMIT_SHA="${{ github.sha }}"
             export GITHUB_REPOSITORY="${{ github.repository }}"
             
             set -a; [ -f .env ] && . .env; set +a
 
+            echo "Pulling images with SHA tag..."
             docker compose -f docker.production.yml pull
+
+            echo "Deploying stack..."
             docker stack deploy -c docker.production.yml --with-registry-auth --detach=false zaideih
 
-            NETWORK_NAME="zaideih_default"
-            IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}"
-            
+            # === Wait for services to be created ===
+            echo "Waiting for services to converge..."
+            sleep 10
 
-            # Wait for MySQL to actually accept connections before migrating.
+            NETWORK_NAME="zaideih_default"
+            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}"
+
+            # Better MySQL readiness check
             ready=0
-            for i in $(seq 1 20); do
+            for i in $(seq 1 30); do
               if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u root > /dev/null 2>&1; then
                 echo "MySQL is ready!"
                 ready=1
                 break
               fi
-              echo "Waiting for MySQL... attempt $i/20"
-              sleep 5
+              echo "Waiting for MySQL... attempt $i/30"
+              sleep 6
             done
             if [ "$ready" -ne 1 ]; then
-              echo "ERROR: MySQL did not become ready after 20 attempts. Aborting."
+              echo "ERROR: MySQL did not become ready."
               exit 1
             fi
 
+            echo "Running migrations with exact SHA image..."
             docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
 
-            echo "Cleaning up old Docker images..."
-            docker image prune -af
+            echo "Cleaning up old images..."
+            docker image prune -af --filter "until=24h"
 
       - name: Deployment Summary
         if: success()
