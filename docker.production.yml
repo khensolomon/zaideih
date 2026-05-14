@@ -45,8 +45,8 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
-    ports: 
-      - "${APP_PORT}:${APP_PORT}"
+    # ports: 
+    #   - "${APP_PORT}:${APP_PORT}"
     volumes:
       - static_volume:/code/staticfiles
       - storage_volume:${STORAGE_ROOT}:rw
@@ -133,6 +133,9 @@ services:
     networks:
       - default
       - gateway
+    ports:
+      - "80:80"
+      # - "443:443"
     depends_on:
       - web
     deploy:
