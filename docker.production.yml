@@ -58,8 +58,8 @@ services:
       test: ["CMD", "python", "/code/scripts/healthcheck.py"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 300s
     environment:
       - DEBUG=false
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
@@ -109,7 +109,7 @@ services:
     deploy:
       replicas: 2
       update_config:
-        order: start-first
+        order: stop-first
         parallelism: 1
         delay: 15s
         failure_action: rollback
