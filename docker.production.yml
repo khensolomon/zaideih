@@ -40,7 +40,7 @@ services:
         window: 120s
 
   web:
-    image: ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}
     logging:
       driver: "json-file"
       options:
@@ -120,7 +120,7 @@ services:
         delay: 10s
 
   nginx:
-    image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:${COMMIT_SHA:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY}/nginx-prod:${COMMIT_SHA}
     logging:
       driver: "json-file"
       options:
