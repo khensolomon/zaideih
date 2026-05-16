@@ -154,7 +154,7 @@ services:
         # "host-mode port already in use" and retries forever.
         # Tradeoff: ~5s of downtime per nginx update while the old container
         # stops before the new one starts.
-        order: start-first
+        order: stop-first
       restart_policy:
         condition: any
         delay: 15s
