@@ -191,8 +191,8 @@ jobs:
           RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
           if [[ "$RUNNING" == "2/2" ]]; then
             echo "Deployment successful!"
-            echo "Cleaning up old Docker images..."
-            docker image prune -af
+            echo "Cleaning up old Docker images (only those unused for 24h+)..."
+            docker image prune -af --filter "until=24h"
             exit 0
           else
             echo "Deployment failed health checks. Replicas: $RUNNING"
@@ -228,6 +228,16 @@ jobs:
           docker service logs zaideih_nginx --tail 100 || true
           echo "--- DB ---"
           docker service logs zaideih_db --tail 100 || true
+
+      # The self-hosted runner persists between jobs, unlike GitHub-hosted
+      # runners. Without this cleanup, the merged .env would linger in the
+      # workspace until the next checkout overwrites it (or forever if the
+      # next push is to a different branch). Cleanup is also added to the
+      # tunnel and SSH jobs as defense-in-depth even though their runners
+      # are ephemeral.
+      - name: "[Self-Hosted] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
 
   # ==========================================
   # 3. REMOTE PHASE: TUNNEL DEPLOYMENT
@@ -365,8 +375,8 @@ jobs:
               -e DB_PORT=3306 \
               "$IMAGE_NAME" python manage.py migrate --noinput
 
-            echo "Cleaning up old Docker images..."
-            docker image prune -af
+            echo "Cleaning up old Docker images (only those unused for 24h+)..."
+            docker image prune -af --filter "until=24h"
           ENDSSH
 
       - name: "[Tunnel] Write deployment summary"
@@ -404,6 +414,10 @@ jobs:
             echo "--- DB ---"
             docker service logs zaideih_db --tail 100 || true
           ENDSSH
+
+      - name: "[Tunnel] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
 
   # ==========================================
   # 4. REMOTE PHASE: NATIVE SSH DEPLOYMENT
@@ -530,8 +544,14 @@ jobs:
             echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # If the original failure happened before SSH could be established (e.g.
+      # env_build guardrail, or SCP timeout against an unreachable server),
+      # attempting to SSH in here would produce a confusing connection error
+      # that masks the real cause. continue-on-error ensures this step's own
+      # failure doesn't override the original failure status.
       - name: "[SSH] Dump service logs on failure"
         if: failure()
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOSTNAME }}
@@ -545,3 +565,7 @@ jobs:
             docker service logs zaideih_nginx --tail 100 || true
             echo "--- DB ---"
             docker service logs zaideih_db --tail 100 || true
+
+      - name: "[SSH] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
