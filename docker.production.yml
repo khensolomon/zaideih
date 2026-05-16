@@ -48,6 +48,8 @@ services:
         max-file: "5"
     # ports: 
     #   - "${APP_PORT}:${APP_PORT}"
+    networks:
+      - default
     volumes:
       - static_volume:/code/staticfiles
       - storage_volume:${STORAGE_ROOT}:rw
