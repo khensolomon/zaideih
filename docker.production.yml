@@ -146,7 +146,15 @@ services:
       replicas: 1
       # endpoint_mode: dnsrr
       update_config:
-        order: start-first
+        # stop-first (not start-first) is REQUIRED with host-mode ports above.
+        # Host mode means the published port is bound directly on the host's
+        # network namespace, so two containers cannot hold the same port at
+        # once. start-first would deadlock: new container tries to bind
+        # :${APP_PORT}, old container still holds it, swarm logs
+        # "host-mode port already in use" and retries forever.
+        # Tradeoff: ~5s of downtime per nginx update while the old container
+        # stops before the new one starts.
+        order: stop-first
       restart_policy:
         condition: any
         delay: 15s
