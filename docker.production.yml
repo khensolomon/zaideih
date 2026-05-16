@@ -46,16 +46,6 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
-    deploy:
-      replicas: 2
-      update_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: rollback  # Triggers rollback if health check fails
-        monitor: 30s
-      rollback_config:
-        parallelism: 1
-        auth_listen_registry: true # Tells swarm nodes to reuse credentials on rollback
     # ports: 
     #   - "${APP_PORT}:${APP_PORT}"
     networks:
@@ -117,6 +107,7 @@ services:
 
       # NLTK_DATA on MyOrdbok
 
+
     # Removed the inline command block, Dockerfile ENTRYPOINT will handle the startup logic.
     deploy:
       replicas: 2
@@ -124,9 +115,12 @@ services:
         order: stop-first
         parallelism: 1
         delay: 15s
-        failure_action: rollback
+        failure_action: rollback  # Triggers rollback if health check fails
         monitor: 30s
         max_failure_ratio: 0.1
+      rollback_config:
+        parallelism: 1
+        auth_listen_registry: true # Tells swarm nodes to reuse credentials on rollback
       restart_policy:
         condition: any
         delay: 10s
