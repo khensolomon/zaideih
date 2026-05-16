@@ -303,6 +303,10 @@ jobs:
         run: |
           ssh -F ~/.ssh/config prod-server "mkdir -p /opt/zaideih"
           scp -F ~/.ssh/config docker.production.yml .env prod-server:/opt/zaideih/
+          # Tighten permissions on the server. The runner-local .env is 0644
+          # (so the SCP action can read it), but on the server it holds real
+          # secrets and must be 0600.
+          ssh -F ~/.ssh/config prod-server "chmod 600 /opt/zaideih/.env"
 
       - name: "[Tunnel] Execute remote deployment over tunnel"
         run: |
@@ -441,6 +445,11 @@ jobs:
           script: |
             set -e
             cd /opt/zaideih
+
+            # Tighten permissions on the server. The runner-local .env is 0644
+            # (so the SCP action can read it), but on the server it holds real
+            # secrets and must be 0600.
+            chmod 600 /opt/zaideih/.env
 
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
