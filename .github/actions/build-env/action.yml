@@ -1,16 +1,31 @@
 name: "Build merged .env"
 description: >
-  Merges a base env-file (repo-level secret) with per-environment overrides
-  (environment-level secret) into a single .env file. Last assignment of each
+  Merges three env-file layers into a single .env file. Layers are applied in
+  order: env_base (required, sensitive), var_base (optional, non-sensitive),
+  env_overrides (optional, sensitive, final override). Last assignment of each
   key wins. Comments and blank lines are stripped. Values are masked in logs.
   Fails on common deploy-breaking misconfigurations.
 
 inputs:
-  base:
-    description: "Base env content. Required. Sourced from a repo-level secret."
+  env_base:
+    description: >
+      Required. Sensitive base layer (Environment Secret named ENV_BASE).
+      Holds the full default key=value set for the environment.
+      Empty or missing is a fatal error — every environment must define this.
     required: true
-  overrides:
-    description: "Per-environment override content. Optional. Empty string means no overrides."
+  var_base:
+    description: >
+      Optional. Non-sensitive override layer (Environment Variable named
+      VAR_BASE). Overrides matching keys from env_base. Empty/missing is fine.
+      Refuses to merge if it contains keys matching sensitive-looking patterns
+      (_PWD, _PASSWORD, _SECRET, _KEY, _TOKEN) — those belong in env_overrides.
+    required: false
+    default: ""
+  env_overrides:
+    description: >
+      Optional. Sensitive final-override layer (Environment Secret named
+      ENV_OVERRIDES). Wins over both env_base and var_base. Use for values
+      that must remain encrypted in the GitHub UI. Empty/missing is fine.
     required: false
     default: ""
   output:
@@ -32,27 +47,45 @@ runs:
     - id: merge
       shell: bash
       env:
-        BASE_ENV: ${{ inputs.base }}
-        OVERRIDE_ENV: ${{ inputs.overrides }}
-        OUTPUT_PATH: ${{ inputs.output }}
+        ENV_BASE_INPUT:      ${{ inputs.env_base }}
+        VAR_BASE_INPUT:      ${{ inputs.var_base }}
+        ENV_OVERRIDES_INPUT: ${{ inputs.env_overrides }}
+        OUTPUT_PATH:         ${{ inputs.output }}
       run: |
         set -euo pipefail
 
-        # Write inputs to temp files. Using printf with %s (not echo) preserves
-        # content verbatim — no backslash interpretation, no trailing newline
-        # surprises.
+        # ----- Required: env_base must be present -----
+        # An environment with no ENV_BASE secret is almost certainly a setup
+        # mistake. Catch it loudly here rather than producing a broken .env.
+        if [ -z "${ENV_BASE_INPUT//[[:space:]]/}" ]; then
+          echo "::error::env_base is empty. This environment must define an ENV_BASE secret with the default key=value set."
+          exit 1
+        fi
+
         tmpdir="$(mktemp -d)"
         trap 'rm -rf "$tmpdir"' EXIT
 
-        printf '%s\n' "$BASE_ENV"     > "$tmpdir/base.env"
-        printf '%s\n' "$OVERRIDE_ENV" > "$tmpdir/override.env"
+        # Using printf with %s (not echo) preserves content verbatim — no
+        # backslash interpretation, no trailing newline surprises.
+        printf '%s\n' "$ENV_BASE_INPUT"      > "$tmpdir/1_env_base.env"
+        printf '%s\n' "$VAR_BASE_INPUT"      > "$tmpdir/2_var_base.env"
+        printf '%s\n' "$ENV_OVERRIDES_INPUT" > "$tmpdir/3_env_overrides.env"
 
-        # Merge: concatenate, then awk picks the LAST assignment of each key.
+        # ----- Guardrail: no sensitive-looking keys in VAR_BASE -----
+        # VAR_BASE is stored as a GitHub Environment Variable — unencrypted,
+        # visible in the UI, not masked in logs. Anything matching common
+        # secret-key patterns belongs in env_overrides, not here.
+        if grep -iE '^[[:space:]]*[^#=]*(_PWD|_PASSWORD|_SECRET|_KEY|_TOKEN)[[:space:]]*=' "$tmpdir/2_var_base.env" > /dev/null 2>&1; then
+          bad_keys="$(grep -iE '^[[:space:]]*[^#=]*(_PWD|_PASSWORD|_SECRET|_KEY|_TOKEN)[[:space:]]*=' "$tmpdir/2_var_base.env" | awk -F= '{print $1}' | tr -d '[:space:]' | paste -sd, -)"
+          echo "::error::var_base contains sensitive-looking keys: ${bad_keys}. Move them to env_overrides (Environment Secret ENV_OVERRIDES) — VAR_BASE is stored unencrypted."
+          exit 1
+        fi
+
+        # ----- Merge: 1_env_base -> 2_var_base -> 3_env_overrides -----
+        # awk picks the LAST assignment of each key (precedence: overrides win).
         # Order of first appearance is preserved. Comments and blanks dropped.
-        # Strips whitespace around '=' so 'KEY = value' is normalized to
-        # 'KEY=value' (defensive — the action should not silently corrupt keys
-        # if someone formats their secret with spaces).
-        cat "$tmpdir/base.env" "$tmpdir/override.env" | awk '
+        # Whitespace around '=' is stripped defensively.
+        cat "$tmpdir/1_env_base.env" "$tmpdir/2_var_base.env" "$tmpdir/3_env_overrides.env" | awk '
           /^[[:space:]]*#/ { next }
           /^[[:space:]]*$/ { next }
           {
@@ -62,10 +95,11 @@ runs:
             key = substr($0, 1, eq - 1)
             val = substr($0, eq + 1)
 
-            # Trim whitespace around key and from start of value
             sub(/^[[:space:]]+/, "", key)
             sub(/[[:space:]]+$/, "", key)
             sub(/^[[:space:]]+/, "", val)
+            sub(/[[:space:]]+$/, "", val)
+            sub(/\r$/, "", val)
 
             if (!(key in seen)) {
               order[++n] = key
@@ -93,7 +127,7 @@ runs:
         keys_count="$(wc -l < "$OUTPUT_PATH" | tr -d ' ')"
 
         if [ "$keys_count" -eq 0 ]; then
-          echo "::error::Merged .env is empty. Both inputs were blank or unset?"
+          echo "::error::Merged .env is empty. env_base passed the non-empty check but produced no key=value lines after parsing — check for malformed content."
           exit 1
         fi
 
@@ -120,7 +154,15 @@ runs:
         echo "keys_count=$keys_count"           >> "$GITHUB_OUTPUT"
         echo "content_sha256=$content_sha256"   >> "$GITHUB_OUTPUT"
 
-        # Visible, value-free summary in the step log
+        # Visible, value-free summary in the step log. Per-layer counts give
+        # a quick sanity check that each layer landed without leaking values.
+        base_lines="$(grep -cE '^[[:space:]]*[^#[:space:]].*=' "$tmpdir/1_env_base.env"      || true)"
+        var_lines="$(grep  -cE '^[[:space:]]*[^#[:space:]].*=' "$tmpdir/2_var_base.env"      || true)"
+        ovr_lines="$(grep  -cE '^[[:space:]]*[^#[:space:]].*=' "$tmpdir/3_env_overrides.env" || true)"
+
         echo "Merged .env written to: $OUTPUT_PATH"
-        echo "Keys merged: $keys_count"
-        echo "Content SHA-256: $content_sha256"
+        echo "  env_base lines:      $base_lines"
+        echo "  var_base lines:      $var_lines"
+        echo "  env_overrides lines: $ovr_lines"
+        echo "  final keys:          $keys_count"
+        echo "  SHA-256:             $content_sha256"

@@ -113,12 +113,13 @@ jobs:
       - name: "[Self-Hosted] Authenticate with GHCR on VM"
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: "[Self-Hosted] Build merged .env from secrets"
+      - name: "[Self-Hosted] Build merged .env from secrets and variables"
         id: env_build
         uses: ./.github/actions/build-env
         with:
-          base: ${{ secrets.ENV_FILE_CONTENT }}
-          overrides: ${{ secrets.ENV_OVERRIDES }}
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
 
       # Place .env at /opt/<app>/.env for consistency with Tunnel/SSH deploy
       # paths, which scp it to that exact location. This makes /opt/<app>/.env
@@ -292,12 +293,13 @@ jobs:
             --service-token-secret "${{ secrets.CF_SERVICE_TOKEN_SECRET }}" \
             --log-level debug 2>&1 | head -50 || true
 
-      - name: "[Tunnel] Build merged .env from secrets"
+      - name: "[Tunnel] Build merged .env from secrets and variables"
         id: env_build
         uses: ./.github/actions/build-env
         with:
-          base: ${{ secrets.ENV_FILE_CONTENT }}
-          overrides: ${{ secrets.ENV_OVERRIDES }}
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
 
       - name: "[Tunnel] Ship files via SCP over tunnel"
         run: |
@@ -420,12 +422,13 @@ jobs:
       - name: "[SSH] Checkout code"
         uses: actions/checkout@v4
 
-      - name: "[SSH] Build merged .env from secrets"
+      - name: "[SSH] Build merged .env from secrets and variables"
         id: env_build
         uses: ./.github/actions/build-env
         with:
-          base: ${{ secrets.ENV_FILE_CONTENT }}
-          overrides: ${{ secrets.ENV_OVERRIDES }}
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
 
       - name: "[SSH] Ship files via native SCP"
         uses: appleboy/scp-action@v0.1.7
