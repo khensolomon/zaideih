@@ -46,6 +46,16 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback  # Triggers rollback if health check fails
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        auth_listen_registry: true # Tells swarm nodes to reuse credentials on rollback
     # ports: 
     #   - "${APP_PORT}:${APP_PORT}"
     networks:
