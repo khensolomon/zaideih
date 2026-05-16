@@ -81,7 +81,12 @@ runs:
           }
         ' > "$OUTPUT_PATH"
 
-        chmod 600 "$OUTPUT_PATH"
+        # The runner is ephemeral and destroyed at job end — restrictive mode
+        # here gains us nothing but breaks tools that run as a different user
+        # (e.g. appleboy/scp-action runs tar inside a container with its own
+        # user). Server-side steps tighten the mode to 0600 after the file
+        # lands at /opt/zaideih/.env, which is where it actually matters.
+        chmod 644 "$OUTPUT_PATH"
 
         # ----- Validation -----
 
