@@ -1,0 +1,121 @@
+name: "Build merged .env"
+description: >
+  Merges a base env-file (repo-level secret) with per-environment overrides
+  (environment-level secret) into a single .env file. Last assignment of each
+  key wins. Comments and blank lines are stripped. Values are masked in logs.
+  Fails on common deploy-breaking misconfigurations.
+
+inputs:
+  base:
+    description: "Base env content. Required. Sourced from a repo-level secret."
+    required: true
+  overrides:
+    description: "Per-environment override content. Optional. Empty string means no overrides."
+    required: false
+    default: ""
+  output:
+    description: "Path to write the merged .env file."
+    required: false
+    default: ".env"
+
+outputs:
+  keys_count:
+    description: "Number of distinct KEY=VALUE pairs in the merged file."
+    value: ${{ steps.merge.outputs.keys_count }}
+  content_sha256:
+    description: "SHA-256 of the merged file content. Safe to log; reveals nothing."
+    value: ${{ steps.merge.outputs.content_sha256 }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: merge
+      shell: bash
+      env:
+        BASE_ENV: ${{ inputs.base }}
+        OVERRIDE_ENV: ${{ inputs.overrides }}
+        OUTPUT_PATH: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+
+        # Write inputs to temp files. Using printf with %s (not echo) preserves
+        # content verbatim — no backslash interpretation, no trailing newline
+        # surprises.
+        tmpdir="$(mktemp -d)"
+        trap 'rm -rf "$tmpdir"' EXIT
+
+        printf '%s\n' "$BASE_ENV"     > "$tmpdir/base.env"
+        printf '%s\n' "$OVERRIDE_ENV" > "$tmpdir/override.env"
+
+        # Merge: concatenate, then awk picks the LAST assignment of each key.
+        # Order of first appearance is preserved. Comments and blanks dropped.
+        # Strips whitespace around '=' so 'KEY = value' is normalized to
+        # 'KEY=value' (defensive — the action should not silently corrupt keys
+        # if someone formats their secret with spaces).
+        cat "$tmpdir/base.env" "$tmpdir/override.env" | awk '
+          /^[[:space:]]*#/ { next }
+          /^[[:space:]]*$/ { next }
+          {
+            eq = index($0, "=")
+            if (eq == 0) { next }                  # malformed line, skip
+
+            key = substr($0, 1, eq - 1)
+            val = substr($0, eq + 1)
+
+            # Trim whitespace around key and from start of value
+            sub(/^[[:space:]]+/, "", key)
+            sub(/[[:space:]]+$/, "", key)
+            sub(/^[[:space:]]+/, "", val)
+
+            if (!(key in seen)) {
+              order[++n] = key
+              seen[key] = 1
+            }
+            env[key] = val
+          }
+          END {
+            for (i = 1; i <= n; i++) {
+              k = order[i]
+              print k "=" env[k]
+            }
+          }
+        ' > "$OUTPUT_PATH"
+
+        chmod 600 "$OUTPUT_PATH"
+
+        # ----- Validation -----
+
+        keys_count="$(wc -l < "$OUTPUT_PATH" | tr -d ' ')"
+
+        if [ "$keys_count" -eq 0 ]; then
+          echo "::error::Merged .env is empty. Both inputs were blank or unset?"
+          exit 1
+        fi
+
+        # Guardrail: DB_HOST=localhost inside a swarm-internal deploy means
+        # MySQLdb will try the Unix socket and fail with error 2002. This has
+        # bitten this repo before. Block it at deploy time, not at runtime.
+        if grep -qE '^DB_HOST=localhost[[:space:]]*$' "$OUTPUT_PATH"; then
+          echo "::error::DB_HOST=localhost in merged .env will break swarm-internal connections (MySQLdb interprets 'localhost' as a Unix socket). Use DB_HOST=db for the service name in docker.production.yml."
+          exit 1
+        fi
+
+        # ----- Mask every value in logs -----
+        # GitHub auto-masks the original secret values, but the merged output
+        # is a derived string — once a value passes through awk, GitHub no
+        # longer recognizes it. Re-mask explicitly so a later `cat .env` (or
+        # any debug echo) cannot leak credentials into the action log.
+        while IFS='=' read -r _ value; do
+          [ -n "$value" ] && echo "::add-mask::$value"
+        done < "$OUTPUT_PATH"
+
+        # ----- Fingerprint -----
+        content_sha256="$(sha256sum "$OUTPUT_PATH" | awk '{print $1}')"
+
+        echo "keys_count=$keys_count"           >> "$GITHUB_OUTPUT"
+        echo "content_sha256=$content_sha256"   >> "$GITHUB_OUTPUT"
+
+        # Visible, value-free summary in the step log
+        echo "Merged .env written to: $OUTPUT_PATH"
+        echo "Keys merged: $keys_count"
+        echo "Content SHA-256: $content_sha256"

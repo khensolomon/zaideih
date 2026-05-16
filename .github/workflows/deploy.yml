@@ -31,7 +31,7 @@ jobs:
       - name: Install & Build Frontend
         run: |
           npm install
-          npm run build 
+          npm run build
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -39,7 +39,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -70,7 +70,7 @@ jobs:
             ghcr.io/${{ github.repository }}/nginx-prod:${{ github.sha }}
 
   # ==========================================
-  # 2. LOCAL VM PHASE (Checks runner status first)
+  # 2. SELF-HOSTED PHASE (Checks runner status first)
   # ==========================================
   check_local_vm_runner:
     needs: build
@@ -93,52 +93,64 @@ jobs:
           echo "Local runner online status: $IS_ONLINE"
           echo "is_online=$IS_ONLINE" >> "$GITHUB_OUTPUT"
 
-  # MUTEX: deploy_local_vm only fires when neither [tunnel] nor [ssh] is
+  # MUTEX: deploy_via_selfhosted only fires when neither [tunnel] nor [ssh] is
   # present in the commit message. This makes the three deploy paths fully
   # mutually exclusive — exactly one runs per push, never two against the
   # same server in parallel.
-  deploy_local_vm:
-    name: Deploy to Local VM
+  deploy_via_selfhosted:
+    name: "🏠 Self-Hosted Runner Deploy"
     needs: [build, check_local_vm_runner]
     if: |
       needs.check_local_vm_runner.outputs.is_online == 'true' &&
       !contains(github.event.head_commit.message, '[tunnel]') &&
       !contains(github.event.head_commit.message, '[ssh]')
     runs-on: self-hosted
+    environment: deploy_via_selfhosted
     steps:
-      - name: Checkout code
+      - name: "[Self-Hosted] Checkout code"
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR on VM
+      - name: "[Self-Hosted] Authenticate with GHCR on VM"
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Recreate .env file from Secret
-        run: |
-          printf "%s" "${{ secrets.ENV_FILE_CONTENT }}" > .env
-          chmod 644 .env
+      - name: "[Self-Hosted] Build merged .env from secrets"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          base: ${{ secrets.ENV_FILE_CONTENT }}
+          overrides: ${{ secrets.ENV_OVERRIDES }}
 
       # Place .env at /opt/<app>/.env for consistency with Tunnel/SSH deploy
       # paths, which scp it to that exact location. This makes /opt/<app>/.env
       # a reliable marker that the app exists on this host (used by r2.py and
       # any other tool that needs to detect deployed apps).
-      - name: Place .env at /opt/zaideih/
+      - name: "[Self-Hosted] Place .env and prepare host directories"
         run: |
-          sudo mkdir -p /opt/zaideih
+          set -a
+          [ -f .env ] && . .env
+          set +a
+          sudo mkdir -p /opt/zaideih \
+                        "${STORAGE_ROOT}" \
+                        "${MEDIA_ROOT}" \
+                        "${DB_DIR}" \
+                        "${STORE_DIR:-/opt/bucket/store}" \
+                        "${CACHE_DIR:-/opt/bucket/cache}"
           sudo cp .env /opt/zaideih/.env
           sudo chmod 600 /opt/zaideih/.env
 
-      - name: Initialize/Update Stack
+      - name: "[Self-Hosted] Deploy stack to swarm"
         run: |
           set -a
           [ -f .env ] && . .env
           set +a
           export GITHUB_REPOSITORY=${{ github.repository }}
+          export COMMIT_SHA=${{ github.sha }}
 
           docker compose -f docker.production.yml pull
           docker stack deploy -c docker.production.yml --with-registry-auth --detach=false zaideih
 
       # shell: bash required — brace expansion {1..20} is bash-only, not POSIX sh
-      - name: Wait for MySQL readiness
+      - name: "[Self-Hosted] Wait for MySQL readiness (real credentials)"
         shell: bash
         run: |
           NETWORK_NAME="zaideih_default"
@@ -147,8 +159,10 @@ jobs:
           set +a
           ready=0
           for i in {1..20}; do
-            if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
-              echo "MySQL is ready!"
+            if docker run --rm --network "$NETWORK_NAME" --env-file .env mysql:8.0 \
+                 sh -c 'mysqladmin ping -h "$DB_HOST" -u "$DB_USER" --password="$DB_PWD"' \
+                 > /dev/null 2>&1; then
+              echo "MySQL is ready (authenticated as $DB_USER@$DB_HOST)."
               ready=1
               break
             fi
@@ -157,19 +171,21 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then
             echo "ERROR: MySQL did not become ready after 20 attempts (~100s). Aborting."
+            echo "Hint: check that DB_USER and DB_PWD in the merged .env match the credentials the database was initialized with."
             exit 1
           fi
 
-      - name: Run Database Migrations
+      - name: "[Self-Hosted] Run Django migrations (pinned to commit SHA)"
         run: |
           NETWORK_NAME="zaideih_default"
-          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:latest"
-          set -a
-          [ -f .env ] && . .env
-          set +a
-          docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}"
+          docker run --rm --network "$NETWORK_NAME" \
+            --env-file .env \
+            -e DB_HOST=db \
+            -e DB_PORT=3306 \
+            "$IMAGE_NAME" python manage.py migrate --noinput
 
-      - name: Verify Healthy Deployment & Clean Up
+      - name: "[Self-Hosted] Verify replicas and prune images"
         run: |
           RUNNING=$(docker service ls --filter name=zaideih_web --format "{{.Replicas}}")
           if [[ "$RUNNING" == "2/2" ]]; then
@@ -182,24 +198,34 @@ jobs:
             exit 1
           fi
 
-      - name: Deployment Summary
+      - name: "[Self-Hosted] Write deployment summary"
         if: success()
         run: |
-          echo "### Deployed to Local VM" >> $GITHUB_STEP_SUMMARY
-          echo "- **Method:** Self-hosted runner" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Triggered by:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### 🏠 Self-Hosted Runner Deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Path | Self-hosted runner on target VM (no network hop) |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dump Service Logs on Failure (Local)
+      - name: "[Self-Hosted] Dump service logs on failure"
         if: failure()
         run: |
-          echo "Deployment failed! Fetching recent logs for debugging..."
-          echo "--- WEB LOGS ---"
+          echo "=== SELF-HOSTED RUNNER LOGS ==="
+          echo "--- WEB ---"
           docker service logs zaideih_web --tail 100 || true
-          echo "--- NGINX LOGS ---"
+          echo "--- NGINX ---"
           docker service logs zaideih_nginx --tail 100 || true
-          echo "--- DB LOGS ---"
+          echo "--- DB ---"
           docker service logs zaideih_db --tail 100 || true
 
   # ==========================================
@@ -209,34 +235,34 @@ jobs:
   # If both appear in the commit message, [tunnel] wins and [ssh] is suppressed.
   # Never intentionally use both tags — they target the same server.
   deploy_via_tunnel:
-    name: Deploy via Cloudflare Tunnel
+    name: "☁️ Cloudflare Tunnel Deploy"
     needs: build
     if: |
       contains(github.event.head_commit.message, '[tunnel]') &&
       !contains(github.event.head_commit.message, '[ssh]')
     runs-on: ubuntu-latest
-    environment: production-tunnel
+    environment: deploy_via_tunnel
     steps:
-      - name: Checkout code
+      - name: "[Tunnel] Checkout code"
         uses: actions/checkout@v4
 
       # Cloudflared is pinned to a specific version to prevent surprise breakage
       # from upstream releases. Update the version key deliberately when needed.
       # Releases: https://github.com/cloudflare/cloudflared/releases
-      - name: Cache Cloudflared binary
+      - name: "[Tunnel] Cache cloudflared binary"
         uses: actions/cache@v4
         id: cache-cloudflared
         with:
           path: /usr/local/bin/cloudflared
           key: cloudflared-2025.4.0
 
-      - name: Install Cloudflared
+      - name: "[Tunnel] Install cloudflared (cache miss only)"
         if: steps.cache-cloudflared.outputs.cache-hit != 'true'
         run: |
           wget -q https://github.com/cloudflare/cloudflared/releases/download/2025.4.0/cloudflared-linux-amd64.deb
           sudo dpkg -i --force-overwrite cloudflared-linux-amd64.deb
 
-      - name: Configure SSH via Cloudflare Proxy
+      - name: "[Tunnel] Configure SSH via Cloudflare proxy"
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
@@ -258,7 +284,7 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Debug Cloudflared Access
+      - name: "[Tunnel] Debug cloudflared access"
         run: |
           cloudflared access ssh \
             --hostname "${{ secrets.SERVER_HOSTNAME }}" \
@@ -266,17 +292,19 @@ jobs:
             --service-token-secret "${{ secrets.CF_SERVICE_TOKEN_SECRET }}" \
             --log-level debug 2>&1 | head -50 || true
 
-      - name: Prepare .env file
-        run: |
-          printf "%s" "${{ secrets.ENV_FILE_CONTENT }}" > .env
-          chmod 644 .env
+      - name: "[Tunnel] Build merged .env from secrets"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          base: ${{ secrets.ENV_FILE_CONTENT }}
+          overrides: ${{ secrets.ENV_OVERRIDES }}
 
-      - name: Copy Files (SCP over Tunnel)
+      - name: "[Tunnel] Ship files via SCP over tunnel"
         run: |
           ssh -F ~/.ssh/config prod-server "mkdir -p /opt/zaideih"
           scp -F ~/.ssh/config docker.production.yml .env prod-server:/opt/zaideih/
 
-      - name: Execute Deployment (SSH over Tunnel)
+      - name: "[Tunnel] Execute remote deployment over tunnel"
         run: |
           ssh -F ~/.ssh/config prod-server << 'ENDSSH'
             set -e
@@ -286,20 +314,31 @@ jobs:
 
             set -a; [ -f .env ] && . .env; set +a
             export GITHUB_REPOSITORY="${{ github.repository }}"
+            export COMMIT_SHA="${{ github.sha }}"
+
+            # Ensure all host paths exist before swarm tries to bind-mount them.
+            # Missing dirs cause swarm to fail the deploy with no clear message.
+            sudo mkdir -p "${STORAGE_ROOT}" \
+                          "${MEDIA_ROOT}" \
+                          "${DB_DIR}" \
+                          "${STORE_DIR:-/opt/bucket/store}" \
+                          "${CACHE_DIR:-/opt/bucket/cache}"
 
             docker compose -f docker.production.yml pull
             docker stack deploy -c docker.production.yml --with-registry-auth --detach=false zaideih
 
             NETWORK_NAME="zaideih_default"
-            IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}"
+            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}"
 
-            # Wait for MySQL to actually accept connections before migrating.
-            # 'stack deploy --detach=false' returns when services converge,
-            # but MySQL may still be initializing inside the container.
+            # Wait for MySQL to actually accept connections (with real creds)
+            # before migrating. 'stack deploy --detach=false' returns when
+            # services converge, but MySQL may still be initializing inside.
             ready=0
             for i in $(seq 1 20); do
-              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
-                echo "MySQL is ready!"
+              if docker run --rm --network "$NETWORK_NAME" --env-file .env mysql:8.0 \
+                   sh -c 'mysqladmin ping -h "$DB_HOST" -u "$DB_USER" --password="$DB_PWD"' \
+                   > /dev/null 2>&1; then
+                echo "MySQL is ready (authenticated as $DB_USER@$DB_HOST)."
                 ready=1
                 break
               fi
@@ -307,36 +346,56 @@ jobs:
               sleep 5
             done
             if [ "$ready" -ne 1 ]; then
-              echo "ERROR: MySQL did not become ready after 20 attempts. Aborting."
+              echo "ERROR: MySQL did not become ready after 20 attempts."
+              echo "Hint: check that DB_USER and DB_PWD in /opt/zaideih/.env match the credentials the database was initialized with."
               exit 1
             fi
 
-            docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
+            # Migrate with DB_HOST overridden — guards against .env containing
+            # 'localhost' (which MySQLdb interprets as a Unix socket).
+            docker run --rm --network "$NETWORK_NAME" \
+              --env-file .env \
+              -e DB_HOST=db \
+              -e DB_PORT=3306 \
+              "$IMAGE_NAME" python manage.py migrate --noinput
 
             echo "Cleaning up old Docker images..."
             docker image prune -af
           ENDSSH
 
-      - name: Deployment Summary
+      - name: "[Tunnel] Write deployment summary"
         if: success()
         run: |
-          echo "### Deployed via Cloudflare Tunnel" >> $GITHUB_STEP_SUMMARY
-          echo "- **Method:** Cloudflare Zero Trust SSH" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Triggered by:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### ☁️ Cloudflare Tunnel Deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Path | Cloudflare Zero Trust SSH (port 22 closed) |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dump Service Logs on Failure (Tunnel)
+      - name: "[Tunnel] Dump service logs on failure"
         if: failure()
         run: |
+          echo "=== TUNNEL DEPLOY LOGS ==="
           if [ ! -f ~/.ssh/config ]; then
             echo "SSH config was never created — failure occurred before SSH setup. Skipping remote log dump."
             exit 0
           fi
           ssh -F ~/.ssh/config prod-server << 'ENDSSH'
-            echo "Deployment failed! Fetching recent logs..."
+            echo "--- WEB ---"
             docker service logs zaideih_web --tail 100 || true
+            echo "--- NGINX ---"
             docker service logs zaideih_nginx --tail 100 || true
+            echo "--- DB ---"
             docker service logs zaideih_db --tail 100 || true
           ENDSSH
 
@@ -346,23 +405,25 @@ jobs:
   # MUTEX: [ssh] only fires when [tunnel] is NOT also present.
   # Use [ssh] for environments where port 22 is open directly.
   deploy_via_ssh:
-    name: Deploy via Native SSH
+    name: "🔑 Native SSH Deploy"
     needs: build
     if: |
       contains(github.event.head_commit.message, '[ssh]') &&
       !contains(github.event.head_commit.message, '[tunnel]')
     runs-on: ubuntu-latest
-    environment: production-ssh
+    environment: deploy_via_ssh
     steps:
-      - name: Checkout code
+      - name: "[SSH] Checkout code"
         uses: actions/checkout@v4
 
-      - name: Prepare .env file
-        run: |
-          printf "%s" "${{ secrets.ENV_FILE_CONTENT }}" > .env
-          chmod 644 .env
+      - name: "[SSH] Build merged .env from secrets"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          base: ${{ secrets.ENV_FILE_CONTENT }}
+          overrides: ${{ secrets.ENV_OVERRIDES }}
 
-      - name: Copy Files via Native SCP
+      - name: "[SSH] Ship files via native SCP"
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOSTNAME }}
@@ -371,7 +432,7 @@ jobs:
           source: "docker.production.yml,.env"
           target: "/opt/zaideih/"
 
-      - name: Execute Deployment via Native SSH
+      - name: "[SSH] Execute remote deployment via native SSH"
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOSTNAME }}
@@ -385,8 +446,16 @@ jobs:
 
             export COMMIT_SHA="${{ github.sha }}"
             export GITHUB_REPOSITORY="${{ github.repository }}"
-            
+
             set -a; [ -f .env ] && . .env; set +a
+
+            # Ensure all host paths exist before swarm tries to bind-mount them.
+            # Past deployments have silently failed here with no clear message.
+            sudo mkdir -p "${STORAGE_ROOT}" \
+                          "${MEDIA_ROOT}" \
+                          "${DB_DIR}" \
+                          "${STORE_DIR:-/opt/bucket/store}" \
+                          "${CACHE_DIR:-/opt/bucket/cache}"
 
             echo "Pulling images with SHA tag..."
             docker compose -f docker.production.yml pull
@@ -401,11 +470,13 @@ jobs:
             NETWORK_NAME="zaideih_default"
             IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}"
 
-            # Better MySQL readiness check
+            # MySQL readiness check using real credentials from .env
             ready=0
             for i in $(seq 1 30); do
-              if docker run --rm --network $NETWORK_NAME mysql:8.0 mysqladmin ping -h db -u admin > /dev/null 2>&1; then
-                echo "MySQL is ready!"
+              if docker run --rm --network "$NETWORK_NAME" --env-file .env mysql:8.0 \
+                   sh -c 'mysqladmin ping -h "$DB_HOST" -u "$DB_USER" --password="$DB_PWD"' \
+                   > /dev/null 2>&1; then
+                echo "MySQL is ready (authenticated as $DB_USER@$DB_HOST)."
                 ready=1
                 break
               fi
@@ -414,25 +485,40 @@ jobs:
             done
             if [ "$ready" -ne 1 ]; then
               echo "ERROR: MySQL did not become ready."
+              echo "Hint: check that DB_USER and DB_PWD in /opt/zaideih/.env match the credentials the database was initialized with."
               exit 1
             fi
 
             echo "Running migrations with exact SHA image..."
-            docker run --rm --network $NETWORK_NAME --env-file .env $IMAGE_NAME python manage.py migrate --noinput
+            docker run --rm --network "$NETWORK_NAME" \
+              --env-file .env \
+              -e DB_HOST=db \
+              -e DB_PORT=3306 \
+              "$IMAGE_NAME" python manage.py migrate --noinput
 
             echo "Cleaning up old images..."
             docker image prune -af --filter "until=24h"
 
-      - name: Deployment Summary
+      - name: "[SSH] Write deployment summary"
         if: success()
         run: |
-          echo "### Deployed via Native SSH" >> $GITHUB_STEP_SUMMARY
-          echo "- **Method:** Direct SSH (port 22)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Triggered by:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### 🔑 Native SSH Deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Path | Direct SSH over port 22 |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dump Service Logs on Failure (SSH)
+      - name: "[SSH] Dump service logs on failure"
         if: failure()
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -440,7 +526,10 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "Deployment failed! Fetching recent logs..."
+            echo "=== SSH DEPLOY LOGS ==="
+            echo "--- WEB ---"
             docker service logs zaideih_web --tail 100 || true
+            echo "--- NGINX ---"
             docker service logs zaideih_nginx --tail 100 || true
+            echo "--- DB ---"
             docker service logs zaideih_db --tail 100 || true
