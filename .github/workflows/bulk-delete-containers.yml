@@ -37,10 +37,10 @@ jobs:
         # Full package names as they appear in GHCR.
         # Add or remove entries here.
         package:
-          - 'zaideih/django-app'
-          - 'zaideih/nginx-prod'
-          # - 'myordbok/django-app'
-          # - 'myordbok/nginx-prod'
+          - 'zaideih/django'
+          - 'zaideih/nginx'
+          # - 'myordbok/django'
+          # - 'myordbok/nginx'
     steps:
       - name: Fetch versions for ${{ matrix.package }}
         env:
