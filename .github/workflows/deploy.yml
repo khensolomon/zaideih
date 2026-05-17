@@ -3,6 +3,27 @@ name: Build and Deploy
 on:
   push:
     branches: [ master ]
+  # Manual trigger via the "Run workflow" button in the GitHub Actions UI.
+  # The existing push-based triggers (commit-message tags like [tunnel],
+  # [ssh]) still work — workflow_dispatch is additive.
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        description: "What to do"
+        options:
+          - dry-run
+          - build-only
+          - build-and-deploy
+        default: dry-run
+      target:
+        type: choice
+        description: "Which deploy path (ignored for build-only and dry-run-base modes)"
+        options:
+          - selfhosted
+          - tunnel
+          - ssh
+        default: tunnel
 
 # CONCURRENCY: Prevents two deployments from running at the exact same time
 concurrency:
@@ -14,7 +35,13 @@ jobs:
   # 1. BUILD PHASE
   # ==========================================
   build:
-    if: startsWith(github.event.head_commit.message, 'deploy:')
+    # Fires on:
+    #   - push to master with a commit message starting "deploy:"
+    #   - workflow_dispatch with mode in {build-only, build-and-deploy}
+    # (mode=dry-run skips the build — analysis only, no image push)
+    if: |
+      (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'deploy:')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode != 'dry-run')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,10 +127,23 @@ jobs:
   deploy_via_selfhosted:
     name: "🏠 Self-Hosted Runner Deploy"
     needs: [build, check_local_vm_runner]
+    # Fires on:
+    #   - push to master with NO [tunnel] or [ssh] tag (default route), OR
+    #   - workflow_dispatch with mode=build-and-deploy + target=selfhosted
+    # Both paths still require the self-hosted runner to be online.
     if: |
       needs.check_local_vm_runner.outputs.is_online == 'true' &&
-      !contains(github.event.head_commit.message, '[tunnel]') &&
-      !contains(github.event.head_commit.message, '[ssh]')
+      (
+        (
+          github.event_name == 'push' &&
+          !contains(github.event.head_commit.message, '[tunnel]') &&
+          !contains(github.event.head_commit.message, '[ssh]')
+        ) || (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'build-and-deploy' &&
+          inputs.target == 'selfhosted'
+        )
+      )
     runs-on: self-hosted
     environment: deploy_via_selfhosted
     steps:
@@ -211,7 +251,7 @@ jobs:
             echo "| Path | Self-hosted runner on target VM (no network hop) |"
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Image tag | \`${{ github.sha }}\` |"
-            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Triggered by | ${{ github.event_name == 'workflow_dispatch' && format('Manual dispatch: mode={0}, target={1}', inputs.mode, inputs.target) || github.event.head_commit.message }} |"
             echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
             echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
             echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
@@ -248,9 +288,19 @@ jobs:
   deploy_via_tunnel:
     name: "☁️ Cloudflare Tunnel Deploy"
     needs: build
+    # Fires on:
+    #   - push to master with [tunnel] tag (and not [ssh]), OR
+    #   - workflow_dispatch with mode=build-and-deploy + target=tunnel
     if: |
-      contains(github.event.head_commit.message, '[tunnel]') &&
-      !contains(github.event.head_commit.message, '[ssh]')
+      (
+        github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[tunnel]') &&
+        !contains(github.event.head_commit.message, '[ssh]')
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        inputs.mode == 'build-and-deploy' &&
+        inputs.target == 'tunnel'
+      )
     runs-on: ubuntu-latest
     environment: deploy_via_tunnel
     steps:
@@ -397,7 +447,7 @@ jobs:
             echo "| Path | Cloudflare Zero Trust SSH (port 22 closed) |"
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Image tag | \`${{ github.sha }}\` |"
-            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Triggered by | ${{ github.event_name == 'workflow_dispatch' && format('Manual dispatch: mode={0}, target={1}', inputs.mode, inputs.target) || github.event.head_commit.message }} |"
             echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
             echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
             echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
@@ -433,9 +483,19 @@ jobs:
   deploy_via_ssh:
     name: "🔑 Native SSH Deploy"
     needs: build
+    # Fires on:
+    #   - push to master with [ssh] tag (and not [tunnel]), OR
+    #   - workflow_dispatch with mode=build-and-deploy + target=ssh
     if: |
-      contains(github.event.head_commit.message, '[ssh]') &&
-      !contains(github.event.head_commit.message, '[tunnel]')
+      (
+        github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[ssh]') &&
+        !contains(github.event.head_commit.message, '[tunnel]')
+      ) || (
+        github.event_name == 'workflow_dispatch' &&
+        inputs.mode == 'build-and-deploy' &&
+        inputs.target == 'ssh'
+      )
     runs-on: ubuntu-latest
     environment: deploy_via_ssh
     steps:
@@ -544,7 +604,7 @@ jobs:
             echo "| Path | Direct SSH over port 22 |"
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Image tag | \`${{ github.sha }}\` |"
-            echo "| Triggered by | ${{ github.event.head_commit.message }} |"
+            echo "| Triggered by | ${{ github.event_name == 'workflow_dispatch' && format('Manual dispatch: mode={0}, target={1}', inputs.mode, inputs.target) || github.event.head_commit.message }} |"
             echo "| Completed at | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |"
             echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
             echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
@@ -574,5 +634,207 @@ jobs:
             docker service logs zaideih_db --tail 100 || true
 
       - name: "[SSH] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
+
+  # ==========================================
+  # 5. DRY-RUN PHASE (workflow_dispatch only)
+  # ==========================================
+  # Fires ONLY on workflow_dispatch with mode=dry-run. Each dry-run job
+  # targets a single environment and validates that environment's config
+  # without touching the server or pushing any images.
+  #
+  # WHAT IT DOES TODAY (phase 1):
+  #   - Validates YAML syntax of deploy.yml, docker.production.yml, and
+  #     the build-env action.
+  #   - Runs the build-env action against the chosen environment's
+  #     secrets/vars/overrides — same merge, same guardrails as a real
+  #     deploy, but writes .env to the runner only.
+  #   - Validates docker.production.yml against the merged .env via
+  #     `docker compose config`.
+  #   - Prints final-key count and SHA-256 of the merged .env (no values).
+  #
+  # WHAT'S COMING (phase 2):
+  #   - A dedicated `.github/actions/inspect-env` composite action that
+  #     produces a per-key provenance report (which layer each key came
+  #     from, overrides resolved) and flags expected-but-missing or
+  #     unexpected keys.
+  #   - When that lands, EXPECTED_KEYS below moves into the action's input
+  #     defaults and this inline list is removed.
+
+  dry_run_selfhosted:
+    name: "🧪 Dry-Run (Self-Hosted env)"
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'dry-run' &&
+      inputs.target == 'selfhosted'
+    runs-on: ubuntu-latest
+    environment: deploy_via_selfhosted
+    steps:
+      - name: "[DryRun-SH] Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "[DryRun-SH] Validate YAML files"
+        run: |
+          set -e
+          for f in .github/workflows/deploy.yml \
+                   .github/actions/build-env/action.yml \
+                   docker.production.yml; do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" \
+              && echo "✓ $f parses cleanly"
+          done
+
+      - name: "[DryRun-SH] Build merged .env (no deploy)"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
+
+      - name: "[DryRun-SH] Validate compose against merged .env"
+        run: |
+          set -a; . .env; set +a
+          export GITHUB_REPOSITORY="${{ github.repository }}"
+          export COMMIT_SHA="dryrun"
+          docker compose -f docker.production.yml config --quiet \
+            && echo "✓ docker.production.yml validates against merged .env"
+
+      - name: "[DryRun-SH] Write dry-run summary"
+        if: always()
+        run: |
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### 🧪 Dry-Run: Self-Hosted environment"
+            echo ""
+            echo "No images built. No server contact. Analysis only."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | deploy_via_selfhosted |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[DryRun-SH] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
+
+  dry_run_tunnel:
+    name: "🧪 Dry-Run (Tunnel env)"
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'dry-run' &&
+      inputs.target == 'tunnel'
+    runs-on: ubuntu-latest
+    environment: deploy_via_tunnel
+    steps:
+      - name: "[DryRun-Tu] Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "[DryRun-Tu] Validate YAML files"
+        run: |
+          set -e
+          for f in .github/workflows/deploy.yml \
+                   .github/actions/build-env/action.yml \
+                   docker.production.yml; do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" \
+              && echo "✓ $f parses cleanly"
+          done
+
+      - name: "[DryRun-Tu] Build merged .env (no deploy)"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
+
+      - name: "[DryRun-Tu] Validate compose against merged .env"
+        run: |
+          set -a; . .env; set +a
+          export GITHUB_REPOSITORY="${{ github.repository }}"
+          export COMMIT_SHA="dryrun"
+          docker compose -f docker.production.yml config --quiet \
+            && echo "✓ docker.production.yml validates against merged .env"
+
+      - name: "[DryRun-Tu] Write dry-run summary"
+        if: always()
+        run: |
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### 🧪 Dry-Run: Tunnel environment"
+            echo ""
+            echo "No images built. No server contact. Analysis only."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | deploy_via_tunnel |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[DryRun-Tu] Cleanup runner workspace"
+        if: always()
+        run: rm -f .env
+
+  dry_run_ssh:
+    name: "🧪 Dry-Run (SSH env)"
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'dry-run' &&
+      inputs.target == 'ssh'
+    runs-on: ubuntu-latest
+    environment: deploy_via_ssh
+    steps:
+      - name: "[DryRun-SSH] Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "[DryRun-SSH] Validate YAML files"
+        run: |
+          set -e
+          for f in .github/workflows/deploy.yml \
+                   .github/actions/build-env/action.yml \
+                   docker.production.yml; do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" \
+              && echo "✓ $f parses cleanly"
+          done
+
+      - name: "[DryRun-SSH] Build merged .env (no deploy)"
+        id: env_build
+        uses: ./.github/actions/build-env
+        with:
+          env_base:      ${{ secrets.ENV_BASE }}
+          var_base:      ${{ vars.VAR_BASE }}
+          env_overrides: ${{ secrets.ENV_OVERRIDES }}
+
+      - name: "[DryRun-SSH] Validate compose against merged .env"
+        run: |
+          set -a; . .env; set +a
+          export GITHUB_REPOSITORY="${{ github.repository }}"
+          export COMMIT_SHA="dryrun"
+          docker compose -f docker.production.yml config --quiet \
+            && echo "✓ docker.production.yml validates against merged .env"
+
+      - name: "[DryRun-SSH] Write dry-run summary"
+        if: always()
+        run: |
+          COMPOSE_SHA="$(sha256sum docker.production.yml | awk '{print $1}')"
+          {
+            echo "### 🧪 Dry-Run: SSH environment"
+            echo ""
+            echo "No images built. No server contact. Analysis only."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | deploy_via_ssh |"
+            echo "| .env keys merged | ${{ steps.env_build.outputs.keys_count }} |"
+            echo "| .env SHA-256 | \`${{ steps.env_build.outputs.content_sha256 }}\` |"
+            echo "| compose SHA-256 | \`${COMPOSE_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[DryRun-SSH] Cleanup runner workspace"
         if: always()
         run: rm -f .env
