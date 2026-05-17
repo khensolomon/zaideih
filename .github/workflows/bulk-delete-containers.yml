@@ -28,9 +28,6 @@ on:
 permissions:
   packages: write
 
-env:
-  OWNER: khensolomon
-
 jobs:
   cleanup:
     runs-on: ubuntu-latest
@@ -39,22 +36,71 @@ jobs:
       matrix:
         package: ['nginx-prod', 'django-app']
     steps:
-      - name: Count versions for ${{ matrix.package }}
+      - name: Diagnose API access for ${{ matrix.package }}
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
         run: |
-          total=$(gh api \
-            "/users/$OWNER/packages/container/${{ matrix.package }}/versions?per_page=100" \
-            --paginate --jq '. | length' | awk '{s+=$1} END {print s+0}')
-          echo "BEFORE: ${{ matrix.package }} has $total versions"
-          echo "### ${{ matrix.package }} — before" >> $GITHUB_STEP_SUMMARY
-          echo "- Total versions: $total" >> $GITHUB_STEP_SUMMARY
-          echo "- Will keep newest: ${{ inputs.min-versions-to-keep }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Max deletable this run: up to $(( ${{ inputs.max-sweeps }} * 100 ))" >> $GITHUB_STEP_SUMMARY
+          echo "::group::Token identity"
+          gh api /user --jq '{login, type}' || echo "Failed to identify user"
+          echo "::endgroup::"
+
+          echo "::group::Try /user/packages (authenticated user's packages)"
+          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+            --paginate 2>&1 | head -50 || true
+          echo "::endgroup::"
+
+          echo "::group::Try /users/khensolomon/packages (public endpoint)"
+          gh api "/users/khensolomon/packages/container/$PACKAGE/versions?per_page=100" \
+            --paginate 2>&1 | head -50 || true
+          echo "::endgroup::"
+
+      - name: Count versions for ${{ matrix.package }}
+        id: count
+        env:
+          GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          # Save full paginated output to a file so we can both count it and reuse it
+          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+            --paginate > versions.json 2>/dev/null || true
+
+          if [ ! -s versions.json ]; then
+            echo "::warning::No data from /user/packages, trying /users/khensolomon/..."
+            gh api "/users/khensolomon/packages/container/$PACKAGE/versions?per_page=100" \
+              --paginate > versions.json 2>/dev/null || true
+          fi
+
+          # gh --paginate concatenates pages as separate JSON arrays.
+          # Use `jq -s 'add | length'` to slurp them and count properly.
+          if [ -s versions.json ]; then
+            total=$(jq -s 'add | length' versions.json)
+            tagged=$(jq -s '[.[] | .[] | select(.metadata.container.tags | length > 0)] | length' versions.json)
+            untagged=$(jq -s '[.[] | .[] | select(.metadata.container.tags | length == 0)] | length' versions.json)
+          else
+            total=0
+            tagged=0
+            untagged=0
+          fi
+
+          echo "BEFORE: $PACKAGE has $total versions ($tagged tagged, $untagged untagged)"
+          echo "before_count=$total" >> $GITHUB_OUTPUT
           echo "BEFORE_COUNT=$total" >> $GITHUB_ENV
 
+          {
+            echo "### ${{ matrix.package }} — before"
+            echo "- Total versions: **$total**"
+            echo "- Tagged: $tagged"
+            echo "- Untagged: $untagged"
+            echo "- Will keep newest: ${{ inputs.min-versions-to-keep }}"
+            echo "- Max deletable this run: up to $(( ${{ inputs.max-sweeps }} * 100 ))"
+            if [ "$total" -eq 0 ]; then
+              echo "- ⚠️ Got 0 versions — check the 'Diagnose API access' step above"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
       - name: Run sweeps for ${{ matrix.package }}
-        if: ${{ !inputs.dry-run }}
+        if: ${{ !inputs.dry-run && env.BEFORE_COUNT != '0' }}
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
           MAX_SWEEPS: ${{ inputs.max-sweeps }}
@@ -62,40 +108,31 @@ jobs:
           PACKAGE: ${{ matrix.package }}
           UNTAGGED_ONLY: ${{ inputs.delete-only-untagged }}
         run: |
-          set +e  # don't abort on individual sweep failures
+          set +e
 
           for i in $(seq 1 $MAX_SWEEPS); do
             echo "::group::Sweep $i for $PACKAGE"
 
-            # How many versions remain right now?
-            remaining=$(gh api \
-              "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
-              --paginate --jq '. | length' | awk '{s+=$1} END {print s+0}')
+            gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+              --paginate > current.json 2>/dev/null || true
+
+            remaining=$(jq -s 'add | length' current.json)
             echo "Versions remaining: $remaining"
 
             if [ "$remaining" -le "$MIN_KEEP" ]; then
-              echo "Nothing left to delete (remaining=$remaining ≤ keep=$MIN_KEEP). Stopping."
+              echo "Nothing left to delete (remaining=$remaining ≤ keep=$MIN_KEEP)."
               echo "::endgroup::"
               break
             fi
 
-            # Build deletion list:
-            # - versions are returned newest-first by the API
-            # - skip the first MIN_KEEP (those are the ones we want to keep)
-            # - take up to 100 of the rest
-            # - optionally filter to untagged only
             if [ "$UNTAGGED_ONLY" = "true" ]; then
-              filter=".[] | select(.metadata.container.tags | length == 0) | .id"
+              filter='[.[] | .[] | select(.metadata.container.tags | length == 0) | .id]'
             else
-              filter=".[].id"
+              filter='[.[] | .[] | .id]'
             fi
 
-            ids=$(gh api \
-              "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
-              --paginate --jq "$filter" \
-              | tail -n +$((MIN_KEEP + 1)) \
-              | head -n 100)
-
+            # API returns newest-first; skip MIN_KEEP from the front, take 100
+            ids=$(jq -s "$filter | .[${MIN_KEEP}:] | .[:100] | .[]" current.json)
             count=$(echo "$ids" | grep -c . || true)
             echo "Deleting $count versions in this sweep..."
 
@@ -103,7 +140,7 @@ jobs:
             failed=0
             for id in $ids; do
               if gh api -X DELETE \
-                  "/users/$OWNER/packages/container/$PACKAGE/versions/$id" \
+                  "/user/packages/container/$PACKAGE/versions/$id" \
                   --silent 2>/dev/null; then
                 deleted=$((deleted + 1))
               else
@@ -113,7 +150,6 @@ jobs:
             echo "Sweep $i: deleted=$deleted, failed=$failed"
             echo "::endgroup::"
 
-            # If nothing was deleted this sweep, no point continuing
             if [ "$deleted" -eq 0 ]; then
               echo "No deletions this sweep, stopping early."
               break
@@ -124,12 +160,15 @@ jobs:
         if: ${{ !inputs.dry-run }}
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
         run: |
-          after=$(gh api \
-            "/users/$OWNER/packages/container/${{ matrix.package }}/versions?per_page=100" \
-            --paginate --jq '. | length' | awk '{s+=$1} END {print s+0}')
+          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+            --paginate > after.json 2>/dev/null || true
+          after=$(jq -s 'add | length' after.json 2>/dev/null || echo 0)
           deleted=$((BEFORE_COUNT - after))
-          echo "AFTER: ${{ matrix.package }} has $after versions ($deleted deleted)"
-          echo "### ${{ matrix.package }} — after" >> $GITHUB_STEP_SUMMARY
-          echo "- Remaining: $after" >> $GITHUB_STEP_SUMMARY
-          echo "- Deleted this run: $deleted" >> $GITHUB_STEP_SUMMARY
+          echo "AFTER: $PACKAGE has $after versions ($deleted deleted)"
+          {
+            echo "### ${{ matrix.package }} — after"
+            echo "- Remaining: **$after**"
+            echo "- Deleted this run: **$deleted**"
+          } >> $GITHUB_STEP_SUMMARY
