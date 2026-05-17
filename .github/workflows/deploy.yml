@@ -447,7 +447,7 @@ jobs:
       - name: "[SSH] Ship files via native SCP"
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SERVER_HOSTNAME }}
+          host: ${{ vars.SERVER_HOSTNAME }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "docker.production.yml,.env"
@@ -456,7 +456,7 @@ jobs:
       - name: "[SSH] Execute remote deployment via native SSH"
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SERVER_HOSTNAME }}
+          host: ${{ vars.SERVER_HOSTNAME }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
@@ -554,7 +554,7 @@ jobs:
         continue-on-error: true
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SERVER_HOSTNAME }}
+          host: ${{ vars.SERVER_HOSTNAME }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
