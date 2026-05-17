@@ -30,10 +30,10 @@ help: ## Show this help menu with all available commands
 	@echo "-----------------------------------------------------------------------"
 
 r2: ## Run the r2.py script with any additional arguments (e.g., 'make r2 -- arg1 arg2')
-	@python ~/dev/lets/server/r2.py $(EXTRA_ARGS)
+	@python ~/dev/lethil/server/r2.py $(EXTRA_ARGS)
 
 secrets: ## Run the secrets.py script with any additional arguments (e.g., 'make secrets -- --check')
-	python ~/dev/lets/server/secrets.py $(EXTRA_ARGS)
+	python ~/dev/lethil/server/secrets.py $(EXTRA_ARGS)
 
 abc:
 	source venv/bin/activate
