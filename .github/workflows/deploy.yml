@@ -284,21 +284,27 @@ jobs:
           # ssh-keyscan is intentionally omitted — it requires raw TCP to port 22
           # which is closed. The tunnel delivers connections via Cloudflare,
           # not directly to port 22, so keyscan cannot work here.
+          # SERVER_HOSTNAME and SERVER_USER use the `vars || secrets` pattern.
+          # During the migration from Environment Secrets to Environment
+          # Variables, both can be set; vars wins. Once vars are populated
+          # and old secrets deleted, the `|| secrets.*` half becomes a no-op.
+          # CF_SERVICE_TOKEN_* and SSH_PRIVATE_KEY stay as direct secrets —
+          # they're real credentials.
           cat << EOF > ~/.ssh/config
           Host prod-server
-              HostName ${{ secrets.SERVER_HOSTNAME }}
-              User ${{ secrets.SERVER_USER }}
+              HostName ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
+              User ${{ vars.SERVER_USER || secrets.SERVER_USER }}
               IdentityFile ~/.ssh/id_rsa
               StrictHostKeyChecking accept-new
               UserKnownHostsFile ~/.ssh/known_hosts
-              ProxyCommand cloudflared access ssh --hostname ${{ secrets.SERVER_HOSTNAME }} --service-token-id ${{ secrets.CF_SERVICE_TOKEN_ID }} --service-token-secret ${{ secrets.CF_SERVICE_TOKEN_SECRET }}
+              ProxyCommand cloudflared access ssh --hostname ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }} --service-token-id ${{ secrets.CF_SERVICE_TOKEN_ID }} --service-token-secret ${{ secrets.CF_SERVICE_TOKEN_SECRET }}
           EOF
           chmod 600 ~/.ssh/config
 
       - name: "[Tunnel] Debug cloudflared access"
         run: |
           cloudflared access ssh \
-            --hostname "${{ secrets.SERVER_HOSTNAME }}" \
+            --hostname "${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}" \
             --service-token-id "${{ secrets.CF_SERVICE_TOKEN_ID }}" \
             --service-token-secret "${{ secrets.CF_SERVICE_TOKEN_SECRET }}" \
             --log-level debug 2>&1 | head -50 || true
@@ -447,8 +453,9 @@ jobs:
       - name: "[SSH] Ship files via native SCP"
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ vars.SERVER_HOSTNAME }}
-          username: ${{ secrets.SERVER_USER }}
+          # vars.* wins, falls back to secrets.* during migration window.
+          host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "docker.production.yml,.env"
           target: "/opt/zaideih/"
@@ -456,8 +463,8 @@ jobs:
       - name: "[SSH] Execute remote deployment via native SSH"
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.SERVER_HOSTNAME }}
-          username: ${{ secrets.SERVER_USER }}
+          host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
@@ -554,8 +561,8 @@ jobs:
         continue-on-error: true
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.SERVER_HOSTNAME }}
-          username: ${{ secrets.SERVER_USER }}
+          host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             echo "=== SSH DEPLOY LOGS ==="
