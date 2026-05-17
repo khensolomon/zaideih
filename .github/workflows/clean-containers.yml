@@ -1,4 +1,4 @@
-name: Bulk Delete Containers
+name: Clean containers
 
 on:
   workflow_dispatch: # Allows you to trigger it manually from the UI
