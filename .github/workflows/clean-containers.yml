@@ -9,7 +9,7 @@ jobs:
     strategy:
       # This runs the steps for both packages in parallel
       matrix:
-        package: ['nginx-prod', 'django-app']
+        package: ['zaideih/nginx-prod', 'zaideih/django-app']
     steps:
       - name: Delete old versions for ${{ matrix.package }}
         uses: actions/delete-package-versions@v5
