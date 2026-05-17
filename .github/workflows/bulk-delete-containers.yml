@@ -28,78 +28,32 @@ on:
 permissions:
   packages: write
 
-env:
-  OWNER: khensolomon
-
 jobs:
-  diagnose:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Identify token and list all packages
-        env:
-          GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
-        run: |
-          echo "## 🔍 Diagnostics" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### Token identity" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          gh api /user --jq '{login, type, id}' 2>&1 | tee -a $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-          echo "### All container packages visible to this token" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          gh api "/user/packages?package_type=container&per_page=100" --paginate \
-            --jq '.[] | "\(.name) (owner: \(.owner.login), visibility: \(.visibility))"' \
-            2>&1 | tee -a $GITHUB_STEP_SUMMARY || echo "FAILED" | tee -a $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
   cleanup:
-    needs: diagnose
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        package: ['nginx-prod', 'django-app']
+        # Full package names as they appear in GHCR.
+        # Add or remove entries here.
+        package:
+          - 'zaideih/django-app'
+          - 'zaideih/nginx-prod'
+          - 'myordbok/django-app'
+          - 'myordbok/nginx-prod'
     steps:
       - name: Fetch versions for ${{ matrix.package }}
-        id: fetch
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
           PACKAGE: ${{ matrix.package }}
         run: |
-          # Try /user/packages first (authenticated user's own packages)
-          echo "Trying /user/packages/container/$PACKAGE/versions ..."
-          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
-            --paginate > versions.json 2> error.log
-          rc=$?
+          # URL-encode the slash in the package name
+          ENCODED=$(echo -n "$PACKAGE" | jq -sRr @uri)
+          echo "ENCODED=$ENCODED" >> $GITHUB_ENV
 
-          if [ $rc -ne 0 ] || ! jq -e 'type == "array"' versions.json >/dev/null 2>&1; then
-            echo "::warning::/user/packages failed for $PACKAGE (rc=$rc), trying /users/$OWNER/..."
-            echo "--- error from /user/packages ---"
-            cat error.log
-            echo "--- body of versions.json ---"
-            head -c 500 versions.json; echo
-
-            gh api "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
-              --paginate > versions.json 2> error.log
-            rc=$?
-          fi
-
-          if [ $rc -ne 0 ] || ! jq -e 'type == "array"' versions.json >/dev/null 2>&1; then
-            echo "::error::Both endpoints failed for $PACKAGE"
-            echo "--- final error ---"
-            cat error.log
-            echo "--- body of versions.json ---"
-            head -c 500 versions.json; echo
-            # Write empty array so downstream jq doesn't crash
-            echo "[]" > versions.json
-          fi
-
-          # gh --paginate produces one JSON array per page, concatenated.
-          # Merge them into one flat array so the rest of the pipeline is simple.
-          jq -s 'if length == 0 then [] else add end' versions.json > merged.json
-          mv merged.json versions.json
+          gh api "/user/packages/container/$ENCODED/versions?per_page=100" \
+            --paginate 2>/dev/null \
+            | jq -s 'if length == 0 then [] else add end' > versions.json
 
           total=$(jq 'length' versions.json)
           tagged=$(jq '[.[] | select(.metadata.container.tags | length > 0)] | length' versions.json)
@@ -132,8 +86,7 @@ jobs:
           for i in $(seq 1 $MAX_SWEEPS); do
             echo "::group::Sweep $i for $PACKAGE"
 
-            # Re-fetch each sweep — the list changes as we delete
-            gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+            gh api "/user/packages/container/$ENCODED/versions?per_page=100" \
               --paginate 2>/dev/null \
               | jq -s 'if length == 0 then [] else add end' > current.json
 
@@ -152,7 +105,6 @@ jobs:
               filter='.'
             fi
 
-            # API returns newest-first; drop the first MIN_KEEP, take 100
             ids=$(jq -r "$filter | .[${MIN_KEEP}:] | .[:100] | .[].id" current.json)
             count=$(echo "$ids" | grep -c . || true)
             echo "Deleting $count versions in this sweep..."
@@ -161,7 +113,7 @@ jobs:
             failed=0
             for id in $ids; do
               if gh api -X DELETE \
-                  "/user/packages/container/$PACKAGE/versions/$id" \
+                  "/user/packages/container/$ENCODED/versions/$id" \
                   --silent 2>/dev/null; then
                 deleted=$((deleted + 1))
               else
@@ -186,7 +138,7 @@ jobs:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
           PACKAGE: ${{ matrix.package }}
         run: |
-          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
+          gh api "/user/packages/container/$ENCODED/versions?per_page=100" \
             --paginate 2>/dev/null \
             | jq -s 'if length == 0 then [] else add end' > after.json
           after=$(jq 'length' after.json)
