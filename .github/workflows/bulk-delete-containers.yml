@@ -1,4 +1,4 @@
-name: Bulk Delete Container
+name: Bulk Delete Container Versions
 
 on:
   workflow_dispatch:
@@ -28,78 +28,96 @@ on:
 permissions:
   packages: write
 
+env:
+  OWNER: khensolomon
+
 jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Identify token and list all packages
+        env:
+          GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
+        run: |
+          echo "## 🔍 Diagnostics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Token identity" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          gh api /user --jq '{login, type, id}' 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "### All container packages visible to this token" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          gh api "/user/packages?package_type=container&per_page=100" --paginate \
+            --jq '.[] | "\(.name) (owner: \(.owner.login), visibility: \(.visibility))"' \
+            2>&1 | tee -a $GITHUB_STEP_SUMMARY || echo "FAILED" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
   cleanup:
+    needs: diagnose
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         package: ['nginx-prod', 'django-app']
     steps:
-      - name: Diagnose API access for ${{ matrix.package }}
+      - name: Fetch versions for ${{ matrix.package }}
+        id: fetch
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
           PACKAGE: ${{ matrix.package }}
         run: |
-          echo "::group::Token identity"
-          gh api /user --jq '{login, type}' || echo "Failed to identify user"
-          echo "::endgroup::"
-
-          echo "::group::Try /user/packages (authenticated user's packages)"
+          # Try /user/packages first (authenticated user's own packages)
+          echo "Trying /user/packages/container/$PACKAGE/versions ..."
           gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
-            --paginate 2>&1 | head -50 || true
-          echo "::endgroup::"
+            --paginate > versions.json 2> error.log
+          rc=$?
 
-          echo "::group::Try /users/khensolomon/packages (public endpoint)"
-          gh api "/users/khensolomon/packages/container/$PACKAGE/versions?per_page=100" \
-            --paginate 2>&1 | head -50 || true
-          echo "::endgroup::"
+          if [ $rc -ne 0 ] || ! jq -e 'type == "array"' versions.json >/dev/null 2>&1; then
+            echo "::warning::/user/packages failed for $PACKAGE (rc=$rc), trying /users/$OWNER/..."
+            echo "--- error from /user/packages ---"
+            cat error.log
+            echo "--- body of versions.json ---"
+            head -c 500 versions.json; echo
 
-      - name: Count versions for ${{ matrix.package }}
-        id: count
-        env:
-          GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
-          PACKAGE: ${{ matrix.package }}
-        run: |
-          # Save full paginated output to a file so we can both count it and reuse it
-          gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
-            --paginate > versions.json 2>/dev/null || true
-
-          if [ ! -s versions.json ]; then
-            echo "::warning::No data from /user/packages, trying /users/khensolomon/..."
-            gh api "/users/khensolomon/packages/container/$PACKAGE/versions?per_page=100" \
-              --paginate > versions.json 2>/dev/null || true
+            gh api "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
+              --paginate > versions.json 2> error.log
+            rc=$?
           fi
 
-          # gh --paginate concatenates pages as separate JSON arrays.
-          # Use `jq -s 'add | length'` to slurp them and count properly.
-          if [ -s versions.json ]; then
-            total=$(jq -s 'add | length' versions.json)
-            tagged=$(jq -s '[.[] | .[] | select(.metadata.container.tags | length > 0)] | length' versions.json)
-            untagged=$(jq -s '[.[] | .[] | select(.metadata.container.tags | length == 0)] | length' versions.json)
-          else
-            total=0
-            tagged=0
-            untagged=0
+          if [ $rc -ne 0 ] || ! jq -e 'type == "array"' versions.json >/dev/null 2>&1; then
+            echo "::error::Both endpoints failed for $PACKAGE"
+            echo "--- final error ---"
+            cat error.log
+            echo "--- body of versions.json ---"
+            head -c 500 versions.json; echo
+            # Write empty array so downstream jq doesn't crash
+            echo "[]" > versions.json
           fi
+
+          # gh --paginate produces one JSON array per page, concatenated.
+          # Merge them into one flat array so the rest of the pipeline is simple.
+          jq -s 'if length == 0 then [] else add end' versions.json > merged.json
+          mv merged.json versions.json
+
+          total=$(jq 'length' versions.json)
+          tagged=$(jq '[.[] | select(.metadata.container.tags | length > 0)] | length' versions.json)
+          untagged=$(jq '[.[] | select(.metadata.container.tags | length == 0)] | length' versions.json)
 
           echo "BEFORE: $PACKAGE has $total versions ($tagged tagged, $untagged untagged)"
-          echo "before_count=$total" >> $GITHUB_OUTPUT
           echo "BEFORE_COUNT=$total" >> $GITHUB_ENV
 
           {
-            echo "### ${{ matrix.package }} — before"
+            echo "### 📦 ${{ matrix.package }} — before"
             echo "- Total versions: **$total**"
             echo "- Tagged: $tagged"
             echo "- Untagged: $untagged"
             echo "- Will keep newest: ${{ inputs.min-versions-to-keep }}"
             echo "- Max deletable this run: up to $(( ${{ inputs.max-sweeps }} * 100 ))"
-            if [ "$total" -eq 0 ]; then
-              echo "- ⚠️ Got 0 versions — check the 'Diagnose API access' step above"
-            fi
           } >> $GITHUB_STEP_SUMMARY
 
-      - name: Run sweeps for ${{ matrix.package }}
+      - name: Delete old versions for ${{ matrix.package }}
         if: ${{ !inputs.dry-run && env.BEFORE_COUNT != '0' }}
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
@@ -109,14 +127,17 @@ jobs:
           UNTAGGED_ONLY: ${{ inputs.delete-only-untagged }}
         run: |
           set +e
+          total_deleted=0
 
           for i in $(seq 1 $MAX_SWEEPS); do
             echo "::group::Sweep $i for $PACKAGE"
 
+            # Re-fetch each sweep — the list changes as we delete
             gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
-              --paginate > current.json 2>/dev/null || true
+              --paginate 2>/dev/null \
+              | jq -s 'if length == 0 then [] else add end' > current.json
 
-            remaining=$(jq -s 'add | length' current.json)
+            remaining=$(jq 'length' current.json)
             echo "Versions remaining: $remaining"
 
             if [ "$remaining" -le "$MIN_KEEP" ]; then
@@ -126,13 +147,13 @@ jobs:
             fi
 
             if [ "$UNTAGGED_ONLY" = "true" ]; then
-              filter='[.[] | .[] | select(.metadata.container.tags | length == 0) | .id]'
+              filter='[.[] | select(.metadata.container.tags | length == 0)]'
             else
-              filter='[.[] | .[] | .id]'
+              filter='.'
             fi
 
-            # API returns newest-first; skip MIN_KEEP from the front, take 100
-            ids=$(jq -s "$filter | .[${MIN_KEEP}:] | .[:100] | .[]" current.json)
+            # API returns newest-first; drop the first MIN_KEEP, take 100
+            ids=$(jq -r "$filter | .[${MIN_KEEP}:] | .[:100] | .[].id" current.json)
             count=$(echo "$ids" | grep -c . || true)
             echo "Deleting $count versions in this sweep..."
 
@@ -147,6 +168,7 @@ jobs:
                 failed=$((failed + 1))
               fi
             done
+            total_deleted=$((total_deleted + deleted))
             echo "Sweep $i: deleted=$deleted, failed=$failed"
             echo "::endgroup::"
 
@@ -156,19 +178,20 @@ jobs:
             fi
           done
 
-      - name: Count versions after cleanup for ${{ matrix.package }}
+          echo "TOTAL_DELETED=$total_deleted" >> $GITHUB_ENV
+
+      - name: Report final state for ${{ matrix.package }}
         if: ${{ !inputs.dry-run }}
         env:
           GH_TOKEN: ${{ secrets.DELETE_PACKAGES_TOKEN }}
           PACKAGE: ${{ matrix.package }}
         run: |
           gh api "/user/packages/container/$PACKAGE/versions?per_page=100" \
-            --paginate > after.json 2>/dev/null || true
-          after=$(jq -s 'add | length' after.json 2>/dev/null || echo 0)
-          deleted=$((BEFORE_COUNT - after))
-          echo "AFTER: $PACKAGE has $after versions ($deleted deleted)"
+            --paginate 2>/dev/null \
+            | jq -s 'if length == 0 then [] else add end' > after.json
+          after=$(jq 'length' after.json)
           {
-            echo "### ${{ matrix.package }} — after"
+            echo "### ✅ ${{ matrix.package }} — after"
             echo "- Remaining: **$after**"
-            echo "- Deleted this run: **$deleted**"
+            echo "- Deleted this run: **${TOTAL_DELETED:-0}**"
           } >> $GITHUB_STEP_SUMMARY
