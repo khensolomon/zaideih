@@ -650,9 +650,15 @@ jobs:
   #   - Runs the build-env action against the chosen environment's
   #     secrets/vars/overrides — same merge, same guardrails as a real
   #     deploy, but writes .env to the runner only.
-  #   - Validates docker.production.yml against the merged .env via
-  #     `docker compose config`.
   #   - Prints final-key count and SHA-256 of the merged .env (no values).
+  #
+  # WHAT WE DELIBERATELY DON'T DO:
+  #   - `docker compose config` against the real compose file. It would
+  #     require the runner to have a server-side path (/opt/zaideih/.env)
+  #     that doesn't exist there. Mocking the path felt dishonest for a
+  #     "dry-run" — better to validate less than to validate a fiction.
+  #     YAML parsing already catches actual syntax errors; compose-specific
+  #     errors get caught by `docker stack deploy` during a real deploy.
   #
   # WHAT'S COMING (phase 2):
   #   - A dedicated `.github/actions/inspect-env` composite action that
@@ -691,14 +697,6 @@ jobs:
           env_base:      ${{ secrets.ENV_BASE }}
           var_base:      ${{ vars.VAR_BASE }}
           env_overrides: ${{ secrets.ENV_OVERRIDES }}
-
-      - name: "[DryRun-SH] Validate compose against merged .env"
-        run: |
-          set -a; . .env; set +a
-          export GITHUB_REPOSITORY="${{ github.repository }}"
-          export COMMIT_SHA="dryrun"
-          docker compose -f docker.production.yml config --quiet \
-            && echo "✓ docker.production.yml validates against merged .env"
 
       - name: "[DryRun-SH] Write dry-run summary"
         if: always()
@@ -751,14 +749,6 @@ jobs:
           var_base:      ${{ vars.VAR_BASE }}
           env_overrides: ${{ secrets.ENV_OVERRIDES }}
 
-      - name: "[DryRun-Tu] Validate compose against merged .env"
-        run: |
-          set -a; . .env; set +a
-          export GITHUB_REPOSITORY="${{ github.repository }}"
-          export COMMIT_SHA="dryrun"
-          docker compose -f docker.production.yml config --quiet \
-            && echo "✓ docker.production.yml validates against merged .env"
-
       - name: "[DryRun-Tu] Write dry-run summary"
         if: always()
         run: |
@@ -809,14 +799,6 @@ jobs:
           env_base:      ${{ secrets.ENV_BASE }}
           var_base:      ${{ vars.VAR_BASE }}
           env_overrides: ${{ secrets.ENV_OVERRIDES }}
-
-      - name: "[DryRun-SSH] Validate compose against merged .env"
-        run: |
-          set -a; . .env; set +a
-          export GITHUB_REPOSITORY="${{ github.repository }}"
-          export COMMIT_SHA="dryrun"
-          docker compose -f docker.production.yml config --quiet \
-            && echo "✓ docker.production.yml validates against merged .env"
 
       - name: "[DryRun-SSH] Write dry-run summary"
         if: always()
