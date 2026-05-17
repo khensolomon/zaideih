@@ -56,8 +56,8 @@ jobs:
           push: true
           no-cache: true
           tags: |
-            ghcr.io/${{ github.repository }}/django-app:latest
-            ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/django:latest
+            ghcr.io/${{ github.repository }}/django:${{ github.sha }}
 
       - name: Build and Push Nginx
         uses: docker/build-push-action@v5
@@ -66,8 +66,8 @@ jobs:
           push: true
           no-cache: true
           tags: |
-            ghcr.io/${{ github.repository }}/nginx-prod:latest
-            ghcr.io/${{ github.repository }}/nginx-prod:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/nginx:latest
+            ghcr.io/${{ github.repository }}/nginx:${{ github.sha }}
 
   # ==========================================
   # 2. SELF-HOSTED PHASE (Checks runner status first)
@@ -179,7 +179,7 @@ jobs:
       - name: "[Self-Hosted] Run Django migrations (pinned to commit SHA)"
         run: |
           NETWORK_NAME="zaideih_default"
-          IMAGE_NAME="ghcr.io/${{ github.repository }}/django-app:${{ github.sha }}"
+          IMAGE_NAME="ghcr.io/${{ github.repository }}/django:${{ github.sha }}"
           docker run --rm --network "$NETWORK_NAME" \
             --env-file .env \
             -e DB_HOST=db \
@@ -350,7 +350,7 @@ jobs:
             docker stack deploy -c docker.production.yml --with-registry-auth --detach=false zaideih
 
             NETWORK_NAME="zaideih_default"
-            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}"
+            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django:${COMMIT_SHA}"
 
             # Wait for MySQL to actually accept connections (with real creds)
             # before migrating. 'stack deploy --detach=false' returns when
@@ -501,7 +501,7 @@ jobs:
             sleep 10
 
             NETWORK_NAME="zaideih_default"
-            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django-app:${COMMIT_SHA}"
+            IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY}/django:${COMMIT_SHA}"
 
             # MySQL readiness check using real credentials from .env
             ready=0
