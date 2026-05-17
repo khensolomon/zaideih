@@ -1,0 +1,19 @@
+name: Bulk Delete Containers
+
+on:
+  workflow_dispatch: # Allows you to trigger it manually from the UI
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old container versions
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: 'YOUR_GITHUB_USERNAME_OR_ORG'
+          package-name: 'YOUR_CONTAINER_NAME'
+          package-type: 'container'
+          min-versions-to-keep: 5 # Keeps the 5 newest versions, deletes the other 495+
+          # To delete ONLY untagged/broken images, uncomment the line below:
+          # delete-only-untagged-versions: true 
+          token: ${{ secrets.DELETE_PACKAGES_TOKEN }}
