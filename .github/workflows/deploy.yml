@@ -177,6 +177,11 @@ jobs:
                         "${STORE_DIR:-/opt/bucket/store}" \
                         "${CACHE_DIR:-/opt/bucket/cache}"
           sudo cp .env /opt/zaideih/.env
+          # Self-hosted-specific: sudo cp produces a root-owned file, but the
+          # next step's `docker compose pull` runs as the runner user and would
+          # hit "permission denied" reading it. Reassign ownership to the
+          # runner user; mode 600 means only that user (and root) can read.
+          sudo chown "$(id -u):$(id -g)" /opt/zaideih/.env
           sudo chmod 600 /opt/zaideih/.env
 
       - name: "[Self-Hosted] Deploy stack to swarm"
