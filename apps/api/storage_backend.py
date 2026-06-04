@@ -16,9 +16,9 @@ For GCS:
 
 For R2:
     R2_BUCKETNAME           - Your R2 bucket name
-    R2_ACCOUNT_ID           - Your Cloudflare account ID
-    R2_ACCESS_ID        - R2 API token access key
-    R2_SECRET_KEY    - R2 API token secret
+    CF_ACCOUNT_ID           - Your Cloudflare account ID
+    R2_ACCESS_KEY_ID        - R2 API token access key
+    R2_ACCESS_SECRET    - R2 API token secret
 """
 from collections import namedtuple
 from django.conf import settings
@@ -117,15 +117,15 @@ class R2Backend(StorageBackend):
 
         self.bucket_name = settings.R2_BUCKETNAME
 
-        endpoint = f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        endpoint = f"https://{settings.CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
         # signature_version='s3v4' is required for R2.
         # region_name='auto' is the R2 convention.
         self._client = boto3.client(
             's3',
             endpoint_url=endpoint,
-            aws_access_key_id=settings.R2_ACCESS_ID,
-            aws_secret_access_key=settings.R2_SECRET_KEY,
+            aws_access_key_id=settings.R2_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.R2_ACCESS_SECRET,
             region_name='auto',
             config=Config(signature_version='s3v4'),
         )

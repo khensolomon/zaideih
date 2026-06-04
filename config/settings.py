@@ -186,6 +186,6 @@ if os.environ.get('GCS_SECRET'):
 
 # --- R2 / S3 ---
 WORKER_URL = os.environ.get('WORKER_URL', 'https://media.example.com')
-R2_ACCOUNT_ID = os.environ['R2_ACCOUNT_ID']
-R2_ACCESS_ID = os.environ['R2_ACCESS_ID']
-R2_SECRET_KEY = os.environ['R2_SECRET_KEY']
+CF_ACCOUNT_ID = os.environ['CF_ACCOUNT_ID']
+R2_ACCESS_KEY_ID = os.environ['R2_ACCESS_KEY_ID']
+R2_ACCESS_SECRET = os.environ['R2_ACCESS_SECRET']

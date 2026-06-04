@@ -339,7 +339,7 @@ jobs:
           # ssh-keyscan is intentionally omitted — it requires raw TCP to port 22
           # which is closed. The tunnel delivers connections via Cloudflare,
           # not directly to port 22, so keyscan cannot work here.
-          # SERVER_HOSTNAME and SERVER_USER use the `vars || secrets` pattern.
+          # SERVER_HOSTNAME and SERVER_USERNAME use the `vars || secrets` pattern.
           # During the migration from Environment Secrets to Environment
           # Variables, both can be set; vars wins. Once vars are populated
           # and old secrets deleted, the `|| secrets.*` half becomes a no-op.
@@ -348,7 +348,7 @@ jobs:
           cat << EOF > ~/.ssh/config
           Host prod-server
               HostName ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
-              User ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+              User ${{ vars.SERVER_USERNAME || secrets.SERVER_USERNAME }}
               IdentityFile ~/.ssh/id_rsa
               StrictHostKeyChecking accept-new
               UserKnownHostsFile ~/.ssh/known_hosts
@@ -520,7 +520,7 @@ jobs:
         with:
           # vars.* wins, falls back to secrets.* during migration window.
           host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
-          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          username: ${{ vars.SERVER_USERNAME || secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "docker.production.yml,.env"
           target: "/opt/zaideih/"
@@ -529,7 +529,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
-          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          username: ${{ vars.SERVER_USERNAME || secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
@@ -627,7 +627,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ vars.SERVER_HOSTNAME || secrets.SERVER_HOSTNAME }}
-          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          username: ${{ vars.SERVER_USERNAME || secrets.SERVER_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             echo "=== SSH DEPLOY LOGS ==="
