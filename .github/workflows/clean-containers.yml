@@ -1,23 +1,15 @@
 name: Clean containers
 
+# CALLER STUB — lives in each app repo. Per-repo change: the `packages` list.
+
 on:
-  workflow_dispatch: # Allows you to trigger it manually from the UI
+  workflow_dispatch:
 
 jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    strategy:
-      # This runs the steps for both packages in parallel
-      matrix:
-        package: ['zaideih/nginx', 'zaideih/django']
-    steps:
-      - name: Delete old versions for ${{ matrix.package }}
-        uses: actions/delete-package-versions@v5
-        with:
-          owner: 'khensolomon'
-          package-name: ${{ matrix.package }}
-          package-type: 'container'
-          min-versions-to-keep: 5 # Keeps the 5 newest versions, deletes the other 495+
-          # To delete ONLY untagged/broken images, uncomment the line below:
-          # delete-only-untagged-versions: true 
-          token: ${{ secrets.DELETE_PACKAGES_TOKEN }}
+  call:
+    uses: khensolomon/lethil/.github/workflows/clean-containers.yml@master
+    with:
+      packages: '["zaideih/nginx","zaideih/django"]'
+      min_versions_to_keep: 5
+      # delete_only_untagged: true   # uncomment for the safer untagged-only mode
+    secrets: inherit

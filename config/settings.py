@@ -62,6 +62,7 @@ MIDDLEWARE = [
 
     # Custom middleware for HTML minification and cookie handling
     'config.middleware.HtmlMinifyMiddleware',
+    # 'config.middleware.OrdIdCookieMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -80,6 +81,12 @@ TEMPLATES = [
 
                 # Custom context processors
                 "api.context_processors.app_info",
+
+                # Context processors for navigation and cookies
+                # 'app_name.filename.function_name'
+                # 'core.context_processors.nav_pages_builder',
+                # 'core.context_processors.nav_terms_builder',
+                # "core.context_processors.cookies_read",
             ],
         },
     },
@@ -101,7 +108,6 @@ DATABASES = {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
         },
-        'CONN_MAX_AGE': 60,
     }
 }
 
@@ -164,6 +170,9 @@ STORAGE_DIR =  os.path.join(STORAGE_ROOT,'zaideih')
 
 STORE_DIR = os.environ.get('STORE_DIR','/tmp/zaideih/store')
 CACHE_DIR = os.environ.get('CACHE_DIR','/tmp/zaideih/cache')
+
+# SPEECH_URL = os.environ.get('SPEECH_URL')
+# FONTS_DIR = os.path.join(STORAGE_ROOT, 'media', 'fonts')
 
 # --- VITE CONFIGURATION ---
 DJANGO_VITE = {
