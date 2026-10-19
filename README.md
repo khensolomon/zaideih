@@ -100,6 +100,7 @@ The scheme is not semver, so `npm version` cannot bump it.
 | `worker/media/` | Cloudflare Worker that streams audio from R2 at `media.zaideih.com/audio/:id` |
 | `tools/` | Catalog compiler, media path tool, platform build |
 | `docs/architecture.md` | Design decisions and data flow |
+| `docs/worker-audio.md` | Deploying and checking the audio Worker |
 
 Data tools are dry runs by default; `--apply` writes. See [docs/architecture.md](docs/architecture.md) for the catalog, audio and offline design.
 

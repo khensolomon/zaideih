@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.19.3
+
+- One brand colour for the whole app: madder red (hue 352), after the red of Zo and Chin woven cloth. Surfaces, text, the accent, the player deck, covers and the visualizer all derive from `--brand-h`; light and dark differ only in lightness, and every text pairing meets WCAG AA
+- Languages are distinguished by tone of the brand colour instead of separate hues
+- Docs: `docs/worker-audio.md`, the audio Worker deployment guide
+
 ## v26.10.19.2
 
 - One theme with light and dark surfaces, and a System / Light / Dark switch (top bar on phones, sidebar on wide screens)

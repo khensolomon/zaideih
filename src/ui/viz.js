@@ -58,9 +58,9 @@ function draw(canvas, e, hue, centerX) {
 		const span = Math.max(cx, w - cx);
 		const count = Math.ceil(span / step);
 		const grad = g.createLinearGradient(0, h, 0, 0);
-		grad.addColorStop(0, `hsl(${hue} 85% 64% / 0.62)`);
-		grad.addColorStop(0.55, `hsl(40 95% 62% / 0.22)`);
-		grad.addColorStop(1, "hsl(40 95% 70% / 0)");
+		grad.addColorStop(0, `hsl(${hue} 90% 66% / 0.6)`);
+		grad.addColorStop(0.55, `hsl(${hue} 95% 78% / 0.22)`);
+		grad.addColorStop(1, `hsl(${hue} 95% 85% / 0)`);
 		g.fillStyle = grad;
 		const radius = bw / 2;
 		for (let k = 0; k < count; k++) {
@@ -81,8 +81,8 @@ function draw(canvas, e, hue, centerX) {
 	const gap = Math.max(1, Math.round(4 * dpr));
 	const bw = (w - gap * (n - 1)) / n;
 	const grad = g.createLinearGradient(0, h, 0, 0);
-	grad.addColorStop(0, `hsl(${hue} 70% 45%)`);
-	grad.addColorStop(1, "hsl(40 92% 58%)");
+	grad.addColorStop(0, `hsl(${hue} 60% 38%)`);
+	grad.addColorStop(1, `hsl(${hue} 90% 68%)`);
 	g.fillStyle = grad;
 	const radius = Math.min(bw / 2, 3 * dpr);
 	for (let i = 0; i < n; i++) {
@@ -96,7 +96,7 @@ function draw(canvas, e, hue, centerX) {
 
 function frame() {
 	const level = playing ? visualizer.read(scratch) : 0;
-	const hue = Number.parseFloat(getComputedStyle(deck).getPropertyValue("--h")) || 215;
+	const hue = Number.parseFloat(getComputedStyle(deck).getPropertyValue("--h")) || 352;
 	// Deck bars radiate from the visible play button.
 	const btn = deck.querySelector(".play-btn");
 	const deckRect = deck.getBoundingClientRect();

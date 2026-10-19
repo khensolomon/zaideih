@@ -34,12 +34,12 @@ assets/data/*.json ──tools/catalog.mjs──▶ build/catalog/catalog.<hash>
 - `src/app.js` exports `boot(platform)`. Each platform entry (`platforms/web/main.js`, `platforms/desktop/renderer.js`) passes its name and catalog location; the web entry also registers the service worker.
 - The whole catalog is held in memory. Search normalizes text (NFKC, zero-width characters removed, Latin diacritics folded, Myanmar marks kept) and also matches artist `aka` and spelling variants, with and without spaces.
 - Myanmar text is split into words with `Intl.Segmenter` (syllables where unavailable) and wrapped in non-breaking spans, because Chromium otherwise breaks lines inside syllables.
-- Covers are generated from the album id and tinted by language, since the data has no artwork.
+- Covers are generated from the album id as tones of the brand colour, since the data has no artwork.
 
 ## Theme and player
 
-- One token set in `src/ui/app.css`: hues, accents and the player deck are shared, and only surfaces and ink differ between light and dark. `data-theme` on `<html>` overrides the system preference; the switch stores the choice in `localStorage`.
-- The player deck is dark-toned in both themes and tinted by the playing album's language hue.
+- One brand colour. Every colour in `src/ui/app.css` derives from `--brand-h` and `--brand-s` (madder red, hue 352); light and dark differ only in lightness. `--accent-l` and `--accent-l-dark` are tuned per hue so text on and beside the accent keeps WCAG AA contrast (5.1:1 or better for madder). Languages are told apart by tone (lightness and saturation), not by hue. `data-theme` on `<html>` overrides the system preference; the switch stores the choice in `localStorage`.
+- The player deck is dark-toned in both themes, in the brand hue.
 - Live animation (`src/core/visualizer.js`, `src/ui/viz.js`): the `<audio>` element is routed through a Web Audio `AnalyserNode` on its first play. Frequency bars radiate from the play button and `--level` (loudness) drives its glow. The draw loop runs only while playing and visible, and not at all with `prefers-reduced-motion`.
 - Analysis requires CORS: the element uses `crossOrigin = "anonymous"`, so streaming from an origin outside the Worker's `ALLOWED_ORIGINS` fails instead of playing silently through a muted graph. Blob playback of downloads is same-origin and unaffected.
 - iOS and iPadOS: analysis is disabled, because Web Audio is suspended when the screen locks or the app is backgrounded, which would stop playback. The bars stay still; playback works normally.
@@ -89,7 +89,7 @@ Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both 
 ## Deployment
 
 - Web: Cloudflare Pages (build command `npm ci && npm run build`, output `dist/web`) or Workers static assets. `dist/web/_headers` sets the CSP and caching: hashed assets and catalog files are immutable; `index.html`, `sw.js` and `meta.json` always revalidate.
-- Audio Worker: `npx wrangler deploy --config worker/media/wrangler.toml`.
+- Audio Worker: `npx wrangler deploy --config worker/media/wrangler.toml`. Step-by-step guide, including what changed when Django was removed: [worker-audio.md](worker-audio.md).
 - CI (`.github/workflows/ci.yml`) runs the tests, checks `media.json` coverage, and builds both platforms on every push and pull request.
 
 ## Open items
