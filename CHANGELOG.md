@@ -1,5 +1,15 @@
 # Version
 
+## v26.10.19.2
+
+- One theme with light and dark surfaces, and a System / Light / Dark switch (top bar on phones, sidebar on wide screens)
+- Player deck redesigned: dark-toned in both themes and tinted by the playing album's language, with live frequency bars that follow the actual audio and a play button that glows with its loudness
+- Volume and mute controls, remembered per device
+- Liked songs show a filled rose heart; unliked songs a grey outline
+- Phones: navigation moved to a top bar so the player owns the bottom of the screen
+- Audio is requested with CORS so it can be analysed; requires the audio Worker from v26.10.19.1 to be deployed
+- Fix: unliked buttons reported an empty `aria-pressed` instead of `false`
+
 ## v26.10.19.1
 
 Replace the Django application with a static HTML5 app. Versions now follow `vyy.mm.dd.changes`.

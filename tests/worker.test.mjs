@@ -93,6 +93,14 @@ test("fetch() from an allowed origin gets CORS headers", async () => {
 	assert.match(res.headers.get("vary"), /Origin/);
 });
 
+test("crossorigin <audio> from an allowed origin gets CORS headers (needed by the visualizer)", async () => {
+	const { env } = makeEnv();
+	const res = await call("/audio/7", { env, headers: { "sec-fetch-dest": "audio", origin: "https://zaideih.com", range: "bytes=0-" } });
+	assert.equal(res.status, 206);
+	assert.equal(res.headers.get("access-control-allow-origin"), "https://zaideih.com");
+	assert.match(res.headers.get("access-control-expose-headers"), /Content-Range/);
+});
+
 test("fetch() from another origin is refused", async () => {
 	const { env } = makeEnv();
 	const res = await call("/audio/7", { env, headers: { "sec-fetch-dest": "empty", origin: "https://evil.example" } });
