@@ -23,6 +23,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import * as esbuild from "esbuild";
+import { VersionError, parseVersion } from "./lib/version.mjs";
 
 const DEFAULT_AUDIO_URL = "https://media.zaideih.com/audio/{id}";
 const CATALOG = "build/catalog";
@@ -66,6 +67,15 @@ const platform = PLATFORMS[values.platform];
 if (!platform) die(`--platform must be one of: ${Object.keys(PLATFORMS).join(", ")}`);
 const dev = values.dev;
 const OUT = platform.out;
+
+// Release version (yy.mm.dd.changes) from package.json; shown in the app.
+const release = JSON.parse(await readFile("package.json", "utf8")).version;
+try {
+	parseVersion(release);
+} catch (err) {
+	if (err instanceof VersionError) die(`package.json: ${err.message}. Run: node tools/version.mjs --apply`);
+	throw err;
+}
 
 const audioTemplate = (process.env.ZAIDEIH_AUDIO_URL ?? DEFAULT_AUDIO_URL).trim();
 let audioOrigin;
@@ -115,7 +125,8 @@ const app = await esbuild.build({
 	logLevel: "warning",
 	define: {
 		__AUDIO_URL__: JSON.stringify(audioTemplate),
-		__APP_VERSION__: JSON.stringify(dev ? "dev" : "pending"),
+		__APP_VERSION__: JSON.stringify(release),
+		__DEV__: JSON.stringify(dev),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -142,19 +153,11 @@ const index = template
 	.replace("<!--%HEAD%-->", platform.head.join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
 
-// 4. Version = hash of everything shipped.
+// 4. Build id = hash of everything shipped; names the service worker cache.
 const files = (await walk(OUT)).map((p) => posix(relative(OUT, p))).sort();
 const h = createHash("sha256");
 for (const f of files) h.update(f).update(await readFile(join(OUT, f)));
-const version = h.digest("hex").slice(0, 12);
-const jsPath = join(OUT, js);
-const jsText = await readFile(jsPath, "utf8");
-if (!dev) {
-	// The web entry reads APP_VERSION to decide on service worker registration, so the
-	// placeholder must survive bundling there; other entries may tree-shake it away.
-	if (jsText.includes('"pending"')) await writeFile(jsPath, jsText.replace('"pending"', JSON.stringify(version)));
-	else if (values.platform === "web") die("version placeholder not found in web bundle");
-}
+const buildId = h.digest("hex").slice(0, 12);
 
 // 5. Web only: service worker and Cloudflare headers.
 if (values.platform === "web") {
@@ -175,7 +178,7 @@ if (values.platform === "web") {
 		logLevel: "warning",
 		define: {
 			__PRECACHE__: JSON.stringify(precache),
-			__VERSION__: JSON.stringify(version),
+			__VERSION__: JSON.stringify(`${release}-${buildId}`),
 		},
 	});
 
@@ -204,11 +207,11 @@ if (values.platform === "web") {
 `);
 } else {
 	// The desktop main process reads this to build its Content-Security-Policy.
-	await writeFile(join(OUT, "build.json"), JSON.stringify({ version, audioOrigin }, null, 2) + "\n");
+	await writeFile(join(OUT, "build.json"), JSON.stringify({ version: release, buildId, audioOrigin }, null, 2) + "\n");
 }
 
 const all = await walk(OUT);
 const total = (await Promise.all(all.map((f) => stat(f)))).reduce((s, st) => s + st.size, 0);
-console.log(`built ${values.platform}${dev ? " (dev)" : ""} ${version}: ${all.length} files, ${(total / 1024 / 1024).toFixed(2)} MiB in ${OUT}`);
+console.log(`built ${values.platform}${dev ? " (dev)" : ""} v${release} (${buildId}): ${all.length} files, ${(total / 1024 / 1024).toFixed(2)} MiB in ${OUT}`);
 console.log(`  catalog ${catalogMeta.version} (${catalogMeta.counts.tracks} tracks)`);
 console.log(`  audio   ${audioTemplate}`);

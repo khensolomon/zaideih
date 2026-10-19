@@ -66,10 +66,30 @@ The app is static: the catalog ships as JSON and the browser does the rest, so a
 ```bash
 npm install
 npm test
-npm run build                  # compile the catalog, then build dist/web
-npm run build:desktop          # build the desktop renderer into platforms/desktop/app
-cd platforms/desktop && npm install && npm start   # run the desktop app
+npm run dev                    # http://localhost:8080 with live reload (no service worker)
+npm run preview                # production build on http://localhost:8080 (service worker on)
+npm run desktop                # desktop app (first time: cd platforms/desktop && npm install)
 ```
+
+### Testing the UI locally
+
+- `npm run dev` compiles the catalog, builds the web app unminified with source maps, serves it on <http://localhost:8080> and reloads the page after every change in `src/`, `platforms/web/` or `assets/data/`. The service worker is off, so nothing is cached between edits. The server applies the same `_headers` (CSP, caching) as Cloudflare, so CSP problems show up locally.
+- `npm run preview` serves the production build with the service worker, for testing install, updates and offline: load the page once, then switch DevTools → Network to *Offline* and reload.
+- Songs stream from `media.zaideih.com`. `http://localhost:8080` is an allowed origin of the audio Worker, so downloads work locally once the updated Worker is deployed. Another port is not an allowed origin: streaming still works, downloads do not. A different audio host can be used with `ZAIDEIH_AUDIO_URL='http://127.0.0.1:9000/{id}.mp3' npm run dev`.
+- Phones: Chrome DevTools device mode covers layout. On a real Android phone, `adb reverse tcp:8080 tcp:8080` keeps the address `localhost`, which the service worker and the Worker's allowed origins both require. `node tools/serve.mjs --host 0.0.0.0` exposes the server on the LAN, but over plain http to a LAN IP the service worker and downloads are unavailable.
+- Clearing state: DevTools → Application → Storage → *Clear site data* removes downloads, the library and the service worker for `localhost:8080`.
+
+### Versions
+
+Releases are numbered `vyy.mm.dd.changes`, e.g. `v26.10.19.1` for the first release on 2026-10-19 and `v26.10.19.2` for the next one that day. `package.json` holds the number (without the `v`) and the app shows it in the sidebar and Library.
+
+```bash
+node tools/version.mjs           # show the next version (dry run)
+node tools/version.mjs --apply   # write it to every package.json and lockfile
+git tag v26.10.19.2
+```
+
+The scheme is not semver, so `npm version` cannot bump it.
 
 | Path | Purpose |
 |------|---------|

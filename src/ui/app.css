@@ -154,6 +154,8 @@ main {
 	main { padding: 32px 40px calc(var(--bar) + 40px); }
 }
 
+.app-version { margin: 32px 0 0; font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.rail .app-version { margin: auto 12px 0; }
 .brand { display: flex; align-items: baseline; gap: 8px; padding: 0 12px; font-weight: 800; font-size: 26px; letter-spacing: -0.03em; }
 .brand small { font-weight: 500; font-size: 13px; letter-spacing: 0; color: var(--ink-3); }
 

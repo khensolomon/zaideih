@@ -1,6 +1,7 @@
 /**
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
+import { APP_VERSION } from "../config.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { library } from "../core/library.js";
@@ -295,7 +296,8 @@ export async function libraryView(c, { tab = "liked" }) {
 				<span><button class="btn" data-act="export">Back up library</button>
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
-			${body}`,
+			${body}
+			<p class="app-version">Zaideih v${APP_VERSION}</p>`,
 	};
 }
 

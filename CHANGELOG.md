@@ -1,8 +1,8 @@
 # Version
 
-## 27.0.0
+## v26.10.19.1
 
-Replace the Django application with a static HTML5 app.
+Replace the Django application with a static HTML5 app. Versions now follow `vyy.mm.dd.changes`.
 
 - Shared app (`src/`) for web (PWA) and desktop (Electron, `platforms/desktop`)
 - Offline: catalog and app shell cached; songs downloadable for offline play
@@ -11,6 +11,7 @@ Replace the Django application with a static HTML5 app.
 - Catalog compiler with full validation (`tools/catalog.mjs`)
 - Track audio paths in `assets/data/media.json`, loaded into the audio Worker's D1 table by `tools/media.mjs`
 - Audio Worker: Django sync endpoints removed; CORS for allowed origins so songs can be downloaded
+- Local development: `npm run dev` (live reload) and `npm run preview` (production build)
 - Removed: Django, MySQL, Docker and nginx configuration, Vue/Vite frontend
 
 ## 1.3.[4,5]

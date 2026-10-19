@@ -70,6 +70,14 @@ Downloads use IndexedDB Blobs rather than Cache Storage because `<audio>` sends 
 
 `platforms/desktop/main.js` serves the built renderer over a privileged `app://zaideih` scheme, which gives the page a real origin for IndexedDB, Media Session (hardware media keys) and CORS. The window runs sandboxed with context isolation and no Node integration, refuses every permission request, blocks navigation away from the app, and opens web links in the default browser. The Content-Security-Policy allows media and fetch only from the app and the audio origin recorded in `app/build.json`. Electron is a dependency of `platforms/desktop` only, so web builds never install it.
 
+## Versions
+
+Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both `package.json` files and bumped by `tools/version.mjs` (dry run by default). The build refuses an invalid version. The app shows the release version; the service worker cache is named by release plus a content hash of the build, so every build installs a fresh cache. The scheme is not semver: `npm version` cannot bump it, and installer tooling that requires semver (desktop packaging) will need it mapped, e.g. to `26.10.19-1`.
+
+## Local development
+
+`tools/dev.mjs` builds with `--dev` (unminified, source maps, no service worker), serves `dist/web` through `tools/serve.mjs` on `localhost:8080` and reloads the page after rebuilding. `tools/serve.mjs` applies `dist/web/_headers` like Cloudflare and answers Range requests; `npm run preview` uses it for the production build.
+
 ## Deployment
 
 - Web: Cloudflare Pages (build command `npm ci && npm run build`, output `dist/web`) or Workers static assets. `dist/web/_headers` sets the CSP and caching: hashed assets and catalog files are immutable; `index.html`, `sw.js` and `meta.json` always revalidate.
