@@ -1,0 +1,149 @@
+/**
+ * Shared render helpers: covers, album tiles, track rows and list registry.
+ */
+import { creditOf } from "../core/catalog.js";
+import { escape, html, raw } from "../core/html.js";
+import { library } from "../core/library.js";
+import { offline } from "../core/offline.js";
+import { player } from "../core/player.js";
+import { href } from "../core/router.js";
+import { formatDuration, hash32 } from "../core/text.js";
+import { icon } from "./icons.js";
+
+const MYANMAR = /[က-႟]/;
+export const scriptClass = (s) => (MYANMAR.test(s) ? "my" : "");
+
+/*
+ * Myanmar is written without spaces, and browsers without a Myanmar line-break
+ * dictionary split text mid-syllable (and ignore `word-break: keep-all` for it).
+ * Text is therefore split into words with Intl.Segmenter, or into syllables
+ * where the segmenter is unavailable, and each piece is wrapped in a nowrap
+ * span, so lines can only break between pieces.
+ */
+const SYLLABLE = /(?<!္)(?:[က-ဪဿ၊-၏]|[၀-၉]+|[^က-၏]+)(?![ှျ]?[့္်])/g;
+const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("my", { granularity: "word" }) : null;
+const breakCache = new Map();
+
+function pieces(s) {
+	if (segmenter) return [...segmenter.segment(s)].map((p) => p.segment);
+	const starts = [...s.matchAll(SYLLABLE)].map((m) => m.index).filter((i) => i > 0);
+	const out = [];
+	let prev = 0;
+	for (const i of starts) { out.push(s.slice(prev, i)); prev = i; }
+	out.push(s.slice(prev));
+	return out;
+}
+
+export function myanmarBreaks(s) {
+	if (!MYANMAR.test(s)) return s;
+	let out = breakCache.get(s);
+	if (out === undefined) {
+		out = raw(pieces(s).map((p) => (p.trim() ? `<span class="w">${escape(p)}</span>` : escape(p))).join(""));
+		breakCache.set(s, out);
+	}
+	return out;
+}
+
+/** Generated J-card cover: tinted by language, varied per album. */
+export function cover(album, { label = true } = {}) {
+	const h = hash32(album.id);
+	const s = 30 + (h % 22);
+	const l = 26 + ((h >>> 8) % 18);
+	const shift = ((h >>> 16) % 24) - 12;
+	const style = `--s:${s}%;--l:${l}%;--h:calc(var(--hue-${album.lang.name}) + ${shift})`;
+	return html`<div class="cover l-${album.lang.name}" style="${style}" aria-hidden="true">${label
+		? html`<b class="${scriptClass(album.title)}">${myanmarBreaks(album.title)}</b>${album.year ? html`<i>${album.year}</i>` : ""}`
+		: ""}</div>`;
+}
+
+export function albumTile(album) {
+	const sub = [creditOf(album.artists, 1), album.year || ""].filter(Boolean).join(", ");
+	return html`<a class="tile" href="${href(`album/${album.id}`)}">
+		${cover(album)}
+		<span class="t ${scriptClass(album.title)}">${myanmarBreaks(album.title)}</span>
+		<span class="s">${sub}</span>
+	</a>`;
+}
+
+export function artistLinks(artists) {
+	if (!artists.length) return html`<span>Unknown artist</span>`;
+	return artists.map((a, i) => html`${i ? ", " : ""}<a href="${href(`artist/${a.id}`)}">${a.name}</a>`);
+}
+
+/* ---------- list registry: maps a rendered list to its playable ids ---------- */
+const lists = new Map();
+let listSeq = 0;
+
+export function registerList(ids, context) {
+	const key = `l${++listSeq}`;
+	lists.set(key, { ids, context });
+	return key;
+}
+export const getList = (key) => lists.get(key);
+export function resetLists() { lists.clear(); }
+
+/**
+ * Track row. `opts.showAlbum` replaces the position number with an album
+ * credit line; `opts.extra` adds menu entries (e.g. remove from playlist).
+ */
+export function trackRow(t, listKey, index, opts = {}) {
+	const now = player.current()?.id === t.id;
+	const liked = library.isLiked(t.id);
+	const sub = opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists);
+	return html`<li class="track${now ? " now" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
+		<span class="no"><span>${opts.number ?? index + 1}</span></span>
+		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}" aria-label="Play ${t.title}">
+			<span class="title ${scriptClass(t.title)}">${t.title}</span>
+			<span class="sub ${scriptClass(String(sub))}">${sub}</span>
+		</button>
+		<span class="saved" title="${offline.has(t.id) ? "Downloaded" : ""}">${offline.has(t.id) ? icon("saved", "Downloaded") : ""}</span>
+		<span class="dur">${formatDuration(t.duration)}</span>
+		<span>
+			<button class="icon-btn" data-act="like" data-id="${t.id}" aria-pressed="${liked}" aria-label="${liked ? "Unlike" : "Like"}">${icon("heart")}</button>
+			<button class="icon-btn" data-act="menu" data-id="${t.id}" data-list="${listKey}" aria-label="More options for ${t.title}" aria-haspopup="menu">${icon("more")}</button>
+		</span>
+	</li>`;
+}
+
+/* ---------- incremental lists ("Show more") ---------- */
+const pending = new Map();
+
+export function chunkedTracks(tracks, context, { step = 100, ...opts } = {}) {
+	const key = registerList(tracks.map((t) => t.id), context);
+	const first = tracks.slice(0, step);
+	const id = `more-${key}`;
+	if (tracks.length > step) pending.set(id, { tracks, key, offset: step, step, opts });
+	return html`<ol class="tracks" id="${id}-list">${first.map((t, i) => trackRow(t, key, i, opts))}</ol>
+		${tracks.length > step ? html`<div class="more"><button class="btn" data-act="more" data-target="${id}">Show ${Math.min(step, tracks.length - step)} more</button></div>` : ""}`;
+}
+
+export function chunkedAlbums(albums, { step = 60 } = {}) {
+	const id = `more-a${++listSeq}`;
+	if (albums.length > step) pending.set(id, { albums, offset: step, step });
+	return html`<div class="grid" id="${id}-list">${albums.slice(0, step).map(albumTile)}</div>
+		${albums.length > step ? html`<div class="more"><button class="btn" data-act="more" data-target="${id}">Show more albums</button></div>` : ""}`;
+}
+
+export function showMore(button) {
+	const id = button.dataset.target;
+	const p = pending.get(id);
+	if (!p) return;
+	const listEl = document.getElementById(`${id}-list`);
+	const next = p.offset + p.step;
+	if (p.tracks) {
+		const slice = p.tracks.slice(p.offset, next);
+		listEl.insertAdjacentHTML("beforeend", slice.map((t, i) => trackRow(t, p.key, p.offset + i, p.opts)).join(""));
+	} else {
+		listEl.insertAdjacentHTML("beforeend", p.albums.slice(p.offset, next).map(albumTile).join(""));
+	}
+	p.offset = next;
+	const total = (p.tracks ?? p.albums).length;
+	if (p.offset >= total) {
+		button.parentElement.remove();
+		pending.delete(id);
+	} else if (p.tracks) {
+		button.textContent = `Show ${Math.min(p.step, total - p.offset)} more`;
+	}
+}
+
+export function resetPending() { pending.clear(); }

@@ -1,37 +1,43 @@
 /**
- * Audio Worker — Architecture A (revised).
+ * Audio Worker.
  *
  * Routes:
- *   GET/HEAD /audio/:id        Stream MP3 from R2. Records the outcome to
- *                              tracks_status. Does NOT call Django.
- *   POST     /sync/track/:id   Receive track upsert from Django (HMAC-signed).
- *   DELETE   /sync/track/:id   Receive track deletion from Django.
- *   GET      /sync/ping        Health check (HMAC-signed).
+ *   GET/HEAD /audio/:id   Stream an MP3 from R2. The object key is
+ *                         `music/{folder_path}/{mp3}`, looked up in D1 by track id.
+ *   OPTIONS  /audio/:id   CORS preflight for allowed origins.
  *
- * Bindings (configure in wrangler.toml):
- *   DB              D1 database (tracks + tracks_status)
- *   BUCKET          R2 bucket
- *   SECRET_SHARED   Shared secret with Django, only used for verifying
- *                   inbound /sync/* requests.
+ * Who may fetch audio:
+ *   - <audio>/<video> elements (Sec-Fetch-Dest: audio|video) from any page.
+ *   - fetch() (Sec-Fetch-Dest: empty), used by the app to download tracks for
+ *     offline play, only from an origin listed in ALLOWED_ORIGINS. Those
+ *     responses carry CORS headers so the app can read the body.
+ *   - Clients that send no Sec-Fetch-Dest (non-browser tools) are served as before.
+ *   Fetch metadata headers are a deterrent against casual hotlinking, not access
+ *   control: non-browser clients can send any header they like.
  *
- * Note: The Worker no longer calls Django. Plays are counted in Django via
- * a separate POST from the SPA. The Worker is now purely:
- *   - a file server (audio streaming from R2 with D1 path lookup)
- *   - a sync receiver (Django pushes track updates here)
+ * Bindings (wrangler.toml):
+ *   DB               D1 database with `tracks` and `tracks_status`
+ *   BUCKET           R2 bucket with the audio objects
+ *   ALLOWED_ORIGINS  comma-separated origins allowed to download, e.g.
+ *                    "https://zaideih.com,app://zaideih"
+ *
+ * The `tracks` table is loaded from assets/data/media.json with
+ * `node tools/media.mjs d1 --apply` and `wrangler d1 execute`.
  */
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
-
-const SYNC_TIMESTAMP_WINDOW_SECONDS = 300;
+const MEDIA_DESTINATIONS = new Set(["audio", "video"]);
+const EXPOSED_HEADERS = "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag";
 
 /** @type {Map<number, { value: object | null, expiresAt: number }>} */
 const memoryCache = new Map();
 
-/** Cached HMAC key per isolate. */
-let _hmacKey = null;
+/** Parsed ALLOWED_ORIGINS, cached per isolate. */
+let allowedOrigins = null;
+let allowedOriginsSource = null;
 
 export default {
 	/**
@@ -41,59 +47,74 @@ export default {
 	 */
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
-
-		if (url.pathname.startsWith("/sync/")) {
-			return handleSync(url, request, env, ctx);
-		}
-
 		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
-		if (audioMatch) {
-			if (request.method !== "GET" && request.method !== "HEAD") {
-				return new Response("Method Not Allowed", {
-					status: 405,
-					headers: { Allow: "GET, HEAD" },
-				});
-			}
+		if (!audioMatch) return new Response("Not Found", { status: 404 });
 
-			const trackId = Number.parseInt(audioMatch[1], 10);
-			if (!Number.isInteger(trackId) || trackId <= 0) {
-				return new Response("Invalid track ID", { status: 400 });
-			}
-
-			const dest = request.headers.get("sec-fetch-dest");
-			if (dest && dest !== "audio" && dest !== "video") {
-				return new Response("Forbidden", { status: 403 });
-			}
-
-			try {
-				return await handleAudioRequest(trackId, request, env, ctx);
-			} catch (err) {
-				console.error("audio request failed", { trackId, err });
-				ctx.waitUntil(
-					recordStatus(env, trackId, "fetch_error").catch(() => {}),
-				);
-				return new Response("Internal Server Error", { status: 500 });
-			}
+		const trackId = Number.parseInt(audioMatch[1], 10);
+		if (!Number.isSafeInteger(trackId) || trackId <= 0) {
+			return new Response("Invalid track ID", { status: 400 });
 		}
 
-		return new Response("Not Found", { status: 404 });
+		const origin = request.headers.get("origin");
+		const cors = corsHeaders(origin, env);
+
+		if (request.method === "OPTIONS") {
+			if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
+			cors.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+			cors.set("Access-Control-Allow-Headers", "Range");
+			cors.set("Access-Control-Max-Age", "86400");
+			return new Response(null, { status: 204, headers: cors });
+		}
+		if (request.method !== "GET" && request.method !== "HEAD") {
+			return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD, OPTIONS" } });
+		}
+
+		const dest = request.headers.get("sec-fetch-dest");
+		if (dest && !MEDIA_DESTINATIONS.has(dest) && !(dest === "empty" && cors)) {
+			return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
+		}
+
+		try {
+			return await handleAudioRequest(trackId, request, env, ctx, cors);
+		} catch (err) {
+			console.error("audio request failed", { trackId, err });
+			ctx.waitUntil(recordStatus(env, trackId, "fetch_error"));
+			return new Response("Internal Server Error", { status: 500 });
+		}
 	},
 };
+
+// ============================================================================
+// CORS
+// ============================================================================
+
+function originsOf(env) {
+	const source = env.ALLOWED_ORIGINS ?? "";
+	if (allowedOrigins && allowedOriginsSource === source) return allowedOrigins;
+	allowedOrigins = new Set(source.split(",").map((s) => s.trim()).filter(Boolean));
+	allowedOriginsSource = source;
+	return allowedOrigins;
+}
+
+/** CORS headers for an allowed origin, or null when the origin is not allowed. */
+function corsHeaders(origin, env) {
+	if (!origin || !originsOf(env).has(origin)) return null;
+	return new Headers({
+		"Access-Control-Allow-Origin": origin,
+		"Access-Control-Expose-Headers": EXPOSED_HEADERS,
+		Vary: "Origin",
+	});
+}
 
 // ============================================================================
 // Audio streaming
 // ============================================================================
 
-async function handleAudioRequest(trackId, request, env, ctx) {
+async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	const range = request.headers.get("range");
 
 	const track = await getTrackMeta(trackId, env, ctx);
-	if (!track) {
-		// Track ID not in D1. Don't record this — phantom IDs would
-		// pollute the table. Cloudflare's analytics shows raw 404 volume
-		// if you ever need it.
-		return new Response("Not Found", { status: 404 });
-	}
+	if (!track) return new Response("Not Found", { status: 404, headers: cors ?? undefined });
 
 	const objectKey = `music/${track.folder_path}/${track.mp3}`;
 
@@ -102,93 +123,62 @@ async function handleAudioRequest(trackId, request, env, ctx) {
 		object = await env.BUCKET.get(objectKey, parseRangeOption(range));
 	} catch (err) {
 		console.error("R2 get threw", { trackId, objectKey, err });
-		ctx.waitUntil(
-			recordStatus(env, trackId, "fetch_error").catch(() => {}),
-		);
-		return new Response("Internal Server Error", { status: 500 });
+		ctx.waitUntil(recordStatus(env, trackId, "fetch_error"));
+		return new Response("Internal Server Error", { status: 500, headers: cors ?? undefined });
 	}
 
 	if (!object) {
-		// D1 said the track exists, R2 says no file. This is the
-		// "orphan" case — most likely a sync drift worth investigating.
+		// D1 lists the track but R2 has no object: drift between media.json and the bucket.
 		console.error("R2 object missing", { trackId, objectKey });
-		ctx.waitUntil(
-			recordStatus(env, trackId, "not_found").catch(() => {}),
-		);
-		return new Response("Not Found", { status: 404 });
+		ctx.waitUntil(recordStatus(env, trackId, "not_found"));
+		return new Response("Not Found", { status: 404, headers: cors ?? undefined });
 	}
 
-	const headers = new Headers();
+	const headers = new Headers(cors ?? undefined);
 	object.writeHttpMetadata(headers);
 	headers.set("Accept-Ranges", "bytes");
 	headers.set("Content-Type", "audio/mpeg");
 	headers.set("X-Content-Type-Options", "nosniff");
+	headers.set("Vary", "Origin");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
-
-	if (range) {
-		headers.set(
-			"Cache-Control",
-			`public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable`,
-		);
-	} else {
-		headers.set("Cache-Control", "private, max-age=60");
-	}
+	headers.set(
+		"Cache-Control",
+		range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable` : "private, max-age=60",
+	);
 
 	let status = 200;
 	if (object.range) {
 		const offset = object.range.offset ?? 0;
 		const length = object.range.length ?? object.size - offset;
-		const end = offset + length - 1;
-		headers.set("Content-Range", `bytes ${offset}-${end}/${object.size}`);
-		headers.set("Content-Length", length.toString());
+		headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+		headers.set("Content-Length", String(length));
 		status = 206;
 	} else {
-		headers.set("Content-Length", object.size.toString());
+		headers.set("Content-Length", String(object.size));
 	}
 
-	// Successful fetch — record it. The Worker only sees first-of-cache
-	// requests; range continuations and replays come from browser cache
-	// and never reach here. So this counts fresh-fetch events, not plays.
-	ctx.waitUntil(
-		recordStatus(env, trackId, "served").catch(() => {}),
-	);
+	// Counts fresh fetches that reach the Worker, not plays: browser-cached
+	// replays and range continuations never arrive here.
+	ctx.waitUntil(recordStatus(env, trackId, "served"));
 
-	const body = request.method === "HEAD" ? null : object.body;
-	return new Response(body, { headers, status });
+	return new Response(request.method === "HEAD" ? null : object.body, { headers, status });
 }
 
 /**
- * UPSERT into tracks_status. The matching counter increments; the others
- * stay where they are. first_seen is set on insert and never touched again.
+ * UPSERT into tracks_status. The matching counter increments; first_seen is
+ * set on insert and never touched again. Failures are logged, not thrown,
+ * because telemetry must never break streaming.
  *
- * @param {object} env
- * @param {number} trackId
  * @param {"served" | "not_found" | "fetch_error"} kind
  */
 async function recordStatus(env, trackId, kind) {
-	// Whitelist kind to defend against future typos.
-	if (
-		kind !== "served" &&
-		kind !== "not_found" &&
-		kind !== "fetch_error"
-	) {
-		return;
-	}
-
+	if (kind !== "served" && kind !== "not_found" && kind !== "fetch_error") return;
 	const now = Math.floor(Date.now() / 1000);
-
-	// Build the per-kind INSERT statement. SQLite needs the column name
-	// literal — we can't parameterise column names. The whitelist above
-	// makes this safe.
+	// Column names cannot be bound parameters; `kind` is whitelisted above.
 	const sql = `
-		INSERT INTO tracks_status
-		    (track_id, ${kind}, first_seen, last_seen)
+		INSERT INTO tracks_status (track_id, ${kind}, first_seen, last_seen)
 		VALUES (?1, 1, ?2, ?2)
-		ON CONFLICT(track_id) DO UPDATE SET
-		    ${kind}   = ${kind} + 1,
-		    last_seen = ?2
-	`;
-
+		ON CONFLICT(track_id) DO UPDATE SET ${kind} = ${kind} + 1, last_seen = ?2`;
 	try {
 		await env.DB.prepare(sql).bind(trackId, now).run();
 	} catch (err) {
@@ -197,7 +187,7 @@ async function recordStatus(env, trackId, kind) {
 }
 
 // ============================================================================
-// Track metadata lookup (D1 + cache layers)
+// Track metadata lookup (isolate memory -> edge cache -> D1)
 // ============================================================================
 
 async function getTrackMeta(trackId, env, ctx) {
@@ -214,8 +204,7 @@ async function getTrackMeta(trackId, env, ctx) {
 		return meta;
 	}
 
-	const session = env.DB.withSession("first-unconstrained");
-	const result = await session
+	const result = await env.DB.withSession("first-unconstrained")
 		.prepare("SELECT folder_path, mp3 FROM tracks WHERE id = ?")
 		.bind(trackId)
 		.first();
@@ -227,14 +216,12 @@ async function getTrackMeta(trackId, env, ctx) {
 
 	const meta = { folder_path: result.folder_path, mp3: result.mp3 };
 	setMemoryCache(trackId, meta, TRACK_META_TTL_SECONDS * 1000);
-
-	const cacheResponse = new Response(JSON.stringify(meta), {
+	ctx.waitUntil(cache.put(cacheKey, new Response(JSON.stringify(meta), {
 		headers: {
 			"Content-Type": "application/json",
 			"Cache-Control": `public, max-age=${TRACK_META_TTL_SECONDS}`,
 		},
-	});
-	ctx.waitUntil(cache.put(cacheKey, cacheResponse));
+	})));
 	return meta;
 }
 
@@ -246,153 +233,17 @@ function setMemoryCache(trackId, value, ttlMs) {
 	memoryCache.set(trackId, { value, expiresAt: Date.now() + ttlMs });
 }
 
-async function invalidateTrackCache(trackId, ctx) {
-	memoryCache.delete(trackId);
-	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
-	ctx.waitUntil(caches.default.delete(cacheKey));
-}
-
-// ============================================================================
-// Sync endpoints (Django → Worker)
-// ============================================================================
-
-async function handleSync(url, request, env, ctx) {
-	const sigOk = await verifyDjangoSignature(url, request, env);
-	if (!sigOk) return new Response("Forbidden", { status: 403 });
-
-	if (url.pathname === "/sync/ping" && request.method === "GET") {
-		return new Response("pong", { status: 200 });
-	}
-
-	const trackMatch = /^\/sync\/track\/(\d+)\/?$/.exec(url.pathname);
-	if (trackMatch) {
-		const trackId = Number.parseInt(trackMatch[1], 10);
-		if (!Number.isInteger(trackId) || trackId <= 0) {
-			return new Response("Invalid track ID", { status: 400 });
-		}
-
-		if (request.method === "POST") {
-			return handleTrackUpsert(trackId, request, env, ctx);
-		}
-		if (request.method === "DELETE") {
-			return handleTrackDelete(trackId, env, ctx);
-		}
-		return new Response("Method Not Allowed", { status: 405 });
-	}
-
-	return new Response("Not Found", { status: 404 });
-}
-
-async function handleTrackUpsert(trackId, request, env, ctx) {
-	let body;
-	try {
-		body = await request.json();
-	} catch {
-		return new Response("Invalid JSON", { status: 400 });
-	}
-
-	const folder_path = String(body.folder_path || "").trim();
-	const mp3 = String(body.mp3 || "").trim();
-	if (!folder_path || !mp3) {
-		return new Response("folder_path and mp3 required", { status: 400 });
-	}
-
-	const now = Math.floor(Date.now() / 1000);
-
-	await env.DB.prepare(
-		`INSERT INTO tracks (id, folder_path, mp3, updated_at)
-		 VALUES (?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   folder_path = excluded.folder_path,
-		   mp3         = excluded.mp3,
-		   updated_at  = excluded.updated_at`,
-	)
-		.bind(trackId, folder_path, mp3, now)
-		.run();
-
-	await invalidateTrackCache(trackId, ctx);
-
-	return new Response(
-		JSON.stringify({ id: trackId, ok: true }),
-		{ headers: { "Content-Type": "application/json" } },
-	);
-}
-
-async function handleTrackDelete(trackId, env, ctx) {
-	await env.DB.prepare("DELETE FROM tracks WHERE id = ?").bind(trackId).run();
-	// Also remove the status row — no point keeping observations for
-	// a deleted track. (Optional; remove if you want to keep historical
-	// data.)
-	await env.DB.prepare("DELETE FROM tracks_status WHERE track_id = ?")
-		.bind(trackId).run();
-	await invalidateTrackCache(trackId, ctx);
-	return new Response(
-		JSON.stringify({ id: trackId, ok: true }),
-		{ headers: { "Content-Type": "application/json" } },
-	);
-}
-
-// ============================================================================
-// HMAC verification (only inbound /sync/* now — no outbound calls)
-// ============================================================================
-
-async function getKey(env) {
-	if (_hmacKey) return _hmacKey;
-	_hmacKey = await crypto.subtle.importKey(
-		"raw",
-		new TextEncoder().encode(env.SECRET_SHARED),
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign", "verify"],
-	);
-	return _hmacKey;
-}
-
-async function hmacHex(env, payload) {
-	const key = await getKey(env);
-	const sig = await crypto.subtle.sign(
-		"HMAC",
-		key,
-		new TextEncoder().encode(payload),
-	);
-	return Array.from(new Uint8Array(sig))
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
-}
-
-async function verifyDjangoSignature(url, request, env) {
-	const sig = request.headers.get("X-Worker-Signature");
-	const ts = request.headers.get("X-Worker-Timestamp");
-	if (!sig || !ts) return false;
-
-	const tsNum = Number(ts);
-	if (!Number.isFinite(tsNum)) return false;
-
-	const now = Math.floor(Date.now() / 1000);
-	if (Math.abs(now - tsNum) > SYNC_TIMESTAMP_WINDOW_SECONDS) return false;
-
-	const expected = await hmacHex(env, `${url.pathname}.${ts}`);
-
-	if (sig.length !== expected.length) return false;
-	let diff = 0;
-	for (let i = 0; i < sig.length; i++) {
-		diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
-	}
-	return diff === 0;
-}
-
 // ============================================================================
 // Range parsing
 // ============================================================================
 
-function parseRangeOption(range) {
+/** Supports `bytes=a-` and `bytes=a-b`; anything else is served as a full response. */
+export function parseRangeOption(range) {
 	if (!range) return undefined;
 	const match = /^bytes=(\d+)-(\d+)?$/.exec(range);
 	if (!match) return undefined;
 	const offset = Number.parseInt(match[1], 10);
 	const end = match[2] ? Number.parseInt(match[2], 10) : undefined;
-	return {
-		range:
-			end !== undefined ? { offset, length: end - offset + 1 } : { offset },
-	};
+	if (end !== undefined && end < offset) return undefined;
+	return { range: end !== undefined ? { offset, length: end - offset + 1 } : { offset } };
 }
