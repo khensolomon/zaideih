@@ -103,8 +103,6 @@ function renderBar() {
 	const likeBtn = $("#bar-like");
 	likeBtn.hidden = !t;
 	if (t) setLikeState(likeBtn, library.isLiked(t.id));
-	// Tint the deck with the playing album's language hue.
-	bar.style.setProperty("--h", t ? `var(--hue-${t.album.lang.name})` : "215");
 	viz.setPlaying(s.playing);
 	if (!$("#sheet").hidden) renderSheet();
 }

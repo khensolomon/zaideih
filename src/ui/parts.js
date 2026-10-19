@@ -44,14 +44,13 @@ export function myanmarBreaks(s) {
 	return out;
 }
 
-/** Generated J-card cover: tinted by language, varied per album. */
+/** Generated J-card cover in a tone of the brand colour, varied per album. */
 export function cover(album, { label = true } = {}) {
+	// One hue for every cover; each album gets its own tone of it.
 	const h = hash32(album.id);
-	const s = 30 + (h % 22);
-	const l = 26 + ((h >>> 8) % 18);
-	const shift = ((h >>> 16) % 24) - 12;
-	const style = `--s:${s}%;--l:${l}%;--h:calc(var(--hue-${album.lang.name}) + ${shift})`;
-	return html`<div class="cover l-${album.lang.name}" style="${style}" aria-hidden="true">${label
+	const s = 26 + (h % 36);
+	const l = 20 + ((h >>> 8) % 20);
+	return html`<div class="cover l-${album.lang.name}" style="--s:${s}%;--l:${l}%" aria-hidden="true">${label
 		? html`<b class="${scriptClass(album.title)}">${myanmarBreaks(album.title)}</b>${album.year ? html`<i>${album.year}</i>` : ""}`
 		: ""}</div>`;
 }
