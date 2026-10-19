@@ -6,10 +6,12 @@ import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
+import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { search } from "../core/search.js";
-import { formatBytes, formatTotal } from "../core/text.js";
+import { formatBytes, formatTotal, hash32 } from "../core/text.js";
 import { icon } from "./icons.js";
+import { theme } from "./theme.js";
 import { albumTile, artistLinks, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
 const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam" };
@@ -63,10 +65,7 @@ export async function home(c) {
 				<div class="row-scroll">${discover.map(albumTile)}</div>
 			</section>
 
-			<section class="section">
-				<header><h2>Artists people play most</h2></header>
-				<div class="people">${c.topArtists.slice(0, 24).map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div>
-			</section>
+			${topArtistsByLanguage(c)}
 
 			<section class="section">
 				<header><h2>Genres</h2><a href="#/genres">All genres</a></header>
@@ -76,6 +75,42 @@ export async function home(c) {
 	};
 }
 export function reshuffle() { discover = null; }
+
+const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+const graphemes = typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+
+/** Avatar initials: first grapheme for Myanmar names, up to two initials otherwise. */
+function initials(name) {
+	const first = (s) => (graphemes ? [...graphemes.segment(s)][0]?.segment : s[0]) ?? "";
+	if (scriptClass(name)) return first(name);
+	const words = name.replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/).filter(Boolean);
+	return words.slice(0, 2).map((w) => first(w).toUpperCase()).join("") || "?";
+}
+
+function artistCard({ artist, plays }) {
+	const h = hash32(String(artist.id));
+	const style = `--s:${26 + (h % 36)}%;--l:${22 + ((h >>> 8) % 18)}%`;
+	return html`<a class="artist-card" href="${href(`artist/${artist.id}`)}">
+		<span class="avatar ${scriptClass(artist.name)}" style="${style}" aria-hidden="true">${initials(artist.name)}</span>
+		<span class="name ${scriptClass(artist.name)}">${artist.name}</span>
+		<span class="plays">${compact.format(plays)} plays</span>
+	</a>`;
+}
+
+/** Home: the most played artists, one tab per language. */
+function topArtistsByLanguage(c) {
+	const langs = [...c.langs.values()].filter((l) => l.topArtists.length).sort((a, b) => b.albums.length - a.albums.length);
+	if (!langs.length) return "";
+	const playingLang = player.current()?.album.lang;
+	const selected = langs.includes(playingLang) ? playingLang : langs[0];
+	return html`<section class="section" data-artist-tabs>
+		<header><h2>Most played artists</h2></header>
+		<div class="lang-tabs" role="tablist" aria-label="Language">
+			${langs.map((l) => html`<button role="tab" data-act="artist-lang" data-lang="${l.id}" aria-selected="${String(l === selected)}">${langLabel(l)}</button>`)}
+		</div>
+		${langs.map((l) => html`<div class="artist-grid" role="tabpanel" data-lang-panel="${l.id}" ${l === selected ? "" : html`hidden`}>${l.topArtists.map(artistCard)}</div>`)}
+	</section>`;
+}
 
 export function top(c) {
 	return {
@@ -297,6 +332,14 @@ export async function libraryView(c, { tab = "liked" }) {
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
 			${body}
+			<section class="section">
+				<div class="panel appearance">
+					<div><h3>Appearance</h3><div class="muted">System follows the device setting.</div></div>
+					<div class="lang-tabs" role="group" aria-label="Appearance">
+						${theme.modes.map(({ mode, label }) => html`<button data-act="theme-set" data-mode="${mode}" aria-selected="${String(theme.current() === mode)}">${label}</button>`)}
+					</div>
+				</div>
+			</section>
 			<p class="app-version">Zaideih v${APP_VERSION}</p>`,
 	};
 }

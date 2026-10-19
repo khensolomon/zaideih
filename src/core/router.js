@@ -32,7 +32,7 @@ export const href = (path, query) => `#/${path}${query ? `?${new URLSearchParams
 
 export function go(path, query, { replace = false } = {}) {
 	const next = href(path, query);
-	if (replace) history.replaceState(null, "", next);
+	if (replace) history.replaceState(history.state, "", next);
 	else location.hash = next;
 	if (replace) dispatchEvent(new HashChangeEvent("hashchange"));
 }

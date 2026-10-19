@@ -7,6 +7,7 @@
 import { compact, normalize } from "./text.js";
 
 const SUPPORTED_FORMAT = 1;
+const TOP_ARTISTS_PER_LANGUAGE = 12;
 
 export class CatalogLoadError extends Error {}
 
@@ -88,6 +89,24 @@ export function buildModel(raw, meta) {
 	for (const a of artists.values()) a.albums = [...a.albums].sort((x, y) => (y.year || 0) - (x.year || 0));
 
 	const byPlays = (x, y) => y.plays - x.plays;
+
+	// Most played artists per language. Ids 0 ("Unknown") and 1 ("Various
+	// Artists") are catch-all credits, not artists, so they are left out.
+	const NOT_ARTISTS = new Set([0, 1]);
+	for (const lang of langs.values()) {
+		const plays = new Map();
+		for (const album of lang.albums) {
+			for (const t of album.tracks) {
+				for (const a of t.artists) {
+					if (!NOT_ARTISTS.has(a.id)) plays.set(a, (plays.get(a) ?? 0) + t.plays);
+				}
+			}
+		}
+		lang.topArtists = [...plays]
+			.sort((x, y) => y[1] - x[1])
+			.slice(0, TOP_ARTISTS_PER_LANGUAGE)
+			.map(([artist, n]) => ({ artist, plays: n }));
+	}
 	return {
 		version: meta.version,
 		langs, genres, artists, albums, tracks,

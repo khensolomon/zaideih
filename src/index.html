@@ -10,20 +10,21 @@
 </head>
 <body>
 	<div class="shell">
-		<header class="topbar">
-			<div class="row">
-				<div class="brand">Zaideih <small class="offline-pill" data-offline hidden>Offline</small></div>
-				<button class="theme-btn" data-act="theme" aria-label="Theme"></button>
+		<header class="navbar">
+			<div class="nav-left">
+				<a class="nav-home" href="#/" data-nav-home aria-label="Zaideih, home"><span class="logo-tile" data-logo></span></a>
+				<button class="nav-back" data-act="back" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg><span>Back</span></button>
 			</div>
-			<nav class="tabs" aria-label="Sections">
-				<a href="#/" data-nav="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
-				<a href="#/search" data-nav="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
-				<a href="#/library" data-nav="library"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l6 16"/></svg>Library</a>
-			</nav>
+			<div class="nav-title" id="nav-title" aria-hidden="true"></div>
+			<div class="nav-right">
+				<small class="offline-pill" data-offline hidden>Offline</small>
+				<a class="icon-btn" href="#/search" data-nav="search" aria-label="Search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></a>
+				<a class="icon-btn" href="#/library" data-nav="library" aria-label="Library"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l6 16"/></svg></a>
+			</div>
 		</header>
 
 		<aside class="rail" aria-label="Navigation">
-			<div class="brand">Zaideih <small class="offline-pill" data-offline hidden>Offline</small></div>
+			<div class="brand"><a class="logo-link" href="#/" aria-label="Zaideih, home"><span class="logo-tile" data-logo></span></a> <small class="offline-pill" data-offline hidden>Offline</small></div>
 			<nav>
 				<a href="#/" data-nav="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
 				<a href="#/search" data-nav="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
@@ -60,6 +61,7 @@
 				<div class="seek">
 					<span class="time" data-time="pos">0:00</span>
 					<input type="range" data-ctl="seek" min="0" max="0" step="1" value="0" aria-label="Seek">
+					<span class="seek-tip" hidden></span>
 					<span class="time" data-time="dur">0:00</span>
 				</div>
 			</div>

@@ -1,5 +1,15 @@
 # Version
 
+## v26.10.19.4
+
+- Logo: the Zaideih mark replaces the text name in the app, and the app icons and favicon are regenerated from it
+- Light mode neutrals start at the logo grey `#5a5a5a`; dark mode uses the matching greys. Red stays the only colour
+- Phones: iOS-style navigation bar, with the logo or "Back" on the left and Search and Library on the right; the theme moves to Library > Appearance
+- Home: most played artists, one tab per language
+- Player: pausing freezes the animation in place; hovering a progress bar shows the time under the pointer
+- Player deck: inset highlight removed; one soft shadow when floating (phones), a hairline when docked (desktop)
+- Desktop app uses the new icon
+
 ## v26.10.19.3
 
 - One brand colour for the whole app: madder red (hue 352), after the red of Zo and Chin woven cloth. Surfaces, text, the accent, the player deck, covers and the visualizer all derive from `--brand-h`; light and dark differ only in lightness, and every text pairing meets WCAG AA

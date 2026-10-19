@@ -106,9 +106,10 @@ function createWindow() {
 		minWidth: 360,
 		minHeight: 560,
 		title: "Zaideih",
+		icon: join(ROOT, "icons", "icon-512.png"),
 		show: false,
 		autoHideMenuBar: true,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#151a24" : "#eef1f4",
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1c1c" : "#f7f7f7",
 		webPreferences: {
 			contextIsolation: true,
 			sandbox: true,
