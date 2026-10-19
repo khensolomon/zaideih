@@ -10,9 +10,12 @@
  * Default (tools/build.mjs): https://media.zaideih.com/audio/{id}, served by
  * worker/media, which resolves the id to the R2 object.
  */
-/* global __AUDIO_URL__, __APP_VERSION__ */
+/* global __AUDIO_URL__, __APP_VERSION__, __DEV__ */
 export const AUDIO_URL_TEMPLATE = typeof __AUDIO_URL__ === "string" ? __AUDIO_URL__ : "";
-export const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+/** Release version, yy.mm.dd.changes (see tools/lib/version.mjs). */
+export const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0.0";
+/** True for `tools/build.mjs --dev` builds: no service worker, unminified. */
+export const IS_DEV = typeof __DEV__ === "boolean" ? __DEV__ : true;
 
 export class AudioSourceError extends Error {}
 

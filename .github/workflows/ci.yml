@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Check release version
+        run: node tools/version.mjs --check
       - name: Check audio paths cover the catalog
         run: node tools/media.mjs check
       - run: node tools/catalog.mjs --apply

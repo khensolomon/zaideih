@@ -1,6 +1,6 @@
 {
 	"name": "zaideih",
-	"version": "27.0.0",
+	"version": "26.10.19.1",
 	"private": true,
 	"description": "Zaideih Music Station: offline-first music app for web (PWA) and desktop (Electron).",
 	"type": "module",
@@ -11,7 +11,10 @@
 		"build": "node tools/catalog.mjs --apply && node tools/build.mjs --platform web",
 		"build:web": "node tools/build.mjs --platform web",
 		"build:desktop": "node tools/build.mjs --platform desktop",
-		"dev": "node tools/build.mjs --platform web --dev",
+		"dev": "node tools/dev.mjs",
+		"preview": "npm run build && node tools/serve.mjs --dir dist/web",
+		"desktop": "npm --prefix platforms/desktop start",
+		"version:next": "node tools/version.mjs",
 		"test": "node --test tests/*.test.mjs"
 	},
 	"devDependencies": {

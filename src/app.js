@@ -1,3 +1,4 @@
+import { APP_VERSION } from "./config.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
 import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
@@ -547,6 +548,7 @@ export async function boot(platform) {
 		throw new TypeError("boot() requires a platform with a name and catalogBase");
 	}
 	document.documentElement.dataset.platform = platform.name;
+	for (const el of $$("[data-app-version]")) el.textContent = `v${APP_VERSION}`;
 	setOnline();
 	try {
 		const [model] = await Promise.all([loadCatalog(platform.catalogBase), library.init(), offline.init()]);
