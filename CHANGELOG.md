@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.19.5
+
+- One theme: logo grey `#5a5a5a` with white text; the light/dark modes and the theme switch are gone
+- Madder red stays the only colour, as a deep red fill under white text, pale rose for text and light red for icons
+- Album tiles: clearer info (main artist, year, song count, downloaded mark) and a play button over the cover on hover
+- Album page: artists on their own line (expandable), then year, genre, length, plays and download progress
+- Search: squared box, suggestions while typing (artists, albums, songs), recent searches, and "Did you mean" for typos
+
 ## v26.10.19.4
 
 - Logo: the Zaideih mark replaces the text name in the app, and the app icons and favicon are regenerated from it

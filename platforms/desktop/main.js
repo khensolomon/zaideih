@@ -8,7 +8,7 @@
  *
  * Build the renderer first: npm --prefix ../.. run build:desktop
  */
-import { app, BrowserWindow, dialog, nativeTheme, protocol, session, shell } from "electron";
+import { app, BrowserWindow, dialog, protocol, session, shell } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,7 +109,7 @@ function createWindow() {
 		icon: join(ROOT, "icons", "icon-512.png"),
 		show: false,
 		autoHideMenuBar: true,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1c1c" : "#f7f7f7",
+		backgroundColor: "#5a5a5a",
 		webPreferences: {
 			contextIsolation: true,
 			sandbox: true,

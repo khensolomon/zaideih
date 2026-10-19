@@ -44,6 +44,23 @@ export function myanmarBreaks(s) {
 	return out;
 }
 
+const graphemes = typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+
+/** Avatar initials: first grapheme for Myanmar names, up to two initials otherwise. */
+export function initials(name) {
+	const first = (s) => (graphemes ? [...graphemes.segment(s)][0]?.segment : s[0]) ?? "";
+	if (scriptClass(name)) return first(name);
+	const words = name.replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/).filter(Boolean);
+	return words.slice(0, 2).map((w) => first(w).toUpperCase()).join("") || "?";
+}
+
+/** Round artist avatar in a tone of the brand colour, varied per artist. */
+export function avatar(artist) {
+	const h = hash32(String(artist.id));
+	const style = `--s:${26 + (h % 36)}%;--l:${22 + ((h >>> 8) % 18)}%`;
+	return html`<span class="avatar ${scriptClass(artist.name)}" style="${style}" aria-hidden="true">${initials(artist.name)}</span>`;
+}
+
 /** Generated J-card cover in a tone of the brand colour, varied per album. */
 export function cover(album, { label = true } = {}) {
 	// One hue for every cover; each album gets its own tone of it.
@@ -55,13 +72,23 @@ export function cover(album, { label = true } = {}) {
 		: ""}</div>`;
 }
 
+/**
+ * Album tile: cover, title, main artist, then year, song count and a mark
+ * when every song is downloaded. The link covers the whole tile; the play
+ * button sits above it (a button inside a link would be invalid HTML).
+ */
 export function albumTile(album) {
-	const sub = [creditOf(album.artists, 1), album.year || ""].filter(Boolean).join(", ");
-	return html`<a class="tile" href="${href(`album/${album.id}`)}">
+	const [main, ...rest] = album.artists;
+	const artist = main ? `${main.name}${rest.length ? ` +${rest.length}` : ""}` : "Unknown artist";
+	const songs = album.tracks.length === 1 ? "1 song" : `${album.tracks.length} songs`;
+	const saved = album.tracks.every((t) => offline.has(t.id));
+	return html`<div class="tile" data-album-tile="${album.id}">
 		${cover(album)}
-		<span class="t ${scriptClass(album.title)}">${myanmarBreaks(album.title)}</span>
-		<span class="s">${sub}</span>
-	</a>`;
+		<a class="tile-link" href="${href(`album/${album.id}`)}"><span class="t ${scriptClass(album.title)}">${myanmarBreaks(album.title)}</span></a>
+		<span class="s ${scriptClass(artist)}">${artist}</span>
+		<span class="m">${album.year ? html`<span>${album.year}</span>` : ""}<span>${songs}</span>${saved ? html`<span class="saved-mark" title="Downloaded">${icon("saved", "Downloaded")}</span>` : ""}</span>
+		<button class="tile-play" data-act="play-album" data-album="${album.id}" aria-label="Play ${album.title}">${icon("play")}</button>
+	</div>`;
 }
 
 export function artistLinks(artists) {

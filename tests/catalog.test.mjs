@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile } from "../tools/catalog.mjs";
 import { buildModel } from "../src/core/catalog.js";
-import { search } from "../src/core/search.js";
+import { correction, editDistance, search, suggestions } from "../src/core/search.js";
 import { normalize } from "../src/core/text.js";
 
 const category = {
@@ -66,4 +66,29 @@ test("normalize strips zero-width characters and Latin diacritics only", () => {
 	assert.equal(normalize("Cáfé Song!"), "cafe song");
 	assert.equal(normalize("တ​စ္ဆေ"), "တစ္ဆေ");
 	assert.equal(normalize("ကို"), "ကို");
+});
+
+test("suggestions mix artists, albums and songs", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "t" });
+	const kinds = suggestions(model, "zam").map((s) => s.kind);
+	assert.deepEqual(kinds, ["artist"]);
+	const mixed = suggestions(model, "agape").map((s) => s.kind);
+	assert.ok(mixed.includes("album"));
+	assert.deepEqual(suggestions(model, "  "), []);
+});
+
+test("correction finds a close artist or album for a typo", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "t" });
+	assert.equal(correction(model, "zamnuu"), "Zamnu");
+	assert.equal(correction(model, "agpe no1"), "Agape No.1");
+	assert.equal(correction(model, "xyzzyq"), null);
+	assert.equal(correction(model, "za"), null);
+});
+
+test("editDistance counts edits and stops early past the limit", () => {
+	assert.equal(editDistance("kitten", "sitting", 3), 3);
+	assert.equal(editDistance("abc", "abc", 1), 0);
+	assert.equal(editDistance("abc", "abcdef", 1), 2);
 });

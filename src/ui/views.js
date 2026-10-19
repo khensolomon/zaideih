@@ -8,11 +8,10 @@ import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
-import { search } from "../core/search.js";
-import { formatBytes, formatTotal, hash32 } from "../core/text.js";
+import { correction, search } from "../core/search.js";
+import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
-import { theme } from "./theme.js";
-import { albumTile, artistLinks, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
+import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
 const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam" };
 export const langLabel = (lang) => LANG_LABEL[lang.name] ?? lang.name[0].toUpperCase() + lang.name.slice(1);
@@ -77,21 +76,9 @@ export async function home(c) {
 export function reshuffle() { discover = null; }
 
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-const graphemes = typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
-
-/** Avatar initials: first grapheme for Myanmar names, up to two initials otherwise. */
-function initials(name) {
-	const first = (s) => (graphemes ? [...graphemes.segment(s)][0]?.segment : s[0]) ?? "";
-	if (scriptClass(name)) return first(name);
-	const words = name.replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/).filter(Boolean);
-	return words.slice(0, 2).map((w) => first(w).toUpperCase()).join("") || "?";
-}
-
 function artistCard({ artist, plays }) {
-	const h = hash32(String(artist.id));
-	const style = `--s:${26 + (h % 36)}%;--l:${22 + ((h >>> 8) % 18)}%`;
 	return html`<a class="artist-card" href="${href(`artist/${artist.id}`)}">
-		<span class="avatar ${scriptClass(artist.name)}" style="${style}" aria-hidden="true">${initials(artist.name)}</span>
+		${avatar(artist)}
 		<span class="name ${scriptClass(artist.name)}">${artist.name}</span>
 		<span class="plays">${compact.format(plays)} plays</span>
 	</a>`;
@@ -165,11 +152,16 @@ export function album(c, { id }) {
 				<div>
 					<div class="kind">${a.tracks.length === 1 ? "Single" : "Album"} in ${langLabel(a.lang)}</div>
 					<h1 class="${scriptClass(a.title)}">${myanmarBreaks(a.title)}</h1>
+					<p class="byline">
+						${artistLinks(a.artists.slice(0, 3))}${a.artists.length > 3 ? html`<span data-more-artists hidden>, ${artistLinks(a.artists.slice(3))}</span>
+							<button class="link-btn" data-act="more-artists" aria-expanded="false">and ${a.artists.length - 3} more</button>` : ""}
+					</p>
 					<div class="facts">
-						<span>${artistLinks(a.artists.slice(0, 3))}${a.artists.length > 3 ? html` and ${a.artists.length - 3} more` : ""}</span>
 						${a.year ? html`<span>${a.year}</span>` : ""}
-						${a.genres.map((g) => html`<a href="${href(`genre/${g.id}`)}">${g.name}</a>`)}
-						<span>${plural(a.tracks.length, "track")}, ${formatTotal(a.duration)}</span>
+						${a.genres.map((g) => html`<a class="chip" href="${href(`genre/${g.id}`)}">${g.name}</a>`)}
+						<span>${plural(a.tracks.length, "song")}, ${formatTotal(a.duration)}</span>
+						<span>${compact.format(a.plays)} plays</span>
+						${saved ? html`<span class="saved-note">${icon("saved")} ${allSaved ? "Downloaded" : `${saved} of ${ids.length} downloaded`}</span>` : ""}
 					</div>
 				</div>
 			</div>
@@ -249,7 +241,9 @@ export function searchView(c, _params, query) {
 		body: html`<form class="searchbox" role="search" data-act="search-form">
 				${icon("search")}
 				<label class="sr" for="q">Search songs, albums and artists</label>
-				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists" autocomplete="off" enterkeyhint="search" autofocus>
+				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists" autocomplete="off" enterkeyhint="search" autofocus
+					role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
+				<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
 			</form>
 			<div id="results">${searchResults(c, q)}</div>`,
 	};
@@ -261,7 +255,9 @@ export function searchResults(c, q) {
 		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu.</p></div>`;
 	}
 	if (!r.tracks.total && !r.albums.total && !r.artists.total) {
-		return html`<div class="empty"><h2>No matches for “${q}”</h2><p>Check the spelling, or try fewer words.</p></div>`;
+		const fix = correction(c, q);
+		return html`<div class="empty"><h2>No matches for “${q}”</h2>
+			${fix ? html`<p>Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : html`<p>Check the spelling, or try fewer words.</p>`}</div>`;
 	}
 	return html`
 		${r.artists.total ? html`<section class="section" style="margin-top:0"><header><h2>Artists</h2><span class="muted">${r.artists.total}</span></header>
@@ -332,14 +328,6 @@ export async function libraryView(c, { tab = "liked" }) {
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
 			${body}
-			<section class="section">
-				<div class="panel appearance">
-					<div><h3>Appearance</h3><div class="muted">System follows the device setting.</div></div>
-					<div class="lang-tabs" role="group" aria-label="Appearance">
-						${theme.modes.map(({ mode, label }) => html`<button data-act="theme-set" data-mode="${mode}" aria-selected="${String(theme.current() === mode)}">${label}</button>`)}
-					</div>
-				</div>
-			</section>
 			<p class="app-version">Zaideih v${APP_VERSION}</p>`,
 	};
 }

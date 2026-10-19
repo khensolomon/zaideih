@@ -10,11 +10,9 @@ import { formatDuration } from "./core/text.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
-import { theme } from "./ui/theme.js";
+import { clearRecent, closeSuggestions, moveSelection, pickOption, rememberSearch, updateSuggestions } from "./ui/suggest.js";
 import * as V from "./ui/views.js";
 import { viz } from "./ui/viz.js";
-
-theme.init();
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -82,7 +80,12 @@ async function render({ keepScroll = false } = {}) {
 		if (heading && !$("#q")) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
 	}
 	const q = $("#q");
-	if (q && !keepScroll) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+	if (q && !keepScroll) {
+		q.focus();
+		q.setSelectionRange(q.value.length, q.value.length);
+		// Arriving with a query shows its results; suggestions wait for typing.
+		if (q.value) closeSuggestions(q);
+	}
 }
 
 function markNav(path) {
@@ -368,6 +371,12 @@ const actions = {
 		if (player.current()?.id === id && player.state.queue.join() === ids.join()) return player.toggle();
 		await player.playList(ids, id, context);
 	},
+	async "play-album"(el) {
+		const album = catalog.albums.get(el.dataset.album);
+		if (!album) throw new Error("That album is no longer in the catalog.");
+		if (player.state.shuffle) player.setShuffle(false);
+		await player.playList(album.tracks.map((t) => t.id), album.tracks[0].id, album.title);
+	},
 	async "play-all"(el) {
 		const { ids, context } = getList(el.dataset.list);
 		if (player.state.shuffle) player.setShuffle(false);
@@ -382,11 +391,21 @@ const actions = {
 		const liked = await library.toggleLike(Number(el.dataset.id));
 		setLikeState(el, liked, { animate: true });
 	},
-	theme() { notify(`Theme: ${theme.cycle()}`); },
-	"theme-set"(el) { theme.set(el.dataset.mode); },
 	back() {
 		if (navDepth > 1) history.back();
 		else go("", undefined, { replace: true });
+	},
+	"more-artists"(el) {
+		const rest = el.parentElement.querySelector("[data-more-artists]");
+		rest.hidden = false;
+		el.remove();
+	},
+	"search-for"(el) {
+		const input = $("#q");
+		input.value = el.dataset.q;
+		rememberSearch(el.dataset.q);
+		runSearch(el.dataset.q);
+		input.focus();
 	},
 	"artist-lang"(el) {
 		const section = el.closest("[data-artist-tabs]");
@@ -489,17 +508,42 @@ document.addEventListener("change", async (e) => {
 });
 
 let searchTimer = 0;
+
+/** Re-renders the full results below the search box and updates the URL. */
+function runSearch(value) {
+	resetLists();
+	resetPending();
+	$("#results").innerHTML = V.searchResults(catalog, value);
+	history.replaceState(history.state, "", href("search", value ? { q: value } : undefined));
+	markPlaying();
+}
+
+/** Acts on a chosen suggestion. */
+async function chooseSuggestion(opt) {
+	const input = $("#q");
+	if (!opt || !input) return;
+	const typed = input.value;
+	closeSuggestions(input);
+	if (opt.kind === "artist") { rememberSearch(typed); go(`artist/${opt.item.id}`); return; }
+	if (opt.kind === "album") { rememberSearch(typed); go(`album/${opt.item.id}`); return; }
+	if (opt.kind === "track") {
+		rememberSearch(typed);
+		const t = opt.item;
+		await player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title);
+		return;
+	}
+	input.value = opt.query;
+	rememberSearch(opt.query);
+	runSearch(opt.query);
+	input.focus();
+}
+
 document.addEventListener("input", (e) => {
 	const el = e.target;
 	if (el.id === "q") {
+		updateSuggestions(catalog, el);
 		clearTimeout(searchTimer);
-		searchTimer = setTimeout(() => {
-			resetLists();
-			resetPending();
-			$("#results").innerHTML = V.searchResults(catalog, el.value);
-			history.replaceState(history.state, "", href("search", el.value ? { q: el.value } : undefined));
-			markPlaying();
-		}, 140);
+		searchTimer = setTimeout(() => runSearch(el.value), 140);
 	} else if (el.dataset.ctl === "volume") {
 		player.setVolume(Number(el.value));
 	} else if (el.dataset.ctl === "seek") {
@@ -544,7 +588,43 @@ document.addEventListener("submit", (e) => {
 	if (e.target.dataset.act === "search-form") { e.preventDefault(); $("#q")?.blur(); }
 });
 
+document.addEventListener("focusin", (e) => {
+	if (e.target.id === "q") updateSuggestions(catalog, e.target);
+});
+document.addEventListener("focusout", (e) => {
+	if (e.target.id !== "q") return;
+	// Let a click on a suggestion land before the list closes.
+	setTimeout(() => { if (document.activeElement?.id !== "q") closeSuggestions(e.target); }, 120);
+});
+document.addEventListener("mousedown", (e) => {
+	// Keep focus in the search box while picking from the list.
+	if (e.target.closest("#suggest")) e.preventDefault();
+});
+document.addEventListener("click", (e) => {
+	if (e.target.closest("[data-sg-clear]")) { clearRecent(catalog, $("#q")); return; }
+	const row = e.target.closest("#suggest [data-sg]");
+	if (row) chooseSuggestion(pickOption(Number(row.dataset.sg)));
+});
+
 document.addEventListener("keydown", (e) => {
+	if (e.target.id === "q") {
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			if (moveSelection(e.target, e.key)) e.preventDefault();
+			return;
+		}
+		if (e.key === "Enter") {
+			const opt = pickOption();
+			if (opt) { e.preventDefault(); chooseSuggestion(opt); return; }
+			rememberSearch(e.target.value);
+			closeSuggestions(e.target);
+			return;
+		}
+		if (e.key === "Escape" && !$("#suggest").hidden) {
+			e.preventDefault();
+			closeSuggestions(e.target);
+			return;
+		}
+	}
 	if (e.key === "Escape") {
 		if ($(".menu")) closeMenu(true);
 		else if (!$("#sheet").hidden) closeSheet();
