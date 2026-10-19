@@ -35,8 +35,7 @@ const PLATFORMS = {
 		out: "dist/web",
 		public: "platforms/web/public",
 		head: [
-			'<meta name="theme-color" content="#f7f7f7" media="(prefers-color-scheme: light)">',
-			'<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">',
+			'<meta name="theme-color" content="#5a5a5a">',
 			'<link rel="manifest" href="manifest.webmanifest">',
 			'<link rel="icon" href="icons/icon.svg" type="image/svg+xml">',
 			'<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">',
