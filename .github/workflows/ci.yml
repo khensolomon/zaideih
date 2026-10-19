@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Check audio paths cover the catalog
+        run: node tools/media.mjs check
+      - run: node tools/catalog.mjs --apply
+      - run: node tools/build.mjs --platform web
+      - run: node tools/build.mjs --platform desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist/web
+          retention-days: 14

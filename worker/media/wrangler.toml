@@ -1,35 +1,30 @@
-# Audio Worker — Architecture A configuration.
+# Audio Worker: serves https://media.zaideih.com/audio/:id from R2.
 #
-# Replace placeholder values with yours and deploy with `wrangler deploy`.
+# Deploy from the repository root:
+#   npx wrangler deploy --config worker/media/wrangler.toml
 #
-# Secrets must be set separately:
-#   wrangler secret put SECRET_SHARED
-#
-# (The SECRET_SHARED value must EXACTLY match Django's APP_SECRET_SHARED.)
+# Load or refresh track paths (from assets/data/media.json):
+#   node tools/media.mjs d1 --apply
+#   npx wrangler d1 execute audio --remote --file build/d1/tracks.sql --config worker/media/wrangler.toml
 
 name = "media"
 main = "script.js"
 compatibility_date = "2026-05-01"
 
-# Plain vars — visible in the dashboard, fine to commit.
 [vars]
-APP_URL = "http://localhost:8000"
- 
-# D1 database binding. Replace database_id with yours after running:
-#   wrangler d1 create audio-paths
+# Origins allowed to download audio with fetch() for offline play (CORS).
+# app://zaideih is the desktop app; localhost entries are for local testing.
+ALLOWED_ORIGINS = "https://zaideih.com,https://www.zaideih.com,app://zaideih,http://localhost:8080,http://127.0.0.1:8080"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "audio"
 database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
 
-# R2 bucket for audio files.
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "media"
 
-# Custom domain for the Worker (so Django can reach a stable URL).
-# You said keep it as media.example.com for now.
 [[routes]]
 pattern = "media.zaideih.com"
 custom_domain = true
- 

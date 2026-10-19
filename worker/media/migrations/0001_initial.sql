@@ -1,17 +1,17 @@
--- D1 migration for Architecture A.
+-- D1 schema for the audio Worker.
 -- Run with: wrangler d1 execute <DB_NAME> --file=./0001_initial.sql
 
 -- =============================================================================
 -- tracks
 -- =============================================================================
--- Read-only mirror of Django's truth. Contains only what the Worker needs at
--- request time. Writes go through the /sync/track/<id> endpoint, which is
--- HMAC-protected. The Worker never modifies this from /audio/* requests.
+-- Track id -> audio object path. Loaded from assets/data/media.json with
+-- `node tools/media.mjs d1 --apply` and `wrangler d1 execute`. The Worker
+-- only reads this table.
 CREATE TABLE IF NOT EXISTS tracks (
     id          INTEGER PRIMARY KEY,
     folder_path TEXT NOT NULL,
     mp3         TEXT NOT NULL,
-    updated_at  INTEGER NOT NULL  -- unix seconds, set by Worker on upsert
+    updated_at  INTEGER NOT NULL  -- unix seconds of the last change, set by tools/media.mjs
 );
 
 -- =============================================================================
@@ -24,14 +24,11 @@ CREATE TABLE IF NOT EXISTS tracks (
 -- come from the browser's cache and never reach the Worker. So `served` is
 -- a count of fresh-fetch events, NOT a play counter.
 --
--- The real play counter lives in Django, populated by an explicit POST
--- from the SPA (which sees every play regardless of cache).
---
 -- Columns:
 --   served       Worker fetched the MP3 from R2 and returned it (initial
 --                or full request, status 200/206 to the client).
 --   not_found    D1 had the track row, but R2 returned no object for the
---                computed key. Indicates a sync drift between Django and R2.
+--                computed key. Indicates drift between media.json and R2.
 --   fetch_error  R2 threw or behaved unexpectedly during the fetch.
 --   first_seen   Unix seconds, set on insert, never updated.
 --   last_seen    Unix seconds of the most recent observation of any kind.

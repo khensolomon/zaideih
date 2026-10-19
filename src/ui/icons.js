@@ -1,0 +1,36 @@
+import { raw } from "../core/html.js";
+
+const paths = {
+	home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+	search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+	library: '<path d="M4 4v16M9 4v16M14 4l6 16"/>',
+	play: '<path d="M7 4.5v15a.8.8 0 0 0 1.2.7l12-7.5a.8.8 0 0 0 0-1.4l-12-7.5A.8.8 0 0 0 7 4.5z"/>',
+	pause: '<rect x="6" y="4" width="4.2" height="16" rx="1"/><rect x="13.8" y="4" width="4.2" height="16" rx="1"/>',
+	next: '<path d="M5 5v14l10-7zM18 5v14"/>',
+	prev: '<path d="M19 5v14L9 12zM6 5v14"/>',
+	shuffle: '<path d="M3 7h3.5c2 0 3 1 4.2 2.8l2.6 4.4C14.5 16 15.5 17 17.5 17H21M3 17h3.5c1.3 0 2.2-.5 3-1.4M14.5 8.4c.8-.9 1.7-1.4 3-1.4H21M18 4l3 3-3 3M18 14l3 3-3 3"/>',
+	repeat: '<path d="M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3"/>',
+	repeatOne: '<path d="M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3M11.5 10.5 13 9.5v5"/>',
+	heart: '<path d="M12 20s-7.5-4.6-9-9.4C2 7.2 4.2 4.5 7.2 4.5c2 0 3.5 1.1 4.8 2.8 1.3-1.7 2.8-2.8 4.8-2.8 3 0 5.2 2.7 4.2 6.1C19.5 15.4 12 20 12 20z"/>',
+	download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
+	check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+	saved: '<circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.8 2.8L16.2 9.6"/>',
+	more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+	queue: '<path d="M4 6h12M4 12h12M4 18h8M17 15v6l4-3z"/>',
+	down: '<path d="m6 9 6 6 6-6"/>',
+	close: '<path d="M6 6l12 12M18 6 6 18"/>',
+	trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+	plus: '<path d="M12 5v14M5 12h14"/>',
+	up: '<path d="m6 15 6-6 6 6"/>',
+	album: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
+	person: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
+	offline: '<path d="M2 8.5a15 15 0 0 1 4-2.6M9.5 5.1A15 15 0 0 1 22 8.5M5 12a10 10 0 0 1 3.5-2M13 9.7A10 10 0 0 1 19 12M8.5 15.5a5 5 0 0 1 5.5-.9M12 19h.01M3 3l18 18"/>',
+};
+
+const filled = new Set(["play", "pause"]);
+
+export function icon(name, label) {
+	const cls = filled.has(name) ? "i fill" : "i";
+	const a11y = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"';
+	return raw(`<svg class="${cls}" viewBox="0 0 24 24" ${a11y}>${paths[name]}</svg>`);
+}
