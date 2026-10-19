@@ -99,7 +99,7 @@ export function trackRow(t, listKey, index, opts = {}) {
 		<span class="saved" title="${offline.has(t.id) ? "Downloaded" : ""}">${offline.has(t.id) ? icon("saved", "Downloaded") : ""}</span>
 		<span class="dur">${formatDuration(t.duration)}</span>
 		<span>
-			<button class="icon-btn" data-act="like" data-id="${t.id}" aria-pressed="${liked}" aria-label="${liked ? "Unlike" : "Like"}">${icon("heart")}</button>
+			<button class="icon-btn like" data-act="like" data-id="${t.id}" aria-pressed="${String(liked)}" aria-label="${liked ? "Remove from liked songs" : "Add to liked songs"}">${icon("heart")}</button>
 			<button class="icon-btn" data-act="menu" data-id="${t.id}" data-list="${listKey}" aria-label="More options for ${t.title}" aria-haspopup="menu">${icon("more")}</button>
 		</span>
 	</li>`;

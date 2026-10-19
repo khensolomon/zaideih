@@ -9,7 +9,11 @@ import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
+import { theme } from "./ui/theme.js";
 import * as V from "./ui/views.js";
+import { viz } from "./ui/viz.js";
+
+theme.init();
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -98,8 +102,36 @@ function renderBar() {
 	for (const btn of $$("[data-ctl=next]")) btn.disabled = !t || (s.index >= s.queue.length - 1 && s.repeat !== "all");
 	const likeBtn = $("#bar-like");
 	likeBtn.hidden = !t;
-	if (t) likeBtn.setAttribute("aria-pressed", String(library.isLiked(t.id)));
+	if (t) setLikeState(likeBtn, library.isLiked(t.id));
+	// Tint the deck with the playing album's language hue.
+	bar.style.setProperty("--h", t ? `var(--hue-${t.album.lang.name})` : "215");
+	viz.setPlaying(s.playing);
 	if (!$("#sheet").hidden) renderSheet();
+}
+
+function setLikeState(btn, liked, { animate = false } = {}) {
+	btn.setAttribute("aria-pressed", String(liked));
+	btn.setAttribute("aria-label", liked ? "Remove from liked songs" : "Add to liked songs");
+	if (animate && liked) {
+		btn.classList.remove("pop");
+		void btn.offsetWidth; // restart the animation
+		btn.classList.add("pop");
+	}
+}
+
+function renderVolume() {
+	const { volume, muted } = player.audio;
+	const name = muted || volume === 0 ? "muted" : volume < 0.5 ? "volumeLow" : "volume";
+	for (const btn of $$("[data-ctl=mute]")) {
+		btn.innerHTML = icon(name);
+		btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+		btn.setAttribute("aria-pressed", String(muted));
+	}
+	for (const range of $$("[data-ctl=volume]")) {
+		const v = muted ? 0 : volume;
+		range.value = String(v);
+		range.style.setProperty("--pct", `${v * 100}%`);
+	}
 }
 
 function renderTime({ position, duration }) {
@@ -139,19 +171,20 @@ function renderSheet() {
 		<div class="body">
 			<div class="stage">
 				${cover(t.album)}
+				<canvas class="viz-large" data-viz="large" aria-hidden="true"></canvas>
 				<div class="info">
 					<div style="min-width:0">
 						<div class="title ${scriptClass(t.title)}">${t.title}</div>
 						<div class="sub">${creditOf(t.artists, 3)}</div>
 					</div>
-					<button class="icon-btn" data-act="like" data-id="${t.id}" aria-pressed="${library.isLiked(t.id)}" aria-label="Like">${icon("heart")}</button>
+					<button class="icon-btn like" data-act="like" data-id="${t.id}" aria-pressed="${String(library.isLiked(t.id))}" aria-label="${library.isLiked(t.id) ? "Remove from liked songs" : "Add to liked songs"}">${icon("heart")}</button>
 				</div>
 				<div class="seek">
 					<input type="range" data-ctl="seek" min="0" step="1" aria-label="Seek">
 					<div class="times"><span data-time="pos">0:00</span><span data-time="dur">${formatDuration(t.duration)}</span></div>
 				</div>
 				<div class="ctl">
-					<button class="icon-btn" data-ctl="shuffle" aria-label="Shuffle" aria-pressed="${s.shuffle}">${icon("shuffle")}</button>
+					<button class="icon-btn" data-ctl="shuffle" aria-label="Shuffle" aria-pressed="${String(s.shuffle)}">${icon("shuffle")}</button>
 					<button class="icon-btn" data-ctl="prev" aria-label="Previous">${icon("prev")}</button>
 					<button class="play-btn" data-ctl="toggle" aria-label="Play">${icon("play")}</button>
 					<button class="icon-btn" data-ctl="next" aria-label="Next">${icon("next")}</button>
@@ -322,9 +355,9 @@ const actions = {
 	},
 	async like(el) {
 		const liked = await library.toggleLike(Number(el.dataset.id));
-		el.setAttribute("aria-pressed", String(liked));
-		el.setAttribute("aria-label", liked ? "Unlike" : "Like");
+		setLikeState(el, liked, { animate: true });
 	},
+	theme() { notify(`Theme: ${theme.cycle()}`); },
 	menu(el) {
 		const track = catalog.tracks.get(Number(el.dataset.id));
 		trackMenu(el, track, el.closest(".track")?.dataset.extra);
@@ -391,6 +424,7 @@ document.addEventListener("click", async (e) => {
 		else if (c === "prev") player.previous();
 		else if (c === "shuffle") player.setShuffle(!player.state.shuffle);
 		else if (c === "repeat") player.cycleRepeat();
+		else if (c === "mute") player.toggleMute();
 		return;
 	}
 	const el = e.target.closest("[data-act]");
@@ -431,6 +465,8 @@ document.addEventListener("input", (e) => {
 			history.replaceState(null, "", href("search", el.value ? { q: el.value } : undefined));
 			markPlaying();
 		}, 140);
+	} else if (el.dataset.ctl === "volume") {
+		player.setVolume(Number(el.value));
 	} else if (el.dataset.ctl === "seek") {
 		el.dataset.dragging = "1";
 		el.style.setProperty("--pct", `${(el.value / (el.max || 1)) * 100}%`);
@@ -508,17 +544,18 @@ on("downloads", () => {
 	}
 });
 on("player", () => { renderBar(); markPlaying(); });
+on("volume", renderVolume);
 on("time", renderTime);
 on("library", () => {
 	const t = player.current();
-	if (t) $("#bar-like").setAttribute("aria-pressed", String(library.isLiked(t.id)));
-	for (const b of $$("[data-act=like]")) b.setAttribute("aria-pressed", String(library.isLiked(Number(b.dataset.id))));
+	if (t) setLikeState($("#bar-like"), library.isLiked(t.id));
+	for (const b of $$("[data-act=like]")) setLikeState(b, library.isLiked(Number(b.dataset.id)));
 	if (/^(library\/(liked|playlists)|library$|playlist\/)/.test(currentRoute?.path ?? "")) rerender();
 });
 
 function setOnline() {
 	document.body.classList.toggle("is-offline", !navigator.onLine);
-	$("#offline-pill").hidden = navigator.onLine;
+	for (const el of $$("[data-offline]")) el.hidden = navigator.onLine;
 }
 addEventListener("online", () => { setOnline(); notify("Back online"); });
 addEventListener("offline", () => { setOnline(); notify("You're offline. Downloaded songs still play."); });
@@ -559,10 +596,12 @@ export async function boot(platform) {
 	}
 	renderRail();
 	$("#bar-now").addEventListener("click", openSheet);
-	$("#bar-like").addEventListener("click", async () => {
+	$("#bar-like").addEventListener("click", async (e) => {
 		const t = player.current();
-		if (t) await library.toggleLike(t.id);
+		if (t) setLikeState(e.currentTarget, await library.toggleLike(t.id), { animate: true });
 	});
+	viz.init($("#bar"));
+	renderVolume();
 	await player.init(catalog);
 	renderBar();
 	addEventListener("hashchange", () => { closeMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });

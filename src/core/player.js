@@ -11,12 +11,26 @@ import { db } from "./db.js";
 import { library } from "./library.js";
 import { offline } from "./offline.js";
 import { emit, notify } from "./store.js";
+import { visualizer } from "./visualizer.js";
 
 const PERSIST_KEY = "player";
 const PREVIOUS_RESTART_SECONDS = 3;
 
 const audio = new Audio();
 audio.preload = "auto";
+// CORS mode is required for the live visualizer (see core/visualizer.js); the
+// audio Worker answers allowed origins with Access-Control-Allow-Origin.
+audio.crossOrigin = "anonymous";
+visualizer.attach(audio);
+
+const VOLUME_KEY = "zaideih.volume";
+try {
+	const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? "null");
+	if (saved && Number.isFinite(saved.volume)) {
+		audio.volume = Math.min(1, Math.max(0, saved.volume));
+		audio.muted = !!saved.muted;
+	}
+} catch { /* volume memory is a per-device convenience only */ }
 
 let catalog = null;
 let objectUrl = null;
@@ -195,10 +209,29 @@ function bindMediaSession() {
 	}
 }
 
+function saveVolume() {
+	try {
+		localStorage.setItem(VOLUME_KEY, JSON.stringify({ volume: audio.volume, muted: audio.muted }));
+	} catch { /* storage unavailable: the setting lasts for this session */ }
+}
+audio.addEventListener("volumechange", () => {
+	saveVolume();
+	emit("volume", { volume: audio.volume, muted: audio.muted });
+});
+
 export const player = {
 	state,
 	audio,
 	current,
+
+	/** 0..1; unmutes when a volume above zero is chosen. */
+	setVolume(value) {
+		const v = Math.min(1, Math.max(0, Number(value)));
+		if (!Number.isFinite(v)) return;
+		audio.volume = v;
+		if (v > 0 && audio.muted) audio.muted = false;
+	},
+	toggleMute() { audio.muted = !audio.muted; },
 
 	async init(model) {
 		catalog = model;
