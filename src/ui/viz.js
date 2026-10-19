@@ -2,9 +2,10 @@
  * Draws the live frequency bars on every visible canvas[data-viz] and sets
  * --level (loudness, 0..1) on the player deck for the play-button glow.
  *
- * The loop runs only while audio plays and the page is visible; after a pause
- * the bars fall to rest and the loop stops. With reduced motion requested, or
- * where live analysis is unavailable, nothing animates.
+ * The loop runs only while audio plays and the page is visible. Pausing
+ * freezes the bars and the glow where the music left them; they move again
+ * on resume. With reduced motion requested, or where live analysis is
+ * unavailable, nothing animates.
  */
 import { visualizer } from "../core/visualizer.js";
 
@@ -94,33 +95,67 @@ function draw(canvas, e, hue, centerX) {
 	}
 }
 
-function frame() {
-	const level = playing ? visualizer.read(scratch) : 0;
+function geometry() {
 	const hue = Number.parseFloat(getComputedStyle(deck).getPropertyValue("--h")) || 352;
 	// Deck bars radiate from the visible play button.
 	const btn = deck.querySelector(".play-btn");
 	const deckRect = deck.getBoundingClientRect();
 	const btnRect = btn?.getBoundingClientRect();
 	const centerX = btnRect && btnRect.width ? btnRect.left + btnRect.width / 2 - deckRect.left : undefined;
-	let moving = playing;
-	for (const canvas of document.querySelectorAll("canvas[data-viz]")) {
-		if (!canvas.offsetParent && canvas.getClientRects().length === 0) continue;
+	return { hue, centerX };
+}
+
+function visibleCanvases() {
+	return [...document.querySelectorAll("canvas[data-viz]")].filter((c) => c.getClientRects().length > 0);
+}
+
+/** Resamples the shared band energies onto a canvas's own bar count. */
+function resample(e) {
+	const n = e.bars.length;
+	for (let i = 0; i < n; i++) e.bars[i] = scratch[Math.min(scratch.length - 1, Math.floor((i / n) * scratch.length))];
+}
+
+function frame() {
+	// Paused: stop here and leave the last frame (and the glow) where it is.
+	if (!playing) {
+		running = false;
+		return;
+	}
+	const level = visualizer.read(scratch);
+	const { hue, centerX } = geometry();
+	for (const canvas of visibleCanvases()) {
 		const e = entryFor(canvas);
-		const n = e.bars.length;
-		for (let i = 0; i < n; i++) {
-			// Resample the shared band energies to this canvas's bar count.
-			const src = scratch[Math.min(scratch.length - 1, Math.floor((i / n) * scratch.length))];
-			const target = playing ? src : 0;
+		resample(e);
+		for (let i = 0; i < e.bars.length; i++) {
+			const target = e.bars[i];
 			e.shown[i] = target > e.shown[i] ? target : Math.max(target, e.shown[i] - FALL);
-			if (e.shown[i] > 0.002) moving = true;
 		}
 		draw(canvas, e, hue, e.kind === "deck" ? centerX : undefined);
 	}
 	levelSmooth = level > levelSmooth ? level : Math.max(level, levelSmooth - 0.04);
-	deck?.style.setProperty("--level", levelSmooth.toFixed(3));
-	if (levelSmooth > 0.002) moving = true;
-	if (moving && document.visibilityState === "visible") requestAnimationFrame(frame);
+	deck.style.setProperty("--level", levelSmooth.toFixed(3));
+	if (document.visibilityState === "visible") requestAnimationFrame(frame);
 	else running = false;
+}
+
+/**
+ * Redraws the frozen frame without reading audio: after a resize (which
+ * clears canvases) or when a canvas appears while paused (Now playing view).
+ */
+function redrawStill() {
+	if (running) return;
+	const { hue, centerX } = geometry();
+	const deckEntry = [...state.entries()].find(([c, e]) => e.kind === "deck" && c.isConnected)?.[1];
+	for (const canvas of visibleCanvases()) {
+		const fresh = !state.has(canvas);
+		const e = entryFor(canvas);
+		if (fresh && deckEntry) {
+			// Borrow the frozen deck shape, resampled to this canvas's bar count.
+			const n = e.shown.length;
+			for (let i = 0; i < n; i++) e.shown[i] = deckEntry.shown[Math.min(deckEntry.shown.length - 1, Math.floor((i / n) * deckEntry.shown.length))];
+		}
+		draw(canvas, e, hue, e.kind === "deck" ? centerX : undefined);
+	}
 }
 
 const scratch = new Float32Array(BAR_COUNT.deck);
@@ -137,14 +172,17 @@ export const viz = {
 		document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && playing) start(); });
 		reduceMotion.addEventListener?.("change", () => { if (!reduceMotion.matches && playing) start(); });
 		if (visualizer.unavailable) deck.dataset.vizOff = visualizer.unavailable;
+		let resizeTimer = 0;
+		addEventListener("resize", () => {
+			clearTimeout(resizeTimer);
+			resizeTimer = setTimeout(redrawStill, 60);
+		});
 	},
-	/** Call when playback starts or stops. */
+	/** Draws the frozen frame on canvases that appeared while paused. */
+	refresh() { requestAnimationFrame(redrawStill); },
+	/** Call when playback starts or stops. Pausing freezes the bars in place. */
 	setPlaying(on) {
 		playing = on;
 		if (on) start();
-		else if (!running && !reduceMotion.matches && !visualizer.unavailable) {
-			running = true;
-			requestAnimationFrame(frame); // let the bars fall to rest
-		}
 	},
 };

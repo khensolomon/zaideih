@@ -35,10 +35,21 @@ function apply(mode) {
 		btn.innerHTML = `${icon(ICON[mode])}<span>${LABEL[mode]}</span>`;
 		btn.setAttribute("aria-label", `Theme: ${LABEL[mode]}. Switch to ${LABEL[next]}`);
 	}
+	for (const btn of document.querySelectorAll("[data-act=theme-set]")) {
+		btn.setAttribute("aria-selected", String(btn.dataset.mode === mode));
+	}
 }
 
 export const theme = {
 	init() { apply(read()); },
+	current: () => read(),
+	modes: MODES.map((m) => ({ mode: m, label: LABEL[m] })),
+	/** Selects a mode directly (Library > Appearance). */
+	set(mode) {
+		if (!MODES.includes(mode)) throw new Error(`unknown theme ${mode}`);
+		write(mode);
+		apply(mode);
+	},
 	cycle() {
 		const mode = MODES[(MODES.indexOf(read()) + 1) % MODES.length];
 		write(mode);

@@ -9,6 +9,7 @@ import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
+import { logoMark } from "./ui/logo.js";
 import { theme } from "./ui/theme.js";
 import * as V from "./ui/views.js";
 import { viz } from "./ui/viz.js";
@@ -34,6 +35,27 @@ route("library", V.libraryView);
 route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 
+/*
+ * In-app navigation depth, stored in history.state so the Back button knows
+ * whether stepping back stays inside the app (history.back) or must go Home.
+ */
+let navDepth = 0;
+function trackDepth() {
+	const st = history.state;
+	if (st && Number.isInteger(st.zDepth)) navDepth = st.zDepth;
+	else {
+		navDepth += 1;
+		history.replaceState({ ...(st ?? {}), zDepth: navDepth }, "");
+	}
+}
+
+function updateNavbar(path, title) {
+	const home = path === "";
+	$("[data-nav-home]").hidden = !home;
+	$("[data-act=back]").hidden = home;
+	$("#nav-title").textContent = home ? "" : title;
+}
+
 async function render({ keepScroll = false } = {}) {
 	const r = parse();
 	const view = $("#view");
@@ -53,6 +75,7 @@ async function render({ keepScroll = false } = {}) {
 	view.innerHTML = out.body;
 	document.title = out.title === "Home" ? "Zaideih" : `${out.title} | Zaideih`;
 	markNav(r.path);
+	updateNavbar(r.path, out.title);
 	scrollTo(0, scroll);
 	if (!keepScroll) {
 		const heading = view.querySelector("h1");
@@ -104,6 +127,7 @@ function renderBar() {
 	likeBtn.hidden = !t;
 	if (t) setLikeState(likeBtn, library.isLiked(t.id));
 	viz.setPlaying(s.playing);
+	bar.classList.toggle("paused", !!t && !s.playing);
 	if (!$("#sheet").hidden) renderSheet();
 }
 
@@ -160,6 +184,7 @@ function renderSheet() {
 	const upcoming = queue.slice(s.index + 1);
 	const key = registerList(s.queue, s.context);
 	const focusedCtl = sheet.contains(document.activeElement) ? document.activeElement.dataset.ctl : null;
+	sheet.classList.toggle("paused", !s.playing);
 	sheet.innerHTML = html`
 		<div class="top">
 			<button class="icon-btn" data-act="close-sheet" aria-label="Close now playing">${icon("down")}</button>
@@ -179,6 +204,7 @@ function renderSheet() {
 				</div>
 				<div class="seek">
 					<input type="range" data-ctl="seek" min="0" step="1" aria-label="Seek">
+					<span class="seek-tip" hidden></span>
 					<div class="times"><span data-time="pos">0:00</span><span data-time="dur">${formatDuration(t.duration)}</span></div>
 				</div>
 				<div class="ctl">
@@ -202,6 +228,7 @@ function renderSheet() {
 	for (const btn of $$("[data-ctl=toggle]", sheet)) { btn.innerHTML = icon(playing ? "pause" : "play"); btn.setAttribute("aria-label", playing ? "Pause" : "Play"); }
 	for (const btn of $$("[data-ctl=repeat]", sheet)) { btn.setAttribute("aria-pressed", String(s.repeat !== "off")); btn.innerHTML = icon(s.repeat === "one" ? "repeatOne" : "repeat"); }
 	renderTime({ position: player.audio.currentTime || 0, duration: player.audio.duration || t.duration });
+	viz.refresh();
 	if (focusedCtl) $(`[data-ctl=${focusedCtl}]`, sheet)?.focus();
 }
 
@@ -356,6 +383,16 @@ const actions = {
 		setLikeState(el, liked, { animate: true });
 	},
 	theme() { notify(`Theme: ${theme.cycle()}`); },
+	"theme-set"(el) { theme.set(el.dataset.mode); },
+	back() {
+		if (navDepth > 1) history.back();
+		else go("", undefined, { replace: true });
+	},
+	"artist-lang"(el) {
+		const section = el.closest("[data-artist-tabs]");
+		for (const b of $$("[data-act=artist-lang]", section)) b.setAttribute("aria-selected", String(b === el));
+		for (const panel of $$("[data-lang-panel]", section)) panel.hidden = panel.dataset.langPanel !== el.dataset.lang;
+	},
 	menu(el) {
 		const track = catalog.tracks.get(Number(el.dataset.id));
 		trackMenu(el, track, el.closest(".track")?.dataset.extra);
@@ -460,7 +497,7 @@ document.addEventListener("input", (e) => {
 			resetLists();
 			resetPending();
 			$("#results").innerHTML = V.searchResults(catalog, el.value);
-			history.replaceState(null, "", href("search", el.value ? { q: el.value } : undefined));
+			history.replaceState(history.state, "", href("search", el.value ? { q: el.value } : undefined));
 			markPlaying();
 		}, 140);
 	} else if (el.dataset.ctl === "volume") {
@@ -476,6 +513,33 @@ document.addEventListener("change", (e) => {
 		delete e.target.dataset.dragging;
 	}
 }, true);
+/* Seek hover preview: the time under the pointer, as a tooltip and a lighter fill. */
+const fineHover = matchMedia("(hover: hover) and (pointer: fine)");
+function seekPreview(e) {
+	const range = e.target.closest?.("[data-ctl=seek]");
+	if (!range || !fineHover.matches) return;
+	const max = Number(range.max) || 0;
+	const tip = range.parentElement.querySelector(".seek-tip");
+	if (!max || !tip) return;
+	const rect = range.getBoundingClientRect();
+	const thumb = 14;
+	const frac = Math.min(1, Math.max(0, (e.clientX - rect.left - thumb / 2) / (rect.width - thumb)));
+	tip.textContent = formatDuration(frac * max);
+	tip.style.left = `${range.offsetLeft + thumb / 2 + frac * (rect.width - thumb)}px`;
+	tip.hidden = false;
+	range.dataset.hover = "";
+	range.style.setProperty("--hover-pct", `${frac * 100}%`);
+}
+function seekPreviewEnd(e) {
+	const range = e.target.closest?.("[data-ctl=seek]");
+	if (!range) return;
+	delete range.dataset.hover;
+	const tip = range.parentElement.querySelector(".seek-tip");
+	if (tip) tip.hidden = true;
+}
+document.addEventListener("pointermove", seekPreview);
+document.addEventListener("pointerout", seekPreviewEnd);
+
 document.addEventListener("submit", (e) => {
 	if (e.target.dataset.act === "search-form") { e.preventDefault(); $("#q")?.blur(); }
 });
@@ -583,6 +647,7 @@ export async function boot(platform) {
 		throw new TypeError("boot() requires a platform with a name and catalogBase");
 	}
 	document.documentElement.dataset.platform = platform.name;
+	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
 	for (const el of $$("[data-app-version]")) el.textContent = `v${APP_VERSION}`;
 	setOnline();
 	try {
@@ -602,7 +667,8 @@ export async function boot(platform) {
 	renderVolume();
 	await player.init(catalog);
 	renderBar();
-	addEventListener("hashchange", () => { closeMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
+	addEventListener("hashchange", () => { trackDepth(); closeMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
+	trackDepth();
 	await render();
 	document.body.classList.add("ready");
 	emit("ready");
