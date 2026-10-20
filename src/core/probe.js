@@ -50,9 +50,10 @@ async function probeDownload(track) {
 /**
  * @param {object} track  catalog track
  * @param {string} kind   one of diagnostic KINDS
+ * @param {object} [extra] more flags, e.g. { retried: true }
  * @returns {Promise<string>} the diagnostic code
  */
-export async function diagnose(track, kind) {
+export async function diagnose(track, kind, extra = {}) {
 	const download = offline.has(track.id);
 	const d = {
 		kind,
@@ -62,6 +63,7 @@ export async function diagnose(track, kind) {
 		download,
 		desktop: document.documentElement.dataset.platform === "desktop",
 		online: navigator.onLine,
+		...extra,
 	};
 	if (kind !== "offline") Object.assign(d, download ? await probeDownload(track) : await probeServer(track));
 	return encodeCode(d);

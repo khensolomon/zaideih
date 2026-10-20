@@ -21,7 +21,10 @@ export function on(topic, fn) {
 }
 
 /** User-visible notices: errors and confirmations. */
-/** Shows a notice. `code` is a playback diagnostic code shown under an error. */
-export function notify(message, { kind = "info", action, code } = {}) {
-	emit("notice", { message, kind, action, code });
+/**
+ * Shows a notice. `code` is a playback diagnostic code shown under an error;
+ * `help` adds a link to the help page.
+ */
+export function notify(message, { kind = "info", action, code, help = false } = {}) {
+	emit("notice", { message, kind, action, code, help });
 }

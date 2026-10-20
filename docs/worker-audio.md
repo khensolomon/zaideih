@@ -151,6 +151,8 @@ The Worker sends two headers for this, exposed to allowed origins:
 
 Lookups are cached per data centre for 24 hours, so a path corrected in D1 can keep failing in some regions until the cache expires. To drop every cached lookup at once, change `META_CACHE_VERSION` in `wrangler.toml` and redeploy.
 
+A song that plays in one browser and fails in another, while the server answers it correctly (`curl` shows `206` and `ID3` or `ff fb` at the start), is a stale copy in the failing browser: browsers keep range responses for a day (`Cache-Control: public, max-age=86400, immutable`), and a copy saved from a Worker version without the CORS header is refused by the player, which requests audio in CORS mode. The player retries a failed stream once with a one-off `?fresh=` query that skips the browser cache (the Worker ignores the query), so this heals itself; `#/help` tells listeners how to clear only cached files if it does not.
+
 Myanmar names can hold the same marks in two orders (U+1037 and U+103A) that render identically, so a D1 path and an R2 key can look equal and still differ. `tools/diagnose.mjs` prints the key's code points and its look-alike, and the D1 command it prints shows `hex(folder_path)` for a byte comparison.
 
 ## Track statistics
