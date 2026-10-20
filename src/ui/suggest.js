@@ -1,16 +1,19 @@
 /**
  * Search suggestions (ARIA combobox on #q).
  *
- * Typing shows quick picks (up to 3 artists, 3 albums and 5 songs). When
- * little matches, the closest spellings follow under "Close matches", led by
- * a "Did you mean" row when nothing matches exactly. A "Show all results"
- * row ends the list. Focusing the
+ * Typing shows quick picks (up to 3 artists, 3 albums and 5 songs, or more
+ * of one kind when a scope chip is on). A question ("most played mizo
+ * artists") is answered first, with its top results. A plainly named artist
+ * gets shortcuts to their albums and songs. When little matches, the
+ * closest spellings follow under "Close matches", led by a "Did you mean"
+ * row when nothing matches exactly. A "Show all results" row ends the list. Focusing the
  * empty box shows recent searches. Arrow keys move, Enter picks, Escape
  * closes. Recent searches are a per-device convenience kept in localStorage.
  */
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
-import { didYouMean, suggestions } from "../core/search.js";
+import { answer, describe, parseIntent } from "../core/intent.js";
+import { didYouMean, namedArtist, SCOPES, suggestions } from "../core/search.js";
 import { avatar, cover, scriptClass } from "./parts.js";
 
 const RECENT_KEY = "zaideih.recent-searches";
@@ -41,6 +44,14 @@ export function rememberSearch(query) {
 
 let options = [];
 let active = -1;
+let scope = "all";
+let langName = (l) => l.name;
+
+/** The scope chips' current choice: "all", "artists", "albums" or "tracks". */
+export const getScope = () => scope;
+export function setScope(value) { scope = SCOPES.includes(value) ? value : "all"; }
+/** Labels languages in answer titles ("Mizo" rather than "mizo"). */
+export function setLangName(fn) { langName = fn; }
 
 function listEl() { return document.getElementById("suggest"); }
 
@@ -53,12 +64,17 @@ function optionRow(opt, i) {
 		return html`<li class="sg" ${base}>${avatar(opt.item)}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.name)}">${opt.item.name}</span><span class="sg-sub">Artist</span></span></li>`;
 	}
 	if (opt.kind === "album") {
-		return html`<li class="sg" ${base}>${cover(opt.item, { label: false })}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.title)}">${opt.item.title}</span><span class="sg-sub">Album, ${creditOf(opt.item.artists, 1)}</span></span></li>`;
+		const by = opt.via ? opt.via.name : creditOf(opt.item.artists, 1);
+		return html`<li class="sg" ${base}>${cover(opt.item, { label: false })}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.title)}">${opt.item.title}</span><span class="sg-sub">Album by ${by}${opt.item.year ? html`, ${opt.item.year}` : ""}</span></span></li>`;
 	}
 	if (opt.kind === "track") {
-		return html`<li class="sg" ${base}>${cover(opt.item.album, { label: false })}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.title)}">${opt.item.title}</span><span class="sg-sub">Song, ${creditOf(opt.item.artists, 1)}</span></span><span class="sg-hint">Play</span></li>`;
+		const by = opt.via ? opt.via.name : creditOf(opt.item.artists, 1);
+		return html`<li class="sg" ${base}>${cover(opt.item.album, { label: false })}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.title)}">${opt.item.title}</span><span class="sg-sub">Song by ${by}</span></span><span class="sg-hint">Play</span></li>`;
 	}
-	const icon = opt.kind === "recent" ? "↺" : opt.kind === "fix" ? "?" : "⌕";
+	if (opt.kind === "answer") {
+		return html`<li class="sg sg-answer" ${base}><span class="sg-glyph" aria-hidden="true">✦</span><span class="sg-text"><span class="sg-title">${opt.label}</span><span class="sg-sub">${opt.sub}</span></span><span class="sg-hint">See all</span></li>`;
+	}
+	const icon = opt.kind === "recent" ? "↺" : opt.kind === "fix" ? "?" : opt.kind === "query" ? "→" : "⌕";
 	return html`<li class="sg sg-plain" ${base}><span class="sg-glyph" aria-hidden="true">${icon}</span><span class="sg-text"><span class="sg-title ${scriptClass(opt.label)}">${opt.label}</span></span></li>`;
 }
 
@@ -67,6 +83,11 @@ function paint(input) {
 	if (!ul) return;
 	const visible = options.some((o) => o.kind !== "heading");
 	ul.hidden = !visible;
+	const panel = document.getElementById("sg-panel");
+	if (panel) {
+		panel.hidden = !visible;
+		for (const chip of panel.querySelectorAll("[data-scope]")) chip.setAttribute("aria-pressed", String(chip.dataset.scope === scope));
+	}
 	input.setAttribute("aria-expanded", String(visible));
 	input.closest(".searchbox")?.classList.toggle("open", visible);
 	document.body.classList.toggle("search-open", visible);
@@ -86,16 +107,32 @@ export function updateSuggestions(catalog, input) {
 			? [{ kind: "heading", label: "Recent searches", clear: true }, ...recent.map((r) => ({ kind: "recent", label: r, query: r }))]
 			: [];
 	} else {
-		const picks = suggestions(catalog, q);
+		options = [];
+		const seen = new Set();
+		const intent = parseIntent(catalog, q);
+		if (intent) {
+			const a = answer(catalog, intent, 4);
+			if (a.total) {
+				options.push({ kind: "answer", label: describe(intent, langName), sub: `${a.total.toLocaleString()} ${a.total === 1 ? "result" : "results"}`, query: q });
+				const kind = { artists: "artist", albums: "album", tracks: "track" }[intent.kind];
+				for (const item of a.items) { seen.add(item); options.push({ kind, item }); }
+			}
+		}
+		const picks = suggestions(catalog, q, scope).filter((p) => !seen.has(p.item));
 		const exact = picks.filter((p) => !p.near);
 		const near = picks.filter((p) => p.near);
-		options = [...exact];
-		if (!exact.length) {
+		if (exact.length && options.length) options.push({ kind: "heading", label: "Matches" });
+		options.push(...exact);
+		// A plainly named artist: offer what people usually want next.
+		const artist = scope === "all" && !intent ? namedArtist(catalog, q) : null;
+		if (artist && artist.albums.length > 1) options.push({ kind: "query", label: `Albums by ${artist.name}`, query: `albums by ${artist.name}` });
+		if (artist && artist.tracks.length > 1) options.push({ kind: "query", label: `Most played songs by ${artist.name}`, query: `songs by ${artist.name}` });
+		if (!exact.length && !options.length) {
 			const fix = didYouMean(catalog, q);
 			if (fix) options.push({ kind: "fix", label: `Did you mean “${fix}”?`, query: fix });
 		}
-		if (near.length) options.push({ kind: "heading", label: "Close matches" }, ...near);
-		if (!picks.length) options.push({ kind: "heading", label: `Nothing close to “${q}”` });
+		if (near.length && !intent) options.push({ kind: "heading", label: "Close matches" }, ...near);
+		if (!options.length) options.push({ kind: "heading", label: `Nothing close to “${q}”` });
 		options.push({ kind: "all", label: `Show all results for “${q}”`, query: q });
 	}
 	paint(input);
@@ -106,6 +143,8 @@ export function closeSuggestions(input) {
 	active = -1;
 	const ul = listEl();
 	if (ul) { ul.hidden = true; ul.innerHTML = ""; }
+	const panel = document.getElementById("sg-panel");
+	if (panel) panel.hidden = true;
 	input?.setAttribute("aria-expanded", "false");
 	input?.closest(".searchbox")?.classList.remove("open");
 	document.body.classList.remove("search-open");

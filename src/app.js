@@ -10,7 +10,7 @@ import { coverImage } from "./ui/art.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
-import { clearRecent, closeSuggestions, moveSelection, pickOption, rememberSearch, updateSuggestions } from "./ui/suggest.js";
+import { clearRecent, closeSuggestions, getScope, moveSelection, pickOption, rememberSearch, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
 import * as V from "./ui/views.js";
 import { viz } from "./ui/viz.js";
 
@@ -416,6 +416,13 @@ const actions = {
 		rest.hidden = false;
 		el.remove();
 	},
+	scope(el) {
+		setScope(el.dataset.scope);
+		const input = $("#q");
+		runSearch(input.value);
+		// From the suggestions panel the box keeps focus and the list follows the scope.
+		if (document.activeElement === input) updateSuggestions(catalog, input);
+	},
 	"search-for"(el) {
 		const input = $("#q");
 		input.value = el.dataset.q;
@@ -529,8 +536,11 @@ let searchTimer = 0;
 function runSearch(value) {
 	resetLists();
 	resetPending();
-	$("#results").innerHTML = V.searchResults(catalog, value);
-	history.replaceState(history.state, "", href("search", value ? { q: value } : undefined));
+	$("#results").innerHTML = V.searchResults(catalog, value, getScope());
+	const query = {};
+	if (value) query.q = value;
+	if (getScope() !== "all") query.in = getScope();
+	history.replaceState(history.state, "", href("search", Object.keys(query).length ? query : undefined));
 	markPlaying();
 }
 
@@ -608,13 +618,14 @@ document.addEventListener("focusin", (e) => {
 	if (e.target.id === "q") updateSuggestions(catalog, e.target);
 });
 document.addEventListener("focusout", (e) => {
-	if (e.target.id !== "q") return;
-	// Let a click on a suggestion land before the list closes.
-	setTimeout(() => { if (document.activeElement?.id !== "q") closeSuggestions(e.target); }, 120);
+	if (e.target.id !== "q" && !e.target.closest?.("#sg-panel")) return;
+	// Let a click on a suggestion land before the list closes; moving focus to
+	// the scope buttons (Tab) keeps the panel open.
+	setTimeout(() => { if (!document.activeElement?.closest?.("#q, #sg-panel")) closeSuggestions($("#q")); }, 120);
 });
 document.addEventListener("mousedown", (e) => {
 	// Keep focus in the search box while picking from the list.
-	if (e.target.closest("#suggest")) e.preventDefault();
+	if (e.target.closest("#sg-panel")) e.preventDefault();
 });
 document.addEventListener("click", (e) => {
 	if (e.target.closest("[data-sg-clear]")) { clearRecent(catalog, $("#q")); return; }
@@ -769,6 +780,7 @@ export async function boot(platform) {
 		if (t) setLikeState(e.currentTarget, await library.toggleLike(t.id), { animate: true });
 	});
 	viz.init($("#bar"));
+	setLangName(V.langLabel);
 	player.setArtwork((t) => coverImage(t.album, t.n - 1));
 	renderVolume();
 	await player.init(catalog);

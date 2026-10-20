@@ -42,33 +42,64 @@ export function search(catalog, query, limits = { tracks: 50, albums: 24, artist
 	};
 }
 
-const SUGGEST = { artists: 3, albums: 3, tracks: 5 };
+/** What a search looks in: everything, or one kind of record. */
+export const SCOPES = ["all", "artists", "albums", "tracks"];
+const SUGGEST = {
+	all: { artists: 3, albums: 3, tracks: 5 },
+	artists: { artists: 10, albums: 0, tracks: 0 },
+	albums: { artists: 0, albums: 8, tracks: 0 },
+	tracks: { artists: 0, albums: 0, tracks: 10 },
+};
+const KIND_OF = { artists: "artist", albums: "album", tracks: "track" };
+
+/** The artist a query plainly names: the query is the start of the name. */
+export function namedArtist(catalog, query) {
+	const q = compact(normalize(query));
+	if (q.length < 3) return null;
+	const r = search(catalog, query, { artists: 1, albums: 0, tracks: 0 });
+	const a = r?.artists.items[0];
+	return a && a.id > 1 && compact(normalize(a.name)).startsWith(q) ? a : null;
+}
 
 /**
- * Quick suggestions for the search box: up to 3 artists, 3 albums and 5
- * songs, best matches first within each kind. When fewer than 4 records
- * match exactly, the closest spellings fill the remaining places, marked
- * `near: true`.
+ * Quick suggestions for the search box, best first within each kind: up to
+ * 3 artists, 3 albums and 5 songs, or more of one kind when `scope` picks
+ * one. Within the albums or songs scope, records by a matching artist follow
+ * the title matches (`via` names that artist), since people often type the
+ * artist when they want an album. When fewer than 4 records match, the
+ * closest spellings fill the remaining places, marked `near: true`.
  */
-export function suggestions(catalog, query) {
-	const r = search(catalog, query, SUGGEST);
+export function suggestions(catalog, query, scope = "all") {
+	const limits = SUGGEST[scope] ?? SUGGEST.all;
+	const r = search(catalog, query, limits);
 	if (!r) return [];
 	const out = [];
 	const seen = new Set();
-	const add = (kind, item, near = false) => {
+	const count = (kind) => out.filter((o) => o.kind === kind).length;
+	const add = (kind, item, extra = {}) => {
 		if (seen.has(item)) return;
 		seen.add(item);
-		out.push({ kind, item, near });
+		out.push({ kind, item, near: false, ...extra });
 	};
 	for (const item of r.artists.items) add("artist", item);
 	for (const item of r.albums.items) add("album", item);
 	for (const item of r.tracks.items) add("track", item);
+	if (scope === "albums" || scope === "tracks") {
+		const artists = search(catalog, query, { artists: 2, albums: 0, tracks: 0 }).artists.items.filter((a) => a.id > 1);
+		for (const a of artists) {
+			const pool = scope === "albums" ? [...a.albums].sort((x, y) => y.plays - x.plays) : [...a.tracks].sort((x, y) => y.plays - x.plays);
+			for (const item of pool) {
+				if (count(KIND_OF[scope]) >= limits[scope]) break;
+				add(KIND_OF[scope], item, { via: a });
+			}
+		}
+	}
 	if (out.length < 4) {
-		const near = closest(catalog, query, SUGGEST);
-		for (const [kind, key] of [["artist", "artists"], ["album", "albums"], ["track", "tracks"]]) {
+		const near = closest(catalog, query, limits);
+		for (const key of ["artists", "albums", "tracks"]) {
 			for (const item of near[key]) {
-				if (out.filter((o) => o.kind === kind).length >= SUGGEST[key]) break;
-				add(kind, item, true);
+				if (count(KIND_OF[key]) >= limits[key]) break;
+				add(KIND_OF[key], item, { near: true });
 			}
 		}
 	}

@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.20.3
+
+- Search answers questions: "most played Mizo artists", "gospel albums from the 90s", "newest albums by Lianbawi", "top songs 1987", "who is the most played artist". The answer leads the suggestions with its top results, and the results page lists it in full (songs with Play all)
+- Scope buttons (All, Artists, Albums, Songs) in the suggestions panel and on the results page; the scope is kept in the address (`in=`). In the Albums and Songs scopes, records by a matching artist follow the title matches
+- Typing an artist's name offers "Albums by …" and "Most played songs by …"
+- Search panel: one edge colour for box and list, a softer edge, no border animation (the box and the list now change in the same frame), and a lighter blur behind
+
 ## v26.10.20.2
 
 - Player: a vertical gradient, a brighter edge, a shadow on all sides and a blurred, faded view of the page behind it, so it reads as a separate layer

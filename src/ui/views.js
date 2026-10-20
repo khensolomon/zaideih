@@ -4,15 +4,17 @@
 import { APP_VERSION } from "../config.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
+import { answer, describe, parseIntent } from "../core/intent.js";
 import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
-import { closest, didYouMean, search } from "../core/search.js";
+import { closest, didYouMean, namedArtist, search } from "../core/search.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
 import { logoMark } from "./logo.js";
 import { careerOf, shadeOf } from "./art.js";
+import { getScope, setScope } from "./suggest.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
 const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam" };
@@ -246,42 +248,96 @@ export function genre(c, { id }, query) {
 }
 
 /* ---------- search ---------- */
+const SCOPE_LABELS = [["all", "All"], ["artists", "Artists"], ["albums", "Albums"], ["tracks", "Songs"]];
+const SCOPE_LIMITS = {
+	all: undefined,
+	artists: { artists: 60, albums: 0, tracks: 0 },
+	albums: { artists: 0, albums: 60, tracks: 0 },
+	tracks: { artists: 0, albums: 0, tracks: 100 },
+};
+
 export function searchView(c, _params, query) {
 	const q = query.get("q") ?? "";
+	setScope(query.get("in") ?? "all");
+	const scope = getScope();
 	return {
 		title: q ? `Search: ${q}` : "Search",
 		body: html`<form class="searchbox" role="search" data-act="search-form">
 				${icon("search")}
-				<label class="sr" for="q">Search songs, albums and artists</label>
-				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists" autocomplete="off" enterkeyhint="search" autofocus
+				<label class="sr" for="q">Search songs, albums and artists, or ask, for example “most played Mizo artists”</label>
+				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists, or ask: most played Mizo artists" autocomplete="off" enterkeyhint="search" autofocus
 					role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
-				<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
+				<div class="sg-panel" id="sg-panel" hidden>
+					${scopeButtons(scope, "scopes")}
+					<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
+				</div>
 			</form>
-			<div id="results">${searchResults(c, q)}</div>`,
+			<div id="results">${searchResults(c, q, scope)}</div>`,
 	};
+}
+
+/** Scope buttons, shared by the suggestions panel and the results page. */
+function scopeButtons(scope, cls, counts = null) {
+	return html`<div class="${cls}" role="group" aria-label="Search in">${SCOPE_LABELS.map(([k, label]) =>
+		html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}">${label}${counts && k !== "all" ? html`<span>${counts[k].toLocaleString()}</span>` : ""}</button>`)}</div>`;
 }
 
 /** Search shows the best artist matches as pictures, the rest as name chips. */
 const ARTIST_CARDS = 8;
 
-export function searchResults(c, q) {
-	const r = search(c, q);
+export function searchResults(c, q, scope = getScope()) {
+	const r = search(c, q, SCOPE_LIMITS[scope]);
 	if (!r) {
-		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu, and small typos still find the closest names.</p></div>`;
+		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu, and small typos still find the closest names.</p>
+			<p>You can also ask: <button class="link-btn" data-act="search-for" data-q="most played mizo artists">most played Mizo artists</button>, <button class="link-btn" data-act="search-for" data-q="gospel albums from the 90s">gospel albums from the 90s</button>, <button class="link-btn" data-act="search-for" data-q="newest myanmar songs">newest Myanmar songs</button>.</p></div>`;
 	}
-	const total = r.tracks.total + r.albums.total + r.artists.total;
-	if (!total) {
-		const near = closest(c, q);
+	const pick = (key) => (scope === "all" || scope === key ? r[key].items : []);
+	const exact = { artists: pick("artists"), albums: pick("albums"), tracks: pick("tracks") };
+	const total = exact.artists.length + exact.albums.length + exact.tracks.length;
+
+	// A question: answer it first. A scope other than "all" decides what is listed.
+	const intent = parseIntent(c, q);
+	if (intent && scope !== "all") intent.kind = scope;
+	const ans = intent ? answer(c, intent, intent.kind === "artists" ? 24 : 60) : null;
+	const answered = ans && ans.total ? answerSection(intent, ans) : "";
+
+	// In the albums or songs scope, records by a matching artist follow the title matches.
+	let byArtist = "";
+	if (!answered && (scope === "albums" || scope === "tracks")) {
+		const artist = namedArtist(c, q);
+		if (artist) byArtist = answerSection({ kind: scope, sort: "plays", by: artist }, answer(c, { kind: scope, sort: "plays", by: artist, text: "" }));
+	}
+
+	// Counts describe title matches; for an answered question they would mislead.
+	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total });
+	if (!total && !answered && !byArtist) {
+		const near = closest(c, q, scope === "all" ? undefined : { artists: 8, albums: 12, tracks: 20, ...SCOPE_LIMITS[scope] });
 		const fix = didYouMean(c, q, near);
 		const any = near.artists.length + near.albums.length + near.tracks.length;
-		return html`<div class="empty"><h2>No exact matches for “${q}”</h2>
+		return html`${tabs}<div class="empty"><h2>No exact matches for “${q}”</h2>
 				${fix ? html`<p>Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : html`<p>Nothing is spelled close to it either. Check the spelling, or try fewer words.</p>`}</div>
 			${any ? html`<h2 class="near-title">Close matches</h2>${resultSections(near, q)}` : ""}`;
 	}
 	// Only a few results: the query may still be a typo of something better known.
-	const fix = total < 3 ? didYouMean(c, q) : null;
-	return html`${fix ? html`<p class="dym">Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : ""}
-		${resultSections({ artists: r.artists.items, albums: r.albums.items, tracks: r.tracks.items }, q, r)}`;
+	const fix = !answered && total < 3 ? didYouMean(c, q) : null;
+	return html`${tabs}${fix ? html`<p class="dym">Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : ""}
+		${answered}
+		${total && answered ? html`<h2 class="near-title">Other matches for “${q}”</h2>` : ""}
+		${resultSections(exact, q, r)}
+		${byArtist}`;
+}
+
+function answerSection(intent, ans) {
+	const title = describe(intent, langLabel);
+	const head = html`<header><h2>${title}</h2><span class="muted">${ans.total > ans.items.length ? `Top ${ans.items.length} of ${ans.total.toLocaleString()}` : ans.total.toLocaleString()}</span></header>`;
+	if (intent.kind === "artists") {
+		return html`<section class="section answer">${head}<div class="artist-grid">${ans.items.map((a) => artistCard({ artist: a, plays: ans.plays?.get(a) ?? a.plays }))}</div></section>`;
+	}
+	if (intent.kind === "albums") return html`<section class="section answer">${head}${chunkedAlbums(ans.items, { step: 24 })}</section>`;
+	const key = registerList(ans.items.map((t) => t.id), title);
+	return html`<section class="section answer">${head}
+		<div class="actions"><button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play all</button></div>
+		${chunkedTracks(ans.items, title, { step: 20, showAlbum: true })}</section>`;
 }
 
 /** Artists, songs and albums sections; `r` supplies the totals for the counts. */
@@ -294,7 +350,7 @@ function resultSections(list, q, r = null) {
 		${list.tracks.length ? html`<section class="section"><header><h2>Songs</h2><span class="muted">${count("tracks") > list.tracks.length ? `Top ${list.tracks.length} of ${count("tracks").toLocaleString()}` : count("tracks")}</span></header>
 			${chunkedTracks(list.tracks, `Search: ${q}`, { step: 20, showAlbum: true })}</section>` : ""}
 		${list.albums.length ? html`<section class="section"><header><h2>Albums</h2><span class="muted">${count("albums")}</span></header>
-			<div class="grid">${list.albums.map(albumTile)}</div></section>` : ""}`;
+			${chunkedAlbums(list.albums, { step: 24 })}</section>` : ""}`;
 }
 
 /* ---------- library ---------- */

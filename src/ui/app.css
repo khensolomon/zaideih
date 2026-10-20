@@ -59,7 +59,7 @@
 	--danger-ink: #ffcfcf;
 	--danger-bg: #8f2a2a;
 	--focus: #ffffff;
-	--search-edge: #b0b0b0;
+	--search-edge: #7c7c7c;
 	--shadow: rgb(0 0 0 / 0.32);
 	/* Player deck. */
 	--deck-bg: #3e3e3e;
@@ -356,28 +356,39 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .searchbox input {
 	width: 100%; min-height: 52px; padding: 0 18px 0 48px; border-radius: var(--radius-m);
 	border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-size: 17px;
-	transition: border-color 0.15s ease;
 }
 .searchbox input::placeholder { color: var(--ink-3); opacity: 1; }
-/* Focus: a lighter border (3.2:1 against the page) instead of an outline ring. */
-.searchbox input:focus { outline: none; border-color: var(--search-edge); }
+/* Focus: a slightly lighter edge and a faint halo instead of an outline ring. */
+.searchbox input:focus { outline: none; border-color: var(--search-edge); box-shadow: 0 0 0 3px rgb(255 255 255 / 0.07); }
+.searchbox.open input:focus { box-shadow: none; }
 .searchbox > svg { position: absolute; left: 16px; top: 26px; transform: translateY(-50%); color: var(--ink-3); }
 .searchbox.open input { border-radius: var(--radius-m) var(--radius-m) 0 0; border-bottom-color: transparent; }
 
-.suggest {
-	position: absolute; left: 0; right: 0; top: calc(100% - 1px); margin: 0; padding: 0 6px 6px; list-style: none;
-	max-height: min(480px, 64vh); overflow-y: auto;
+/* The panel under the box: scope buttons, then the suggestions. It shares
+   the box's edge colour and appears with it in the same frame (no transition). */
+.sg-panel {
+	position: absolute; left: 0; right: 0; top: calc(100% - 1px); overflow: hidden;
 	background: var(--surface-2); border: 1px solid var(--search-edge); border-top: 0; border-radius: 0 0 var(--radius-m) var(--radius-m);
-	box-shadow: 0 22px 44px rgb(0 0 0 / 0.38);
+	box-shadow: 0 22px 44px rgb(0 0 0 / 0.32);
 }
-.suggest::before { content: ""; display: block; height: 1px; margin: 0 6px 6px; background: var(--line); }
+.sg-panel::before { content: ""; display: block; height: 1px; margin: 0 12px; background: rgb(255 255 255 / 0.08); }
+.scopes { display: flex; gap: 6px; padding: 10px 12px 6px; overflow-x: auto; scrollbar-width: none; }
+.scopes button { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.scopes button:hover { border-color: var(--ink-3); }
+.scopes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.suggest { margin: 0; padding: 0 6px 6px; list-style: none; max-height: min(440px, 58vh); overflow-y: auto; }
+.sg-answer .sg-glyph { color: var(--accent); }
+.sg-answer .sg-title { white-space: normal; }
 body.search-open::before {
 	content: ""; position: fixed; inset: 0; z-index: 25;
-	background: rgb(44 44 44 / 0.3);
-	-webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-	animation: fade-in 0.15s ease-out;
+	background: rgb(44 44 44 / 0.16);
+	-webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
-@keyframes fade-in { from { opacity: 0; } }
+.scope-tabs { margin: 0 0 22px; }
+.segmented button { border: 0; background: none; padding: 6px 14px; border-radius: 999px; color: var(--ink-2); font-weight: 550; white-space: nowrap; }
+.segmented button[aria-pressed="true"] { background: var(--tab-active); color: var(--ink); }
+.segmented button span { margin-left: 6px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+.section.answer { margin-top: 0; }
 .dym { margin: 0 0 18px; color: var(--ink-2); }
 .near-title { font-size: 22px; margin: 4px 0 14px; }
 .sg { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 10px; border-radius: var(--radius-s); cursor: pointer; }
