@@ -8,9 +8,10 @@ import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
-import { correction, search } from "../core/search.js";
+import { closest, didYouMean, search } from "../core/search.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
+import { logoMark } from "./logo.js";
 import { careerOf, shadeOf } from "./art.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
@@ -266,21 +267,34 @@ const ARTIST_CARDS = 8;
 export function searchResults(c, q) {
 	const r = search(c, q);
 	if (!r) {
-		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu.</p></div>`;
+		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu, and small typos still find the closest names.</p></div>`;
 	}
-	if (!r.tracks.total && !r.albums.total && !r.artists.total) {
-		const fix = correction(c, q);
-		return html`<div class="empty"><h2>No matches for “${q}”</h2>
-			${fix ? html`<p>Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : html`<p>Check the spelling, or try fewer words.</p>`}</div>`;
+	const total = r.tracks.total + r.albums.total + r.artists.total;
+	if (!total) {
+		const near = closest(c, q);
+		const fix = didYouMean(c, q, near);
+		const any = near.artists.length + near.albums.length + near.tracks.length;
+		return html`<div class="empty"><h2>No exact matches for “${q}”</h2>
+				${fix ? html`<p>Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : html`<p>Nothing is spelled close to it either. Check the spelling, or try fewer words.</p>`}</div>
+			${any ? html`<h2 class="near-title">Close matches</h2>${resultSections(near, q)}` : ""}`;
 	}
+	// Only a few results: the query may still be a typo of something better known.
+	const fix = total < 3 ? didYouMean(c, q) : null;
+	return html`${fix ? html`<p class="dym">Did you mean <button class="link-btn" data-act="search-for" data-q="${fix}">${fix}</button>?</p>` : ""}
+		${resultSections({ artists: r.artists.items, albums: r.albums.items, tracks: r.tracks.items }, q, r)}`;
+}
+
+/** Artists, songs and albums sections; `r` supplies the totals for the counts. */
+function resultSections(list, q, r = null) {
+	const count = (key) => (r ? r[key].total : list[key].length);
 	return html`
-		${r.artists.total ? html`<section class="section" style="margin-top:0"><header><h2>Artists</h2><span class="muted">${r.artists.total}</span></header>
-			<div class="artist-grid">${r.artists.items.slice(0, ARTIST_CARDS).map((a) => artistCard({ artist: a, plays: a.plays }))}</div>
-				${r.artists.items.length > ARTIST_CARDS ? html`<div class="people" style="margin-top:16px">${r.artists.items.slice(ARTIST_CARDS).map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div>` : ""}</section>` : ""}
-		${r.tracks.total ? html`<section class="section"><header><h2>Songs</h2><span class="muted">${r.tracks.total > r.tracks.items.length ? `Top ${r.tracks.items.length} of ${r.tracks.total.toLocaleString()}` : r.tracks.total}</span></header>
-			${chunkedTracks(r.tracks.items, `Search: ${q}`, { step: 20, showAlbum: true })}</section>` : ""}
-		${r.albums.total ? html`<section class="section"><header><h2>Albums</h2><span class="muted">${r.albums.total}</span></header>
-			<div class="grid">${r.albums.items.map(albumTile)}</div></section>` : ""}`;
+		${list.artists.length ? html`<section class="section" style="margin-top:0"><header><h2>Artists</h2><span class="muted">${count("artists")}</span></header>
+			<div class="artist-grid">${list.artists.slice(0, ARTIST_CARDS).map((a) => artistCard({ artist: a, plays: a.plays }))}</div>
+			${list.artists.length > ARTIST_CARDS ? html`<div class="people" style="margin-top:16px">${list.artists.slice(ARTIST_CARDS).map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div>` : ""}</section>` : ""}
+		${list.tracks.length ? html`<section class="section"><header><h2>Songs</h2><span class="muted">${count("tracks") > list.tracks.length ? `Top ${list.tracks.length} of ${count("tracks").toLocaleString()}` : count("tracks")}</span></header>
+			${chunkedTracks(list.tracks, `Search: ${q}`, { step: 20, showAlbum: true })}</section>` : ""}
+		${list.albums.length ? html`<section class="section"><header><h2>Albums</h2><span class="muted">${count("albums")}</span></header>
+			<div class="grid">${list.albums.map(albumTile)}</div></section>` : ""}`;
 }
 
 /* ---------- library ---------- */
@@ -343,7 +357,68 @@ export async function libraryView(c, { tab = "liked" }) {
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
 			${body}
-			<p class="app-version">Zaideih v${APP_VERSION}</p>`,
+			<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a></p>`,
+	};
+}
+
+/* ---------- about and terms ---------- */
+const ISSUES = "https://github.com/khensolomon/zaideih/issues";
+const listJoin = (items) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items.join(""));
+
+export function about(c) {
+	const artists = [...c.artists.values()].filter((a) => a.id > 1 && a.tracks.length).length;
+	const hours = Math.round([...c.albums.values()].reduce((n, a) => n + a.duration, 0) / 3600);
+	const langs = [...c.langs.values()].filter((l) => l.albums.length).sort((a, b) => b.albums.length - a.albums.length);
+	return {
+		title: "About",
+		body: html`<div class="about">
+				<div class="about-head">
+					<span class="logo-tile" aria-hidden="true">${logoMark()}</span>
+					<div>
+						<h1>Zaideih</h1>
+						<p class="slogan">Zaideih Music Station</p>
+					</div>
+				</div>
+				<p class="lead">Zaideih keeps ${listJoin(langs.map(langLabel))} music in one place, so these songs are preserved and stay easy to find and listen to.</p>
+				<ul class="promise">
+					<li><strong>Free to listen.</strong> Every song plays for free, with no account.</li>
+					<li><strong>Nothing for sale.</strong> Zaideih does not sell music and takes no financial benefit from it.</li>
+					<li><strong>The music belongs to its artists.</strong> Zaideih only keeps it available.</li>
+					<li><strong>Your library stays with you.</strong> Likes, playlists, history and downloads are kept on this device only.</li>
+				</ul>
+				<dl class="stats">
+					<div><dt>Albums</dt><dd>${c.albums.size.toLocaleString()}</dd></div>
+					<div><dt>Songs</dt><dd>${c.tracks.size.toLocaleString()}</dd></div>
+					<div><dt>Artists</dt><dd>${artists.toLocaleString()}</dd></div>
+					<div><dt>Hours of music</dt><dd>${hours.toLocaleString()}</dd></div>
+				</dl>
+				<p>Artists and rights holders who want a recording credited differently or removed can <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a>.</p>
+				<p class="about-foot"><span>Version ${APP_VERSION}</span><span>Catalog ${c.version}</span><a class="text-link" href="#/terms">Terms</a></p>
+			</div>`,
+	};
+}
+
+export function terms() {
+	return {
+		title: "Terms",
+		body: html`<div class="about terms">
+				<h1 class="page-title">Terms</h1>
+				<p class="lead">Using Zaideih means accepting these terms. They are short because the service is simple: free listening, nothing sold.</p>
+				<h2>Listening</h2>
+				<p>Zaideih is free for personal, non-commercial listening. There is no account, subscription or payment.</p>
+				<h2>Ownership</h2>
+				<p>The songs, recordings and album titles belong to their artists and rights holders. Zaideih does not claim ownership of them, does not sell them and earns nothing from them.</p>
+				<h2>Downloads</h2>
+				<p>Downloading saves songs inside the app on your device so they play without a connection. Downloads are for your own listening in Zaideih; copying, sharing, selling or republishing them is not permitted.</p>
+				<h2>Your data</h2>
+				<p>Likes, playlists, play history and downloads are stored on your device and are not sent anywhere. Library backups are files you keep. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
+				<h2>Availability</h2>
+				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
+				<h2>Rights holders</h2>
+				<p>To have a recording credited differently or removed, <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a> naming the album and the song.</p>
+				<h2>Changes</h2>
+				<p>These terms may be updated with new releases of the app. The current version is shown on the <a class="text-link" href="#/about">About</a> page.</p>
+			</div>`,
 	};
 }
 
