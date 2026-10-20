@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.20.6
+
+- GitHub workflows: check on every push; release pushes test, build and deploy the site, the audio Worker or D1 paths to Cloudflare, then tag and publish a GitHub release (docs/releasing.md)
+- The site deploys as Workers static assets (wrangler.jsonc), at workers.dev until the zaideih.com routes are enabled
+- tools/release-plan.mjs checks a release line before anything runs; tools/version.mjs --note writes the CHANGELOG.md section
+- index.html carries the release in its application-name meta, read back after a deploy
+
 ## v26.10.20.5
 
 - A stream that fails is retried once with a one-off query that bypasses the browser's saved copy. A copy saved from an older server answer (without the CORS header the player needs) is refused by the browser; the retry plays the song without an error. Chrome kept such copies of songs played before the Worker change; Firefox did not

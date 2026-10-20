@@ -1,0 +1,23 @@
+// The web app on Cloudflare: Workers static assets serving dist/web.
+//
+// No Worker code runs: Cloudflare serves the built files and applies
+// dist/web/_headers (CSP and caching). The release workflow builds dist/web
+// and runs `wrangler deploy` with this file (docs/releasing.md).
+//
+// Until a route is added, the site is served only at
+// https://zaideih.<account subdomain>.workers.dev. Adding the custom domain
+// below makes Cloudflare point zaideih.com at this Worker on the next deploy,
+// replacing whatever serves it now: add it when the switch is intended.
+{
+	"name": "zaideih",
+	"compatibility_date": "2026-05-01",
+	"assets": {
+		"directory": "./dist/web",
+		"not_found_handling": "none"
+	},
+	"workers_dev": true
+	// "routes": [
+	// 	{ "pattern": "zaideih.com", "custom_domain": true },
+	// 	{ "pattern": "www.zaideih.com", "custom_domain": true }
+	// ]
+}

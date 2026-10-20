@@ -6,6 +6,8 @@
  *   node tools/version.mjs --apply    write the next version to every package.json
  *   node tools/version.mjs --set 26.10.19.3 --apply   write a specific version
  *   node tools/version.mjs --check    fail unless every package.json has the same valid version
+ *   node tools/version.mjs --note "Help page" --note "…" --apply
+ *                                     also add a "## v<next>" section with these lines to CHANGELOG.md
  *
  * The local date is used, so a release made just after midnight takes the new day.
  */
@@ -15,6 +17,8 @@ import { parseArgs } from "node:util";
 import { VersionError, nextVersion, parseVersion } from "./lib/version.mjs";
 
 const PACKAGES = ["package.json", "platforms/desktop/package.json"];
+const CHANGELOG = "CHANGELOG.md";
+const CHANGELOG_HEAD = "# Version\n\n";
 
 function fail(message) {
 	console.error(`error: ${message}`);
@@ -26,6 +30,7 @@ const { values } = parseArgs({
 		apply: { type: "boolean", default: false },
 		check: { type: "boolean", default: false },
 		set: { type: "string" },
+		note: { type: "string", multiple: true },
 	},
 	strict: true,
 });
@@ -58,6 +63,14 @@ try {
 
 	console.log(`current    v${current}`);
 	console.log(`next       v${next}`);
+	const notes = (values.note ?? []).map((n) => n.trim()).filter(Boolean);
+	let changelog = null;
+	if (notes.length) {
+		changelog = await readFile(CHANGELOG, "utf8").catch((err) => fail(`cannot read ${CHANGELOG}: ${err.code}`));
+		if (changelog.split("\n").some((l) => l.trim() === `## v${next}`)) fail(`${CHANGELOG} already has a v${next} section`);
+		if (!changelog.startsWith(CHANGELOG_HEAD)) fail(`${CHANGELOG} must start with "${CHANGELOG_HEAD.trim()}"`);
+		console.log(`changelog  ${notes.length} line(s) under ## v${next}`);
+	}
 	if (!values.apply) {
 		console.log("\ndry run: nothing written. Re-run with --apply to update package.json files.");
 		process.exit(0);
@@ -78,7 +91,12 @@ try {
 			console.log(`wrote      ${lockPath}`);
 		}
 	}
-	console.log(`\nTag the release with: git tag v${next}`);
+	if (changelog !== null) {
+		const section = `## v${next}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n\n`;
+		await writeFile(CHANGELOG, CHANGELOG_HEAD + section + changelog.slice(CHANGELOG_HEAD.length));
+		console.log(`wrote      ${CHANGELOG}`);
+	}
+	console.log(`\nRelease with a commit whose first line is: release: web ${next} <note>   (see docs/releasing.md)`);
 } catch (err) {
 	if (err instanceof VersionError) fail(err.message);
 	throw err;

@@ -1,33 +1,53 @@
-name: CI
+# Every push and pull request: tests, checks and the builds a release makes.
+#
+# The release workflow calls this same file as its gate (with `gate: true`),
+# so a release is tested by exactly these steps. A push to master whose first
+# line starts with "release:" is skipped here: the release run tests it once,
+# rather than twice in parallel.
+name: check
 
 on:
   push:
-    branches: [master]
+    branches: ['**']
+    tags-ignore: ['v*']
   pull_request:
+  workflow_call:
+    inputs:
+      gate:
+        description: Called as the release gate.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  test:
+    if: inputs.gate || github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'release:')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      # Root dependencies only (esbuild). Electron belongs to platforms/desktop
+      # and is not needed to test or build the desktop renderer.
       - run: npm ci
+      # Unit tests: catalog, search, questions, artwork, diagnostics, tools,
+      # and the audio Worker against stand-ins for D1, R2 and the edge cache.
       - run: npm test
-      - name: Check release version
+      - name: Versions agree and match the scheme
         run: node tools/version.mjs --check
-      - name: Check audio paths cover the catalog
+      - name: Every track has an audio path
         run: node tools/media.mjs check
-      - run: node tools/catalog.mjs --apply
-      - run: node tools/build.mjs --platform web
+      # The web build exactly as a release makes it (catalog included), and
+      # the desktop renderer, so a change that breaks either fails here.
+      - run: npm run build
       - run: node tools/build.mjs --platform desktop
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web
-          path: dist/web
-          retention-days: 14
+      - name: The build carries its version
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          grep -q "data-version=\"$version\"" dist/web/index.html \
+            || { echo "::error::dist/web/index.html does not carry data-version=\"$version\""; exit 1; }
