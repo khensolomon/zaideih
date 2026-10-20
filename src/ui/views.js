@@ -9,6 +9,7 @@ import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
+import { decodeCode, explain } from "../core/diagnostic.js";
 import { closest, didYouMean, namedArtist, search } from "../core/search.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
@@ -475,6 +476,51 @@ export function terms() {
 				<h2>Changes</h2>
 				<p>These terms may be updated with new releases of the app. The current version is shown on the <a class="text-link" href="#/about">About</a> page.</p>
 			</div>`,
+	};
+}
+
+/* ---------- diagnostic codes (hidden: #/code/<code>) ---------- */
+const KIND_TEXT = {
+	unknown: "Playback failed", aborted: "Playback stopped", network: "Network error during playback",
+	decode: "Could not decode", unsupported: "Could not load or play", "download-missing": "Downloaded file missing",
+	offline: "Offline, not downloaded", "play-rejected": "The browser refused to play",
+};
+
+export function codeView(c, { code = "" }) {
+	const form = html`<form class="searchbox code-form" data-act="code-form">
+			<label class="sr" for="code-input">Diagnostic code</label>
+			<input id="code-input" name="code" value="${code}" placeholder="ZE-…" autocomplete="off" spellcheck="false">
+		</form>`;
+	if (!code) return { title: "Diagnostic code", body: html`<h1 class="page-title">Diagnostic code</h1>${form}<p class="muted">Paste a code from a playback error.</p>` };
+	let d;
+	try {
+		d = decodeCode(code);
+	} catch (err) {
+		return { title: "Diagnostic code", body: html`<h1 class="page-title">Diagnostic code</h1>${form}<div class="empty"><h2>Not a valid code</h2><p>${err.message}</p></div>` };
+	}
+	const t = c.tracks.get(d.trackId);
+	const { cause, steps } = explain(d);
+	const rows = [
+		["Song", t ? html`<a class="text-link" href="${href(`album/${t.album.id}`)}">${t.title}</a> (${creditOf(t.artists)}, ${t.album.title})` : "Not in this catalog"],
+		["Track id", String(d.trackId)],
+		["What failed", KIND_TEXT[d.kind] ?? d.kind],
+		["Played from", d.download ? "Downloaded copy" : "Stream"],
+		["Server answer", d.download ? "Not asked" : !d.probed ? "Not probed" : d.unreachable ? "No answer" : String(d.status)],
+		["Worker lookup", d.noTrack ? "No D1 row" : d.noObject ? "D1 row, no R2 object" : { memory: "From its memory cache", edge: "From its edge cache", d1: "From D1", "not-reported": "Not reported (Worker without diagnostic headers)" }[d.lookup]],
+		["File starts as", d.signature],
+		["File size", d.sizeKiB ? `${d.sizeKiB.toLocaleString()} KiB` : "Unknown"],
+		["App", `${d.version || "unknown version"}, ${d.desktop ? "desktop" : "web"}${d.online ? "" : ", offline"}`],
+		["When", d.at.toISOString().replace("T", " ").slice(0, 16) + " UTC"],
+	];
+	return {
+		title: "Diagnostic code",
+		body: html`<h1 class="page-title">Diagnostic code</h1>${form}
+			<div class="panel diag-panel">
+				<h3>${cause}</h3>
+				${steps.length ? html`<ul>${steps.map((s) => html`<li>${s}</li>`)}</ul>` : ""}
+			</div>
+			<dl class="diag-table">${rows.map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}</dl>
+			<p class="muted">The R2 key and code points: <code>node tools/diagnose.mjs ${code}</code></p>`,
 	};
 }
 

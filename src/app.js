@@ -34,6 +34,9 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("terms", V.terms);
+// Hidden: decodes a playback diagnostic code. Not linked anywhere.
+route("code", V.codeView);
+route("code/:code", V.codeView);
 
 /*
  * In-app navigation depth, stored in history.state so the Back button knows
@@ -233,7 +236,7 @@ function renderSheet() {
 					<button class="icon-btn" data-ctl="next" aria-label="Next">${icon("next")}</button>
 					<button class="icon-btn" data-ctl="repeat" aria-label="Repeat">${icon("repeat")}</button>
 				</div>
-				${s.error ? html`<p class="error" role="alert">${s.error}</p>` : ""}
+				${s.error ? html`<p class="error" role="alert">${s.error}${s.errorCode ? html`<small class="diag">Code <code>${s.errorCode}</code> <button class="link-btn" data-act="copy-code" data-code="${s.errorCode}">Copy</button></small>` : ""}</p>` : ""}
 			</div>
 			<section class="queue" aria-label="Queue">
 				<h2>Up next <span>${upcoming.length ? html`<button class="btn" data-act="clear-queue">Clear</button>` : ""}</span></h2>
@@ -416,6 +419,7 @@ const actions = {
 		rest.hidden = false;
 		el.remove();
 	},
+	"copy-code"(el) { copyCode(el.dataset.code, el); },
 	scope(el) {
 		setScope(el.dataset.scope);
 		const input = $("#q");
@@ -612,6 +616,11 @@ document.addEventListener("pointerout", seekPreviewEnd);
 
 document.addEventListener("submit", (e) => {
 	if (e.target.dataset.act === "search-form") { e.preventDefault(); $("#q")?.blur(); }
+	if (e.target.dataset.act === "code-form") {
+		e.preventDefault();
+		const value = $("#code-input").value.trim();
+		go(value ? `code/${encodeURIComponent(value)}` : "code");
+	}
 });
 
 document.addEventListener("focusin", (e) => {
@@ -674,16 +683,32 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* =================================================================== notices */
-on("notice", ({ message, kind, action }) => {
+async function copyCode(code, button) {
+	try {
+		await navigator.clipboard.writeText(code);
+		button.textContent = "Copied";
+	} catch {
+		// Clipboard refused (permissions, insecure context): select the code instead.
+		const range = document.createRange();
+		range.selectNodeContents(button.closest(".toast, .error")?.querySelector("code") ?? button);
+		getSelection().removeAllRanges();
+		getSelection().addRange(range);
+		button.textContent = "Selected, copy it";
+	}
+}
+
+on("notice", ({ message, kind, action, code }) => {
 	const box = $("#toasts");
 	const el = document.createElement("div");
 	el.className = `toast toast-in ${kind === "error" ? "error" : ""}`;
 	el.setAttribute("role", kind === "error" ? "alert" : "status");
-	el.innerHTML = html`<span>${message}</span>${action ? html`<button>${action.label}</button>` : ""}`;
-	if (action) $("button", el).addEventListener("click", () => { action.run(); el.remove(); });
+	// A diagnostic code rides along quietly: small, selectable, with a copy button.
+	el.innerHTML = html`<span>${message}${code ? html`<small class="diag">Code <code>${code}</code></small>` : ""}</span>${code ? html`<button data-copy>Copy code</button>` : action ? html`<button>${action.label}</button>` : ""}`;
+	if (code) $("[data-copy]", el).addEventListener("click", (e) => copyCode(code, e.currentTarget));
+	else if (action) $("button", el).addEventListener("click", () => { action.run(); el.remove(); });
 	box.append(el);
 	while (box.children.length > 3) box.firstChild.remove();
-	setTimeout(() => el.remove(), action ? 12000 : kind === "error" ? 7000 : 3200);
+	setTimeout(() => el.remove(), action || code ? 12000 : kind === "error" ? 7000 : 3200);
 });
 
 /* =================================================================== live updates */

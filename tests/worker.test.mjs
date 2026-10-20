@@ -128,14 +128,41 @@ test("unknown track is 404 and is not recorded", async () => {
 	const { env, statusWrites } = makeEnv();
 	const res = await call("/audio/8", { env, headers: { "sec-fetch-dest": "audio" } });
 	assert.equal(res.status, 404);
+	assert.equal(res.headers.get("X-Zaideih-Reason"), "no-track");
 	assert.equal(statusWrites.length, 0);
 });
 
 test("missing R2 object is 404 and recorded as not_found", async () => {
 	const { env, statusWrites } = makeEnv({ objects: {} });
+	env.META_CACHE_VERSION = "missing-object";
 	const res = await call("/audio/7", { env, headers: { "sec-fetch-dest": "audio" } });
 	assert.equal(res.status, 404);
+	assert.equal(res.headers.get("X-Zaideih-Reason"), "no-object");
 	assert.match(statusWrites[0].sql, /not_found/);
+});
+
+test("diagnostic headers name the lookup source and are exposed to allowed origins", async () => {
+	const { env } = makeEnv();
+	env.META_CACHE_VERSION = "diag";
+	const headers = { "sec-fetch-dest": "empty", origin: "https://zaideih.com", range: "bytes=0-15" };
+	const first = await call("/audio/7", { env, headers });
+	assert.equal(first.headers.get("X-Zaideih-Meta"), "d1");
+	assert.match(first.headers.get("Access-Control-Expose-Headers"), /X-Zaideih-Meta, X-Zaideih-Reason/);
+	const second = await call("/audio/7", { env, headers });
+	assert.equal(second.headers.get("X-Zaideih-Meta"), "memory");
+});
+
+test("changing META_CACHE_VERSION drops cached lookups", async () => {
+	const { env } = makeEnv();
+	env.META_CACHE_VERSION = "a";
+	await call("/audio/7", { env, headers: { "sec-fetch-dest": "audio" } });
+	env.DB = makeEnv({ rows: {} }).env.DB;
+	const cached = await call("/audio/7", { env, headers: { "sec-fetch-dest": "audio" } });
+	assert.equal(cached.status, 200, "the old lookup is still cached");
+	env.META_CACHE_VERSION = "b";
+	const fresh = await call("/audio/7", { env, headers: { "sec-fetch-dest": "audio" } });
+	assert.equal(fresh.status, 404);
+	assert.equal(fresh.headers.get("X-Zaideih-Meta"), "d1");
 });
 
 test("HEAD has headers but no body; bad methods and paths are rejected", async () => {

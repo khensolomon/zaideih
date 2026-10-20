@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.20.4
+
+- Playback failures carry a diagnostic code ("Code ZE-…", with Copy) under the error. The app probes the failure first: the HTTP status, the Worker's lookup source and 404 reason, and the file's first bytes (MP3, MP4/M4A, WMA, HTML and others), from the stream or the downloaded copy
+- `tools/diagnose.mjs`: decodes a code into the likely cause, the track, its R2 key with code points and a look-alike Myanmar mark order, and the D1 (`hex(folder_path)`) and R2 commands to check it; `track <id> --probe` works without a code. Unlinked page `#/code/<code>` decodes in the app
+- Audio Worker: `X-Zaideih-Meta` (lookup from memory, edge cache or D1) and `X-Zaideih-Reason` (`no-track` or `no-object` on 404), exposed to allowed origins; `META_CACHE_VERSION` drops every cached lookup when changed. Needs a redeploy
+- A failed play no longer reports twice (the play() rejection and the media error)
+
 ## v26.10.20.3
 
 - Search answers questions: "most played Mizo artists", "gospel albums from the 90s", "newest albums by Lianbawi", "top songs 1987", "who is the most played artist". The answer leads the suggestions with its top results, and the results page lists it in full (songs with Play all)
