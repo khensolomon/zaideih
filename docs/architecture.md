@@ -82,6 +82,12 @@ Access rules in the Worker:
 - `fetch()` requests (`Sec-Fetch-Dest: empty`), which the app uses to download songs for offline play, are served only to origins in `ALLOWED_ORIGINS`, with CORS headers. The desktop app's origin is `app://zaideih`.
 - Fetch metadata headers deter casual hotlinking; they are not access control, since non-browser clients can send any headers.
 
+## Playback diagnostics
+
+When a song fails, the player shows its message at once, then probes the failure (`src/core/probe.js`): for a downloaded song it reads the first 16 bytes of the saved file; for a stream it makes a ranged, uncached request for the first 16 bytes and reads the status and the Worker's `X-Zaideih-Meta` and `X-Zaideih-Reason` headers. The findings are packed into a diagnostic code (`src/core/diagnostic.js`): format version, what failed, flags (download, desktop, online, probed, unreachable, no D1 row, no R2 object), HTTP status, the file's leading-byte format, the Worker's lookup source, track id, size, app version and time, then a CRC-8, in Crockford base32 groups ("ZE-0420-R068-…"). The code holds no paths or personal data. It appears under the error notice and in Now playing, with a Copy button.
+
+`tools/diagnose.mjs <code>` decodes it, names the likely cause and prints the track's R2 key with its code points and the D1 and R2 commands that check it; `track <id> --probe` does the same without a code. The app decodes codes on an unlinked page, `#/code/<code>`. A mistyped code fails the check digit and is refused with that reason.
+
 ## Offline
 
 | What | Web | Desktop |

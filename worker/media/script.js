@@ -20,6 +20,14 @@
  *   BUCKET           R2 bucket with the audio objects
  *   ALLOWED_ORIGINS  comma-separated origins allowed to download, e.g.
  *                    "https://zaideih.com,app://zaideih"
+ *   META_CACHE_VERSION  optional; part of the edge-cache key for track
+ *                    lookups. Changing it drops every cached lookup, e.g.
+ *                    after correcting paths in D1.
+ *
+ * Diagnostic headers (read by the app's failure probe, see
+ * src/core/probe.js; they carry no paths):
+ *   X-Zaideih-Meta    where the track lookup came from: memory, edge or d1
+ *   X-Zaideih-Reason  on 404: no-track (no D1 row) or no-object (no R2 object)
  *
  * The `tracks` table is loaded from assets/data/media.json with
  * `node tools/media.mjs d1 --apply` and `wrangler d1 execute`.
@@ -30,9 +38,9 @@ const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
 const MEDIA_DESTINATIONS = new Set(["audio", "video"]);
-const EXPOSED_HEADERS = "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag";
+const EXPOSED_HEADERS = "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, X-Zaideih-Meta, X-Zaideih-Reason";
 
-/** @type {Map<number, { value: object | null, expiresAt: number }>} */
+/** @type {Map<string, { value: object | null, expiresAt: number }>} keyed "<META_CACHE_VERSION>:<id>" */
 const memoryCache = new Map();
 
 /** Parsed ALLOWED_ORIGINS, cached per isolate. */
@@ -113,8 +121,14 @@ function corsHeaders(origin, env) {
 async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	const range = request.headers.get("range");
 
-	const track = await getTrackMeta(trackId, env, ctx);
-	if (!track) return new Response("Not Found", { status: 404, headers: cors ?? undefined });
+	const { meta: track, source } = await getTrackMeta(trackId, env, ctx);
+	const diag = (reason) => {
+		const h = new Headers(cors ?? undefined);
+		h.set("X-Zaideih-Meta", source);
+		if (reason) h.set("X-Zaideih-Reason", reason);
+		return h;
+	};
+	if (!track) return new Response("Not Found", { status: 404, headers: diag("no-track") });
 
 	const objectKey = `music/${track.folder_path}/${track.mp3}`;
 
@@ -124,17 +138,17 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	} catch (err) {
 		console.error("R2 get threw", { trackId, objectKey, err });
 		ctx.waitUntil(recordStatus(env, trackId, "fetch_error"));
-		return new Response("Internal Server Error", { status: 500, headers: cors ?? undefined });
+		return new Response("Internal Server Error", { status: 500, headers: diag() });
 	}
 
 	if (!object) {
 		// D1 lists the track but R2 has no object: drift between media.json and the bucket.
 		console.error("R2 object missing", { trackId, objectKey });
 		ctx.waitUntil(recordStatus(env, trackId, "not_found"));
-		return new Response("Not Found", { status: 404, headers: cors ?? undefined });
+		return new Response("Not Found", { status: 404, headers: diag("no-object") });
 	}
 
-	const headers = new Headers(cors ?? undefined);
+	const headers = diag();
 	object.writeHttpMetadata(headers);
 	headers.set("Accept-Ranges", "bytes");
 	headers.set("Content-Type", "audio/mpeg");
@@ -190,18 +204,21 @@ async function recordStatus(env, trackId, kind) {
 // Track metadata lookup (isolate memory -> edge cache -> D1)
 // ============================================================================
 
+/** Returns { meta, source }: meta is null for an unknown id; source is memory, edge or d1. */
 async function getTrackMeta(trackId, env, ctx) {
-	const memHit = memoryCache.get(trackId);
-	if (memHit && memHit.expiresAt > Date.now()) return memHit.value;
-	if (memHit) memoryCache.delete(trackId);
+	const version = env.META_CACHE_VERSION ?? "1";
+	const memKey = `${version}:${trackId}`;
+	const memHit = memoryCache.get(memKey);
+	if (memHit && memHit.expiresAt > Date.now()) return { meta: memHit.value, source: "memory" };
+	if (memHit) memoryCache.delete(memKey);
 
-	const cacheKey = new Request(`https://cache.internal/track-meta/${trackId}`);
+	const cacheKey = new Request(`https://cache.internal/track-meta/v${encodeURIComponent(version)}/${trackId}`);
 	const cache = caches.default;
 	const cached = await cache.match(cacheKey);
 	if (cached) {
 		const meta = await cached.json();
-		setMemoryCache(trackId, meta, TRACK_META_TTL_SECONDS * 1000);
-		return meta;
+		setMemoryCache(memKey, meta, TRACK_META_TTL_SECONDS * 1000);
+		return { meta, source: "edge" };
 	}
 
 	const result = await env.DB.withSession("first-unconstrained")
@@ -210,19 +227,19 @@ async function getTrackMeta(trackId, env, ctx) {
 		.first();
 
 	if (!result) {
-		setMemoryCache(trackId, null, NEGATIVE_CACHE_TTL_MS);
-		return null;
+		setMemoryCache(memKey, null, NEGATIVE_CACHE_TTL_MS);
+		return { meta: null, source: "d1" };
 	}
 
 	const meta = { folder_path: result.folder_path, mp3: result.mp3 };
-	setMemoryCache(trackId, meta, TRACK_META_TTL_SECONDS * 1000);
+	setMemoryCache(memKey, meta, TRACK_META_TTL_SECONDS * 1000);
 	ctx.waitUntil(cache.put(cacheKey, new Response(JSON.stringify(meta), {
 		headers: {
 			"Content-Type": "application/json",
 			"Cache-Control": `public, max-age=${TRACK_META_TTL_SECONDS}`,
 		},
 	})));
-	return meta;
+	return { meta, source: "d1" };
 }
 
 function setMemoryCache(trackId, value, ttlMs) {

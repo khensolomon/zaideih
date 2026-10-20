@@ -623,6 +623,14 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 .toasts { position: fixed; z-index: 70; left: 50%; transform: translateX(-50%); bottom: calc(var(--deck) + 20px + env(safe-area-inset-bottom)); display: grid; gap: 8px; width: min(520px, calc(100vw - 24px)); }
 .toast { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: var(--radius-m); background: var(--ink); color: #3a3a3a; font-size: 15px; box-shadow: 0 8px 24px var(--shadow); }
 .toast.error { background: var(--danger-bg); color: #fff; }
+.diag { display: block; margin-top: 4px; font-size: 12.5px; opacity: 0.85; }
+.diag code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; user-select: all; letter-spacing: 0.02em; }
+.diag-panel h3 { line-height: 1.4; }
+.diag-panel ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); }
+.diag-table { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 20px 0; }
+.diag-table dt { color: var(--ink-3); }
+.diag-table dd { margin: 0; overflow-wrap: anywhere; }
+.code-form input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding-left: 18px; }
 .toast button { border: 0; background: none; color: inherit; font-weight: 700; text-decoration: underline; }
 .toast-in { animation: rise 0.2s ease-out; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }

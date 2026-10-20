@@ -133,6 +133,26 @@ npx wrangler tail                  # live logs while playing a song
 
 A rollback restores the old code and variables, including the missing CORS headers, so playback in the current app stops again until the new version is redeployed.
 
+## When one song fails
+
+A failed song shows a diagnostic code under the error ("Code ZE-…", with a Copy button). The code carries the track id, what failed, the probe's HTTP status, the Worker's lookup source and 404 reason, the first bytes of the file and the app version; no paths. Decode it with:
+
+```bash
+node tools/diagnose.mjs ZE-0420-R068-...          # cause, track, R2 key, check commands
+node tools/diagnose.mjs track 22503 --probe       # the same for any track, plus a request from this machine
+```
+
+The app also decodes codes on a page that is not linked anywhere: `#/code/<code>` (or `#/code` to paste one).
+
+The Worker sends two headers for this, exposed to allowed origins:
+
+- `X-Zaideih-Meta`: where the track lookup came from: `memory` (this isolate), `edge` (this data centre's cache, up to 24 hours old) or `d1`.
+- `X-Zaideih-Reason`, on 404 only: `no-track` (no D1 row) or `no-object` (the D1 row names a key R2 does not have).
+
+Lookups are cached per data centre for 24 hours, so a path corrected in D1 can keep failing in some regions until the cache expires. To drop every cached lookup at once, change `META_CACHE_VERSION` in `wrangler.toml` and redeploy.
+
+Myanmar names can hold the same marks in two orders (U+1037 and U+103A) that render identically, so a D1 path and an R2 key can look equal and still differ. `tools/diagnose.mjs` prints the key's code points and its look-alike, and the D1 command it prints shows `hex(folder_path)` for a byte comparison.
+
 ## Track statistics
 
 ```bash

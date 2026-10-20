@@ -8,8 +8,10 @@
 import { AudioSourceError, audioUrl } from "../config.js";
 import { creditOf } from "./catalog.js";
 import { db } from "./db.js";
+import { KIND_OF_MEDIA_ERROR } from "./diagnostic.js";
 import { library } from "./library.js";
 import { offline } from "./offline.js";
+import { diagnose } from "./probe.js";
 import { emit, notify } from "./store.js";
 import { visualizer } from "./visualizer.js";
 
@@ -46,6 +48,7 @@ const state = {
 	playing: false,
 	loading: false,
 	error: "",
+	errorCode: "",    // diagnostic code for the last failure (see core/diagnostic.js)
 	context: "",      // label of where playback started, e.g. an album title
 };
 
@@ -98,13 +101,15 @@ async function load(autoplay, startAt = 0) {
 	const track = current();
 	if (!track) return;
 	state.error = "";
+	state.errorCode = "";
 	state.loading = true;
 	changed();
 	updateMediaSession(track);
 	try {
 		audio.src = await sourceFor(track);
 	} catch (err) {
-		stopWithError(err instanceof AudioSourceError || err instanceof Error ? err.message : String(err));
+		const kind = !navigator.onLine && !offline.has(track.id) ? "offline" : offline.has(track.id) ? "download-missing" : "unknown";
+		stopWithError(err instanceof AudioSourceError || err instanceof Error ? err.message : String(err), kind);
 		return;
 	}
 	if (startAt > 0) {
@@ -120,7 +125,8 @@ async function load(autoplay, startAt = 0) {
 				changed();
 				return;
 			}
-			if (err.name !== "AbortError") stopWithError(`Playback failed: ${err.message}`);
+			// NotSupportedError: the media element's error event reports it with a code.
+			if (err.name !== "AbortError" && err.name !== "NotSupportedError") stopWithError(`Playback failed: ${err.message}`, "play-rejected");
 		}
 	} else {
 		state.loading = false;
@@ -128,13 +134,28 @@ async function load(autoplay, startAt = 0) {
 	}
 }
 
-function stopWithError(message) {
+/**
+ * Stops with a message, then probes the failure and attaches a diagnostic
+ * code to the state and the notice, for the admin to decode
+ * (tools/diagnose.mjs or the hidden #/code/<code> page).
+ */
+function stopWithError(message, kind = "unknown") {
 	audio.pause();
 	state.playing = false;
 	state.loading = false;
 	state.error = message;
 	changed();
-	notify(message, { kind: "error" });
+	const track = current();
+	if (!track) { notify(message, { kind: "error" }); return; }
+	diagnose(track, kind).then((code) => {
+		if (current() !== track || state.error !== message) return;
+		state.errorCode = code;
+		changed();
+		notify(message, { kind: "error", code });
+	}, (err) => {
+		console.error("diagnosing the failure failed", err);
+		notify(message, { kind: "error" });
+	});
 }
 
 const MEDIA_ERRORS = {
@@ -179,7 +200,7 @@ audio.addEventListener("ended", () => {
 });
 audio.addEventListener("error", () => {
 	if (!audio.src) return;
-	stopWithError(MEDIA_ERRORS[audio.error?.code] ?? "Playback failed.");
+	stopWithError(MEDIA_ERRORS[audio.error?.code] ?? "Playback failed.", KIND_OF_MEDIA_ERROR[audio.error?.code] ?? "unknown");
 });
 
 /** Optional (track) => Promise<url> supplying lock-screen artwork; see player.setArtwork. */
@@ -291,7 +312,7 @@ export const player = {
 	async play() {
 		if (!current()) return;
 		if (!audio.src || state.error) return load(true, audio.currentTime);
-		try { await audio.play(); } catch (err) { if (err.name !== "AbortError") stopWithError(`Playback failed: ${err.message}`); }
+		try { await audio.play(); } catch (err) { if (err.name !== "AbortError" && err.name !== "NotSupportedError") stopWithError(`Playback failed: ${err.message}`, "play-rejected"); }
 	},
 
 	pause() { audio.pause(); },
