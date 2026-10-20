@@ -14,7 +14,7 @@ compatibility_date = "2026-05-01"
 [vars]
 # Origins allowed to download audio with fetch() for offline play (CORS).
 # app://zaideih is the desktop app; localhost entries are for local testing.
-ALLOWED_ORIGINS = "https://zaideih.com,https://www.zaideih.com,app://zaideih,http://localhost:8080,http://127.0.0.1:8080"
+ALLOWED_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih,http://localhost:8080,http://127.0.0.1:8080"
 # Part of the edge-cache key for track lookups (cached 24 hours per data
 # centre). Change it and redeploy to drop every cached lookup, e.g. after
 # correcting paths in D1.
