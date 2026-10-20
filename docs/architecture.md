@@ -115,9 +115,10 @@ Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both 
 
 ## Deployment
 
-- Web: Cloudflare Pages (build command `npm ci && npm run build`, output `dist/web`) or Workers static assets. `dist/web/_headers` sets the CSP and caching: hashed assets and catalog files are immutable; `index.html`, `sw.js` and `meta.json` always revalidate.
+- Web: Workers static assets (`wrangler.jsonc`, Worker `zaideih`, files from `dist/web`, no Worker code). `dist/web/_headers` sets the CSP and caching: hashed assets and catalog files are immutable; `index.html`, `sw.js` and `meta.json` always revalidate. `index.html` carries the release in `<meta name="application-name" data-version>`, which the release workflow reads back from the live site.
+- Releases: a push to master whose first line is `release: web|audio|d1|…` tests, builds and deploys with wrangler, then tags the commit and publishes the CHANGELOG.md section as a GitHub release: [releasing.md](releasing.md).
 - Audio Worker: `npx wrangler deploy --config worker/media/wrangler.toml`. Step-by-step guide, including what changed when Django was removed: [worker-audio.md](worker-audio.md).
-- CI (`.github/workflows/ci.yml`) runs the tests, checks `media.json` coverage, and builds both platforms on every push and pull request.
+- CI (`.github/workflows/ci.yml`) runs the tests, checks the versions and `media.json` coverage, and builds both platforms on every push and pull request; the release workflow calls it as its gate.
 
 ## Open items
 

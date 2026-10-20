@@ -149,7 +149,8 @@ for (const marker of ["%JS%", "%CSS%", "<!--%HEAD%-->"]) {
 const index = template
 	.replace("%JS%", js)
 	.replace("%CSS%", css)
-	.replace("<!--%HEAD%-->", platform.head.join("\n  "));
+	// The release workflow reads data-version from the live page to confirm a deploy.
+	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
 
 // 4. Build id = hash of everything shipped; names the service worker cache.
