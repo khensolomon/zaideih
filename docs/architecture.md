@@ -90,6 +90,10 @@ When a song still fails, the player shows its message at once, then probes the f
 
 `tools/diagnose.mjs <code>` decodes it, names the likely cause and prints the track's R2 key with its code points and the D1 and R2 commands that check it; `track <id> --probe` does the same without a code. The app decodes codes on an unlinked page, `#/code/<code>`. A mistyped code fails the check digit and is refused with that reason.
 
+## Usage statistics
+
+Google Analytics 4 (`G-65TTKMZEGC`, set at build time as `ZAIDEIH_GA_ID`; empty disables) is built into production web builds only, never dev or desktop builds. `src/core/analytics.js` loads nothing until the listener chooses Allow on the first-visit card (basic consent mode); the choice is kept per device in `localStorage` (`zaideih.analytics`) and changed on the About page. Page views are sent by the app on each route change (`send_page_view: false`, since routing is by hash), with the address stripped of its query so search text is never sent, and a diagnostic code page reported as `#/code`. A `play_track` event (track, album and language ids) is sent once per song started. The CSP adds Google's documented hosts (`*.googletagmanager.com` for scripts; `*.google-analytics.com`, `*.analytics.google.com` and `*.googletagmanager.com` for images and connections) only when analytics is built in.
+
 ## Offline
 
 | What | Web | Desktop |

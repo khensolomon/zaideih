@@ -1,3 +1,4 @@
+import { analytics } from "./core/analytics.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
 import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
@@ -82,6 +83,9 @@ async function render({ keepScroll = false } = {}) {
 	document.title = out.title === "Home" ? "Zaideih" : `${out.title} | Zaideih`;
 	markNav(r.path);
 	updateNavbar(r.path, out.title);
+	// The address without its query: search text never leaves the device, and
+	// a diagnostic code is reported as the bare "code" page.
+	if (!keepScroll) analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
 	scrollTo(0, scroll);
 	if (!keepScroll) {
 		const heading = view.querySelector("h1");
@@ -421,6 +425,13 @@ const actions = {
 		el.remove();
 	},
 	"copy-code"(el) { copyCode(el.dataset.code, el); },
+	consent(el) {
+		analytics.setChoice(el.dataset.value);
+		$("#consent")?.remove();
+		// About shows the current choice; refresh it when changed there.
+		if (currentRoute?.path === "about") rerender();
+		else if (el.dataset.value === "granted") analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
+	},
 	scope(el) {
 		setScope(el.dataset.scope);
 		const input = $("#q");
@@ -750,7 +761,29 @@ on("downloads", () => {
 		downloadsRerender = setTimeout(rerender, 400);
 	}
 });
-on("player", () => { renderBar(); markPlaying(); });
+let reportedPlay = null;
+on("player", (s) => {
+	renderBar();
+	markPlaying();
+	// One "play_track" per song started; pausing and resuming does not count again.
+	const t = player.current();
+	if (s.playing && t && t.id !== reportedPlay) {
+		reportedPlay = t.id;
+		analytics.event("play_track", { track_id: String(t.id), album_id: t.album.id, language: t.album.lang.name });
+	}
+});
+
+/* =================================================================== usage statistics consent */
+function showConsent() {
+	if (!analytics.available || analytics.choice() || $("#consent")) return;
+	const el = document.createElement("section");
+	el.id = "consent";
+	el.className = "consent";
+	el.setAttribute("aria-label", "Usage statistics");
+	el.innerHTML = html`<p><strong>Help Zaideih see what is listened to?</strong> With your permission, visits and song plays are counted with Google Analytics. Nothing from your library or searches is sent. <a class="text-link" href="#/terms">Terms</a></p>
+		<div class="consent-actions"><button class="btn primary" data-act="consent" data-value="granted">Allow</button><button class="btn" data-act="consent" data-value="denied">No thanks</button></div>`;
+	document.body.append(el);
+}
 on("volume", renderVolume);
 on("time", renderTime);
 on("library", () => {
@@ -807,6 +840,7 @@ export async function boot(platform) {
 		const t = player.current();
 		if (t) setLikeState(e.currentTarget, await library.toggleLike(t.id), { animate: true });
 	});
+	analytics.init();
 	viz.init($("#bar"));
 	setLangName(V.langLabel);
 	player.setArtwork((t) => coverImage(t.album, t.n - 1));
@@ -817,6 +851,7 @@ export async function boot(platform) {
 	trackDepth();
 	await render();
 	document.body.classList.add("ready");
+	showConsent();
 	emit("ready");
 	platform.onReady?.();
 }

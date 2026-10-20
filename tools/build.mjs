@@ -11,6 +11,9 @@
  *
  * Environment:
  *   ZAIDEIH_AUDIO_URL   audio URL template (see src/config.js).
+ *   ZAIDEIH_GA_ID       Google Analytics 4 measurement id for the web build
+ *                       (default G-65TTKMZEGC; empty disables). Dev and
+ *                       desktop builds never include analytics.
  *                       Default: https://media.zaideih.com/audio/{id}
  *
  * Usage:
@@ -26,6 +29,7 @@ import * as esbuild from "esbuild";
 import { VersionError, parseVersion } from "./lib/version.mjs";
 
 const DEFAULT_AUDIO_URL = "https://media.zaideih.com/audio/{id}";
+const DEFAULT_GA_ID = "G-65TTKMZEGC";
 const CATALOG = "build/catalog";
 const TARGET = ["es2021", "chrome100", "safari15", "firefox100"];
 
@@ -85,6 +89,10 @@ try {
 }
 if (!/\{(id|n)\}/.test(audioTemplate)) die("ZAIDEIH_AUDIO_URL must contain {id} or {n} so each track resolves to its own file.");
 
+// Analytics: production web builds only, and only after the listener agrees (src/core/analytics.js).
+const gaId = values.platform === "web" && !dev ? (process.env.ZAIDEIH_GA_ID ?? DEFAULT_GA_ID).trim() : "";
+if (gaId && !/^G-[A-Z0-9]{4,}$/.test(gaId)) die(`ZAIDEIH_GA_ID must look like G-XXXXXXXXXX (or be empty to disable analytics), got "${gaId}"`);
+
 let catalogMeta;
 try {
 	catalogMeta = JSON.parse(await readFile(join(CATALOG, "meta.json"), "utf8"));
@@ -126,6 +134,7 @@ const app = await esbuild.build({
 		__AUDIO_URL__: JSON.stringify(audioTemplate),
 		__APP_VERSION__: JSON.stringify(release),
 		__DEV__: JSON.stringify(dev),
+		__GA_ID__: JSON.stringify(gaId),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -183,12 +192,14 @@ if (values.platform === "web") {
 	});
 
 	const media = ["'self'", "blob:", audioOrigin].join(" ");
-	const connect = ["'self'", audioOrigin].join(" ");
+	// Google's documented hosts for GA4 (gtag.js), added only when analytics is built in.
+	const ga = gaId ? { script: " https://*.googletagmanager.com", img: " https://*.google-analytics.com https://*.googletagmanager.com", connect: " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" } : { script: "", img: "", connect: "" };
+	const connect = ["'self'", audioOrigin].join(" ") + ga.connect;
 	await writeFile(join(OUT, "_headers"), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src ${media}; connect-src ${connect}; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'${ga.script}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${ga.img}; font-src 'self'; media-src ${media}; connect-src ${connect}; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 
 /
   Cache-Control: no-cache
