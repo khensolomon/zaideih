@@ -414,7 +414,7 @@ export async function libraryView(c, { tab = "liked" }) {
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
 			${body}
-			<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a></p>`,
+			<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="#/help">Help</a></p>`,
 	};
 }
 
@@ -475,6 +475,36 @@ export function terms() {
 				<p>To have a recording credited differently or removed, <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a> naming the album and the song.</p>
 				<h2>Changes</h2>
 				<p>These terms may be updated with new releases of the app. The current version is shown on the <a class="text-link" href="#/about">About</a> page.</p>
+			</div>`,
+	};
+}
+
+/* ---------- help ---------- */
+export function help() {
+	return {
+		title: "Help",
+		body: html`<div class="about terms help">
+				<h1 class="page-title">Help</h1>
+				<h2 id="song-wont-play">A song won't play</h2>
+				<p>The player already tries a failed song a second time, without the browser's saved copy. If it still fails while other songs play, the cause is usually one of these.</p>
+				<ol>
+					<li><strong>An old copy saved in this browser.</strong> Browsers keep songs they have played. A copy saved from an older version of the Zaideih server can be refused by the current app. Check: play the song in a private window or another browser. If it plays there, clear this browser's cached files (below).</li>
+					<li><strong>A damaged download.</strong> If the song is downloaded, remove the download from its menu and download it again.</li>
+					<li><strong>The connection.</strong> On a slow or interrupted connection, try again, or download the song while the connection is good.</li>
+				</ol>
+				<h2 id="clear-cache">Clear the browser's cached files</h2>
+				<p>Clear only cached files. Your likes, playlists, history and downloads stay. Clearing all site data or cookies for Zaideih removes them too, so back up the library first (Library, Back up library).</p>
+				<ul class="steps">
+					<li><strong>Chrome, Edge</strong>: Settings, Privacy and security, Delete browsing data. Tick only “Cached images and files”, then Delete data.</li>
+					<li><strong>Firefox</strong>: Settings, Privacy &amp; Security, Cookies and Site Data, Clear Data. Tick only “Temporary cached files and pages”, then Clear.</li>
+					<li><strong>Safari on Mac</strong>: Settings, Advanced, tick “Show features for web developers”, then Develop, Empty Caches.</li>
+					<li><strong>Safari on iPhone and iPad</strong>: there is no cache-only option. Settings, Apps, Safari, Advanced, Website Data removes everything for the site, so back up the library first.</li>
+				</ul>
+				<p>Then reload Zaideih and play the song again.</p>
+				<h2 id="report">Still not playing</h2>
+				<p>An error shows a code under the message, starting with “ZE-”. It tells us which song failed and why, without any personal data. Copy it and <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">report it</a> with the song's name.</p>
+				<h2 id="offline">Listening offline</h2>
+				<p>Songs play offline once downloaded: use Download on an album, or the menu of a song. The browser may remove downloads when the device runs low on space; installing Zaideih to the home screen makes that less likely. Downloads are kept per browser and device.</p>
 			</div>`,
 	};
 }

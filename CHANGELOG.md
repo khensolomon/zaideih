@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.20.5
+
+- A stream that fails is retried once with a one-off query that bypasses the browser's saved copy. A copy saved from an older server answer (without the CORS header the player needs) is refused by the browser; the retry plays the song without an error. Chrome kept such copies of songs played before the Worker change; Firefox did not
+- Help page (`#/help`): why a song may not play, how to check (private window or another browser), clearing only cached files per browser so likes and downloads stay, and reporting a code. Linked from errors, the sidebar and Library
+- Error for media code 4 now reads "This song could not be played. If other songs play, see Help."; diagnostic codes record whether the cache-bypassing retry ran, and the explanation tells a refused saved copy from a damaged file
+
 ## v26.10.20.4
 
 - Playback failures carry a diagnostic code ("Code ZE-…", with Copy) under the error. The app probes the failure first: the HTTP status, the Worker's lookup source and 404 reason, and the file's first bytes (MP3, MP4/M4A, WMA, HTML and others), from the stream or the downloaded copy

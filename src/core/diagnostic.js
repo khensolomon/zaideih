@@ -41,6 +41,7 @@ export const FLAGS = {
 	online: 4,         // navigator.onLine at the time
 	probed: 8,         // a probe ran
 	unreachable: 16,   // the probe got no HTTP answer (offline, blocked or CORS)
+	retried: 32,       // the player already retried once past the browser cache
 	noObject: 64,      // Worker: D1 row exists, R2 object missing
 	noTrack: 128,      // Worker: no D1 row
 };
@@ -251,9 +252,13 @@ export function explain(d) {
 		} else if (d.signature === "html" || d.signature === "text" || d.signature === "empty") {
 			cause = `The object in R2 is not audio (it starts as ${d.signature}).`;
 			steps.push("Replace the R2 object with the real audio file.");
+		} else if (PLAYABLE.has(d.signature) && !d.retried) {
+			cause = "The server delivers MP3 data, but this browser refused the song, probably because of a saved copy from an older server answer (the player had not yet retried past the browser cache).";
+			steps.push("Try the song in another browser or a private window; if it plays there, clear this browser's cached files (see #/help).");
 		} else if (PLAYABLE.has(d.signature)) {
-			cause = "The server delivers MP3 data, but the browser could not play it: the file is probably damaged or unusually encoded.";
+			cause = "The server delivers MP3 data and a fresh request failed too: the file is probably damaged or unusually encoded.";
 			steps.push("Download the file from R2 and play it locally; re-encode or replace it if it fails there too.");
+			steps.push("If it plays in another browser, the browser itself is the problem: clear its cached files (see #/help).");
 			if (d.metaCached) steps.push("The Worker answered from its cached lookup; if D1 was changed recently, bump META_CACHE_VERSION.");
 		} else {
 			cause = "The server answered, but the file does not start like any known audio format.";

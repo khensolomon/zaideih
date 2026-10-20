@@ -34,6 +34,7 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("terms", V.terms);
+route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
 route("code", V.codeView);
 route("code/:code", V.codeView);
@@ -98,7 +99,7 @@ async function render({ keepScroll = false } = {}) {
 function markNav(path) {
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path === "about" || path === "terms" ? path : "home";
+		: path === "about" || path === "terms" || path === "help" ? path : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
 		else a.removeAttribute("aria-current");
@@ -236,7 +237,7 @@ function renderSheet() {
 					<button class="icon-btn" data-ctl="next" aria-label="Next">${icon("next")}</button>
 					<button class="icon-btn" data-ctl="repeat" aria-label="Repeat">${icon("repeat")}</button>
 				</div>
-				${s.error ? html`<p class="error" role="alert">${s.error}${s.errorCode ? html`<small class="diag">Code <code>${s.errorCode}</code> <button class="link-btn" data-act="copy-code" data-code="${s.errorCode}">Copy</button></small>` : ""}</p>` : ""}
+				${s.error ? html`<p class="error" role="alert">${s.error} <a class="text-link" href="#/help" data-act="close-sheet">Help</a>${s.errorCode ? html`<small class="diag">Code <code>${s.errorCode}</code> <button class="link-btn" data-act="copy-code" data-code="${s.errorCode}">Copy</button></small>` : ""}</p>` : ""}
 			</div>
 			<section class="queue" aria-label="Queue">
 				<h2>Up next <span>${upcoming.length ? html`<button class="btn" data-act="clear-queue">Clear</button>` : ""}</span></h2>
@@ -697,18 +698,20 @@ async function copyCode(code, button) {
 	}
 }
 
-on("notice", ({ message, kind, action, code }) => {
+on("notice", ({ message, kind, action, code, help }) => {
 	const box = $("#toasts");
 	const el = document.createElement("div");
 	el.className = `toast toast-in ${kind === "error" ? "error" : ""}`;
 	el.setAttribute("role", kind === "error" ? "alert" : "status");
 	// A diagnostic code rides along quietly: small, selectable, with a copy button.
-	el.innerHTML = html`<span>${message}${code ? html`<small class="diag">Code <code>${code}</code></small>` : ""}</span>${code ? html`<button data-copy>Copy code</button>` : action ? html`<button>${action.label}</button>` : ""}`;
+	el.innerHTML = html`<span>${message}${code ? html`<small class="diag">Code <code>${code}</code></small>` : ""}</span>
+		<span class="toast-actions">${help ? html`<a href="#/help">Help</a>` : ""}${code ? html`<button data-copy>Copy code</button>` : action ? html`<button>${action.label}</button>` : ""}</span>`;
 	if (code) $("[data-copy]", el).addEventListener("click", (e) => copyCode(code, e.currentTarget));
-	else if (action) $("button", el).addEventListener("click", () => { action.run(); el.remove(); });
+	else if (action) $(".toast-actions button", el).addEventListener("click", () => { action.run(); el.remove(); });
+	$(".toast-actions a", el)?.addEventListener("click", () => el.remove());
 	box.append(el);
 	while (box.children.length > 3) box.firstChild.remove();
-	setTimeout(() => el.remove(), action || code ? 12000 : kind === "error" ? 7000 : 3200);
+	setTimeout(() => el.remove(), action || code || help ? 12000 : kind === "error" ? 7000 : 3200);
 });
 
 /* =================================================================== live updates */

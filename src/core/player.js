@@ -37,6 +37,8 @@ try {
 let catalog = null;
 let objectUrl = null;
 let recordedFor = null;
+/** Track id already retried past the browser cache for the current load. */
+let retriedFor = null;
 let persistTimer = 0;
 
 const state = {
@@ -103,6 +105,7 @@ async function load(autoplay, startAt = 0) {
 	state.error = "";
 	state.errorCode = "";
 	state.loading = true;
+	retriedFor = null;
 	changed();
 	updateMediaSession(track);
 	try {
@@ -139,7 +142,7 @@ async function load(autoplay, startAt = 0) {
  * code to the state and the notice, for the admin to decode
  * (tools/diagnose.mjs or the hidden #/code/<code> page).
  */
-function stopWithError(message, kind = "unknown") {
+function stopWithError(message, kind = "unknown", extra = {}) {
 	audio.pause();
 	state.playing = false;
 	state.loading = false;
@@ -147,14 +150,14 @@ function stopWithError(message, kind = "unknown") {
 	changed();
 	const track = current();
 	if (!track) { notify(message, { kind: "error" }); return; }
-	diagnose(track, kind).then((code) => {
+	diagnose(track, kind, extra).then((code) => {
 		if (current() !== track || state.error !== message) return;
 		state.errorCode = code;
 		changed();
-		notify(message, { kind: "error", code });
+		notify(message, { kind: "error", code, help: true });
 	}, (err) => {
 		console.error("diagnosing the failure failed", err);
-		notify(message, { kind: "error" });
+		notify(message, { kind: "error", help: true });
 	});
 }
 
@@ -162,8 +165,8 @@ const MEDIA_ERRORS = {
 	1: "Playback was stopped.",
 	2: "A network error interrupted playback.",
 	3: "The audio file could not be decoded.",
-	// Chromium also reports an unreachable server as code 4, so the message names both causes.
-	4: "The audio could not be loaded. Check the connection; the file may also be missing on the server.",
+	// Chromium reports an unreachable server, a missing file and a refused saved copy all as code 4.
+	4: "This song could not be played. If other songs play, see Help.",
 };
 
 audio.addEventListener("playing", () => {
@@ -198,9 +201,37 @@ audio.addEventListener("ended", () => {
 	else if (state.repeat === "all" && state.queue.length) player.jump(0);
 	else { state.playing = false; changed(); }
 });
+/**
+ * The URL with a one-off query, so the browser fetches it again instead of
+ * reusing a saved copy. The Worker reads only the path.
+ */
+function bypassingCache(url) {
+	return `${url}${url.includes("?") ? "&" : "?"}fresh=${Date.now().toString(36)}`;
+}
+
 audio.addEventListener("error", () => {
 	if (!audio.src) return;
-	stopWithError(MEDIA_ERRORS[audio.error?.code] ?? "Playback failed.", KIND_OF_MEDIA_ERROR[audio.error?.code] ?? "unknown");
+	const code = audio.error?.code;
+	const track = current();
+	// A browser can keep a saved copy of a song from an older server answer
+	// (for example one without the CORS header the player now needs) and
+	// refuse it. Retry a failed stream once past the browser cache.
+	if (track && (code === 2 || code === 4) && !offline.has(track.id) && retriedFor !== track.id && navigator.onLine) {
+		retriedFor = track.id;
+		const at = audio.currentTime || 0;
+		try {
+			audio.src = bypassingCache(audioUrl(track));
+		} catch (err) {
+			stopWithError(err.message, "unknown");
+			return;
+		}
+		if (at > 0) audio.addEventListener("loadedmetadata", () => { audio.currentTime = at; }, { once: true });
+		audio.play().catch((err) => {
+			if (err.name !== "AbortError" && err.name !== "NotSupportedError") stopWithError(`Playback failed: ${err.message}`, "play-rejected");
+		});
+		return;
+	}
+	stopWithError(MEDIA_ERRORS[code] ?? "Playback failed.", KIND_OF_MEDIA_ERROR[code] ?? "unknown", { retried: retriedFor === track?.id });
 });
 
 /** Optional (track) => Promise<url> supplying lock-screen artwork; see player.setArtwork. */

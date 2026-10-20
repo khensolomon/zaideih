@@ -11,7 +11,7 @@ test("codes round-trip every field", () => {
 	const d = decodeCode(code);
 	assert.deepEqual({ ...d, at: d.at.getTime() }, {
 		format: 1, kind: "unsupported", status: 206, signature: "mp4", lookup: "edge", trackId: 22503, sizeKiB: 4220, version: "26.10.20.4", at,
-		download: false, desktop: false, online: true, probed: true, unreachable: false, noObject: false, noTrack: false, metaCached: true,
+		download: false, desktop: false, online: true, probed: true, unreachable: false, retried: false, noObject: false, noTrack: false, metaCached: true,
 	});
 	assert.deepEqual(decodeCode(code.toLowerCase().replace(/-/g, " ")).trackId, 22503, "case and separators do not matter");
 });
@@ -44,6 +44,7 @@ test("explain names the likely cause", () => {
 	assert.match(explain({ kind: "unsupported", probed: true, status: 404, noTrack: true, metaCached: true }).steps.join(" "), /META_CACHE_VERSION/);
 	assert.match(explain({ kind: "unsupported", probed: true, unreachable: true, online: true }).cause, /ALLOWED_ORIGINS/);
 	assert.match(explain({ kind: "decode", download: true, signature: "html" }).cause, /downloaded copy/);
-	assert.match(explain({ kind: "decode", probed: true, status: 206, signature: "mp3-id3" }).cause, /damaged/);
+	assert.match(explain({ kind: "unsupported", probed: true, status: 206, signature: "mp3-id3" }).cause, /saved copy/);
+	assert.match(explain({ kind: "unsupported", probed: true, status: 206, signature: "mp3-id3", retried: true }).cause, /damaged/);
 	assert.equal(packVersion("26.10.20.3"), 26102003);
 });
