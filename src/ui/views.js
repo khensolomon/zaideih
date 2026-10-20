@@ -2,6 +2,7 @@
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
 import { APP_VERSION } from "../config.js";
+import { analytics } from "../core/analytics.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { answer, describe, parseIntent } from "../core/intent.js";
@@ -441,7 +442,7 @@ export function about(c) {
 					<li><strong>Free to listen.</strong> Every song plays for free, with no account.</li>
 					<li><strong>Nothing for sale.</strong> Zaideih does not sell music and takes no financial benefit from it.</li>
 					<li><strong>The music belongs to its artists.</strong> Zaideih only keeps it available.</li>
-					<li><strong>Your library stays with you.</strong> Likes, playlists, history and downloads are kept on this device only.</li>
+					<li><strong>Your library stays with you.</strong> Likes, playlists, history and downloads are kept on this device only.${analytics.available ? " Usage statistics are only collected if you allow them." : ""}</li>
 				</ul>
 				<dl class="stats">
 					<div><dt>Albums</dt><dd>${c.albums.size.toLocaleString()}</dd></div>
@@ -449,6 +450,13 @@ export function about(c) {
 					<div><dt>Artists</dt><dd>${artists.toLocaleString()}</dd></div>
 					<div><dt>Hours of music</dt><dd>${hours.toLocaleString()}</dd></div>
 				</dl>
+				${analytics.available ? html`<div class="panel stats-choice">
+					<h3>Usage statistics</h3>
+					<p class="muted">${analytics.choice() === "granted" ? "On: visits and song plays on this device are counted with Google Analytics." : "Off: nothing about your use of Zaideih is sent from this device."} Your library and searches are never sent.</p>
+					<div class="actions" style="margin:10px 0 0">${analytics.choice() === "granted"
+						? html`<button class="btn" data-act="consent" data-value="denied">Turn off</button>`
+						: html`<button class="btn" data-act="consent" data-value="granted">Turn on</button>`}</div>
+				</div>` : ""}
 				<p>Artists and rights holders who want a recording credited differently or removed can <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a>.</p>
 				<p class="about-foot"><span>Version ${APP_VERSION}</span><span>Catalog ${c.version}</span><a class="text-link" href="#/terms">Terms</a></p>
 			</div>`,
@@ -469,6 +477,7 @@ export function terms() {
 				<p>Downloading saves songs inside the app on your device so they play without a connection. Downloads are for your own listening in Zaideih; copying, sharing, selling or republishing them is not permitted.</p>
 				<h2>Your data</h2>
 				<p>Likes, playlists, play history and downloads are stored on your device and are not sent anywhere. Library backups are files you keep. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
+				<p>Usage statistics are off unless you allow them. When allowed, Google Analytics counts page visits (the page's address within Zaideih and its title) and song plays (which song, album and language), and sets its own cookies for that; Google processes this data under its own terms. Searches and your library are never sent. The choice is kept per device and can be changed at any time on the <a class="text-link" href="#/about">About</a> page.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
 				<h2>Rights holders</h2>

@@ -603,6 +603,17 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 .page-foot { display: flex; gap: 20px; margin-top: 40px; font-size: 14px; }
 .page-foot a { color: var(--ink-3); text-decoration: underline; text-decoration-color: rgb(255 255 255 / 0.35); text-underline-offset: 3px; }
 
+/* ---------- usage statistics consent ---------- */
+.consent {
+	position: fixed; z-index: 50; right: 16px; bottom: calc(var(--deck) + 2 * var(--deck-gap) + 12px); width: min(440px, calc(100vw - 32px));
+	padding: 16px 18px; border-radius: var(--radius-m); background: #4a4a4a; color: var(--ink-2);
+	border: 1px solid rgb(255 255 255 / 0.14); box-shadow: 0 16px 36px rgb(0 0 0 / 0.38);
+}
+.consent p { margin: 0; font-size: 14.5px; line-height: 1.5; }
+.consent strong { color: var(--ink); display: block; margin-bottom: 2px; }
+.consent-actions { display: flex; gap: 10px; margin-top: 12px; }
+.stats-choice { margin: 0 0 22px; }
+
 /* ---------- popover menu, dialog, toast ---------- */
 .menu {
 	position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 24px); padding: 6px;

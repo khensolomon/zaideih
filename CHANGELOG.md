@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.20.7
+
+- Usage statistics with Google Analytics 4 (G-65TTKMZEGC), only after the listener allows it on a first-visit card; changeable on the About page; described in Terms
+- Page views on every route change without the query (no search text), and a play_track event per song started (track, album, language)
+- Production web builds only: dev and desktop builds carry no analytics; ZAIDEIH_GA_ID overrides or disables it; the CSP adds Google's hosts only when it is built in
+
 ## v26.10.20.6
 
 - GitHub workflows: check on every push; release pushes test, build and deploy the site, the audio Worker or D1 paths to Cloudflare, then tag and publish a GitHub release (docs/releasing.md)
