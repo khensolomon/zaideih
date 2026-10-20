@@ -182,14 +182,22 @@ audio.addEventListener("error", () => {
 	stopWithError(MEDIA_ERRORS[audio.error?.code] ?? "Playback failed.");
 });
 
+/** Optional (track) => Promise<url> supplying lock-screen artwork; see player.setArtwork. */
+let artworkFor = null;
+
 function updateMediaSession(track) {
 	if (!("mediaSession" in navigator)) return;
-	navigator.mediaSession.metadata = new MediaMetadata({
+	const meta = (src) => new MediaMetadata({
 		title: track.title,
 		artist: creditOf(track.artists),
 		album: track.album.title,
-		artwork: [{ src: "icons/icon-512.png", sizes: "512x512", type: "image/png" }],
+		artwork: [{ src, sizes: "512x512", type: "image/png" }],
 	});
+	navigator.mediaSession.metadata = meta("icons/icon-512.png");
+	if (!artworkFor) return;
+	artworkFor(track).then((src) => {
+		if (src && state.queue[state.index] === track.id) navigator.mediaSession.metadata = meta(src);
+	}, (err) => console.warn("Cover artwork could not be drawn; the app icon is shown instead.", err));
 }
 
 function bindMediaSession() {
@@ -220,6 +228,8 @@ audio.addEventListener("volumechange", () => {
 });
 
 export const player = {
+	/** Sets the provider of lock-screen and media-key artwork for the playing track. */
+	setArtwork(fn) { artworkFor = fn; },
 	state,
 	audio,
 	current,
