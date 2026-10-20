@@ -42,36 +42,173 @@ export function search(catalog, query, limits = { tracks: 50, albums: 24, artist
 	};
 }
 
+const SUGGEST = { artists: 3, albums: 3, tracks: 5 };
+
 /**
- * Quick suggestions for the search box: up to 2 artists, 2 albums and 4
- * songs, best matches first within each kind.
+ * Quick suggestions for the search box: up to 3 artists, 3 albums and 5
+ * songs, best matches first within each kind. When fewer than 4 records
+ * match exactly, the closest spellings fill the remaining places, marked
+ * `near: true`.
  */
 export function suggestions(catalog, query) {
-	const r = search(catalog, query, { tracks: 4, albums: 2, artists: 2 });
+	const r = search(catalog, query, SUGGEST);
 	if (!r) return [];
-	return [
-		...r.artists.items.map((item) => ({ kind: "artist", item })),
-		...r.albums.items.map((item) => ({ kind: "album", item })),
-		...r.tracks.items.map((item) => ({ kind: "track", item })),
-	];
+	const out = [];
+	const seen = new Set();
+	const add = (kind, item, near = false) => {
+		if (seen.has(item)) return;
+		seen.add(item);
+		out.push({ kind, item, near });
+	};
+	for (const item of r.artists.items) add("artist", item);
+	for (const item of r.albums.items) add("album", item);
+	for (const item of r.tracks.items) add("track", item);
+	if (out.length < 4) {
+		const near = closest(catalog, query, SUGGEST);
+		for (const [kind, key] of [["artist", "artists"], ["album", "albums"], ["track", "tracks"]]) {
+			for (const item of near[key]) {
+				if (out.filter((o) => o.kind === kind).length >= SUGGEST[key]) break;
+				add(kind, item, true);
+			}
+		}
+	}
+	return out;
 }
 
-/** Levenshtein distance, giving up (returning max + 1) once it exceeds `max`. */
-export function editDistance(a, b, max) {
-	if (Math.abs(a.length - b.length) > max) return max + 1;
-	let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+let rowA = new Int32Array(64);
+let rowB = new Int32Array(64);
+
+/**
+ * Levenshtein distance, giving up (returning max + 1) once it exceeds `max`.
+ * `bLen` compares against only the first `bLen` characters of `b`.
+ */
+export function editDistance(a, b, max, bLen = b.length) {
+	const n = Math.min(bLen, b.length);
+	if (Math.abs(a.length - n) > max) return max + 1;
+	if (rowA.length <= n) { rowA = new Int32Array(n + 1); rowB = new Int32Array(n + 1); }
+	let prev = rowA;
+	let cur = rowB;
+	for (let j = 0; j <= n; j++) prev[j] = j;
 	for (let i = 1; i <= a.length; i++) {
-		const cur = [i];
+		cur[0] = i;
 		let rowMin = i;
-		for (let j = 1; j <= b.length; j++) {
-			const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-			cur.push(v);
+		const ca = a.charCodeAt(i - 1);
+		for (let j = 1; j <= n; j++) {
+			const sub = prev[j - 1] + (ca === b.charCodeAt(j - 1) ? 0 : 1);
+			const v = Math.min(prev[j] + 1, cur[j - 1] + 1, sub);
+			cur[j] = v;
 			if (v < rowMin) rowMin = v;
 		}
 		if (rowMin > max) return max + 1;
-		prev = cur;
+		[prev, cur] = [cur, prev];
 	}
-	return prev[b.length];
+	return prev[n];
+}
+
+/** 32-bit set of the characters in `s`, for a cheap "too different" check. */
+function charMask(s) {
+	let m = 0;
+	for (let i = 0; i < s.length; i++) m |= 1 << (s.charCodeAt(i) % 31);
+	return m;
+}
+function bits(m) {
+	let n = 0;
+	for (; m; m &= m - 1) n++;
+	return n;
+}
+const masks = new WeakMap();
+function recordMask(rec) {
+	let m = masks.get(rec);
+	if (m === undefined) { m = charMask(rec.searchCompact); masks.set(rec, m); }
+	return m;
+}
+const nameCache = new WeakMap();
+/** An artist's own names (name, also known as) or a title, without spaces. */
+function namesOf(rec) {
+	let n = nameCache.get(rec);
+	if (!n) {
+		n = [rec.name ?? rec.title, rec.aka].filter(Boolean).map((v) => compact(normalize(v)));
+		nameCache.set(rec, n);
+	}
+	return n;
+}
+const wordCache = new WeakMap();
+function wordsOf(rec) {
+	let w = wordCache.get(rec);
+	if (!w) { w = rec.search.split(" "); wordCache.set(rec, w); }
+	return w;
+}
+
+/** Typos allowed for a string of `n` characters. */
+const tolerance = (n) => (n < 3 ? 0 : n <= 4 ? 1 : n <= 8 ? 2 : 3);
+
+/**
+ * How far a record is from the query, or Infinity when it is not close.
+ * Three readings, best one wins:
+ *  - the whole name or title, without spaces ("zamnuu" ~ "Zamnu")
+ *  - the start of the name or title, for queries typed only part way
+ *    ("lalthakma" ~ "Lalthakima Zote"), at a small penalty
+ *  - word by word, every query word near some word of the record
+ *    ("hong lenin" ~ "Hong len in"; an artist's other names count too)
+ */
+function distance(rec, qc, tokens, qmask) {
+	const max = tolerance(qc.length);
+	if (!max) return Infinity;
+	// Each typo adds at most one character the record does not have.
+	if (bits(qmask & ~recordMask(rec)) > max) return Infinity;
+	let best = max + 1;
+	// An artist's search text also holds spelling variants; its own names come first.
+	for (const hay of namesOf(rec)) {
+		best = Math.min(best, editDistance(qc, hay, max));
+		if (best && hay.length > qc.length) best = Math.min(best, editDistance(qc, hay, max, qc.length) + 0.5);
+	}
+	if (best > max) {
+		const words = wordsOf(rec);
+		let total = 0;
+		for (const t of tokens) {
+			const tmax = tolerance(t.length);
+			let d = t.length < 3 ? (words.some((w) => w.startsWith(t)) ? 0 : Infinity) : tmax + 1;
+			if (t.length >= 3) {
+				for (const w of words) {
+					d = Math.min(d, editDistance(t, w, tmax));
+					if (w.length > t.length) d = Math.min(d, editDistance(t, w, tmax, t.length) + 0.5);
+					if (d === 0) break;
+				}
+			}
+			if (d > tmax) { total = Infinity; break; }
+			total += d;
+		}
+		best = Math.min(best, total + 0.25);
+	}
+	return best <= max ? best : Infinity;
+}
+
+function nearest(records, qc, tokens, limit) {
+	const qmask = charMask(qc);
+	const hits = [];
+	for (const rec of records) {
+		const d = distance(rec, qc, tokens, qmask);
+		if (d !== Infinity) hits.push([d, rec]);
+	}
+	hits.sort((a, b) => a[0] - b[0] || b[1].plays - a[1].plays);
+	return hits.slice(0, limit).map((h) => h[1]);
+}
+
+/**
+ * Closest spellings when a query matches little or nothing: artists (name,
+ * also-known-as and spelling variants), albums and songs within a few typos,
+ * nearest first, then most played.
+ */
+export function closest(catalog, query, limits = { artists: 8, albums: 12, tracks: 20 }) {
+	const q = normalize(query);
+	const qc = compact(q);
+	if (qc.length < 3) return { artists: [], albums: [], tracks: [] };
+	const tokens = q.split(" ");
+	return {
+		artists: nearest(catalog.artists.values(), qc, tokens, limits.artists),
+		albums: nearest(catalog.albums.values(), qc, tokens, limits.albums),
+		tracks: nearest(catalog.tracks.values(), qc, tokens, limits.tracks),
+	};
 }
 
 /**
@@ -95,4 +232,15 @@ export function correction(catalog, query) {
 	}
 	for (const al of catalog.albums.values()) consider(al.title, al.searchCompact, al.plays);
 	return best?.text ?? null;
+}
+
+/**
+ * The text to offer as "Did you mean": the strict correction when there is
+ * one, otherwise the name of the closest artist, album or song.
+ */
+export function didYouMean(catalog, query, near = closest(catalog, query, { artists: 1, albums: 1, tracks: 1 })) {
+	const fix = correction(catalog, query);
+	if (fix) return fix;
+	const pick = near.artists[0]?.name ?? near.albums[0]?.title ?? near.tracks[0]?.title ?? null;
+	return pick && normalize(pick) !== normalize(query) ? pick : null;
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile } from "../tools/catalog.mjs";
 import { buildModel } from "../src/core/catalog.js";
-import { correction, editDistance, search, suggestions } from "../src/core/search.js";
+import { closest, correction, didYouMean, editDistance, search, suggestions } from "../src/core/search.js";
 import { normalize } from "../src/core/text.js";
 
 const category = {
@@ -87,8 +87,36 @@ test("correction finds a close artist or album for a typo", () => {
 	assert.equal(correction(model, "za"), null);
 });
 
+test("closest finds near spellings of names, titles and words", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "t" });
+	assert.equal(closest(model, "zamnuu").artists[0]?.name, "Zamnu");
+	assert.equal(closest(model, "agape no 2").albums[0]?.title, "Agape No.1");
+	assert.equal(closest(model, "hong lem").tracks[0]?.title, "Hong len in", "word by word, with the last word typed part way");
+	assert.deepEqual(closest(model, "qqqqqq"), { artists: [], albums: [], tracks: [] });
+	assert.deepEqual(closest(model, "zm"), { artists: [], albums: [], tracks: [] });
+});
+
+test("suggestions add close matches when little matches exactly", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "t" });
+	const picks = suggestions(model, "zamnuu");
+	assert.equal(picks[0]?.item.name, "Zamnu");
+	assert.ok(picks.every((p) => p.near));
+	assert.ok(suggestions(model, "zamnu").every((p) => !p.near));
+});
+
+test("didYouMean falls back to the closest song title", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "t" });
+	assert.equal(didYouMean(model, "zamnuu"), "Zamnu");
+	assert.equal(didYouMean(model, "hong lem"), "Hong len in");
+	assert.equal(didYouMean(model, "qqqqqq"), null);
+});
+
 test("editDistance counts edits and stops early past the limit", () => {
 	assert.equal(editDistance("kitten", "sitting", 3), 3);
 	assert.equal(editDistance("abc", "abc", 1), 0);
 	assert.equal(editDistance("abc", "abcdef", 1), 2);
+	assert.equal(editDistance("abc", "abcdef", 1, 3), 0, "compares a prefix when given a length");
 });

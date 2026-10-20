@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.20.2
+
+- Player: a vertical gradient, a brighter edge, a shadow on all sides and a blurred, faded view of the page behind it, so it reads as a separate layer
+- About page: "Zaideih Music Station", free listening, nothing sold and no financial benefit, catalog figures, version and catalog id; a Terms page covers listening, ownership, downloads, data, availability and rights holders. The version is shown there only; the sidebar and Library link to both pages
+- Search suggestions: up to 3 artists, 3 albums and 5 songs. When little matches exactly, close spellings follow under "Close matches" (whole names, names typed part way, and word by word)
+- "Did you mean" falls back to the closest artist, album or song, and also appears when a search finds only a few results; a search with no exact matches lists the close matches
+- The search box and its suggestions form one panel with no outline ring on focus, and the page behind is dimmed and blurred while the suggestions are open
+
 ## v26.10.20.1
 
 - Graphite theme: the page stays logo grey `#5a5a5a`; sidebar, cards, player and covers are steps of the same grey. Madder red is replaced by the logo's silver `#ececec` as the accent (play button, progress, liked heart, playing song), with dark text on it

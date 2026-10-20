@@ -1,4 +1,3 @@
-import { APP_VERSION } from "./config.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
 import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
@@ -33,6 +32,8 @@ route("search", V.searchView);
 route("library", V.libraryView);
 route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
+route("about", V.about);
+route("terms", V.terms);
 
 /*
  * In-app navigation depth, stored in history.state so the Back button knows
@@ -56,6 +57,8 @@ function updateNavbar(path, title) {
 }
 
 async function render({ keepScroll = false } = {}) {
+	// A page change can remove the search box while its suggestions are open.
+	document.body.classList.remove("search-open");
 	const r = parse();
 	const view = $("#view");
 	if (!r) { go("", undefined, { replace: true }); return; }
@@ -90,7 +93,9 @@ async function render({ keepScroll = false } = {}) {
 }
 
 function markNav(path) {
-	const section = path.startsWith("search") ? "search" : path.startsWith("library") || path.startsWith("playlist") ? "library" : "home";
+	const section = path.startsWith("search") ? "search"
+		: path.startsWith("library") || path.startsWith("playlist") ? "library"
+		: path === "about" || path === "terms" ? path : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
 		else a.removeAttribute("aria-current");
@@ -749,7 +754,6 @@ export async function boot(platform) {
 	}
 	document.documentElement.dataset.platform = platform.name;
 	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
-	for (const el of $$("[data-app-version]")) el.textContent = `v${APP_VERSION}`;
 	setOnline();
 	try {
 		const [model] = await Promise.all([loadCatalog(platform.catalogBase), library.init(), offline.init()]);

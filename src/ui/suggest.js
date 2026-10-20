@@ -1,14 +1,16 @@
 /**
  * Search suggestions (ARIA combobox on #q).
  *
- * Typing shows quick picks (artists, albums, songs), a "did you mean"
- * correction when nothing matches, and a "Show all results" row. Focusing the
+ * Typing shows quick picks (up to 3 artists, 3 albums and 5 songs). When
+ * little matches, the closest spellings follow under "Close matches", led by
+ * a "Did you mean" row when nothing matches exactly. A "Show all results"
+ * row ends the list. Focusing the
  * empty box shows recent searches. Arrow keys move, Enter picks, Escape
  * closes. Recent searches are a per-device convenience kept in localStorage.
  */
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
-import { correction, suggestions } from "../core/search.js";
+import { didYouMean, suggestions } from "../core/search.js";
 import { avatar, cover, scriptClass } from "./parts.js";
 
 const RECENT_KEY = "zaideih.recent-searches";
@@ -66,6 +68,8 @@ function paint(input) {
 	const visible = options.some((o) => o.kind !== "heading");
 	ul.hidden = !visible;
 	input.setAttribute("aria-expanded", String(visible));
+	input.closest(".searchbox")?.classList.toggle("open", visible);
+	document.body.classList.toggle("search-open", visible);
 	ul.innerHTML = html`${options.map(optionRow)}`;
 	if (active >= 0) input.setAttribute("aria-activedescendant", `sg-${active}`);
 	else input.removeAttribute("aria-activedescendant");
@@ -83,11 +87,15 @@ export function updateSuggestions(catalog, input) {
 			: [];
 	} else {
 		const picks = suggestions(catalog, q);
-		options = picks.length ? picks : [];
-		if (!picks.length) {
-			const fix = correction(catalog, q);
+		const exact = picks.filter((p) => !p.near);
+		const near = picks.filter((p) => p.near);
+		options = [...exact];
+		if (!exact.length) {
+			const fix = didYouMean(catalog, q);
 			if (fix) options.push({ kind: "fix", label: `Did you mean “${fix}”?`, query: fix });
 		}
+		if (near.length) options.push({ kind: "heading", label: "Close matches" }, ...near);
+		if (!picks.length) options.push({ kind: "heading", label: `Nothing close to “${q}”` });
 		options.push({ kind: "all", label: `Show all results for “${q}”`, query: q });
 	}
 	paint(input);
@@ -99,6 +107,8 @@ export function closeSuggestions(input) {
 	const ul = listEl();
 	if (ul) { ul.hidden = true; ul.innerHTML = ""; }
 	input?.setAttribute("aria-expanded", "false");
+	input?.closest(".searchbox")?.classList.remove("open");
+	document.body.classList.remove("search-open");
 	input?.removeAttribute("aria-activedescendant");
 }
 
