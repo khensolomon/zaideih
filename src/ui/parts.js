@@ -7,7 +7,8 @@ import { library } from "../core/library.js";
 import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
-import { formatDuration, hash32 } from "../core/text.js";
+import { formatDuration } from "../core/text.js";
+import { artistArt, coverArt } from "./art.js";
 import { icon } from "./icons.js";
 
 const MYANMAR = /[က-႟]/;
@@ -44,32 +45,12 @@ export function myanmarBreaks(s) {
 	return out;
 }
 
-const graphemes = typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+/** Artist picture generated from the artist's catalog record (see art.js). */
+export const avatar = (artist) => artistArt(artist);
 
-/** Avatar initials: first grapheme for Myanmar names, up to two initials otherwise. */
-export function initials(name) {
-	const first = (s) => (graphemes ? [...graphemes.segment(s)][0]?.segment : s[0]) ?? "";
-	if (scriptClass(name)) return first(name);
-	const words = name.replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/).filter(Boolean);
-	return words.slice(0, 2).map((w) => first(w).toUpperCase()).join("") || "?";
-}
-
-/** Round artist avatar in a tone of the brand colour, varied per artist. */
-export function avatar(artist) {
-	const h = hash32(String(artist.id));
-	const style = `--s:${26 + (h % 36)}%;--l:${22 + ((h >>> 8) % 18)}%`;
-	return html`<span class="avatar ${scriptClass(artist.name)}" style="${style}" aria-hidden="true">${initials(artist.name)}</span>`;
-}
-
-/** Generated J-card cover in a tone of the brand colour, varied per album. */
-export function cover(album, { label = true } = {}) {
-	// One hue for every cover; each album gets its own tone of it.
-	const h = hash32(album.id);
-	const s = 26 + (h % 36);
-	const l = 20 + ((h >>> 8) % 20);
-	return html`<div class="cover l-${album.lang.name}" style="--s:${s}%;--l:${l}%" aria-hidden="true">${label
-		? html`<b class="${scriptClass(album.title)}">${myanmarBreaks(album.title)}</b>${album.year ? html`<i>${album.year}</i>` : ""}`
-		: ""}</div>`;
+/** Album cover generated from the album's catalog record (see art.js). */
+export function cover(album, { label = true, current = -1 } = {}) {
+	return coverArt(album, { label, current, titleHtml: myanmarBreaks(album.title), titleClass: scriptClass(album.title) });
 }
 
 /**

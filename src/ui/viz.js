@@ -18,6 +18,7 @@ let running = false;
 let playing = false;
 let levelSmooth = 0;
 let deck = null;
+let progress = 0;
 
 function sizeCanvas(canvas) {
 	const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -45,7 +46,7 @@ function entryFor(canvas) {
  * centre and higher ones towards the edges, tapering so text stays readable.
  * Large (now playing view): a plain spectrum, low to high.
  */
-function draw(canvas, e, hue, centerX) {
+function draw(canvas, e, color, centerX) {
 	const { w, h, dpr } = sizeCanvas(canvas);
 	const g = canvas.getContext("2d");
 	g.clearRect(0, 0, w, h);
@@ -59,9 +60,9 @@ function draw(canvas, e, hue, centerX) {
 		const span = Math.max(cx, w - cx);
 		const count = Math.ceil(span / step);
 		const grad = g.createLinearGradient(0, h, 0, 0);
-		grad.addColorStop(0, `hsl(${hue} 90% 66% / 0.6)`);
-		grad.addColorStop(0.55, `hsl(${hue} 95% 78% / 0.22)`);
-		grad.addColorStop(1, `hsl(${hue} 95% 85% / 0)`);
+		grad.addColorStop(0, `rgb(${color} / 0.2)`);
+		grad.addColorStop(0.55, `rgb(${color} / 0.07)`);
+		grad.addColorStop(1, `rgb(${color} / 0)`);
 		g.fillStyle = grad;
 		const radius = bw / 2;
 		for (let k = 0; k < count; k++) {
@@ -79,16 +80,14 @@ function draw(canvas, e, hue, centerX) {
 		return;
 	}
 
-	const gap = Math.max(1, Math.round(4 * dpr));
+	// Large: the bars sit on the progress bar; the played part uses the accent.
+	const gap = Math.max(1, Math.round(3 * dpr));
 	const bw = (w - gap * (n - 1)) / n;
-	const grad = g.createLinearGradient(0, h, 0, 0);
-	grad.addColorStop(0, `hsl(${hue} 60% 38%)`);
-	grad.addColorStop(1, `hsl(${hue} 90% 68%)`);
-	g.fillStyle = grad;
-	const radius = Math.min(bw / 2, 3 * dpr);
+	const radius = Math.min(bw / 2, 2 * dpr);
 	for (let i = 0; i < n; i++) {
 		const bh = Math.max(2 * dpr, e.shown[i] * h);
 		const x = i * (bw + gap);
+		g.fillStyle = (i + 0.5) / n <= progress ? `rgb(${color})` : `rgb(255 255 255 / 0.22)`;
 		g.beginPath();
 		g.roundRect ? g.roundRect(x, h - bh, bw, bh, [radius, radius, 0, 0]) : g.rect(x, h - bh, bw, bh);
 		g.fill();
@@ -96,13 +95,14 @@ function draw(canvas, e, hue, centerX) {
 }
 
 function geometry() {
-	const hue = Number.parseFloat(getComputedStyle(deck).getPropertyValue("--h")) || 352;
+	// --viz-rgb: the accent as "r g b", set in app.css.
+	const color = getComputedStyle(deck).getPropertyValue("--viz-rgb").trim() || "236 236 236";
 	// Deck bars radiate from the visible play button.
 	const btn = deck.querySelector(".play-btn");
 	const deckRect = deck.getBoundingClientRect();
 	const btnRect = btn?.getBoundingClientRect();
 	const centerX = btnRect && btnRect.width ? btnRect.left + btnRect.width / 2 - deckRect.left : undefined;
-	return { hue, centerX };
+	return { color, centerX };
 }
 
 function visibleCanvases() {
@@ -122,7 +122,7 @@ function frame() {
 		return;
 	}
 	const level = visualizer.read(scratch);
-	const { hue, centerX } = geometry();
+	const { color, centerX } = geometry();
 	for (const canvas of visibleCanvases()) {
 		const e = entryFor(canvas);
 		resample(e);
@@ -130,7 +130,7 @@ function frame() {
 			const target = e.bars[i];
 			e.shown[i] = target > e.shown[i] ? target : Math.max(target, e.shown[i] - FALL);
 		}
-		draw(canvas, e, hue, e.kind === "deck" ? centerX : undefined);
+		draw(canvas, e, color, e.kind === "deck" ? centerX : undefined);
 	}
 	levelSmooth = level > levelSmooth ? level : Math.max(level, levelSmooth - 0.04);
 	deck.style.setProperty("--level", levelSmooth.toFixed(3));
@@ -144,7 +144,7 @@ function frame() {
  */
 function redrawStill() {
 	if (running) return;
-	const { hue, centerX } = geometry();
+	const { color, centerX } = geometry();
 	const deckEntry = [...state.entries()].find(([c, e]) => e.kind === "deck" && c.isConnected)?.[1];
 	for (const canvas of visibleCanvases()) {
 		const fresh = !state.has(canvas);
@@ -154,7 +154,7 @@ function redrawStill() {
 			const n = e.shown.length;
 			for (let i = 0; i < n; i++) e.shown[i] = deckEntry.shown[Math.min(deckEntry.shown.length - 1, Math.floor((i / n) * deckEntry.shown.length))];
 		}
-		draw(canvas, e, hue, e.kind === "deck" ? centerX : undefined);
+		draw(canvas, e, color, e.kind === "deck" ? centerX : undefined);
 	}
 }
 
@@ -180,6 +180,12 @@ export const viz = {
 	},
 	/** Draws the frozen frame on canvases that appeared while paused. */
 	refresh() { requestAnimationFrame(redrawStill); },
+	/** Playback position, 0..1, for colouring the bars over the played part. */
+	setProgress(p) {
+		const changed = Math.abs(p - progress) > 0.002;
+		progress = p;
+		if (changed && !running) requestAnimationFrame(redrawStill);
+	},
 	/** Call when playback starts or stops. Pausing freezes the bars in place. */
 	setPlaying(on) {
 		playing = on;

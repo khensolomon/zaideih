@@ -1,5 +1,19 @@
 # Version
 
+## v26.10.20.1
+
+- Graphite theme: the page stays logo grey `#5a5a5a`; sidebar, cards, player and covers are steps of the same grey. Madder red is replaced by the logo's silver `#ececec` as the accent (play button, progress, liked heart, playing song), with dark text on it
+- Font: Outfit replaces Bricolage Grotesque; Padauk stays for Myanmar
+- Album covers are generated from catalog data: grey shade from the album id, a pattern from the genre (rings for gospel and worship, weave for tribal and folk, grooves otherwise), language code, year, title, and a strip with one bar per song sized by its length; the playing song is lit
+- Artist pictures are generated from the artist's career: one ray per year (length = songs, brightness = plays), a centre sized by total plays, rings for the album count, and ray ends by artist type. Latin names show initials; Myanmar names leave the centre clear
+- Artist page: the picture, languages, active years, songs, albums, plays and the most played year
+- Player: a floating card on every screen size; 8px seek bars with a larger thumb and the loaded part shown; a thicker progress line on phones
+- Now playing: larger cover and controls; the live bars sit on the progress bar, lit over the played part
+- Lock screen and media keys show the generated cover instead of the app icon
+- Home: most played artists first; languages move to "Browse by language"
+- Search: the top artist matches show as pictures, the rest as name chips
+- Keyboard: Left and Right seek 5 seconds; Shift+Left and Shift+Right go to the previous and next song
+
 ## v26.10.19.5
 
 - One theme: logo grey `#5a5a5a` with white text; the light/dark modes and the theme switch are gone

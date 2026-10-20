@@ -11,6 +11,7 @@ import { href } from "../core/router.js";
 import { correction, search } from "../core/search.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
+import { careerOf, shadeOf } from "./art.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
 const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam" };
@@ -45,14 +46,17 @@ export async function home(c) {
 		title: "Home",
 		body: html`
 			<h1 class="sr">Zaideih</h1>
-			<nav class="board" aria-label="Languages">
-				${langs.map((l) => html`<a class="l-${l.name}" href="${href(`lang/${l.id}`)}"><strong>${langLabel(l)}</strong><span>${plural(l.albums.length, "album")}</span></a>`)}
-			</nav>
-
-			${recent.length ? html`<section class="section">
+			${recent.length ? html`<section class="section first">
 				<header><h2>Played recently</h2><a href="#/library/history">History</a></header>
 				${chunkedTracks(recent, "Played recently", { step: 6, showAlbum: true })}
 			</section>` : ""}
+
+			${topArtistsByLanguage(c, !recent.length)}
+
+			<section class="section">
+				<header><h2>Albums to try</h2><button class="btn" data-act="reshuffle">Show others</button></header>
+				<div class="row-scroll">${discover.map(albumTile)}</div>
+			</section>
 
 			<section class="section">
 				<header><h2>Most played</h2><a href="#/top">See top 100</a></header>
@@ -60,11 +64,11 @@ export async function home(c) {
 			</section>
 
 			<section class="section">
-				<header><h2>Albums to try</h2><button class="btn" data-act="reshuffle">Show others</button></header>
-				<div class="row-scroll">${discover.map(albumTile)}</div>
+				<header><h2>Browse by language</h2></header>
+				<nav class="board" aria-label="Languages">
+					${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}" style="--g:${shadeOf(`lang${l.id}`)}%"><strong>${langLabel(l)}</strong><span>${plural(l.albums.length, "album")}</span></a>`)}
+				</nav>
 			</section>
-
-			${topArtistsByLanguage(c)}
 
 			<section class="section">
 				<header><h2>Genres</h2><a href="#/genres">All genres</a></header>
@@ -85,12 +89,12 @@ function artistCard({ artist, plays }) {
 }
 
 /** Home: the most played artists, one tab per language. */
-function topArtistsByLanguage(c) {
+function topArtistsByLanguage(c, first = false) {
 	const langs = [...c.langs.values()].filter((l) => l.topArtists.length).sort((a, b) => b.albums.length - a.albums.length);
 	if (!langs.length) return "";
 	const playingLang = player.current()?.album.lang;
 	const selected = langs.includes(playingLang) ? playingLang : langs[0];
-	return html`<section class="section" data-artist-tabs>
+	return html`<section class="section${first ? " first" : ""}" data-artist-tabs>
 		<header><h2>Most played artists</h2></header>
 		<div class="lang-tabs" role="tablist" aria-label="Language">
 			${langs.map((l) => html`<button role="tab" data-act="artist-lang" data-lang="${l.id}" aria-selected="${String(l === selected)}">${langLabel(l)}</button>`)}
@@ -148,7 +152,7 @@ export function album(c, { id }) {
 	return {
 		title: a.title,
 		body: html`<div class="hero">
-				${cover(a)}
+				${cover(a, { current: player.current()?.album === a ? player.current().n - 1 : -1 })}
 				<div>
 					<div class="kind">${a.tracks.length === 1 ? "Single" : "Album"} in ${langLabel(a.lang)}</div>
 					<h1 class="${scriptClass(a.title)}">${myanmarBreaks(a.title)}</h1>
@@ -183,15 +187,22 @@ export function artist(c, { id }) {
 	if (!a) return notFound("artist");
 	const popular = [...a.tracks].sort((x, y) => y.plays - x.plays);
 	const key = registerList(popular.map((t) => t.id), a.name);
+	const career = careerOf(a);
+	const best = career.plays.length ? career.from + career.plays.indexOf(Math.max(...career.plays)) : 0;
+	const langs = [...new Set(a.albums.map((al) => al.lang))];
 	return {
 		title: a.name,
-		body: html`<div class="hero" style="grid-template-columns:1fr">
+		body: html`<div class="hero artist-hero">
+				${avatar(a)}
 				<div>
-					<div class="kind">${a.type === 1 ? "Group or various artists" : "Artist"}</div>
+					<div class="kind">${a.type === 1 ? "Group or various artists" : "Artist"}${langs.length ? html` in ${langs.map(langLabel).join(", ")}` : ""}</div>
 					<h1 class="${scriptClass(a.name)}">${a.name}</h1>
 					<div class="facts">
 						${a.aka ? html`<span class="${scriptClass(a.aka)}">Also known as ${a.aka}</span>` : ""}
-						<span>${plural(a.tracks.length, "track")} on ${plural(a.albums.length, "album")}</span>
+						${career.from ? html`<span>${career.to > career.from ? `${career.from}–${career.to}` : career.from}</span>` : ""}
+						<span>${plural(a.tracks.length, "song")} on ${plural(a.albums.length, "album")}</span>
+						<span>${compact.format(a.plays)} plays</span>
+						${best && career.to > career.from ? html`<span>Most played year ${best}</span>` : ""}
 					</div>
 				</div>
 			</div>
@@ -249,6 +260,9 @@ export function searchView(c, _params, query) {
 	};
 }
 
+/** Search shows the best artist matches as pictures, the rest as name chips. */
+const ARTIST_CARDS = 8;
+
 export function searchResults(c, q) {
 	const r = search(c, q);
 	if (!r) {
@@ -261,7 +275,8 @@ export function searchResults(c, q) {
 	}
 	return html`
 		${r.artists.total ? html`<section class="section" style="margin-top:0"><header><h2>Artists</h2><span class="muted">${r.artists.total}</span></header>
-			<div class="people">${r.artists.items.map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div></section>` : ""}
+			<div class="artist-grid">${r.artists.items.slice(0, ARTIST_CARDS).map((a) => artistCard({ artist: a, plays: a.plays }))}</div>
+				${r.artists.items.length > ARTIST_CARDS ? html`<div class="people" style="margin-top:16px">${r.artists.items.slice(ARTIST_CARDS).map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div>` : ""}</section>` : ""}
 		${r.tracks.total ? html`<section class="section"><header><h2>Songs</h2><span class="muted">${r.tracks.total > r.tracks.items.length ? `Top ${r.tracks.items.length} of ${r.tracks.total.toLocaleString()}` : r.tracks.total}</span></header>
 			${chunkedTracks(r.tracks.items, `Search: ${q}`, { step: 20, showAlbum: true })}</section>` : ""}
 		${r.albums.total ? html`<section class="section"><header><h2>Albums</h2><span class="muted">${r.albums.total}</span></header>

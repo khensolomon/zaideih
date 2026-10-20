@@ -7,6 +7,7 @@ import { player } from "./core/player.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
+import { coverImage } from "./ui/art.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
@@ -159,15 +160,25 @@ function renderVolume() {
 	}
 }
 
+/** How far the audio has loaded, in percent; downloaded songs are fully loaded. */
+function bufferedPct(duration) {
+	const b = player.audio.buffered;
+	if (!duration || !b?.length) return 0;
+	return Math.min(100, (b.end(b.length - 1) / duration) * 100);
+}
+
 function renderTime({ position, duration }) {
 	const pct = duration ? (position / duration) * 100 : 0;
+	const buf = Math.max(pct, bufferedPct(duration));
 	$("#bar-progress").style.width = `${pct}%`;
 	for (const range of $$("[data-ctl=seek]")) {
 		if (range.dataset.dragging) continue;
 		range.max = String(duration || 0);
 		range.value = String(position);
 		range.style.setProperty("--pct", `${pct}%`);
+		range.style.setProperty("--buf-pct", `${buf}%`);
 	}
+	viz.setProgress(duration ? position / duration : 0);
 	for (const el of $$("[data-time=pos]")) el.textContent = formatDuration(position);
 	for (const el of $$("[data-time=dur]")) el.textContent = formatDuration(duration);
 }
@@ -196,8 +207,7 @@ function renderSheet() {
 		</div>
 		<div class="body">
 			<div class="stage">
-				${cover(t.album)}
-				<canvas class="viz-large" data-viz="large" aria-hidden="true"></canvas>
+				${cover(t.album, { current: t.n - 1 })}
 				<div class="info">
 					<div style="min-width:0">
 						<div class="title ${scriptClass(t.title)}">${t.title}</div>
@@ -205,6 +215,7 @@ function renderSheet() {
 					</div>
 					<button class="icon-btn like" data-act="like" data-id="${t.id}" aria-pressed="${String(library.isLiked(t.id))}" aria-label="${library.isLiked(t.id) ? "Remove from liked songs" : "Add to liked songs"}">${icon("heart")}</button>
 				</div>
+				<canvas class="viz-large" data-viz="large" aria-hidden="true"></canvas>
 				<div class="seek">
 					<input type="range" data-ctl="seek" min="0" step="1" aria-label="Seek">
 					<span class="seek-tip" hidden></span>
@@ -633,6 +644,16 @@ document.addEventListener("keydown", (e) => {
 	const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
 	if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
 	if (e.key === " " && document.activeElement?.tagName !== "BUTTON") { e.preventDefault(); player.toggle(); }
+	else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && player.current() && !e.shiftKey) {
+		// Seek 5 seconds, unless focus is on a control that uses the arrow keys itself.
+		if (document.activeElement?.closest?.("[role=tablist], .menu")) return;
+		e.preventDefault();
+		player.seek(Math.max(0, (player.audio.currentTime || 0) + (e.key === "ArrowLeft" ? -5 : 5)));
+	}
+	else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.shiftKey && player.current()) {
+		e.preventDefault();
+		if (e.key === "ArrowLeft") player.previous(); else player.next();
+	}
 	else if (e.key === "/") { e.preventDefault(); go("search"); }
 });
 
@@ -744,6 +765,7 @@ export async function boot(platform) {
 		if (t) setLikeState(e.currentTarget, await library.toggleLike(t.id), { animate: true });
 	});
 	viz.init($("#bar"));
+	player.setArtwork((t) => coverImage(t.album, t.n - 1));
 	renderVolume();
 	await player.init(catalog);
 	renderBar();
