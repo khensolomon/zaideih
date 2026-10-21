@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.6
+
+- Backgrounds: no red notice when WebGL is unavailable or a scene cannot run; the background button explains it.
+
 ## v26.10.21.5
 
 - Now playing backgrounds: when WebGL is unavailable (graphics acceleration off in Chrome, for example) the background button stays and explains why and how to turn it on, instead of disappearing; Watch appears only while a background shows; a scene that does not build on a device is skipped; a lost graphics context recovers. Escape in a menu no longer also closes Now playing.

@@ -349,8 +349,8 @@ function updateScene() {
 			stage = createStage(canvas);
 		} catch (err) {
 			scenesError = err instanceof ScenesUnavailableError ? err : new ScenesUnavailableError(`Backgrounds could not start: ${err.message}`);
-			console.error(scenesError.message, scenesError.detail ? `(browser: ${scenesError.detail})` : "");
-			notify("Backgrounds are not available in this browser. The background button in Now playing says why.", { kind: "error" });
+			// No notice: the background button explains it when opened.
+			console.warn(scenesError.message, scenesError.detail ? `(browser: ${scenesError.detail})` : "");
 			const btn = $("[data-act=scene-menu]", sheet);
 			btn?.setAttribute("aria-label", `Background: ${sceneLabel()}`);
 		}
@@ -363,10 +363,9 @@ function updateScene() {
 		} catch (err) {
 			if (!(err instanceof SceneBuildError)) throw err;
 			failedScenes.set(id, err.message);
-			console.error(err.message);
-			const name = SCENES.find((x) => x.id === id)?.name ?? id;
-			if (failedScenes.size === SCENES.length) notify("No background can run on this device's graphics. The browser console names the reason.", { kind: "error" });
-			else if (failedScenes.size === 1) notify(sceneChoice() === "auto" ? `The ${name} background cannot run on this device; another one is shown.` : `The ${name} background cannot run on this device. Pick another one with the background button.`, { kind: "error" });
+			// No notice: the picker marks the scene as not supported, and Auto uses another.
+			console.warn(err.message);
+			if (failedScenes.size === SCENES.length) scenesError = new ScenesUnavailableError("None of the backgrounds can run on this device's graphics. The browser console names the reason for each.");
 			updateScene();
 			return;
 		}
