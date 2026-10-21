@@ -129,7 +129,7 @@ export function createSilenceSkipper() {
 					// start a little before it.
 					if (loudWindows >= 3 && loudSince >= 0.4) {
 						state = "play";
-						return { play: true, seek: Math.max(0, position - loudSince - 1.2) };
+						return { play: true, seek: Math.max(0, position - loudSince - 0.9) };
 					}
 				} else { loudSince = 0; loudWindows = 0; }
 				if (position > 120) { state = "play"; return { play: true, seek: null }; } // no music found: play as it is
@@ -436,7 +436,10 @@ function onMeter(l, r) {
 			// (a server without range requests makes a stream unseekable: play on from here).
 			if (seekable(audio, action.seek)) audio.currentTime = action.seek;
 		}
-		ramp(nodes.mute.gain, 1, 0.25);
+		// Stay muted until the step back has happened: unmuting at once let the
+		// sound at the detection point (the music's first beat) through for a
+		// moment before the jump, heard as a kick at the start of every song.
+		unmuteWhenSettled(audio, 0.3);
 		emitStatus();
 	} else if (action.finish) {
 		player.finish();
@@ -451,23 +454,64 @@ function seekable(audio, time) {
 	return false;
 }
 
-function onSongStart() {
-	const { audio } = player;
-	const t = player.current();
-	audio.playbackRate = 1;
-	audio.preservesPitch = true;
-	if (nodes) ramp(nodes.mute.gain, 1, 0.05);
+/** Mutes at once (no ramp): used between songs and before a jump. */
+function muteNow() {
+	if (!nodes) return;
+	const g = nodes.mute.gain;
+	g.cancelScheduledValues(ctx.currentTime);
+	g.setValueAtTime(0, ctx.currentTime);
+}
+
+/**
+ * Fades the sound in once the element has finished any seek, plus a little
+ * for the samples already on their way through the graph (the denoiser alone
+ * holds 23 ms), so nothing from before a jump is heard.
+ */
+function unmuteWhenSettled(audio, fade) {
+	if (!nodes) return;
+	const go = () => {
+		const g = nodes.mute.gain;
+		const at = ctx.currentTime + 0.06 + (ctx.baseLatency || 0);
+		g.cancelScheduledValues(ctx.currentTime);
+		g.setValueAtTime(0, ctx.currentTime);
+		g.setTargetAtTime(1, at, fade / 3);
+	};
+	if (audio.seeking) audio.addEventListener("seeked", go, { once: true });
+	else go();
+}
+
+/** The next song's remembered loudness, applied at once so it does not start at the last song's volume. */
+function prepareSong() {
+	const t = player?.current();
 	const known = t ? memory()[String(t.id)] : null;
 	leveler.reset(typeof known?.loud === "number" ? known.loud : null);
 	balance.reset();
+	if (!nodes) return known;
+	const db = settings.level ? leveler.gainDb() : 0;
+	nodes.level.gain.cancelScheduledValues(ctx.currentTime);
+	nodes.level.gain.setValueAtTime(10 ** (db / 20), ctx.currentTime);
+	status.gainDb = Math.round(db);
+	applyBalance("both");
+	return known;
+}
+
+function onSongStart() {
+	const { audio } = player;
+	audio.playbackRate = 1;
+	audio.preservesPitch = true;
+	const known = prepareSong();
 	status.skipped = 0;
-	if (nodes) { applyLevel(); applyBalance("both"); }
 	// A song started from the beginning goes straight to where its music was found before.
 	if (settings.skip && known?.start > 1.5 && audio.currentTime < 0.5) {
+		muteNow();
 		audio.currentTime = known.start;
 		status.skipped = Math.round(known.start);
 		skipper.start(known.start);
-	} else skipper.start(audio.currentTime);
+		unmuteWhenSettled(audio, 0.3);
+	} else {
+		skipper.start(audio.currentTime);
+		unmuteWhenSettled(audio, 0.08);
+	}
 	emitStatus();
 }
 
@@ -488,7 +532,7 @@ export const sound = {
 		if (patch.preset && patch.preset !== "custom" && !patch.eq) patch = { ...patch, eq: PRESETS.find((p) => p.id === patch.preset)?.gains ?? flat() };
 		settings = readSettings({ getItem: () => JSON.stringify({ ...settings, ...patch }) });
 		try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* kept for this visit only */ }
-		if (!settings.skip && player?.audio.playbackRate !== 1) { player.audio.playbackRate = 1; ramp(nodes.mute.gain, 1, 0.1); skipper.stop(); }
+		if (!settings.skip && player?.audio.playbackRate !== 1) { player.audio.playbackRate = 1; unmuteWhenSettled(player.audio, 0.1); skipper.stop(); }
 		applySettings();
 		emitStatus();
 	},
@@ -515,7 +559,8 @@ export const sound = {
 				if (ctx?.state === "suspended") ctx.resume().catch((err) => console.error("audio context resume failed", err));
 			});
 		});
-		audio.addEventListener("loadstart", () => { skipper.stop(); audio.playbackRate = 1; audio.preservesPitch = true; });
+		// Between songs: silent until the next one starts, at its own volume.
+		audio.addEventListener("loadstart", () => { skipper.stop(); audio.playbackRate = 1; audio.preservesPitch = true; muteNow(); prepareSong(); });
 		// A song begins (from the start, or resumed part way after a reload).
 		audio.addEventListener("playing", () => { if (skipper.state === "off") onSongStart(); });
 		audio.addEventListener("seeking", () => {

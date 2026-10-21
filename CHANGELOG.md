@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.10
+
+- Skip silence: no more kick at the start of songs. The sound stays muted until the step back to the music has happened, then fades in; between songs it is silent until the next song starts at its own volume.
+
 ## v26.10.21.9
 
 - Equaliser: ten bands from 31 Hz to 16 kHz, 12 dB up or down, with presets (Bass boost, Clear voice, Old tape, Warm, Bright, Loudness, Small speakers, Choir and hall) and automatic headroom so boosts never distort. The Sound panel has two tabs, Clean up and Equaliser.
