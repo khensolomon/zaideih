@@ -1,5 +1,6 @@
 -- Song play counts, written by POST /plays (worker/media/script.js).
--- Idempotent: the release workflow runs every migration on each audio release.
+-- Idempotent: the release workflow runs every migration on each audio release,
+-- as one query with comments removed, so "--" must not appear inside strings.
 
 -- =============================================================================
 -- plays

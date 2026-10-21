@@ -189,15 +189,20 @@ jobs:
           node-version: 22
       # Every migration is idempotent (CREATE ... IF NOT EXISTS) and runs on
       # each audio release, before the Worker that needs the tables goes live.
+      # Sent as one query (--command), not with --file: --file uses D1's
+      # import, which makes the database unavailable to the Worker while it
+      # runs. Comments are removed first; the migrations keep
+      # "--" out of string literals so this is safe.
       - name: Apply the D1 schema
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          for f in worker/media/migrations/*.sql; do
-            echo "applying $f"
-            npx --yes "$WRANGLER" d1 execute audio --remote --yes --file "$f" --config worker/media/wrangler.toml
-          done
+          sql=$(for f in worker/media/migrations/*.sql; do sed -e 's/--.*$//' "$f"; done | grep -v '^[[:space:]]*$')
+          [ -n "$sql" ] || { echo "::error::no SQL found in worker/media/migrations"; exit 1; }
+          npx --yes "$WRANGLER" d1 execute audio --remote --yes --command "$sql" --config worker/media/wrangler.toml
+          npx --yes "$WRANGLER" d1 execute audio --remote --command "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plays'" --json --config worker/media/wrangler.toml | grep -q '"plays"' \
+            || { echo "::error::the plays table is missing after applying the schema"; exit 1; }
       - name: Deploy the audio Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
