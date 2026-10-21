@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.21.1
+
+- Phones: a floating liquid-glass top bar (blurred, light edge, rounded) with the page fading out above it
+- The logo opens a menu on every page with the sidebar's places, languages, browse, About, Terms and Help
+- Large page titles: the bar shows the title only after the page's own heading scrolls under it
+- Search on phones: the field is the top bar, sticky, with Cancel
+- Library tabs share the width with no sideways scroll; Back up and Restore move to their own row
+- Rounder search field and player on phones
+
 ## v26.10.20.7
 
 - Usage statistics with Google Analytics 4 (G-65TTKMZEGC), only after the listener allows it on a first-visit card; changeable on the About page; described in Terms
