@@ -269,6 +269,7 @@ export function searchView(c, _params, query) {
 				<label class="sr" for="q">Search songs, albums and artists, or ask, for example “most played Mizo artists”</label>
 				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists, or ask: most played Mizo artists" autocomplete="off" enterkeyhint="search" autofocus
 					role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
+				<button type="button" class="search-cancel" data-act="back">Cancel</button>
 				<div class="sg-panel" id="sg-panel" hidden>
 					${scopeButtons(scope, "scopes")}
 					<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
@@ -411,7 +412,7 @@ export async function libraryView(c, { tab = "liked" }) {
 		title: "Library",
 		body: html`<h1 class="page-title">Library</h1>
 			<div class="toolbar">${libTabs(tab)}
-				<span><button class="btn" data-act="export">Back up library</button>
+				<span class="lib-actions"><button class="btn" data-act="export">Back up library</button>
 				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
 			</div>
 			${body}

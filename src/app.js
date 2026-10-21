@@ -56,9 +56,56 @@ function trackDepth() {
 
 function updateNavbar(path, title) {
 	const home = path === "";
-	$("[data-nav-home]").hidden = !home;
-	$("[data-act=back]").hidden = home;
+	$(".navbar [data-act=back]").hidden = home;
 	$("#nav-title").textContent = home ? "" : title;
+	watchLargeTitle();
+}
+
+/*
+ * iOS-style large titles: the page's own heading is the title; the bar shows
+ * it only once the heading has scrolled under the bar.
+ */
+let titleObserver = null;
+function watchLargeTitle() {
+	const bar = $(".navbar");
+	titleObserver?.disconnect();
+	const heading = $("#view h1:not(.sr)");
+	bar.classList.toggle("titled", !heading);
+	if (!heading || typeof IntersectionObserver !== "function") return;
+	titleObserver = new IntersectionObserver(([entry]) => {
+		bar.classList.toggle("titled", !entry.isIntersecting && entry.boundingClientRect.top < 80);
+	}, { rootMargin: "-72px 0px 0px 0px" });
+	titleObserver.observe(heading);
+}
+
+/* =================================================================== logo menu (phones) */
+function renderAppMenu() {
+	const langs = [...catalog.langs.values()].filter((l) => l.albums.length).sort((a, b) => b.albums.length - a.albums.length);
+	$("#app-menu").innerHTML = html`
+		<div class="am-group">
+			<a href="#/">${icon("home")}Home</a>
+			<a href="#/search">${icon("search")}Search</a>
+			<a href="#/library">${icon("library")}Library</a>
+		</div>
+		<h2>Languages</h2>
+		<div class="am-group">${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}"><span>${V.langLabel(l)}</span><span class="am-count">${l.albums.length.toLocaleString()}</span></a>`)}</div>
+		<h2>Browse</h2>
+		<div class="am-group"><a href="#/genres">Genres</a><a href="#/top">Most played</a></div>
+		<div class="am-foot"><a href="#/about">About</a><a href="#/terms">Terms</a><a href="#/help">Help</a></div>`;
+}
+function openAppMenu() {
+	const menu = $("#app-menu");
+	if (!menu.childElementCount) renderAppMenu();
+	menu.hidden = false;
+	$(".nav-logo").setAttribute("aria-expanded", "true");
+	$("a", menu)?.focus();
+}
+function closeAppMenu({ restoreFocus = false } = {}) {
+	const menu = $("#app-menu");
+	if (menu.hidden) return;
+	menu.hidden = true;
+	$(".nav-logo").setAttribute("aria-expanded", "false");
+	if (restoreFocus) $(".nav-logo").focus();
 }
 
 async function render({ keepScroll = false } = {}) {
@@ -67,6 +114,8 @@ async function render({ keepScroll = false } = {}) {
 	const r = parse();
 	const view = $("#view");
 	if (!r) { go("", undefined, { replace: true }); return; }
+	// The page kind, for layout rules such as the search field in place of the bar on phones.
+	document.body.dataset.page = r.path.split("/")[0] || "home";
 	const scroll = keepScroll ? scrollY : 0;
 	currentRoute = r;
 	resetLists();
@@ -425,6 +474,10 @@ const actions = {
 		el.remove();
 	},
 	"copy-code"(el) { copyCode(el.dataset.code, el); },
+	"app-menu"() {
+		if ($("#app-menu").hidden) openAppMenu();
+		else closeAppMenu({ restoreFocus: true });
+	},
 	consent(el) {
 		analytics.setChoice(el.dataset.value);
 		$("#consent")?.remove();
@@ -674,7 +727,8 @@ document.addEventListener("keydown", (e) => {
 		}
 	}
 	if (e.key === "Escape") {
-		if ($(".menu")) closeMenu(true);
+		if (!$("#app-menu").hidden) closeAppMenu({ restoreFocus: true });
+		else if ($(".menu")) closeMenu(true);
 		else if (!$("#sheet").hidden) closeSheet();
 		return;
 	}
@@ -847,7 +901,11 @@ export async function boot(platform) {
 	renderVolume();
 	await player.init(catalog);
 	renderBar();
-	addEventListener("hashchange", () => { trackDepth(); closeMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
+	document.addEventListener("click", (e) => {
+		// A tap outside the open logo menu closes it.
+		if (!$("#app-menu").hidden && !e.target.closest("#app-menu, .nav-logo")) closeAppMenu();
+	});
+	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
 	trackDepth();
 	await render();
 	document.body.classList.add("ready");
