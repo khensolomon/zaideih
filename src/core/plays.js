@@ -185,7 +185,8 @@ export function startPlayCounting(audio, currentTrack, queue = createPlayQueue()
 	const count = (id) => { if (id !== null) queue.add(id); };
 	audio.addEventListener("loadstart", () => tracker.load(currentTrack()?.id ?? null));
 	audio.addEventListener("seeking", () => tracker.seek(audio.currentTime));
-	audio.addEventListener("timeupdate", () => count(tracker.time(audio.currentTime, !audio.paused, audio.duration || currentTrack()?.duration || 0)));
+	// Passing quickly over silence (core/sound.js) is not listening.
+	audio.addEventListener("timeupdate", () => count(tracker.time(audio.currentTime, !audio.paused && audio.playbackRate <= 1.5, audio.duration || currentTrack()?.duration || 0)));
 	audio.addEventListener("ended", () => count(tracker.ended()));
 	addEventListener("online", () => queue.flush());
 	document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") queue.flush({ leaving: true }); });

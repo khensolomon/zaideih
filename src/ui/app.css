@@ -844,3 +844,23 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- sound panel (src/ui/sound-panel.js) ---------- */
+.sound-panel { width: min(360px, calc(100vw - 24px)); padding: 8px 10px 10px; display: grid; gap: 2px; }
+.sound-panel .sp-note { margin: 2px 6px 6px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.sound-panel .sp-row { display: flex; gap: 12px; align-items: flex-start; padding: 8px 6px; border-radius: var(--radius-s); cursor: pointer; }
+.sound-panel .sp-row:hover { background: var(--surface-2); }
+.sound-panel .sp-row.sp-col { flex-direction: column; gap: 8px; cursor: default; }
+.sound-panel .sp-row.sp-col:hover { background: none; }
+.sound-panel .sp-row input[type="checkbox"] { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.sound-panel .sp-row b { display: block; font-weight: 600; font-size: 14.5px; }
+.sound-panel .sp-row small { display: block; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.sound-panel .sp-seg { display: flex; gap: 4px; padding: 3px; border-radius: 999px; background: rgb(0 0 0 / 0.18); align-self: stretch; }
+.sound-panel .sp-seg button { flex: 1; border: 0; border-radius: 999px; padding: 6px 8px; background: none; color: var(--ink-2); font: inherit; font-size: 13.5px; cursor: pointer; }
+.sound-panel .sp-seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent, #3a3a3a); font-weight: 600; }
+.sound-panel .sp-eq { display: grid; gap: 6px; padding: 8px 6px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
+.sound-panel .sp-eq label { display: grid; grid-template-columns: 56px 1fr 48px; align-items: center; gap: 10px; font-size: 13.5px; }
+.sound-panel .sp-eq output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-3); font-size: 12.5px; }
+.sound-panel .sp-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 6px 0; }
+.sound-panel .sp-status { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.sound-panel [disabled] { opacity: 0.45; cursor: default; }

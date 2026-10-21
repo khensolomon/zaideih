@@ -1,7 +1,8 @@
 /**
  * Live audio analysis for the player animation.
  *
- * The playing <audio> element is routed through an AnalyserNode, so the
+ * The playing <audio> element is routed through an AnalyserNode (in the
+ * sound graph, core/sound.js), so the
  * animation follows the actual sound (including the volume setting) rather
  * than a canned loop.
  *
@@ -13,63 +14,18 @@
  *   - iOS and iPadOS suspend Web Audio when the screen locks or the app is
  *     backgrounded, which would stop playback. Analysis is disabled there and
  *     the animation stays static; playback is unaffected.
- *   - Routing happens once per element and cannot be undone, so it is set up
- *     on the first play (a user gesture, which also satisfies autoplay rules).
+ *   - The audio graph itself belongs to core/sound.js; the animations read
+ *     its analyser, after all processing, so they show what is heard.
  */
-const FFT_SIZE = 512;
+import { sound } from "./sound.js";
 
-function isAppleMobile() {
-	const ua = navigator.userAgent;
-	// iPadOS reports a desktop Mac user agent; touch support tells them apart.
-	return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-}
-
-function unsupportedReason() {
-	if (typeof AudioContext !== "function" && typeof webkitAudioContext !== "function") return "Web Audio is not available in this browser";
-	if (isAppleMobile()) return "iOS stops Web Audio in the background, which would interrupt playback";
-	return "";
-}
-
-const reason = unsupportedReason();
-let ctx = null;
-let analyser = null;
 let freq = null;
 let wave = null;
-let failed = "";
 
 export const visualizer = {
 	/** Empty when live analysis is available; otherwise why it is not. */
-	get unavailable() { return reason || failed; },
-	get active() { return !!analyser && ctx?.state === "running"; },
-
-	/** Routes `audio` through the analyser on its first play. */
-	attach(audio) {
-		if (reason) return;
-		audio.addEventListener("play", () => {
-			if (failed) return;
-			try {
-				if (!ctx) {
-					const Ctx = window.AudioContext ?? window.webkitAudioContext;
-					ctx = new Ctx();
-					analyser = ctx.createAnalyser();
-					analyser.fftSize = FFT_SIZE;
-					analyser.smoothingTimeConstant = 0.78;
-					analyser.minDecibels = -88;
-					analyser.maxDecibels = -18;
-					const source = ctx.createMediaElementSource(audio);
-					source.connect(analyser);
-					analyser.connect(ctx.destination);
-					freq = new Uint8Array(analyser.frequencyBinCount);
-					wave = new Uint8Array(analyser.fftSize);
-				}
-				if (ctx.state === "suspended") ctx.resume().catch((err) => console.error("audio context resume failed", err));
-			} catch (err) {
-				// The animation is optional; record why it is off and keep playing.
-				failed = `audio analysis could not start (${err.message})`;
-				console.error(failed);
-			}
-		});
-	},
+	get unavailable() { return sound.unavailable; },
+	get active() { return sound.active; },
 
 	/**
 	 * Fills `bars` (Float32Array) with 0..1 band energies on a log frequency
@@ -79,6 +35,11 @@ export const visualizer = {
 		if (!this.active) {
 			bars.fill(0);
 			return 0;
+		}
+		const analyser = sound.analyser;
+		if (!freq || freq.length !== analyser.frequencyBinCount) {
+			freq = new Uint8Array(analyser.frequencyBinCount);
+			wave = new Uint8Array(analyser.fftSize);
 		}
 		analyser.getByteFrequencyData(freq);
 		analyser.getByteTimeDomainData(wave);

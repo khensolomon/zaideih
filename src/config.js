@@ -10,7 +10,7 @@
  * Default (tools/build.mjs): https://media.zaideih.com/audio/{id}, served by
  * worker/media, which resolves the id to the R2 object.
  */
-/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__ */
+/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__, __SOUND_WORKLET__ */
 export const AUDIO_URL_TEMPLATE = typeof __AUDIO_URL__ === "string" ? __AUDIO_URL__ : "";
 /** Release version, yy.mm.dd.changes (see tools/lib/version.mjs). */
 export const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0.0";
@@ -20,6 +20,8 @@ export const IS_DEV = typeof __DEV__ === "boolean" ? __DEV__ : true;
 export const GA_ID = typeof __GA_ID__ === "string" ? __GA_ID__ : "";
 /** Where song plays are counted (core/plays.js); empty when counting is off for this build. */
 export const PLAYS_URL = typeof __PLAYS_URL__ === "string" ? __PLAYS_URL__ : "";
+/** The audio worklet for the sound features (core/sound-worklet.js), relative to the page. */
+export const SOUND_WORKLET_URL = typeof __SOUND_WORKLET__ === "string" ? __SOUND_WORKLET__ : "";
 
 export class AudioSourceError extends Error {}
 

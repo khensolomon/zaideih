@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.8
+
+- Sound for old recordings, live while listening (computers and Android): skip silent tape at the start and end (passed at 8x, remembered per song), clean up (Light: air blowing, rumble and hiss; Strong: deeper hiss reduction), even out volume between recordings, play one-sided recordings in both ears, and bass, voice and treble. A Sound panel in Now playing shows the settings and what they did.
+
 ## v26.10.21.7
 
 - Album covers show who sings and how loved an album is: a record for solo albums (a band per song), two overlapping rings for duets, a ring of artists for compilations, a large label for singles, with echo rings for popularity and the accent for the most played; song bars brighten with plays. Over a background, the Now playing cover and queue are see-through. Watch mode gets its own controls: the song, progress, previous, play, next, the next background and an option to keep the song info on screen; they fade while playing. The WebGL explanation lists the steps to turn graphics acceleration on.

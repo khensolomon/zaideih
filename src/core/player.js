@@ -13,17 +13,19 @@ import { library } from "./library.js";
 import { offline } from "./offline.js";
 import { diagnose } from "./probe.js";
 import { emit, notify } from "./store.js";
-import { visualizer } from "./visualizer.js";
+import { sound } from "./sound.js";
 
 const PERSIST_KEY = "player";
 const PREVIOUS_RESTART_SECONDS = 3;
 
 const audio = new Audio();
 audio.preload = "auto";
-// CORS mode is required for the live visualizer (see core/visualizer.js); the
-// audio Worker answers allowed origins with Access-Control-Allow-Origin.
+// CORS mode is required for the live sound processing and the animations
+// (core/sound.js); the audio Worker answers allowed origins with
+// Access-Control-Allow-Origin.
 audio.crossOrigin = "anonymous";
-visualizer.attach(audio);
+// Skip silence can end a song early (silent tape at the end), as if it had ended.
+sound.attach(audio, { current: () => current(), finish: () => songEnded() });
 
 const VOLUME_KEY = "zaideih.volume";
 try {
@@ -191,7 +193,8 @@ audio.addEventListener("timeupdate", () => {
 		} catch { /* position state is advisory */ }
 	}
 });
-audio.addEventListener("ended", () => {
+/** What happens when a song ends: repeat it, play the next one, or stop. */
+function songEnded() {
 	if (state.repeat === "one") {
 		audio.currentTime = 0;
 		audio.play();
@@ -199,8 +202,9 @@ audio.addEventListener("ended", () => {
 	}
 	if (state.index < state.queue.length - 1) player.jump(state.index + 1);
 	else if (state.repeat === "all" && state.queue.length) player.jump(0);
-	else { state.playing = false; changed(); }
-});
+	else { audio.pause(); state.playing = false; changed(); }
+}
+audio.addEventListener("ended", songEnded);
 /**
  * The URL with a one-off query, so the browser fetches it again instead of
  * reusing a saved copy. The Worker reads only the path.
