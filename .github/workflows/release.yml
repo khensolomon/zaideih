@@ -212,6 +212,10 @@ jobs:
         run: npx --yes "$WRANGLER" deploy --config worker/media/wrangler.toml --tag "$TAG" --message "$MESSAGE"
       # The Worker must answer a ranged request for a known track with audio
       # and its diagnostic header. AUDIO_CHECK_URL overrides the address.
+      # Cloudflare bot protection on the zaideih.com zone can refuse GitHub's
+      # machines before the request reaches the Worker; such an answer carries
+      # cf-mitigated and is reported as a warning, since the deploy succeeded
+      # and the check cannot run from here. Any other refusal fails the job.
       - name: Check the live Worker
         env:
           AUDIO_CHECK_URL: ${{ vars.AUDIO_CHECK_URL || 'https://media.zaideih.com/audio/1' }}
@@ -225,8 +229,17 @@ jobs:
                   exit 0
                 fi
                 echo "attempt $attempt: 206 without X-Zaideih-Meta; the new version may not be live yet" ;;
+              403)
+                if grep -qi '^cf-mitigated:' headers.txt; then
+                  echo "::warning::$AUDIO_CHECK_URL is behind Cloudflare bot protection, which refused GitHub's machine ($(grep -i '^cf-mitigated:' headers.txt | tr -d '\r')). The deploy succeeded; check playback from a browser, or with: curl -sI -H 'Range: bytes=0-1' $AUDIO_CHECK_URL"
+                  exit 0
+                fi
+                echo "::error::$AUDIO_CHECK_URL answered HTTP 403 without Cloudflare's bot-protection marker (cf-mitigated). The deploy itself succeeded; the headers below show who refused it: the Worker (worker/media/script.js) or a firewall rule."
+                tr -d '\r' < headers.txt
+                exit 1 ;;
               4??)
-                echo "::error::$AUDIO_CHECK_URL answered HTTP $status. The deploy itself succeeded; check the track id, D1 and R2 (node tools/diagnose.mjs track <id> --probe), or bot protection."
+                echo "::error::$AUDIO_CHECK_URL answered HTTP $status. The deploy itself succeeded; check the track id, D1 and R2 (node tools/diagnose.mjs track <id> --probe)."
+                tr -d '\r' < headers.txt
                 exit 1 ;;
               *)
                 echo "attempt $attempt: HTTP $status" ;;
