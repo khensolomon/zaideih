@@ -113,49 +113,56 @@ main {
 }
 
 /*
- * Small screens: a floating "liquid glass" bar, iOS style. Left: Back (when
- * there is somewhere to go back to) and the logo, which opens the menu.
- * Centre: the page title, shown once the page's own large title has scrolled
- * under the bar. Right: Search and Library. The player owns the bottom.
+ * Small screens: iOS-style floating controls rather than a bar. Each control
+ * is its own "liquid glass" button (translucent, blurred, light edge): Back
+ * and the logo on the left, Search and Library sharing one pill on the right,
+ * and the page title between them as plain text, shown once the page's own
+ * large title has scrolled under them. A fade behind keeps them readable.
  */
 .navbar {
-	position: sticky; top: calc(env(safe-area-inset-top) + 8px); z-index: 20;
+	position: sticky; top: calc(env(safe-area-inset-top) + 6px); z-index: 20;
 	display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
-	min-height: 54px; margin: calc(env(safe-area-inset-top) + 8px) 8px 0; padding: 0 6px;
-	border-radius: 24px; isolation: isolate;
-	background: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.04)), rgb(74 74 74 / 0.42);
-	-webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
-	border: 1px solid rgb(255 255 255 / 0.18); border-bottom-color: rgb(255 255 255 / 0.08);
-	box-shadow: 0 10px 30px rgb(0 0 0 / 0.26), 0 1px 3px rgb(0 0 0 / 0.18);
+	min-height: 48px; margin: calc(env(safe-area-inset-top) + 6px) 12px 0; padding: 0;
 }
-/* Above the floating bar the page fades out, so text does not run into the status bar. */
-.shell::before {
-	content: ""; position: fixed; z-index: 19; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 34px); pointer-events: none;
-	background: linear-gradient(180deg, var(--mist) 30%, rgb(90 90 90 / 0));
+.glass {
+	position: relative; isolation: isolate;
+	background: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.05)), rgb(74 74 74 / 0.44);
+	-webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+	border: 1px solid rgb(255 255 255 / 0.2); border-bottom-color: rgb(255 255 255 / 0.08);
+	box-shadow: 0 6px 18px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
 }
-@media (min-width: 900px) { .shell::before { display: none; } }
-/* The glass's light edge: a soft highlight along the top, brightest at the left. */
-.navbar::before {
+/* The light edge: a soft highlight on the upper left of each piece of glass. */
+.glass::before {
 	content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-	background: radial-gradient(120% 90% at 12% -30%, rgb(255 255 255 / 0.22), transparent 55%);
+	background: radial-gradient(110% 90% at 20% -20%, rgb(255 255 255 / 0.22), transparent 60%);
 }
-.navbar .nav-left { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.navbar .nav-right { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.navbar .nav-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.navbar .nav-right { display: flex; align-items: center; justify-self: end; gap: 0; padding: 0 2px; border-radius: 999px; }
 .navbar .nav-title {
-	font-weight: 600; font-size: 17px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+	font-weight: 600; font-size: 17px; max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+	text-shadow: 0 1px 8px rgb(0 0 0 / 0.35);
 	opacity: 0; transform: translateY(4px); transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .navbar.titled .nav-title { opacity: 1; transform: none; }
-.nav-back { display: inline-flex; align-items: center; gap: 0; min-height: 44px; padding: 0 6px 0 0; border: 0; background: none; color: var(--accent-ink); font-size: 17px; font-weight: 500; }
-.nav-back svg { width: 26px; height: 26px; }
-.navbar .icon-btn { width: 44px; height: 44px; }
-.navbar .icon-btn[aria-current="page"] { color: var(--ink); background: rgb(255 255 255 / 0.12); }
-.nav-logo { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 14px; background: none; }
-.nav-logo[aria-expanded="true"] .logo-tile { box-shadow: 0 0 0 2px var(--accent); }
+.nav-back { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; color: var(--ink); }
+.nav-back[hidden] { display: none; }
+.nav-back svg { width: 24px; height: 24px; stroke-width: 2.2; }
+.navbar .nav-right .icon-btn { width: 44px; height: 44px; color: var(--ink); }
+.navbar .icon-btn[aria-current="page"] { color: var(--ink); background: rgb(255 255 255 / 0.14); }
+.nav-logo { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; }
+.nav-logo[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--accent), 0 6px 18px rgb(0 0 0 / 0.24); }
 
 .logo-tile { display: inline-grid; place-items: center; background: var(--logo-bg); color: var(--logo-fg); border-radius: 23%; }
 .logo-tile .logo-mark { width: 64%; height: 64%; }
-.nav-logo .logo-tile { width: 36px; height: 36px; }
+/* Behind the floating controls the page fades out, so they stay readable over content. */
+.shell::before {
+	content: ""; position: fixed; z-index: 19; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + 76px); pointer-events: none;
+	background: linear-gradient(180deg, var(--mist) 0%, rgb(90 90 90 / 0.86) 45%, rgb(90 90 90 / 0));
+}
+@media (min-width: 900px) { .shell::before { display: none; } }
+/* Inside its glass button the logo needs no tile of its own. */
+.nav-logo .logo-tile { width: 30px; height: 30px; background: none; }
+.nav-logo .logo-tile .logo-mark { width: 100%; height: 100%; }
 
 /* The logo menu: the sidebar's places, on a glass sheet under the bar. */
 .app-menu {
@@ -423,20 +430,23 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 	.sg-panel { border-radius: 0 0 20px 20px; }
 	body[data-page="search"] .navbar { display: none; }
 	body[data-page="search"] main { padding-top: calc(env(safe-area-inset-top) + 8px); }
-	body[data-page="search"] .searchbox {
-		position: sticky; top: calc(env(safe-area-inset-top) + 8px);
-		display: flex; align-items: center; gap: 4px; margin: 0 -8px 20px; padding: 5px 5px 5px 0;
-		border-radius: 24px; isolation: isolate;
-		background: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.04)), rgb(74 74 74 / 0.42);
-		-webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
-		border: 1px solid rgb(255 255 255 / 0.18); box-shadow: 0 10px 30px rgb(0 0 0 / 0.26);
+	body[data-page="search"] .searchbox { position: sticky; top: calc(env(safe-area-inset-top) + 6px); display: flex; align-items: center; gap: 8px; margin: 0 -4px 20px; }
+	body[data-page="search"] .searchbox input {
+		flex: 1; min-width: 0; min-height: 48px; padding-left: 44px; font-size: 16px; border-radius: 999px;
+		background: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.05)), rgb(74 74 74 / 0.44);
+		-webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+		border: 1px solid rgb(255 255 255 / 0.2); border-bottom-color: rgb(255 255 255 / 0.08);
+		box-shadow: 0 6px 18px rgb(0 0 0 / 0.24);
 	}
-	body[data-page="search"] .searchbox input { flex: 1; min-width: 0; min-height: 44px; margin-left: 5px; background: rgb(0 0 0 / 0.16); border-color: transparent; font-size: 16px; padding-left: 42px; }
-	body[data-page="search"] .searchbox > svg { left: 18px; top: 50%; }
-	body[data-page="search"] .searchbox.open input { border-radius: 20px; }
-	body[data-page="search"] .sg-panel { top: calc(100% + 6px); border: 1px solid rgb(255 255 255 / 0.16); border-radius: 20px; background: rgb(70 70 70 / 0.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+	body[data-page="search"] .searchbox input:focus { border-color: rgb(255 255 255 / 0.32); box-shadow: 0 6px 18px rgb(0 0 0 / 0.24); }
+	body[data-page="search"] .searchbox.open input { border-radius: 999px; border-bottom-color: rgb(255 255 255 / 0.08); }
+	body[data-page="search"] .searchbox > svg { left: 16px; top: 50%; }
+	/* One clear control only: the round button beside the field. */
+	body[data-page="search"] .searchbox input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+	body[data-page="search"] .sg-panel { top: calc(100% + 8px); right: 56px; border: 1px solid rgb(255 255 255 / 0.16); border-radius: 22px; background: rgb(70 70 70 / 0.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
 	body[data-page="search"] .sg-panel::before { display: none; }
-	body[data-page="search"] .search-cancel { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--accent-ink); font-size: 16px; font-weight: 500; }
+	body[data-page="search"] .search-cancel { display: inline-grid; place-items: center; flex: none; width: 48px; height: 48px; padding: 0; border-radius: 50%; color: var(--ink); }
+	body[data-page="search"] .search-cancel svg { width: 20px; height: 20px; stroke-width: 2.2; }
 }
 
 /* The panel under the box: scope buttons, then the suggestions. It shares
