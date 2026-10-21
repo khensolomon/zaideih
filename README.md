@@ -26,7 +26,7 @@ Started in 2006 and launched in 2007, Zaideih has been rebuilt several times: AS
 - Search across Latin and Myanmar script, with spelling variants, close matches, "did you mean" and simple questions such as "most played Mizo gospel albums from the 1990s".
 - Library: liked songs, playlists, history, and a backup file to move it between devices.
 - Player with a queue, shuffle and repeat, lock-screen and media-key controls, and animated backgrounds in Now playing that follow the music.
-- Sound for old recordings, applied while listening: skip silent tape at the start and end, clean up air blowing, rumble and hiss, even out volume between recordings, play one-sided recordings in both ears, and an equaliser.
+- Sound for old recordings, applied while listening: skip silent tape at the start and end, clean up air blowing, rumble and hiss, even out volume between recordings, play one-sided recordings in both ears, and a ten-band equaliser with presets.
 - Generated artwork: album covers and artist pictures drawn from the catalog itself.
 
 ## Development

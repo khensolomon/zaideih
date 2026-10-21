@@ -14,11 +14,14 @@
  *                  loudness is remembered per song.
  *   One-sided fix  A recording heard in one ear only (one tape channel lost)
  *                  is played in both.
- *   Equaliser      Bass, voice and treble, ±6 dB.
+ *   Equaliser      Ten bands (31 Hz to 16 kHz), ±12 dB each, with presets
+ *                  for common needs (bass, voice, old tape, small speakers…).
+ *                  Boosts lower the level first (headroom), and a limiter
+ *                  stops any remaining peak from distorting.
  *
  * Signal path (Web Audio):
  *   <audio> → meter → [one-sided fix] → rumble cut → hiss shelf → denoise →
- *   bass → voice → treble → level → limiter → mute → analyser → speakers
+ *   headroom → 10 equaliser bands → level → limiter → mute → analyser → speakers
  * The meter (before any processing) drives the silence, level and one-sided
  * decisions; the analyser (after everything) drives the animations, so they
  * show what is heard.
@@ -33,7 +36,23 @@ export const SETTINGS_KEY = "zaideih.sound";
 const MEMORY_KEY = "zaideih.sound.tracks";
 const MEMORY_MAX = 3000;
 const FFT_SIZE = 512;
-export const DEFAULTS = Object.freeze({ skip: true, clean: "light", level: true, balance: true, bass: 0, voice: 0, treble: 0 });
+/** Equaliser band centres (Hz): one per octave; the lowest is a low shelf, the highest a high shelf. */
+export const EQ_BANDS = Object.freeze([31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]);
+export const EQ_LIMIT = 12;
+const flat = () => EQ_BANDS.map(() => 0);
+/** Presets (dB per band, 31 Hz … 16 kHz). "custom" is whatever the listener set by hand. */
+export const PRESETS = Object.freeze([
+	{ id: "flat", name: "Flat", gains: flat() },
+	{ id: "bass", name: "Bass boost", gains: [6, 7, 6, 3, 1, 0, 0, 0, 0, 0] },
+	{ id: "voice", name: "Clear voice", gains: [-4, -3, -1, 0, 2, 4, 5, 4, 2, 0] },
+	{ id: "tape", name: "Old tape", gains: [-6, -2, 2, 2, 1, 1, 3, 4, 1, -3] },
+	{ id: "warm", name: "Warm", gains: [2, 3, 4, 2, 1, 0, -1, -2, -3, -4] },
+	{ id: "bright", name: "Bright", gains: [0, 0, 0, -1, 0, 1, 2, 4, 6, 7] },
+	{ id: "loud", name: "Loudness", gains: [6, 5, 3, 0, -1, -1, 0, 2, 4, 5] },
+	{ id: "small", name: "Small speakers", gains: [-8, -6, 0, 3, 4, 3, 2, 1, 0, -1] },
+	{ id: "choir", name: "Choir and hall", gains: [-2, 0, 1, 2, 1, 0, 2, 3, 2, 1] },
+]);
+export const DEFAULTS = Object.freeze({ skip: true, clean: "light", level: true, balance: true, preset: "flat", eq: Object.freeze(flat()) });
 const CLEAN = {
 	off: { rumble: 10, shelf: 0, amount: 0 },
 	light: { rumble: 75, shelf: -4, amount: 0.5 },
@@ -187,10 +206,20 @@ export function createBalance() {
 export function readSettings(storage = globalThis.localStorage) {
 	try {
 		const saved = JSON.parse(storage?.getItem(SETTINGS_KEY) ?? "null");
-		const out = { ...DEFAULTS, ...(saved && typeof saved === "object" ? saved : {}) };
+		const s = saved && typeof saved === "object" ? saved : {};
+		const out = { ...DEFAULTS, ...s };
 		if (!(out.clean in CLEAN)) out.clean = DEFAULTS.clean;
-		for (const k of ["bass", "voice", "treble"]) out[k] = Math.max(-6, Math.min(6, Number(out[k]) || 0));
 		for (const k of ["skip", "level", "balance"]) out[k] = Boolean(out[k]);
+		let eq = Array.isArray(s.eq) && s.eq.length === EQ_BANDS.length ? s.eq : null;
+		// Settings from the three-band equaliser (26.10.21.8): bass, voice and treble.
+		if (!eq && ["bass", "voice", "treble"].some((k) => typeof s[k] === "number")) {
+			const [b, v, t] = ["bass", "voice", "treble"].map((k) => Number(s[k]) || 0);
+			eq = [b, b, b, b / 2, v / 2, v, v, (v + t) / 2, t, t];
+			out.preset = "custom";
+		}
+		out.eq = (eq ?? flat()).map((g) => Math.max(-EQ_LIMIT, Math.min(EQ_LIMIT, Math.round((Number(g) || 0) * 2) / 2)));
+		if (out.preset !== "custom" && !PRESETS.some((p) => p.id === out.preset)) out.preset = "custom";
+		delete out.bass; delete out.voice; delete out.treble;
 		return out;
 	} catch {
 		return { ...DEFAULTS };
@@ -256,17 +285,32 @@ function ramp(param, value, seconds = 0.08) {
 function applySettings() {
 	if (!nodes) return;
 	const c = CLEAN[settings.clean];
-	ramp(nodes.rumble.frequency, c.rumble);
+	ramp(nodes.rumble.frequency, rumbleCut(settings));
 	ramp(nodes.shelf.gain, c.shelf);
 	if (nodes.denoise) ramp(nodes.denoise.parameters.get("amount"), c.amount);
-	ramp(nodes.bass.gain, settings.bass);
-	ramp(nodes.voice.gain, settings.voice);
-	ramp(nodes.treble.gain, settings.treble);
-	nodes.limiter.ratio.value = settings.level ? 6 : 1;
-	nodes.limiter.threshold.value = settings.level ? -10 : 0;
+	settings.eq.forEach((g, i) => ramp(nodes.eq[i].gain, g));
+	// Headroom: boosting bands lowers the whole level first, so peaks have room.
+	ramp(nodes.headroom.gain, 10 ** (-headroomDb(settings.eq) / 20));
+	// With even volume the limiter also catches boosted songs; otherwise it only stops clipping.
+	nodes.limiter.threshold.value = settings.level ? -10 : -1.5;
+	nodes.limiter.ratio.value = settings.level ? 6 : 20;
 	applyLevel();
 	applyBalance(settings.balance ? balance.side : "both");
 	status.cleaning = settings.clean !== "off";
+}
+
+/**
+ * The rumble cut's frequency: Clean up's, moved down to 45 Hz when the two
+ * lowest equaliser bands are boosted, so a bass boost is heard.
+ */
+export function rumbleCut(s) {
+	const f = CLEAN[s.clean].rumble;
+	return Math.max(s.eq[0], s.eq[1]) > 2 ? Math.min(f, 45) : f;
+}
+
+/** dB to lower the level by before the equaliser: most of the largest boost. */
+export function headroomDb(eq) {
+	return Math.max(0, ...eq) * 0.7;
 }
 
 function applyLevel() {
@@ -306,13 +350,15 @@ async function build(audio) {
 	n.rumble.Q.value = 0.7;
 	n.shelf = Object.assign(ctx.createBiquadFilter(), { type: "highshelf" });
 	n.shelf.frequency.value = 7500;
-	n.bass = Object.assign(ctx.createBiquadFilter(), { type: "lowshelf" });
-	n.bass.frequency.value = 160;
-	n.voice = Object.assign(ctx.createBiquadFilter(), { type: "peaking" });
-	n.voice.frequency.value = 1800;
-	n.voice.Q.value = 0.8;
-	n.treble = Object.assign(ctx.createBiquadFilter(), { type: "highshelf" });
-	n.treble.frequency.value = 5000;
+	n.headroom = ctx.createGain();
+	n.eq = EQ_BANDS.map((f, i) => {
+		const last = i === EQ_BANDS.length - 1;
+		const band = Object.assign(ctx.createBiquadFilter(), { type: i === 0 ? "lowshelf" : last ? "highshelf" : "peaking" });
+		// The shelves sit inside the audible range so they are heard: 45 Hz and 11 kHz.
+		band.frequency.value = i === 0 ? 45 : last ? 11000 : f;
+		band.Q.value = 1.4; // about one octave wide
+		return band;
+	});
 	n.level = ctx.createGain();
 	n.limiter = ctx.createDynamicsCompressor();
 	n.limiter.knee.value = 6;
@@ -344,9 +390,10 @@ async function build(audio) {
 	n.split.connect(n.rl, 1); n.split.connect(n.rr, 1);
 	n.ll.connect(n.merge, 0, 0); n.rl.connect(n.merge, 0, 0);
 	n.lr.connect(n.merge, 0, 1); n.rr.connect(n.merge, 0, 1);
-	const chain = [n.merge, n.rumble, n.shelf, n.denoise, n.bass, n.voice, n.treble, n.level, n.limiter, n.mute, analyser, ctx.destination].filter(Boolean);
+	const chain = [n.merge, n.rumble, n.shelf, n.denoise, n.headroom, ...n.eq, n.level, n.limiter, n.mute, analyser, ctx.destination].filter(Boolean);
 	for (let i = 0; i < chain.length - 1; i++) chain[i].connect(chain[i + 1]);
 	nodes = n;
+	if (globalThis.__soundTrace) globalThis.__soundNodes = n; // test hook, see __soundTrace
 	applySettings();
 }
 
@@ -436,8 +483,9 @@ export const sound = {
 	get status() { return { ...status }; },
 	onStatus(fn) { listeners.add(fn); return () => listeners.delete(fn); },
 
-	/** Changes settings (partial), keeps them, and applies them at once. */
+	/** Changes settings (partial), keeps them, and applies them at once. A preset id sets its gains. */
 	set(patch) {
+		if (patch.preset && patch.preset !== "custom" && !patch.eq) patch = { ...patch, eq: PRESETS.find((p) => p.id === patch.preset)?.gains ?? flat() };
 		settings = readSettings({ getItem: () => JSON.stringify({ ...settings, ...patch }) });
 		try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* kept for this visit only */ }
 		if (!settings.skip && player?.audio.playbackRate !== 1) { player.audio.playbackRate = 1; ramp(nodes.mute.gain, 1, 0.1); skipper.stop(); }

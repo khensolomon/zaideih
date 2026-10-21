@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.9
+
+- Equaliser: ten bands from 31 Hz to 16 kHz, 12 dB up or down, with presets (Bass boost, Clear voice, Old tape, Warm, Bright, Loudness, Small speakers, Choir and hall) and automatic headroom so boosts never distort. The Sound panel has two tabs, Clean up and Equaliser.
+
 ## v26.10.21.8
 
 - Sound for old recordings, live while listening (computers and Android): skip silent tape at the start and end (passed at 8x, remembered per song), clean up (Light: air blowing, rumble and hiss; Strong: deeper hiss reduction), even out volume between recordings, play one-sided recordings in both ears, and bass, voice and treble. A Sound panel in Now playing shows the settings and what they did.
