@@ -200,6 +200,7 @@ function renderBar() {
 	viz.setPlaying(s.playing);
 	bar.classList.toggle("paused", !!t && !s.playing);
 	if (!$("#sheet").hidden) renderSheet();
+	renderWatch();
 }
 
 function setLikeState(btn, liked, { animate = false } = {}) {
@@ -350,7 +351,7 @@ function updateScene() {
 		} catch (err) {
 			scenesError = err instanceof ScenesUnavailableError ? err : new ScenesUnavailableError(`Backgrounds could not start: ${err.message}`);
 			// No notice: the background button explains it when opened.
-			console.warn(scenesError.message, scenesError.detail ? `(browser: ${scenesError.detail})` : "");
+			console.warn(scenesError.message, scenesError.steps.join("; "), scenesError.detail ? `(browser: ${scenesError.detail})` : "");
 			const btn = $("[data-act=scene-menu]", sheet);
 			btn?.setAttribute("aria-label", `Background: ${sceneLabel()}`);
 		}
@@ -383,7 +384,8 @@ function openSceneMenu(anchor) {
 		openMenu(anchor, [
 			{ label: "Background" },
 			{ label: scenesError.message },
-			...(scenesError.detail ? [{ label: `Browser: ${scenesError.detail}` }] : []),
+			...scenesError.steps.map((step, i) => ({ label: `${i + 1}. ${step}` })),
+			...(scenesError.detail ? [{ label: `The browser says: ${scenesError.detail}` }] : []),
 		]);
 		return;
 	}
@@ -402,32 +404,137 @@ function openSceneMenu(anchor) {
 	]);
 }
 
-/* Watch mode: the scene alone, controls hidden; any tap, click or key brings them back. */
+/*
+ * Watch mode: the scene full screen with a light layer of its own: the song
+ * (title, artist, album), progress, previous, play and next, the next
+ * background, and leaving. The layer fades out after a few seconds while
+ * playing and comes back on a tap, a click, pointer movement or a key.
+ * "Keep song info" leaves the title and artist on screen, like a TV caption.
+ */
+const WATCH_INFO_KEY = "zaideih.watch.info";
+const WATCH_IDLE_MS = 3500;
+let watchTimer = 0;
+let wokeAt = 0;
+
+const watching = () => $("#sheet").classList.contains("watching");
+function watchInfoKept() {
+	try { return localStorage.getItem(WATCH_INFO_KEY) === "keep"; } catch { return false; }
+}
+
+function renderWatch() {
+	if (!watching()) return;
+	const ui = $("#watch-ui");
+	const t = player.current();
+	if (!t) { exitWatch(); return; }
+	const s = player.state;
+	const focusedAct = ui.contains(document.activeElement) ? (document.activeElement.dataset.ctl ?? document.activeElement.dataset.act) : null;
+	const kept = watchInfoKept();
+	const sceneName = SCENES.find((x) => x.id === sceneToShow(t))?.name ?? "";
+	ui.classList.toggle("info", kept);
+	ui.innerHTML = html`
+		<div class="w-top">
+			<span class="w-hint">${sceneName ? html`<b>${sceneName}</b> · ` : ""}${fineHover.matches ? "Move or click to show the controls, Esc to leave" : "Tap to show or hide the controls"}</span>
+			<span class="w-btns">
+				<button class="icon-btn glass" data-act="watch-scene" aria-label="Next background">${icon("scene")}</button>
+				<button class="icon-btn glass" data-act="watch-info" aria-pressed="${String(kept)}" aria-label="${kept ? "Hide song info when the controls hide" : "Keep song info on screen"}">${icon("info")}</button>
+				<button class="icon-btn glass" data-act="watch-exit" aria-label="Leave watch mode">${icon("exitWatch")}</button>
+			</span>
+		</div>
+		<div class="w-bottom">
+			<div class="w-now">
+				${cover(t.album, { label: false })}
+				<div class="w-meta">
+					<div class="w-title ${scriptClass(t.title)}">${t.title}</div>
+					<div class="w-sub">${creditOf(t.artists, 3)} · <span class="${scriptClass(t.album.title)}">${t.album.title}</span>${t.album.year ? html` · ${t.album.year}` : ""}</div>
+				</div>
+			</div>
+			<div class="w-seek seek">
+				<input type="range" data-ctl="seek" min="0" step="1" aria-label="Seek">
+				<span class="seek-tip" hidden></span>
+				<div class="times"><span data-time="pos">0:00</span><span data-time="dur">${formatDuration(t.duration)}</span></div>
+			</div>
+			<div class="w-ctl">
+				<button class="icon-btn glass" data-ctl="prev" aria-label="Previous">${icon("prev")}</button>
+				<button class="play-btn" data-ctl="toggle" aria-label="${s.playing ? "Pause" : "Play"}">${icon(s.playing ? "pause" : "play")}</button>
+				<button class="icon-btn glass" data-ctl="next" aria-label="Next" ${s.index >= s.queue.length - 1 && s.repeat !== "all" ? "disabled" : ""}>${icon("next")}</button>
+			</div>
+		</div>`;
+	renderTime({ position: player.audio.currentTime || 0, duration: player.audio.duration || t.duration });
+	if (focusedAct) $(`[data-ctl="${focusedAct}"], [data-act="${focusedAct}"]`, ui)?.focus();
+	// Paused: the controls stay, since there is nothing to watch go by.
+	if (!s.playing) wakeWatch({ stay: true });
+}
+
+/** Shows the watch controls; they hide again after a few seconds while playing. */
+function wakeWatch({ stay = false } = {}) {
+	if (!watching()) return;
+	const ui = $("#watch-ui");
+	if (!ui.classList.contains("awake")) wokeAt = performance.now();
+	ui.classList.add("awake");
+	$("#sheet").classList.add("awake");
+	clearTimeout(watchTimer);
+	if (stay || !player.state.playing) return;
+	watchTimer = setTimeout(sleepWatch, WATCH_IDLE_MS);
+}
+function sleepWatch() {
+	// Keep the controls while one of them is in use (keyboard focus or a seek drag).
+	const ui = $("#watch-ui");
+	// Keep the controls while one is in use: under the pointer, focused from the keyboard, or a seek drag.
+	const inUse = ui.querySelector("button:hover, input:hover, [data-dragging]")
+		|| (ui.contains(document.activeElement) && document.activeElement.matches(":focus-visible"));
+	if (inUse && player.state.playing) { clearTimeout(watchTimer); watchTimer = setTimeout(sleepWatch, WATCH_IDLE_MS); return; }
+	clearTimeout(watchTimer);
+	ui.classList.remove("awake");
+	$("#sheet").classList.remove("awake");
+}
+
 function enterWatch() {
 	const sheet = $("#sheet");
 	if (!sheet.classList.contains("has-scene")) return;
 	sheet.classList.add("watching");
+	$("#watch-ui").hidden = false;
 	document.documentElement.requestFullscreen?.().catch(() => {});
-	notify("Tap anywhere to show the controls again");
+	renderWatch();
+	wakeWatch();
 }
 function exitWatch() {
 	const sheet = $("#sheet");
 	if (!sheet.classList.contains("watching")) return;
-	sheet.classList.remove("watching");
+	clearTimeout(watchTimer);
+	sheet.classList.remove("watching", "awake");
+	const ui = $("#watch-ui");
+	ui.hidden = true;
+	ui.classList.remove("awake");
+	ui.innerHTML = "";
 	if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+	$("[data-act=watch]", sheet)?.focus();
+}
+function nextWatchScene() {
+	const t = player.current();
+	if (!t) return;
+	const usable = SCENES.filter((x) => !failedScenes.has(x.id));
+	if (!usable.length) return;
+	const i = usable.findIndex((x) => x.id === sceneToShow(t));
+	setSceneChoice(usable[(i + 1) % usable.length].id);
+	renderSheet();
+	renderWatch();
+	wakeWatch();
 }
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) exitWatch(); });
+document.addEventListener("pointermove", () => { if (watching()) wakeWatch(); }, { passive: true });
 document.addEventListener("visibilitychange", () => {
 	if (!stage) return;
 	if (document.hidden) stage.stop();
 	else if (!$("#sheet").hidden) stage.start();
 });
-// In watch mode the first tap or click only brings the controls back.
+// In watch mode a tap or click outside the controls shows or hides them.
 document.addEventListener("click", (e) => {
-	if (!$("#sheet").classList.contains("watching")) return;
+	if (!watching() || e.target.closest("#watch-ui button, #watch-ui input, .menu")) return;
 	e.preventDefault();
 	e.stopImmediatePropagation();
-	exitWatch();
+	// The pointer moving in to click has just shown the controls: that click keeps them.
+	const ui = $("#watch-ui");
+	if (ui.classList.contains("awake") && performance.now() - wokeAt > 400) { clearTimeout(watchTimer); ui.classList.remove("awake"); $("#sheet").classList.remove("awake"); } else wakeWatch();
 }, true);
 
 function openSheet() {
@@ -686,6 +793,13 @@ const actions = {
 	"close-sheet": () => closeSheet(),
 	"scene-menu": (el) => openSceneMenu(el),
 	watch: () => enterWatch(),
+	"watch-exit": () => exitWatch(),
+	"watch-scene": () => nextWatchScene(),
+	"watch-info"() {
+		try { localStorage.setItem(WATCH_INFO_KEY, watchInfoKept() ? "auto" : "keep"); } catch { /* lasts this visit only */ }
+		renderWatch();
+		wakeWatch();
+	},
 	"stats-on"() {
 		analytics.setChoice("granted");
 		$("#consent")?.remove();
@@ -872,7 +986,10 @@ document.addEventListener("keydown", (e) => {
 			return;
 		}
 	}
-	if ($("#sheet").classList.contains("watching")) { e.preventDefault(); exitWatch(); return; }
+	if (watching()) {
+		if (e.key === "Escape") { e.preventDefault(); exitWatch(); return; }
+		wakeWatch(); // other keys show the controls and keep working (Space, arrows)
+	}
 	if (e.key === "Escape") {
 		if (!$("#app-menu").hidden) closeAppMenu({ restoreFocus: true });
 		else if ($(".menu")) closeMenu(true);
