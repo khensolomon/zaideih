@@ -764,6 +764,7 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 .menu button:hover, .menu button:focus-visible { background: var(--surface-2); }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
 .menu .label { padding: 6px 12px 2px; font-size: 13px; color: var(--ink-3); }
+.menu .label + .label { padding-top: 4px; max-width: 320px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); white-space: normal; }
 
 dialog { border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--ink); padding: 22px; width: min(420px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgb(0 0 0 / 0.55); }

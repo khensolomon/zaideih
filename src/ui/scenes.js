@@ -24,7 +24,11 @@ const BANDS = 64;
 const STORE_KEY = "zaideih.scene";
 
 const PRELUDE = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform vec2 u_res;
 uniform float u_time, u_bass, u_mid, u_high, u_level, u_beat;
 uniform vec3 u_seed, u_tint;
@@ -208,25 +212,66 @@ function compile(gl, type, source) {
 	return sh;
 }
 
+/** WebGL cannot be used in this browser; `message` says why and what to do. */
+export class ScenesUnavailableError extends Error {
+	constructor(message, detail = "") {
+		super(message);
+		this.name = "ScenesUnavailableError";
+		this.detail = detail;
+	}
+}
+
+/** One scene's shader does not build on this device's graphics; other scenes may. */
+export class SceneBuildError extends Error {
+	constructor(id, log) {
+		super(`the "${id}" background could not be built on this device's graphics: ${log}`);
+		this.name = "SceneBuildError";
+		this.id = id;
+	}
+}
+
+/** What to do when WebGL is unavailable, for the browser in use. */
+function enableHint() {
+	const ua = navigator.userAgent;
+	if (/Edg\//.test(ua)) return "In Edge, turn on Settings, System and performance, \"Use graphics acceleration when available\", and restart Edge.";
+	if (/Chrome\//.test(ua)) return "In Chrome, turn on Settings, System, \"Use graphics acceleration when available\", and restart Chrome. The page chrome://gpu shows whether WebGL is available.";
+	if (/Firefox\//.test(ua)) return "In Firefox, check that webgl.disabled is false in about:config.";
+	return "Turn on graphics acceleration in the browser settings and restart the browser.";
+}
+
 /**
- * Creates a stage on a canvas. Returns null when WebGL is unavailable, so the
- * caller keeps the plain bar visualizer instead.
+ * Creates a stage on a canvas. Throws ScenesUnavailableError when WebGL is
+ * unavailable (graphics acceleration turned off, the GPU blocked by the
+ * browser), with the reason the browser gives and how to turn it on.
  */
 export function createStage(canvas) {
+	let reason = "";
+	const onError = (e) => { reason = e.statusMessage || ""; };
+	canvas.addEventListener("webglcontextcreationerror", onError);
 	const gl = canvas.getContext("webgl", { antialias: false, alpha: false, powerPreference: "low-power", preserveDrawingBuffer: false });
-	if (!gl) return null;
+	canvas.removeEventListener("webglcontextcreationerror", onError);
+	if (!gl) throw new ScenesUnavailableError(`Backgrounds need WebGL, which this browser has not made available. ${enableHint()}`, reason);
 	const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 	const programs = new Map();
-	const buffer = gl.createBuffer();
-	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-	const tex = gl.createTexture();
-	gl.bindTexture(gl.TEXTURE_2D, tex);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	let buffer = null;
+	let tex = null;
 	const specBytes = new Uint8Array(BANDS);
+
+	/** Buffers and the spectrum texture; again after the context is restored. */
+	function init() {
+		programs.clear();
+		buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+		tex = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, tex);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	}
+	init();
+	let lost = false;
 
 	function program(id) {
 		let entry = programs.get(id);
@@ -234,10 +279,14 @@ export function createStage(canvas) {
 		const scene = SCENES.find((s) => s.id === id);
 		if (!scene) throw new Error(`unknown scene "${id}"`);
 		const prog = gl.createProgram();
-		gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
-		gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, PRELUDE + scene.frag));
+		try {
+			gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
+			gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, PRELUDE + scene.frag));
+		} catch (err) {
+			throw new SceneBuildError(id, err.message);
+		}
 		gl.linkProgram(prog);
-		if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(`scene "${id}" failed to link: ${gl.getProgramInfoLog(prog)}`);
+		if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new SceneBuildError(id, `link failed: ${gl.getProgramInfoLog(prog)}`);
 		const u = {};
 		for (const name of ["u_res", "u_time", "u_bass", "u_mid", "u_high", "u_level", "u_beat", "u_seed", "u_tint", "u_spec"]) u[name] = gl.getUniformLocation(prog, name);
 		entry = { prog, u, attr: gl.getAttribLocation(prog, "p") };
@@ -291,7 +340,7 @@ export function createStage(canvas) {
 	}
 
 	function draw() {
-		if (!current) return;
+		if (!current || lost) return;
 		const p = program(current.id);
 		resize();
 		gl.useProgram(p.prog);
@@ -315,7 +364,7 @@ export function createStage(canvas) {
 	}
 
 	function frame(now) {
-		if (!running) return;
+		if (!running || lost) return;
 		const dt = Math.min(0.1, (now - (last || now)) / 1000);
 		last = now;
 		// Loud passages move faster, quiet ones slower; a paused song drifts.
@@ -329,8 +378,22 @@ export function createStage(canvas) {
 		raf = requestAnimationFrame(frame);
 	}
 
+	// The browser can take the graphics context away (GPU reset, too many
+	// contexts, a driver update); it comes back after "restored".
+	canvas.addEventListener("webglcontextlost", (e) => {
+		e.preventDefault(); // ask for it back
+		lost = true;
+		cancelAnimationFrame(raf);
+		console.warn("the background's graphics context was lost; waiting for the browser to restore it");
+	});
+	canvas.addEventListener("webglcontextrestored", () => {
+		lost = false;
+		init();
+		if (running) { last = 0; raf = requestAnimationFrame(frame); } else draw();
+	});
+
 	return {
-		/** Shows a scene for a track; `id` null stops and clears it. */
+		/** Shows a scene for a track; `id` null stops and clears it. Throws SceneBuildError for a scene this device cannot build. */
 		show(id, track) {
 			if (!id) { this.stop(); current = null; return; }
 			const h = hash32(`scene:${track.id}`);
@@ -339,9 +402,9 @@ export function createStage(canvas) {
 			const hue = seed[0] * Math.PI * 2;
 			const sat = 0.1 + 0.08 * seed[1];
 			const tint = [0, 2.094, 4.189].map((o) => 0.92 + sat * Math.cos(hue + o));
+			if (!lost) program(id); // builds the shader first, so a failure leaves the current scene as it is
 			if (current?.id !== id || current?.track !== track.id) time = seed[2] * 100;
 			current = { id, track: track.id, seed, tint };
-			program(id);
 			if (reduceMotion.matches) { this.stop(); analyse(0.016); draw(); } else this.start();
 		},
 		setPlaying(on) { playing = on; },
@@ -355,7 +418,7 @@ export function createStage(canvas) {
 			running = false;
 			cancelAnimationFrame(raf);
 		},
-		/** Test hook: the loudest output value of the current frame (0..255). */
+		/** True while the animation loop runs. */
 		get active() { return running; },
 	};
 }

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.5
+
+- Now playing backgrounds: when WebGL is unavailable (graphics acceleration off in Chrome, for example) the background button stays and explains why and how to turn it on, instead of disappearing; Watch appears only while a background shows; a scene that does not build on a device is skipped; a lost graphics context recovers. Escape in a menu no longer also closes Now playing.
+
 ## v26.10.21.4
 
 - Song plays are counted: after 10 seconds of listening the app sends the track id and time to the audio Worker (POST /plays), which keeps one count per track and day in D1. Offline plays are sent when back online. Nothing identifying is sent or stored; the Terms page explains it. The audio release now applies the D1 schema before deploying.

@@ -9,7 +9,7 @@ import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
 import { coverImage, patternOf } from "./ui/art.js";
-import { createStage, sceneChoice, SCENES, sceneFor, setSceneChoice } from "./ui/scenes.js";
+import { createStage, SceneBuildError, sceneChoice, SCENES, sceneFor, ScenesUnavailableError, setSceneChoice } from "./ui/scenes.js";
 import { initTips } from "./ui/tips.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
@@ -271,8 +271,8 @@ function renderSheet() {
 			<button class="icon-btn" data-act="close-sheet" aria-label="Close now playing">${icon("down")}</button>
 			<span class="ctx">${s.context ? html`Playing from ${s.context}` : ""}</span>
 			<span class="top-end">
-				${stage !== false ? html`<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
-				<button class="icon-btn" data-act="watch" aria-label="Watch the background" ${sceneFor(t, patternOf(t.album)) ? "" : "hidden"}>${icon("watch")}</button>` : ""}
+				<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
+				<button class="icon-btn" data-act="watch" aria-label="Watch the background" hidden>${icon("watch")}</button>
 				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
 			</span>
 		</div>
@@ -319,12 +319,23 @@ function renderSheet() {
 }
 
 /* ---- background scenes ---- */
-let stage = null; // null: not created yet; false: WebGL unavailable
+let stage = null;            // the WebGL stage, created on first use
+let scenesError = null;      // ScenesUnavailableError: WebGL cannot be used in this browser
+const failedScenes = new Map(); // scene id -> why its shader does not build on this device
 
 function sceneLabel(choice = sceneChoice()) {
+	if (scenesError) return "not available in this browser";
 	if (choice === "auto") return "Auto";
 	if (choice === "off") return "Off";
 	return SCENES.find((x) => x.id === choice)?.name ?? "Auto";
+}
+
+/** The scene to show for a track: Auto skips scenes this device cannot build. */
+function sceneToShow(t) {
+	const choice = sceneChoice();
+	const id = sceneFor(t, patternOf(t.album), choice);
+	if (!id || !failedScenes.has(id)) return id;
+	return choice === "auto" ? SCENES.find((x) => !failedScenes.has(x.id))?.id ?? null : null;
 }
 
 /** Shows, changes or stops the background scene to match the song and the listener's choice. */
@@ -332,28 +343,51 @@ function updateScene() {
 	const sheet = $("#sheet");
 	const canvas = $("#scene");
 	const t = player.current();
-	const id = !sheet.hidden && t ? sceneFor(t, patternOf(t.album)) : null;
-	if (id && stage === null) {
-		try { stage = createStage(canvas) ?? false; } catch (err) { console.warn(err); stage = false; }
+	const id = !sheet.hidden && t ? sceneToShow(t) : null;
+	if (id && !stage && !scenesError) {
+		try {
+			stage = createStage(canvas);
+		} catch (err) {
+			scenesError = err instanceof ScenesUnavailableError ? err : new ScenesUnavailableError(`Backgrounds could not start: ${err.message}`);
+			console.error(scenesError.message, scenesError.detail ? `(browser: ${scenesError.detail})` : "");
+			notify("Backgrounds are not available in this browser. The background button in Now playing says why.", { kind: "error" });
+			const btn = $("[data-act=scene-menu]", sheet);
+			btn?.setAttribute("aria-label", `Background: ${sceneLabel()}`);
+		}
 	}
-	const on = Boolean(id && stage);
+	let on = Boolean(id && stage);
+	if (on) {
+		stage.setPlaying(player.state.playing);
+		try {
+			stage.show(id, t);
+		} catch (err) {
+			if (!(err instanceof SceneBuildError)) throw err;
+			failedScenes.set(id, err.message);
+			console.error(err.message);
+			const name = SCENES.find((x) => x.id === id)?.name ?? id;
+			if (failedScenes.size === SCENES.length) notify("No background can run on this device's graphics. The browser console names the reason.", { kind: "error" });
+			else if (failedScenes.size === 1) notify(sceneChoice() === "auto" ? `The ${name} background cannot run on this device; another one is shown.` : `The ${name} background cannot run on this device. Pick another one with the background button.`, { kind: "error" });
+			updateScene();
+			return;
+		}
+	} else if (stage) {
+		stage.show(null);
+	}
 	canvas.hidden = !on;
 	sheet.classList.toggle("has-scene", on);
-	if (!stage) return;
-	if (!on) { stage.show(null); exitWatch(); return; }
-	stage.setPlaying(player.state.playing);
-	try {
-		stage.show(id, t);
-	} catch (err) {
-		// A shader that does not compile on this device: fall back to the plain sheet.
-		console.warn(err);
-		stage = false;
-		canvas.hidden = true;
-		sheet.classList.remove("has-scene");
-	}
+	$("[data-act=watch]", sheet)?.toggleAttribute("hidden", !on);
+	if (!on) exitWatch();
 }
 
 function openSceneMenu(anchor) {
+	if (scenesError) {
+		openMenu(anchor, [
+			{ label: "Background" },
+			{ label: scenesError.message },
+			...(scenesError.detail ? [{ label: `Browser: ${scenesError.detail}` }] : []),
+		]);
+		return;
+	}
 	const choice = sceneChoice();
 	const pick = (v) => () => { setSceneChoice(v); renderSheet(); };
 	const mark = (v, label) => (choice === v ? `✓ ${label}` : label);
@@ -361,7 +395,9 @@ function openSceneMenu(anchor) {
 		{ label: "Background" },
 		{ label: mark("auto", "Auto (matches the album)"), run: pick("auto") },
 		"-",
-		...SCENES.map((x) => ({ label: mark(x.id, x.name), run: pick(x.id) })),
+		...SCENES.map((x) => failedScenes.has(x.id)
+			? { label: `${x.name}: not supported on this device` }
+			: { label: mark(x.id, x.name), run: pick(x.id) }),
 		"-",
 		{ label: mark("off", "Off"), run: pick("off") },
 	]);
@@ -439,9 +475,10 @@ function openMenu(anchor, items) {
 	menu.addEventListener("keydown", (e) => {
 		const buttons = $$("button", menu);
 		const i = buttons.indexOf(document.activeElement);
-		if (e.key === "ArrowDown") { e.preventDefault(); buttons[(i + 1) % buttons.length].focus(); }
-		if (e.key === "ArrowUp") { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length].focus(); }
-		if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); closeMenu(true); }
+		if (buttons.length && e.key === "ArrowDown") { e.preventDefault(); buttons[(i + 1) % buttons.length].focus(); }
+		if (buttons.length && e.key === "ArrowUp") { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length].focus(); }
+		// Escape closes the menu only, not the Now playing sheet it was opened from.
+		if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
 	});
 	menuReturnFocus = anchor;
 	$("button", menu)?.focus();
