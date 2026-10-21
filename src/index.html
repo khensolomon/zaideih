@@ -39,6 +39,7 @@
 				<h2>Browse</h2>
 				<div class="langs"><a href="#/genres"><span>Genres</span></a><a href="#/top"><span>Most played</span></a></div>
 			</div>
+			<button class="stats-on" data-act="stats-on" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>Share listening statistics</button>
 			<footer class="rail-foot"><a href="#/about" data-nav="about">About</a><a href="#/terms" data-nav="terms">Terms</a><a href="#/help" data-nav="help">Help</a></footer>
 		</aside>
 
@@ -77,9 +78,11 @@
 
 	</div>
 
+	<canvas class="scene" id="scene" aria-hidden="true" hidden></canvas>
 	<section class="sheet" id="sheet" aria-label="Now playing" hidden></section>
 	<dialog id="dialog"></dialog>
 	<div class="toasts" id="toasts" aria-live="polite"></div>
+	<div class="tip" id="tip" role="tooltip" hidden></div>
 
 	<noscript><p class="fatal">Zaideih needs JavaScript to play music.</p></noscript>
 	<script type="module" src="%JS%"></script>

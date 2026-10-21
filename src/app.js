@@ -7,7 +7,9 @@ import { player } from "./core/player.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
-import { coverImage } from "./ui/art.js";
+import { coverImage, patternOf } from "./ui/art.js";
+import { createStage, sceneChoice, SCENES, sceneFor, setSceneChoice } from "./ui/scenes.js";
+import { initTips } from "./ui/tips.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
@@ -91,12 +93,14 @@ function renderAppMenu() {
 		<div class="am-group">${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}"><span>${V.langLabel(l)}</span><span class="am-count">${l.albums.length.toLocaleString()}</span></a>`)}</div>
 		<h2>Browse</h2>
 		<div class="am-group"><a href="#/genres">Genres</a><a href="#/top">Most played</a></div>
+		<button class="stats-on" data-act="stats-on" hidden>${icon("chart")}Share listening statistics</button>
 		<div class="am-foot"><a href="#/about">About</a><a href="#/terms">Terms</a><a href="#/help">Help</a></div>`;
 }
 function openAppMenu() {
 	const menu = $("#app-menu");
 	if (!menu.childElementCount) renderAppMenu();
 	menu.hidden = false;
+	syncStatsButtons();
 	$(".nav-logo").setAttribute("aria-expanded", "true");
 	$("a", menu)?.focus();
 }
@@ -265,7 +269,11 @@ function renderSheet() {
 		<div class="top">
 			<button class="icon-btn" data-act="close-sheet" aria-label="Close now playing">${icon("down")}</button>
 			<span class="ctx">${s.context ? html`Playing from ${s.context}` : ""}</span>
-			<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
+			<span class="top-end">
+				${stage !== false ? html`<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
+				<button class="icon-btn" data-act="watch" aria-label="Watch the background" ${sceneFor(t, patternOf(t.album)) ? "" : "hidden"}>${icon("watch")}</button>` : ""}
+				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
+			</span>
 		</div>
 		<div class="body">
 			<div class="stage">
@@ -305,8 +313,86 @@ function renderSheet() {
 	for (const btn of $$("[data-ctl=repeat]", sheet)) { btn.setAttribute("aria-pressed", String(s.repeat !== "off")); btn.innerHTML = icon(s.repeat === "one" ? "repeatOne" : "repeat"); }
 	renderTime({ position: player.audio.currentTime || 0, duration: player.audio.duration || t.duration });
 	viz.refresh();
+	updateScene();
 	if (focusedCtl) $(`[data-ctl=${focusedCtl}]`, sheet)?.focus();
 }
+
+/* ---- background scenes ---- */
+let stage = null; // null: not created yet; false: WebGL unavailable
+
+function sceneLabel(choice = sceneChoice()) {
+	if (choice === "auto") return "Auto";
+	if (choice === "off") return "Off";
+	return SCENES.find((x) => x.id === choice)?.name ?? "Auto";
+}
+
+/** Shows, changes or stops the background scene to match the song and the listener's choice. */
+function updateScene() {
+	const sheet = $("#sheet");
+	const canvas = $("#scene");
+	const t = player.current();
+	const id = !sheet.hidden && t ? sceneFor(t, patternOf(t.album)) : null;
+	if (id && stage === null) {
+		try { stage = createStage(canvas) ?? false; } catch (err) { console.warn(err); stage = false; }
+	}
+	const on = Boolean(id && stage);
+	canvas.hidden = !on;
+	sheet.classList.toggle("has-scene", on);
+	if (!stage) return;
+	if (!on) { stage.show(null); exitWatch(); return; }
+	stage.setPlaying(player.state.playing);
+	try {
+		stage.show(id, t);
+	} catch (err) {
+		// A shader that does not compile on this device: fall back to the plain sheet.
+		console.warn(err);
+		stage = false;
+		canvas.hidden = true;
+		sheet.classList.remove("has-scene");
+	}
+}
+
+function openSceneMenu(anchor) {
+	const choice = sceneChoice();
+	const pick = (v) => () => { setSceneChoice(v); renderSheet(); };
+	const mark = (v, label) => (choice === v ? `✓ ${label}` : label);
+	openMenu(anchor, [
+		{ label: "Background" },
+		{ label: mark("auto", "Auto (matches the album)"), run: pick("auto") },
+		"-",
+		...SCENES.map((x) => ({ label: mark(x.id, x.name), run: pick(x.id) })),
+		"-",
+		{ label: mark("off", "Off"), run: pick("off") },
+	]);
+}
+
+/* Watch mode: the scene alone, controls hidden; any tap, click or key brings them back. */
+function enterWatch() {
+	const sheet = $("#sheet");
+	if (!sheet.classList.contains("has-scene")) return;
+	sheet.classList.add("watching");
+	document.documentElement.requestFullscreen?.().catch(() => {});
+	notify("Tap anywhere to show the controls again");
+}
+function exitWatch() {
+	const sheet = $("#sheet");
+	if (!sheet.classList.contains("watching")) return;
+	sheet.classList.remove("watching");
+	if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+}
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) exitWatch(); });
+document.addEventListener("visibilitychange", () => {
+	if (!stage) return;
+	if (document.hidden) stage.stop();
+	else if (!$("#sheet").hidden) stage.start();
+});
+// In watch mode the first tap or click only brings the controls back.
+document.addEventListener("click", (e) => {
+	if (!$("#sheet").classList.contains("watching")) return;
+	e.preventDefault();
+	e.stopImmediatePropagation();
+	exitWatch();
+}, true);
 
 function openSheet() {
 	const sheet = $("#sheet");
@@ -318,7 +404,9 @@ function openSheet() {
 function closeSheet() {
 	const sheet = $("#sheet");
 	if (sheet.hidden) return;
+	exitWatch();
 	sheet.hidden = true;
+	updateScene();
 	document.body.style.overflow = "";
 	$("#bar-now").focus();
 }
@@ -491,6 +579,7 @@ const actions = {
 	consent(el) {
 		analytics.setChoice(el.dataset.value);
 		$("#consent")?.remove();
+		syncStatsButtons();
 		// About shows the current choice; refresh it when changed there.
 		if (currentRoute?.path === "about") rerender();
 		else if (el.dataset.value === "granted") analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
@@ -558,6 +647,16 @@ const actions = {
 	},
 	"clear-queue": () => player.clearUpcoming(),
 	"close-sheet": () => closeSheet(),
+	"scene-menu": (el) => openSceneMenu(el),
+	watch: () => enterWatch(),
+	"stats-on"() {
+		analytics.setChoice("granted");
+		$("#consent")?.remove();
+		syncStatsButtons();
+		analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
+		notify("Thank you. Listening statistics are on; you can turn them off on About.");
+		if (currentRoute?.path === "about") rerender();
+	},
 	"open-sheet": () => openSheet(),
 	async export() {
 		const data = await library.exportData();
@@ -736,6 +835,7 @@ document.addEventListener("keydown", (e) => {
 			return;
 		}
 	}
+	if ($("#sheet").classList.contains("watching")) { e.preventDefault(); exitWatch(); return; }
 	if (e.key === "Escape") {
 		if (!$("#app-menu").hidden) closeAppMenu({ restoreFocus: true });
 		else if ($(".menu")) closeMenu(true);
@@ -838,6 +938,11 @@ on("player", (s) => {
 });
 
 /* =================================================================== usage statistics consent */
+/** The "Share listening statistics" buttons: shown only while statistics are off and no consent card is up. */
+function syncStatsButtons() {
+	const show = analytics.available && analytics.choice() !== "granted" && !$("#consent");
+	for (const b of $$("[data-act=stats-on]")) b.hidden = !show;
+}
 function showConsent() {
 	if (!analytics.available || analytics.choice() || $("#consent")) return;
 	const el = document.createElement("section");
@@ -920,6 +1025,8 @@ export async function boot(platform) {
 	await render();
 	document.body.classList.add("ready");
 	showConsent();
+	syncStatsButtons();
+	initTips();
 	emit("ready");
 	platform.onReady?.();
 }
