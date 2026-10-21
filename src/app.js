@@ -824,7 +824,8 @@ const actions = {
 };
 
 document.addEventListener("click", async (e) => {
-	if (!e.target.closest(".menu")) closeMenu();
+	// composedPath: a click that re-rendered part of a menu (the Sound panel) still counts as inside it.
+	if (!e.composedPath().some((el) => el.classList?.contains("menu"))) closeMenu();
 	const ctl = e.target.closest("[data-ctl]");
 	if (ctl && ctl.tagName === "BUTTON") {
 		const c = ctl.dataset.ctl;

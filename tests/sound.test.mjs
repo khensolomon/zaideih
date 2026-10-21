@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createBalance, createLeveler, createSilenceSkipper, DEFAULTS, readSettings, TARGET_DB } from "../src/core/sound.js";
+import { createBalance, createLeveler, createSilenceSkipper, DEFAULTS, EQ_BANDS, headroomDb, PRESETS, readSettings, rumbleCut, TARGET_DB } from "../src/core/sound.js";
 import { DenoiseChannel } from "../src/core/sound-worklet.js";
 
 /** Plays a song through the skipper: `parts` are [level, seconds of the song]. */
@@ -105,7 +105,8 @@ test("one-sided recordings are found after 3 s of music in one channel", () => {
 test("settings: defaults, limits and unknown values", () => {
 	const store = (v) => ({ getItem: () => (v === undefined ? null : JSON.stringify(v)) });
 	assert.deepEqual(readSettings(store()), DEFAULTS);
-	assert.deepEqual(readSettings(store({ clean: "nuclear", bass: 40, skip: 0 })), { ...DEFAULTS, bass: 6, skip: false });
+	assert.deepEqual(readSettings(store({ clean: "nuclear", skip: 0, eq: [40, -40, 0.3, 0, 0, 0, 0, 0, 0, 0] })), { ...DEFAULTS, skip: false, eq: [12, -12, 0.5, 0, 0, 0, 0, 0, 0, 0] });
+	assert.deepEqual(readSettings(store({ preset: "nope" })).preset, "custom");
 	assert.deepEqual(readSettings({ getItem: () => "{broken" }), DEFAULTS);
 });
 
@@ -130,4 +131,25 @@ test("denoise passes sound unchanged at 0 and lowers hiss without touching a ton
 	const strong = runDenoise(1);
 	assert.ok(db(strong, SR, 3 * SR) < db(mix, SR, 3 * SR) - 6, "hiss at least 6 dB lower");
 	assert.ok(Math.abs(db(strong, 4 * SR, 6 * SR) - db(mix, 4 * SR, 6 * SR)) < 0.5, "the tone keeps its level");
+});
+
+test("equaliser: ten bands, presets in range, old three-band settings carried over", () => {
+	assert.equal(EQ_BANDS.length, 10);
+	for (const p of PRESETS) {
+		assert.equal(p.gains.length, 10, p.id);
+		assert.ok(p.gains.every((g) => Math.abs(g) <= 12), p.id);
+	}
+	const old = readSettings({ getItem: () => JSON.stringify({ bass: 6, voice: 2, treble: -4 }) });
+	assert.equal(old.preset, "custom");
+	assert.deepEqual(old.eq, [6, 6, 6, 3, 1, 2, 2, -1, -4, -4]);
+	assert.equal("bass" in old, false);
+});
+
+test("boosts get headroom; a bass boost moves the rumble cut down", () => {
+	assert.equal(headroomDb([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 0);
+	assert.ok(Math.abs(headroomDb([10, 0, -6, 0, 0, 0, 0, 0, 0, 0]) - 7) < 1e-9);
+	const flat = Array(10).fill(0);
+	assert.equal(rumbleCut({ clean: "light", eq: flat }), 75);
+	assert.equal(rumbleCut({ clean: "light", eq: [6, 7, ...Array(8).fill(0)] }), 45);
+	assert.equal(rumbleCut({ clean: "off", eq: [6, 7, ...Array(8).fill(0)] }), 10);
 });
