@@ -55,7 +55,7 @@ Run workflow (Actions, release) offers the same targets for the current `master`
 Cloudflare dashboard, My Profile, API Tokens, Create Token, template **Edit Cloudflare Workers**. Then:
 
 - Account resources: the account that holds `media` and the `audio` database.
-- Zone resources: `zaideih.com` (needed for the custom domains `media.zaideih.com` and, later, `zaideih.com`).
+- Zone resources: none. The token needs no access to the `zaideih.com` zone, because no settings file declares a domain: `media.zaideih.com` (and later `zaideih.com`) are attached in the dashboard, and deploys leave them as they are. Remove any zone permissions the template adds.
 - Add the permission **Account, D1, Edit** (for `release: d1`, and for `release: audio`, which applies the D1 schema in `worker/media/migrations` before deploying).
 
 Copy the token once; Cloudflare does not show it again. The account id is on the Workers & Pages overview, or `npx wrangler whoami`.
@@ -83,7 +83,7 @@ Streaming from that address needs its origin in the audio Worker's `ALLOWED_ORIG
 
 ### 4. Moving zaideih.com to the new site
 
-In `wrangler.jsonc`, uncomment the `routes` for `zaideih.com` and `www.zaideih.com`, then release `web`. Cloudflare then points those names at this Worker, replacing whatever serves them now. If DNS records already exist for those names (for example a tunnel to the old server), Cloudflare refuses the custom domain until they are removed. Do this when the switch is intended, ideally in a quiet hour, with the old server still running for a rollback.
+In the Cloudflare dashboard, Workers & Pages, `zaideih`, Settings, Domains & Routes, add `zaideih.com` and `www.zaideih.com` as custom domains. Cloudflare then points those names at this Worker, replacing whatever serves them now. If DNS records already exist for those names (for example a tunnel to the old server), Cloudflare refuses the custom domain until they are removed. Do this when the switch is intended, ideally in a quiet hour, with the old server still running for a rollback. The domains are not declared in `wrangler.jsonc`, so the release token needs no zone access; later deploys leave them attached.
 
 ## Rolling back
 
