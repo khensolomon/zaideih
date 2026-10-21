@@ -214,10 +214,12 @@ function compile(gl, type, source) {
 
 /** WebGL cannot be used in this browser; `message` says why and what to do. */
 export class ScenesUnavailableError extends Error {
-	constructor(message, detail = "") {
+	constructor(message, detail = "", steps = []) {
 		super(message);
 		this.name = "ScenesUnavailableError";
 		this.detail = detail;
+		/** How to turn graphics acceleration on in this browser, one line per step. */
+		this.steps = steps;
 	}
 }
 
@@ -230,13 +232,36 @@ export class SceneBuildError extends Error {
 	}
 }
 
-/** What to do when WebGL is unavailable, for the browser in use. */
-function enableHint() {
-	const ua = navigator.userAgent;
-	if (/Edg\//.test(ua)) return "In Edge, turn on Settings, System and performance, \"Use graphics acceleration when available\", and restart Edge.";
-	if (/Chrome\//.test(ua)) return "In Chrome, turn on Settings, System, \"Use graphics acceleration when available\", and restart Chrome. The page chrome://gpu shows whether WebGL is available.";
-	if (/Firefox\//.test(ua)) return "In Firefox, check that webgl.disabled is false in about:config.";
-	return "Turn on graphics acceleration in the browser settings and restart the browser.";
+/** How to turn WebGL on, step by step, for the browser in use. */
+export function enableSteps(ua = navigator.userAgent) {
+	if (/Edg\//.test(ua)) return [
+		"Open edge://settings/system",
+		"Turn on \"Use graphics acceleration when available\"",
+		"Restart Edge",
+		"Still off? edge://gpu shows the reason next to WebGL",
+	];
+	if (/OPR\//.test(ua)) return [
+		"Open opera://settings/system",
+		"Turn on \"Use hardware acceleration when available\"",
+		"Restart Opera",
+	];
+	if (/Chrome\//.test(ua)) return [
+		"Open chrome://settings/system",
+		"Turn on \"Use graphics acceleration when available\"",
+		"Click Relaunch",
+		"Still off? chrome://gpu shows the reason next to WebGL; updating the graphics driver often helps",
+	];
+	if (/Firefox\//.test(ua)) return [
+		"Open Settings, General, Performance",
+		"Turn on \"Use hardware acceleration when available\" (untick \"Use recommended performance settings\" to see it)",
+		"Restart Firefox",
+		"Still off? about:support shows the reason under WebGL",
+	];
+	if (/Safari\//.test(ua)) return [
+		"WebGL is on in Safari unless turned off in Develop, Feature Flags",
+		"Restart Safari after changing it",
+	];
+	return ["Turn on graphics (hardware) acceleration in the browser's settings", "Restart the browser"];
 }
 
 /**
@@ -250,7 +275,7 @@ export function createStage(canvas) {
 	canvas.addEventListener("webglcontextcreationerror", onError);
 	const gl = canvas.getContext("webgl", { antialias: false, alpha: false, powerPreference: "low-power", preserveDrawingBuffer: false });
 	canvas.removeEventListener("webglcontextcreationerror", onError);
-	if (!gl) throw new ScenesUnavailableError(`Backgrounds need WebGL, which this browser has not made available. ${enableHint()}`, reason);
+	if (!gl) throw new ScenesUnavailableError("Backgrounds need WebGL, which is turned off in this browser, usually because graphics acceleration is off. To turn it on:", reason, enableSteps());
 	const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 	const programs = new Map();
 	let buffer = null;

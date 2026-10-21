@@ -244,9 +244,11 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 	background: var(--pattern), hsl(0 0% var(--g, 40%));
 	box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
 }
-.p-rings { --pattern: repeating-radial-gradient(circle at 100% 0%, rgb(255 255 255 / 0.08) 0 1px, transparent 1px 8cqi); }
-.p-weave { --pattern: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.06) 0 1.4cqi, transparent 1.4cqi 7cqi), repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.06) 0 1.4cqi, transparent 1.4cqi 7cqi); }
-.p-grooves { --pattern: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.07) 0 1px, transparent 1px 5cqi); }
+.p-rings { --pattern: repeating-radial-gradient(circle at 100% 0%, rgb(255 255 255 / 0.045) 0 1px, transparent 1px 8cqi); }
+.p-weave { --pattern: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.035) 0 1.4cqi, transparent 1.4cqi 7cqi), repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.035) 0 1.4cqi, transparent 1.4cqi 7cqi); }
+.p-grooves { --pattern: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.04) 0 1px, transparent 1px 5cqi); }
+/* The motif (src/ui/art.js albumMotif); currentColor is the accent for the most played albums. */
+.cover .c-art { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--accent); pointer-events: none; }
 .cover .c-in { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 4cqi; padding: 8cqi; }
 .cover .mark { display: block; width: 12cqi; height: max(2px, 2cqi); border-radius: 2px; background: var(--accent); flex: none; }
 .cover .c-top { display: flex; align-items: center; gap: 5cqi; font-size: 7.5cqi; font-weight: 600; letter-spacing: 0.06em; color: var(--ink-3); line-height: 1; }
@@ -260,7 +262,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 /* Myanmar has no spaces; break only between the word spans, never mid-cluster. */
 .cover b.my { font-size: 9cqi; line-height: 1.55; letter-spacing: 0; -webkit-line-clamp: 2; overflow-wrap: normal; hyphens: none; }
 .cover .strip { display: flex; align-items: flex-end; gap: max(1px, 0.9cqi); height: 11cqi; flex: none; }
-.cover .strip i { flex: 1; height: var(--h); min-height: 2px; border-radius: 1px; background: rgb(255 255 255 / 0.5); }
+.cover .strip i { flex: 1; height: var(--h); min-height: 2px; border-radius: 1px; background: rgb(255 255 255 / var(--o, 0.5)); }
 .cover .strip i.on { background: var(--accent); }
 .cover.small .c-in { padding: 14cqi; justify-content: flex-start; }
 .cover.small .mark { width: 30cqi; height: max(2px, 5cqi); }
@@ -681,14 +683,60 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 .sheet.has-scene {
 	background: radial-gradient(120% 80% at 50% 35%, rgb(20 20 20 / 0.18), rgb(20 20 20 / 0.5));
 }
-.sheet.has-scene .stage .cover { box-shadow: 0 30px 60px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.1); }
-.sheet.has-scene .queue { border-radius: 18px; padding: 6px 12px 10px; background: rgb(30 30 30 / 0.38); backdrop-filter: blur(18px) saturate(1.1); -webkit-backdrop-filter: blur(18px) saturate(1.1); }
+.sheet.has-scene .stage .cover {
+	/* See-through over the scene: the cover's grey lets the animation show, softly blurred. */
+	background: var(--pattern), hsl(0 0% var(--g, 40%) / 0.55);
+	backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+	box-shadow: 0 30px 60px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+.sheet.has-scene .queue { border-radius: 18px; padding: 6px 12px 10px; background: rgb(30 30 30 / 0.2); backdrop-filter: blur(8px) saturate(1.1); -webkit-backdrop-filter: blur(8px) saturate(1.1); }
+.sheet.has-scene .queue .track { text-shadow: 0 1px 6px rgb(0 0 0 / 0.45); }
 .sheet.has-scene .queue h2 { background: none; }
 .sheet.has-scene .ctx, .sheet.has-scene .stage .times, .sheet.has-scene .stage .info .sub { color: #d6d6d6; text-shadow: 0 1px 8px rgb(0 0 0 / 0.5); }
 .sheet.has-scene .stage .info .title { text-shadow: 0 2px 16px rgb(0 0 0 / 0.5); }
 .sheet > * { transition: opacity 0.5s ease; }
 .sheet.watching { background: none; cursor: none; overflow: hidden; }
+.sheet.watching.awake { cursor: default; }
 .sheet.watching > * { opacity: 0; pointer-events: none; }
+
+/* ---------- watch mode layer ---------- */
+.watch-ui {
+	position: fixed; inset: 0; z-index: 45; pointer-events: none;
+	display: flex; flex-direction: column; justify-content: space-between;
+	padding: max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) calc(22px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+.watch-ui[hidden] { display: none; }
+/* A soft shade at the bottom while the controls show, so the words stay readable over any scene. */
+.watch-ui::before {
+	content: ""; position: absolute; inset: 0; z-index: -1; opacity: 0; transition: opacity 0.5s ease;
+	background: linear-gradient(to top, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0) 42%), linear-gradient(to bottom, rgb(0 0 0 / 0.3), rgb(0 0 0 / 0) 18%);
+}
+.watch-ui .w-top, .watch-ui .w-now, .watch-ui .w-seek, .watch-ui .w-ctl { opacity: 0; transition: opacity 0.5s ease, transform 0.5s ease; }
+.watch-ui .w-bottom { transform: translateY(8px); transition: transform 0.5s ease; }
+.watch-ui.awake::before, .watch-ui.awake .w-top, .watch-ui.awake .w-now, .watch-ui.awake .w-seek, .watch-ui.awake .w-ctl { opacity: 1; }
+.watch-ui.awake .w-bottom { transform: none; }
+.watch-ui.awake button, .watch-ui.awake input { pointer-events: auto; }
+/* "Keep song info": the title and artist stay as a caption when the controls hide. */
+.watch-ui.info:not(.awake) .w-now { opacity: 0.8; }
+.watch-ui .w-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.watch-ui .w-hint { font-size: 13px; color: rgb(255 255 255 / 0.75); text-shadow: 0 1px 8px rgb(0 0 0 / 0.6); }
+.watch-ui .w-hint b { color: #fff; font-weight: 600; }
+.watch-ui .w-btns { display: flex; gap: 8px; }
+.watch-ui .icon-btn.glass { width: 44px; height: 44px; border-radius: 50%; color: #fff; }
+.watch-ui .w-bottom { display: grid; gap: 14px; width: min(760px, 100%); margin: 0 auto; }
+.watch-ui .w-now { display: flex; align-items: center; gap: 14px; min-width: 0; text-shadow: 0 2px 14px rgb(0 0 0 / 0.55); }
+.watch-ui .w-now .cover { width: 56px; flex: none; border-radius: 10px; box-shadow: 0 8px 20px rgb(0 0 0 / 0.35); }
+.watch-ui .w-meta { min-width: 0; }
+.watch-ui .w-title { font-size: clamp(20px, 3.2vw, 30px); font-weight: 650; line-height: 1.15; letter-spacing: -0.01em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-ui .w-sub { font-size: 15px; color: rgb(255 255 255 / 0.78); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-ui .w-seek { display: grid; gap: 2px; }
+.watch-ui .w-seek .times { display: flex; justify-content: space-between; font-size: 12.5px; color: rgb(255 255 255 / 0.75); font-variant-numeric: tabular-nums; }
+.watch-ui .w-ctl { display: flex; align-items: center; justify-content: center; gap: 22px; }
+.watch-ui .w-ctl .icon-btn.glass { width: 52px; height: 52px; }
+.watch-ui .w-ctl .icon-btn svg { width: 24px; height: 24px; }
+.watch-ui .play-btn { width: 66px; height: 66px; }
+.watch-ui .play-btn svg { width: 28px; height: 28px; }
+@media (prefers-reduced-motion: reduce) { .watch-ui *, .watch-ui::before { transition: none !important; } }
 @media (prefers-reduced-motion: reduce) { .sheet > * { transition: none; } }
 
 /* ---------- hints on icon buttons ---------- */

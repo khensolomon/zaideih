@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.7
+
+- Album covers show who sings and how loved an album is: a record for solo albums (a band per song), two overlapping rings for duets, a ring of artists for compilations, a large label for singles, with echo rings for popularity and the accent for the most played; song bars brighten with plays. Over a background, the Now playing cover and queue are see-through. Watch mode gets its own controls: the song, progress, previous, play, next, the next background and an option to keep the song info on screen; they fade while playing. The WebGL explanation lists the steps to turn graphics acceleration on.
+
 ## v26.10.21.6
 
 - Backgrounds: no red notice when WebGL is unavailable or a scene cannot run; the background button explains it.

@@ -29,7 +29,7 @@ test("song strip has one bar per song, longest song at 100%", () => {
 	assert.deepEqual(stripOf(a), [63, 100, 44]);
 	const html = String(coverArt(a, { current: 1 }));
 	assert.equal(html.match(/<i style="--h:/g).length, 3);
-	assert.match(html, /<i style="--h:100%" class="on">/);
+	assert.match(html, /<i style="--h:100%;--o:[0-9.]+" class="on">/);
 });
 
 test("career counts songs and plays per year, with empty years kept", () => {
@@ -59,4 +59,28 @@ test("artist art encodes years, albums and artist type", () => {
 	assert.equal(female.match(/<circle cx="[\d.]+" cy="[\d.]+" r="[\d.]+" fill/g).length, 2, "dots on the two release years");
 	const group = String(artistArt({ ...base, id: 3, type: 1 }));
 	assert.match(group, /stroke-dasharray/);
+});
+
+test("album shape reads who sings it from the credits", async () => {
+	const { albumShape, echoesOf } = await import("../src/ui/art.js");
+	const male = { id: 10, type: 2 }, female = { id: 11, type: 3 }, various = { id: 1, type: 1 };
+	const others = [12, 13, 14, 15, 16].map((id) => ({ id, type: 2 }));
+	const make = (credits) => ({ id: "s", tracks: credits.map((artists, i) => ({ id: i, duration: 200, plays: 1, artists })) });
+	assert.equal(albumShape(make([[male], [male], [male], [male], [male]])).kind, "solo");
+	assert.equal(albumShape(make([[male], [male]])).kind, "single");
+	assert.equal(albumShape(make([[male, female], [male, female], [male, female], [male]])).kind, "duet");
+	assert.equal(albumShape(make([[male], [male], [female], [female], [male]])).kind, "duet");
+	assert.equal(albumShape(make(others.map((a) => [a]))).kind, "various");
+	assert.equal(albumShape(make([[various], [various], [various], [various]])).kind, "various");
+	assert.equal(albumShape(make([[male], [male], [male], [female]])).artists[0].artist, male);
+	assert.deepEqual([50, 100, 317, 1000, 3163, 10000, 1e6].map(echoesOf), [0, 1, 2, 3, 4, 5, 5]);
+});
+
+test("cover motif is cached, deterministic and marks the most played albums", async () => {
+	const { albumMotif } = await import("../src/ui/art.js");
+	const a = { id: "m1", duration: 1800, plays: 20000, tracks: [1, 2, 3, 4].map((i) => ({ id: i, duration: 200, plays: i, artists: [{ id: 9, type: 2 }] })) };
+	const svg = albumMotif(a);
+	assert.equal(albumMotif(a), svg);
+	assert.match(svg, /currentColor/);
+	assert.equal((svg.match(/stroke-opacity/g) ?? []).length > 4, true);
 });
