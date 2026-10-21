@@ -41,7 +41,7 @@ Compared with the version that ran alongside Django (commit `dd79f9f`):
 - data in D1 (tracks, counters)
 - files in R2
 - secrets: `SECRET_SHARED` stays set, unused, until it is deleted
-- the custom domain
+- the custom domain: `media.zaideih.com` is attached in the dashboard (Workers & Pages, `media`, Settings, Domains & Routes) and is not declared in `wrangler.toml`, so deploys need no access to the `zaideih.com` zone and leave the domain as it is. Re-attach it there if the Worker is ever deleted and recreated.
 
 So after the deploy the Worker has `ALLOWED_ORIGINS` and no longer has `APP_URL`. Nothing else changed in Cloudflare.
 

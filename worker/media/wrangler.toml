@@ -11,6 +11,15 @@ name = "media"
 main = "script.js"
 compatibility_date = "2026-05-01"
 
+# The address media.zaideih.com is a custom domain attached in the Cloudflare
+# dashboard (Workers & Pages, media, Settings, Domains & Routes), not here: a
+# route in this file makes every deploy look up the zaideih.com zone, which
+# would need zone permissions on the release workflow's token. Deploys leave
+# the attached domain as it is. See docs/worker-audio.md.
+# No workers.dev address or preview URLs: audio is served only at media.zaideih.com.
+workers_dev = false
+preview_urls = false
+
 [vars]
 # Origins allowed to download audio with fetch() for offline play (CORS).
 # app://zaideih is the desktop app; localhost entries are for local testing.
@@ -31,10 +40,6 @@ database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "media"
-
-[[routes]]
-pattern = "media.zaideih.com"
-custom_domain = true
 
 # Rate limits for POST /plays, keyed per sender address (see script.js).
 # namespace_id must be unique within the Cloudflare account.
