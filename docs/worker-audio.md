@@ -95,8 +95,11 @@ To also delete rows for tracks that are no longer in `media.json`, add `--prune`
 Every file in `migrations/` is idempotent, so all of them can run on each deploy. `release: audio` does this before deploying; by hand:
 
 ```bash
-for f in migrations/*.sql; do npx wrangler d1 execute audio --remote --yes --file "$f"; done
+npx wrangler d1 execute audio --remote --yes \
+  --command "$(for f in migrations/*.sql; do sed -e 's/--.*$//' "$f"; done)"
 ```
+
+The schema goes as one query (`--command`) rather than with `--file`: `--file` uses D1's import, which makes the database unavailable to the Worker while it runs.
 
 `0002_plays.sql` adds the `plays` table used by `POST /plays`.
 

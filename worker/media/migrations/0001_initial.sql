@@ -1,5 +1,6 @@
 -- D1 schema for the audio Worker.
--- Run with: wrangler d1 execute <DB_NAME> --file=./0001_initial.sql
+-- Applied by the release workflow (release: audio) with every other migration,
+-- as one query with comments removed; see docs/worker-audio.md for doing it by hand.
 
 -- =============================================================================
 -- tracks
