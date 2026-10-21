@@ -478,6 +478,7 @@ export function terms() {
 				<p>Downloading saves songs inside the app on your device so they play without a connection. Downloads are for your own listening in Zaideih; copying, sharing, selling or republishing them is not permitted.</p>
 				<h2>Your data</h2>
 				<p>Likes, playlists, play history and downloads are stored on your device and are not sent anywhere. Library backups are files you keep. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
+				<p>Play counts: after a song has played for 10 seconds, the app tells the Zaideih audio server which song was played and when, so the site can show how often songs are listened to. Nothing else is sent with it: no account, cookie or device identifier, and nothing from your library. Your network address is used only to stop the same sender from inflating counts, and is not stored. Plays while offline are sent once you are online again.</p>
 				<p>Usage statistics are off unless you allow them. When allowed, Google Analytics counts page visits (the page's address within Zaideih and its title) and song plays (which song, album and language), and sets its own cookies for that; Google processes this data under its own terms. Searches and your library are never sent. The choice is kept per device and can be changed at any time on the <a class="text-link" href="#/about">About</a> page.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>

@@ -56,7 +56,7 @@ Cloudflare dashboard, My Profile, API Tokens, Create Token, template **Edit Clou
 
 - Account resources: the account that holds `media` and the `audio` database.
 - Zone resources: `zaideih.com` (needed for the custom domains `media.zaideih.com` and, later, `zaideih.com`).
-- Add the permission **Account, D1, Edit** (for `release: d1`).
+- Add the permission **Account, D1, Edit** (for `release: d1`, and for `release: audio`, which applies the D1 schema in `worker/media/migrations` before deploying).
 
 Copy the token once; Cloudflare does not show it again. The account id is on the Workers & Pages overview, or `npx wrangler whoami`.
 

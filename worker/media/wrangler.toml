@@ -19,6 +19,9 @@ ALLOWED_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih,ht
 # centre). Change it and redeploy to drop every cached lookup, e.g. after
 # correcting paths in D1.
 META_CACHE_VERSION = "1"
+# Origins whose song plays are counted (POST /plays): the released app only,
+# so plays while testing locally never count.
+PLAY_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih"
 
 [[d1_databases]]
 binding = "DB"
@@ -32,3 +35,15 @@ bucket_name = "media"
 [[routes]]
 pattern = "media.zaideih.com"
 custom_domain = true
+
+# Rate limits for POST /plays, keyed per sender address (see script.js).
+# namespace_id must be unique within the Cloudflare account.
+[[ratelimits]]
+name = "PLAYS_LIMIT"
+namespace_id = "4201"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "TRACK_LIMIT"
+namespace_id = "4202"
+simple = { limit = 1, period = 60 }

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.4
+
+- Song plays are counted: after 10 seconds of listening the app sends the track id and time to the audio Worker (POST /plays), which keeps one count per track and day in D1. Offline plays are sent when back online. Nothing identifying is sent or stored; the Terms page explains it. The audio release now applies the D1 schema before deploying.
+
 ## v26.10.21.3
 
 - Now playing backgrounds: five song-driven WebGL scenes (Halo, Aurora, Horizon, Warp, Weave) that follow the bass, mids, highs and beats, varied per song, with a picker (Auto, a scene, Off) and a Watch mode. Desktop Now playing scrolls as one page with the cover and controls floating. Hints on every icon button (hover, keyboard focus, long press). A 'Share listening statistics' button while statistics are off.
