@@ -19,6 +19,7 @@ const paths = {
 	queue: '<path d="M4 6h12M4 12h12M4 18h8M17 15v6l4-3z"/>',
 	down: '<path d="m6 9 6 6 6-6"/>',
 	close: '<path d="M6 6l12 12M18 6 6 18"/>',
+	sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
 	info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
 	exitWatch: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
 	trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',

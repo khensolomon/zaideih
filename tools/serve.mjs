@@ -32,6 +32,7 @@ const MIME = {
 	".woff2": "font/woff2",
 	".txt": "text/plain; charset=utf-8",
 	".mp3": "audio/mpeg",
+	".wav": "audio/wav",
 };
 
 const LIVE_SCRIPT = `// Injected by tools/serve.mjs --live: reloads the page after each rebuild.

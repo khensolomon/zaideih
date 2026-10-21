@@ -10,6 +10,7 @@ import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
 import { coverImage, patternOf } from "./ui/art.js";
 import { createStage, SceneBuildError, sceneChoice, SCENES, sceneFor, ScenesUnavailableError, setSceneChoice } from "./ui/scenes.js";
+import { openSoundPanel } from "./ui/sound-panel.js";
 import { initTips } from "./ui/tips.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
@@ -272,6 +273,7 @@ function renderSheet() {
 			<button class="icon-btn" data-act="close-sheet" aria-label="Close now playing">${icon("down")}</button>
 			<span class="ctx">${s.context ? html`Playing from ${s.context}` : ""}</span>
 			<span class="top-end">
+				<button class="icon-btn" data-act="sound" aria-label="Sound: skip silence, clean up, volume, equaliser" aria-haspopup="dialog">${icon("sliders")}</button>
 				<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
 				<button class="icon-btn" data-act="watch" aria-label="Watch the background" hidden>${icon("watch")}</button>
 				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
@@ -792,6 +794,7 @@ const actions = {
 	"clear-queue": () => player.clearUpcoming(),
 	"close-sheet": () => closeSheet(),
 	"scene-menu": (el) => openSceneMenu(el),
+	sound: (el) => { openSoundPanel(el, closeMenu); menuReturnFocus = el; },
 	watch: () => enterWatch(),
 	"watch-exit": () => exitWatch(),
 	"watch-scene": () => nextWatchScene(),

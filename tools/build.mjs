@@ -126,7 +126,25 @@ const posix = (p) => p.split("\\").join("/");
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 
-// 1. App bundle (JS + CSS + fonts), content-hashed.
+// 1. The sound worklet (src/core/sound-worklet.js): its own file, loaded by
+// the app with audioWorklet.addModule(), so the app needs its hashed name.
+const worklet = await esbuild.build({
+	entryPoints: { "sound-worklet": "src/core/sound-worklet.js" },
+	outdir: join(OUT, "assets"),
+	entryNames: "[name].[hash]",
+	bundle: true,
+	format: "esm",
+	target: TARGET,
+	minify: !dev,
+	sourcemap: dev ? "inline" : false,
+	legalComments: "none",
+	metafile: true,
+	logLevel: "warning",
+});
+const workletFile = Object.keys(worklet.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/sound-worklet\.[^/]+\.js$/.test(p));
+if (!workletFile) die(`unexpected esbuild output for the sound worklet: ${Object.keys(worklet.metafile.outputs).join(", ")}`);
+
+// 2. App bundle (JS + CSS + fonts), content-hashed.
 const app = await esbuild.build({
 	entryPoints: { app: platform.entry, style: "src/ui/app.css" },
 	outdir: join(OUT, "assets"),
@@ -147,6 +165,7 @@ const app = await esbuild.build({
 		__DEV__: JSON.stringify(dev),
 		__GA_ID__: JSON.stringify(gaId),
 		__PLAYS_URL__: JSON.stringify(playsUrl),
+		__SOUND_WORKLET__: JSON.stringify(workletFile),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -154,7 +173,7 @@ const js = outputs.find((p) => /^assets\/app\.[^/]+\.js$/.test(p));
 const css = outputs.find((p) => /^assets\/style\.[^/]+\.css$/.test(p));
 if (!js || !css) die(`unexpected esbuild outputs: ${outputs.join(", ")}`);
 
-// 2. Static files and catalog.
+// 3. Static files and catalog.
 if (platform.public) await cp(platform.public, OUT, { recursive: true });
 else await cp("platforms/web/public/icons", join(OUT, "icons"), { recursive: true });
 await cp("platforms/web/public/licenses", join(OUT, "licenses"), { recursive: true, force: true });
@@ -162,7 +181,7 @@ await mkdir(join(OUT, "catalog"), { recursive: true });
 await cp(join(CATALOG, "meta.json"), join(OUT, "catalog", "meta.json"));
 await cp(join(CATALOG, catalogMeta.catalog), join(OUT, "catalog", catalogMeta.catalog));
 
-// 3. index.html.
+// 4. index.html.
 const template = await readFile("src/index.html", "utf8");
 for (const marker of ["%JS%", "%CSS%", "<!--%HEAD%-->"]) {
 	if (!template.includes(marker)) die(`src/index.html is missing the ${marker} placeholder`);
@@ -174,13 +193,13 @@ const index = template
 	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
 
-// 4. Build id = hash of everything shipped; names the service worker cache.
+// 5. Build id = hash of everything shipped; names the service worker cache.
 const files = (await walk(OUT)).map((p) => posix(relative(OUT, p))).sort();
 const h = createHash("sha256");
 for (const f of files) h.update(f).update(await readFile(join(OUT, f)));
 const buildId = h.digest("hex").slice(0, 12);
 
-// 5. Web only: service worker and Cloudflare headers.
+// 6. Web only: service worker and Cloudflare headers.
 if (values.platform === "web") {
 	const precache = [
 		"./",
