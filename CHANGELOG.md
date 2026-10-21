@@ -1,5 +1,10 @@
 # Version
 
+## v26.10.21.2
+
+- Phones: separate floating glass controls in place of the long bar: round Back and logo buttons, one pill for Search and Library, and the title as plain text
+- Back and Cancel are icons (with labels for screen readers); on search, one round button clears the field, then leaves search
+
 ## v26.10.21.1
 
 - Phones: a floating liquid-glass top bar (blurred, light edge, rounded) with the page fading out above it

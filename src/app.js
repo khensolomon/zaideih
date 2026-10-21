@@ -474,6 +474,16 @@ const actions = {
 		el.remove();
 	},
 	"copy-code"(el) { copyCode(el.dataset.code, el); },
+	// Phones: the round button beside the search field clears it first, then leaves search.
+	"search-cancel"() {
+		const q = $("#q");
+		if (q?.value) {
+			q.value = "";
+			runSearch("");
+			q.focus();
+			updateSuggestions(catalog, q);
+		} else actions.back();
+	},
 	"app-menu"() {
 		if ($("#app-menu").hidden) openAppMenu();
 		else closeAppMenu({ restoreFocus: true });
