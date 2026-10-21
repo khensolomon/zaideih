@@ -90,7 +90,17 @@ cd worker/media
 
 To also delete rows for tracks that are no longer in `media.json`, add `--prune` to the first command.
 
-### 4. Deploy
+### 4. Apply the D1 schema
+
+Every file in `migrations/` is idempotent, so all of them can run on each deploy. `release: audio` does this before deploying; by hand:
+
+```bash
+for f in migrations/*.sql; do npx wrangler d1 execute audio --remote --yes --file "$f"; done
+```
+
+`0002_plays.sql` adds the `plays` table used by `POST /plays`.
+
+### 5. Deploy
 
 ```bash
 npx wrangler deploy
@@ -102,7 +112,7 @@ The same deploy from the repository root:
 npx wrangler deploy --config worker/media/wrangler.toml
 ```
 
-### 5. Verify
+### 6. Verify
 
 ```bash
 # Allowed origin: expect 200 and access-control-allow-origin: http://localhost:8080
@@ -116,6 +126,14 @@ curl -sI -H "Origin: https://example.com" -H "Sec-Fetch-Dest: audio" \
 # Download request from an allowed origin: expect 200
 curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: http://localhost:8080" -H "Sec-Fetch-Dest: empty" \
   https://media.zaideih.com/audio/1
+
+# Play counting from the released app: expect 200 and {"accepted":0,"rejected":[[0,"unknown-track"]]}
+curl -s -X POST -H "Origin: https://zaideih.com" -H "Content-Type: text/plain" \
+  --data '{"v":1,"plays":[[999999999,'"$(date +%s)"']]}' https://media.zaideih.com/plays
+
+# Play counting from another origin (including localhost): expect 403
+curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Origin: http://localhost:8080" \
+  --data '{"v":1,"plays":[[1,1]]}' https://media.zaideih.com/plays
 
 # Removed Django endpoint: expect 404
 curl -s -o /dev/null -w "%{http_code}\n" https://media.zaideih.com/sync/ping
@@ -168,6 +186,24 @@ npx wrangler d1 execute audio --remote --command \
 ```
 
 `served` counts fresh fetches that reach the Worker. It is not a play count: replays from the browser cache never arrive.
+
+## Play counts
+
+The app counts a play after 10 seconds of listening (or at the end of a shorter song) and posts it to `POST /plays` (`src/core/plays.js`). The Worker stores one row per track and UTC day in `plays`; nothing about the listener is stored.
+
+```bash
+# Plays per day, last 14 days
+npx wrangler d1 execute audio --remote --command \
+  "SELECT day, SUM(n) AS plays FROM plays GROUP BY day ORDER BY day DESC LIMIT 14"
+
+# Most played in the last 30 days
+npx wrangler d1 execute audio --remote --command \
+  "SELECT track_id, SUM(n) AS plays FROM plays WHERE day >= date('now','-30 days') GROUP BY track_id ORDER BY plays DESC LIMIT 20"
+```
+
+Only origins in `PLAY_ORIGINS` are counted (the released app; `localhost` is deliberately absent, so testing never counts). Two rate limiters (`[[ratelimits]]` in `wrangler.toml`, `PLAYS_LIMIT` and `TRACK_LIMIT`) cap each sender address at 20 requests a minute and one counted batch per track a minute; the address is a limiter key only and is never stored. The limiters are approximate and per Cloudflare location: they deter inflation by one sender, not by many. If the account cannot create rate limiter bindings, `wrangler deploy` fails and names them; the Worker refuses `/plays` with 500 when a binding is missing rather than counting without limits.
+
+Answers: 200 `{"accepted": n, "rejected": [[index, reason], ...]}` (reasons `invalid`, `too-old` (over 30 days), `in-future`, `unknown-track`, `repeated` (over 3 of one track in a request), `rate-limited`); 400 or 413 for a malformed request, with the reason; 403 for another origin; 429 with `Retry-After` when a sender sends too often. The app retries on 404, 429, 5xx and network errors and drops a batch only on 400, 403, 405 or 413.
 
 ## Clean-up after Django is retired
 

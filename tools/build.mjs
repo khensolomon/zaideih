@@ -14,7 +14,10 @@
  *   ZAIDEIH_GA_ID       Google Analytics 4 measurement id for the web build
  *                       (default G-65TTKMZEGC; empty disables). Dev and
  *                       desktop builds never include analytics.
- *                       Default: https://media.zaideih.com/audio/{id}
+ *   ZAIDEIH_PLAYS_URL   where song plays are counted (src/core/plays.js).
+ *                       Default: /plays on the audio origin for production
+ *                       builds, off for --dev builds; empty disables. Must be
+ *                       on the audio origin, which the CSP already allows.
  *
  * Usage:
  *   node tools/build.mjs --platform web
@@ -89,6 +92,14 @@ try {
 }
 if (!/\{(id|n)\}/.test(audioTemplate)) die("ZAIDEIH_AUDIO_URL must contain {id} or {n} so each track resolves to its own file.");
 
+// Play counting: production builds of both platforms (src/core/plays.js).
+const playsUrl = (process.env.ZAIDEIH_PLAYS_URL ?? (dev ? "" : `${audioOrigin}/plays`)).trim();
+if (playsUrl) {
+	let origin;
+	try { origin = new URL(playsUrl).origin; } catch { die(`ZAIDEIH_PLAYS_URL is not a valid URL: ${playsUrl}`); }
+	if (origin !== audioOrigin) die(`ZAIDEIH_PLAYS_URL must be on the audio origin ${audioOrigin}, got ${playsUrl}`);
+}
+
 // Analytics: production web builds only, and only after the listener agrees (src/core/analytics.js).
 const gaId = values.platform === "web" && !dev ? (process.env.ZAIDEIH_GA_ID ?? DEFAULT_GA_ID).trim() : "";
 if (gaId && !/^G-[A-Z0-9]{4,}$/.test(gaId)) die(`ZAIDEIH_GA_ID must look like G-XXXXXXXXXX (or be empty to disable analytics), got "${gaId}"`);
@@ -135,6 +146,7 @@ const app = await esbuild.build({
 		__APP_VERSION__: JSON.stringify(release),
 		__DEV__: JSON.stringify(dev),
 		__GA_ID__: JSON.stringify(gaId),
+		__PLAYS_URL__: JSON.stringify(playsUrl),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -226,3 +238,4 @@ const total = (await Promise.all(all.map((f) => stat(f)))).reduce((s, st) => s +
 console.log(`built ${values.platform}${dev ? " (dev)" : ""} v${release} (${buildId}): ${all.length} files, ${(total / 1024 / 1024).toFixed(2)} MiB in ${OUT}`);
 console.log(`  catalog ${catalogMeta.version} (${catalogMeta.counts.tracks} tracks)`);
 console.log(`  audio   ${audioTemplate}`);
+console.log(`  plays   ${playsUrl || "off"}`);

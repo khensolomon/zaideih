@@ -97,6 +97,10 @@ When a song still fails, the player shows its message at once, then probes the f
 
 Google Analytics 4 (`G-65TTKMZEGC`, set at build time as `ZAIDEIH_GA_ID`; empty disables) is built into production web builds only, never dev or desktop builds. `src/core/analytics.js` loads nothing until the listener chooses Allow on the first-visit card (basic consent mode); the choice is kept per device in `localStorage` (`zaideih.analytics`) and changed on the About page. While statistics are off (and the first-visit card is not showing), a "Share listening statistics" button sits at the foot of the sidebar and of the logo menu; it turns them on and disappears. Page views are sent by the app on each route change (`send_page_view: false`, since routing is by hash), with the address stripped of its query so search text is never sent, and a diagnostic code page reported as `#/code`. A `play_track` event (track, album and language ids) is sent once per song started. The CSP adds Google's documented hosts (`*.googletagmanager.com` for scripts; `*.google-analytics.com`, `*.analytics.google.com` and `*.googletagmanager.com` for images and connections) only when analytics is built in.
 
+## Play counts
+
+`src/core/plays.js` counts a play after 10 seconds of listening, measured from playback progress (seeking forward does not count; pause and resume count once), or near the end of a song shorter than that. Loading another song, a song ending and a restart from the beginning each start a new play. Plays wait in `localStorage` (`zaideih.plays`, newest 500 kept, a warning when older ones are dropped) and are posted to the audio Worker's `POST /plays` in batches of up to 50, 3 seconds after a play, when the device comes back online, and with `keepalive` when the page is hidden. The body is sent as `text/plain` so the request needs no CORS preflight. Counting is independent of the Google Analytics choice because nothing identifying is sent or stored: the track id and the time only; the Terms page says so. Builds set the address with `ZAIDEIH_PLAYS_URL` (default `/plays` on the audio origin; off in `--dev` builds), and the Worker counts only origins in `PLAY_ORIGINS`, so local testing never counts. Storage, limits and queries: [worker-audio.md](worker-audio.md#play-counts).
+
 ## Offline
 
 | What | Web | Desktop |
@@ -130,5 +134,5 @@ Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both 
 ## Open items
 
 - Adding albums needs a new ingest tool. The Django `scan_library` and `compile_catalog` commands that produced `albums.json` were removed with Django; they remain in git history before this restructure.
-- Play counts (`p`) are static in `albums.json`. The Worker's `tracks_status.served` counts fresh fetches (not plays) and could feed a periodic update.
+- Play counts shown in the app (`p`) are still the static Django counts in `albums.json`. New plays are counted in D1 (`plays`, see Play counts) but are not yet merged into what the app shows.
 - `artist.name.json` and `artist.name-id.json` differ only in the type of artist 2074; the build reads `artist.name.json`.

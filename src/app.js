@@ -4,6 +4,7 @@ import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
+import { startPlayCounting } from "./core/plays.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -1015,6 +1016,7 @@ export async function boot(platform) {
 	player.setArtwork((t) => coverImage(t.album, t.n - 1));
 	renderVolume();
 	await player.init(catalog);
+	startPlayCounting(player.audio, () => player.current());
 	renderBar();
 	document.addEventListener("click", (e) => {
 		// A tap outside the open logo menu closes it.
