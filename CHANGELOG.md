@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.21.3
+
+- Now playing backgrounds: five song-driven WebGL scenes (Halo, Aurora, Horizon, Warp, Weave) that follow the bass, mids, highs and beats, varied per song, with a picker (Auto, a scene, Off) and a Watch mode. Desktop Now playing scrolls as one page with the cover and controls floating. Hints on every icon button (hover, keyboard focus, long press). A 'Share listening statistics' button while statistics are off.
+
 ## v26.10.21.2
 
 - Phones: separate floating glass controls in place of the long bar: round Back and logo buttons, one pill for Search and Library, and the title as plain text
