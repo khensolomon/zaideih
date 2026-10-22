@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.5
+
+- artist "Sangpur": type Unknown → Female (catalog, 1 change)
+
 ## v26.10.22.4
 
 - Admin page: publishing failed with "Reference update failed" because a branch named admin exists; edits now go on catalog-edit-… branches, and the error explains a name clash.
