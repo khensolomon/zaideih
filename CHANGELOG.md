@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.7
+
+- Sign in with GitHub on the admin page
+
 ## v26.10.22.6
 
 - Admin: floating header, centred sign-in and catalog checks; collapsible sidebar

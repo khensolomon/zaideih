@@ -1,10 +1,11 @@
 /**
  * The hidden admin page (#/admin): edit the catalog through GitHub.
  *
- *   Connect      a fine-grained GitHub token for khensolomon/zaideih, kept on
- *                this device only (localStorage). Refused while Google
- *                Analytics is on here, since a third-party script on the page
- *                could read the token.
+ *   Connect      Sign in with GitHub (src/admin/session.js, finished by the
+ *                audio Worker), or a fine-grained GitHub token for
+ *                khensolomon/zaideih; either is kept on this device only
+ *                (localStorage). Refused while Google Analytics is on here,
+ *                since a third-party script on the page could read it.
  *   Edit         find an album or artist; change titles, year, language,
  *                genres, song credits, hide songs, artist names and spellings.
  *                Changes collect in a draft on this device (src/admin/draft.js).
@@ -24,6 +25,7 @@ import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../to
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
+import { createSession, SESSION_KEY, SignInError } from "./session.js";
 
 const TOKEN_KEY = "zaideih.admin.token";
 const DRAFT_KEY = "zaideih.admin.draft";
@@ -50,7 +52,9 @@ export function mount(root, ctx) {
 	const s = {
 		tab: "edit",
 		openChecks: new Set(),
+		tokenOpen: false,
 		gh: null,
+		via: null,        // "github" (signed in) or "token"
 		user: null,
 		data: null,       // { head, albums, artists, category, index }
 		draft: store.get(DRAFT_KEY) ?? { changes: [], pr: null },
@@ -62,13 +66,14 @@ export function mount(root, ctx) {
 		totals: null,
 	};
 	let poll = 0;
+	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
 
 	const saveDraft = () => store.set(DRAFT_KEY, s.draft);
 	const fail = (err) => {
 		s.busy = "";
-		s.error = err instanceof GitHubError || err instanceof DraftError ? err.message : `${err.name}: ${err.message}`;
+		s.error = err instanceof GitHubError || err instanceof DraftError || err instanceof SignInError ? err.message : `${err.name}: ${err.message}`;
 		// A refused value is the listener's to fix and is shown on the page; anything else also goes to the console.
-		if (!(err instanceof DraftError)) console.error(err);
+		if (!(err instanceof DraftError || err instanceof SignInError)) console.error(err);
 		render();
 	};
 
@@ -79,22 +84,56 @@ export function mount(root, ctx) {
 		type: (id) => s.data?.category.artist.find((t) => t.id === id)?.name,
 	});
 
-	async function connect(token) {
-		s.busy = "Checking the token…";
+	/** Connects with a fine-grained token (via "token") or this device's GitHub sign-in (via "github"). */
+	async function connect(via, token) {
+		s.busy = via === "github" ? "Checking the GitHub sign-in…" : "Checking the token…";
 		s.error = "";
 		render();
 		try {
-			const gh = createGitHub(token);
+			const gh = createGitHub(via === "github" ? () => session.token() : token);
 			const who = await gh.whoami();
-			if (!who.canWrite) throw new Error(`${who.login} cannot write to ${REPO}; give the token Contents and Pull requests (read and write) on that repository`);
-			store.set(TOKEN_KEY, token);
+			if (!who.canWrite) {
+				throw new SignInError(via === "github"
+					? `${who.login} is signed in but has no write access to ${REPO} (role: ${who.role}). Ask the owner for write access; sending suggestions without it is not available yet.`
+					: `${who.login} cannot write to ${REPO}; give the token Contents and Pull requests (read and write) on that repository`);
+			}
+			if (via === "token") store.set(TOKEN_KEY, token);
 			s.gh = gh;
+			s.via = via;
 			s.user = who.login;
 			s.role = who.role;
 			await load();
 		} catch (err) {
+			// A sign-in that cannot be used is forgotten here, so the page does not retry it on every visit.
+			if (via === "github") store.set(SESSION_KEY, null);
 			fail(err);
 		}
+	}
+
+	/** Goes to GitHub to sign in; GitHub comes back to #/admin?signin=… through the Worker. */
+	async function signInWithGitHub() {
+		s.busy = "Opening GitHub…";
+		render();
+		location.assign(await session.start(`${location.origin}${location.pathname}`));
+	}
+
+	/** Back from GitHub: exchange the code, then connect. */
+	async function finishSignIn(query) {
+		// The code is single-use; take it out of the address and history right away.
+		history.replaceState(history.state, "", "#/admin");
+		if (query.get("signin-error")) throw new SignInError(`GitHub did not sign you in: ${query.get("signin-error")}`);
+		s.busy = "Finishing the GitHub sign-in…";
+		render();
+		await session.finish({ code: query.get("signin"), nonce: query.get("nonce") });
+		await connect("github");
+	}
+
+	async function disconnect() {
+		const via = s.via;
+		store.set(TOKEN_KEY, null);
+		s.gh = null; s.via = null; s.user = null; s.data = null;
+		render();
+		if (via === "github") await session.signOut();
 	}
 
 	async function load() {
@@ -368,11 +407,13 @@ export function mount(root, ctx) {
 				<p class="muted">Edit the catalog through GitHub: every change becomes a pull request on <b>${REPO}</b>, released when merged.</p>
 				${s.busy ? html`<p class="adm-busy">${s.busy}</p>` : ""}
 				${s.error ? html`<p class="adm-error" role="alert">${s.error}</p>` : ""}
-				<form class="adm-token" data-form="token">
-					<label>GitHub token<input name="token" type="password" autocomplete="off" required placeholder="github_pat_…"></label>
-					<button class="btn primary" type="submit">${icon("github")}Connect</button>
-				</form>
-				<details class="adm-howto"><summary>How to make a token</summary>
+				${ctx.authUrl ? html`<button class="btn primary adm-github" data-adm="github" ${s.busy ? "disabled" : ""}>${icon("github")}Sign in with GitHub</button>
+				<p class="muted adm-small">Editing needs write access to ${REPO}. The sign-in stays on this device.</p>` : ""}
+				<details class="adm-howto" data-keep="token" ${s.tokenOpen || !ctx.authUrl ? "open" : ""}><summary>${ctx.authUrl ? "Use a token instead" : "Connect with a token"}</summary>
+					<form class="adm-token" data-form="token">
+						<label>GitHub token<input name="token" type="password" autocomplete="off" required placeholder="github_pat_…"></label>
+						<button class="btn" type="submit">Connect</button>
+					</form>
 					<ol><li>Open <a class="text-link" href="${TOKEN_URL}" target="_blank" rel="noopener">GitHub, fine-grained tokens</a>.</li>
 					<li>Repository access: only <b>${REPO}</b>.</li>
 					<li>Permissions: <b>Contents</b> and <b>Pull requests</b> read and write, <b>Checks</b> read. Set an expiry date.</li>
@@ -395,7 +436,7 @@ export function mount(root, ctx) {
 				${tab("stats", "Statistics", "chart")}
 				<span class="adm-sep" aria-hidden="true"></span>
 				<button class="icon-btn" data-adm="reload" aria-label="Load the newest catalog from ${BASE}">${icon("reload")}</button>
-				<button class="icon-btn" data-adm="logout" aria-label="Disconnect from GitHub">${icon("logout")}</button>
+				<button class="icon-btn" data-adm="logout" aria-label="${s.via === "github" ? "Sign out of GitHub on this device" : "Disconnect the token from this device"}">${icon("logout")}</button>
 			</span>
 		</header>`;
 	}
@@ -427,6 +468,7 @@ export function mount(root, ctx) {
 	root.addEventListener("toggle", (e) => {
 		const id = e.target.dataset?.check;
 		if (id) e.target.open ? s.openChecks.add(id) : s.openChecks.delete(id);
+		if (e.target.dataset?.keep === "token") s.tokenOpen = e.target.open;
 	}, true);
 	root.addEventListener("input", (e) => {
 		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; render(); }
@@ -435,7 +477,7 @@ export function mount(root, ctx) {
 		e.preventDefault();
 		const form = e.target;
 		try {
-			if (form.dataset.form === "token") await connect(new FormData(form).get("token").trim());
+			if (form.dataset.form === "token") await connect("token", new FormData(form).get("token").trim());
 			else if (form.dataset.form === "album" || form.dataset.form === "artist") { keepForm(form); s.error = ""; render(); }
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 		} catch (err) {
@@ -459,7 +501,8 @@ export function mount(root, ctx) {
 				case "forget-pr": s.draft.pr = null; s.pr = null; saveDraft(); render(); break;
 				case "totals": await loadTotals(); break;
 				case "dismiss": s.error = ""; render(); break;
-				case "logout": store.set(TOKEN_KEY, null); s.gh = null; s.user = null; s.data = null; render(); break;
+				case "logout": await disconnect(); break;
+				case "github": await signInWithGitHub(); break;
 				default: break;
 			}
 		} catch (err) {
@@ -467,7 +510,11 @@ export function mount(root, ctx) {
 		}
 	});
 
+	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
 	const saved = store.get(TOKEN_KEY);
-	if (saved && !ctx.analyticsOn() && !ctx.desktop) connect(saved);
+	if (ctx.analyticsOn() || ctx.desktop) render();
+	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);
+	else if (session.signedIn) connect("github");
+	else if (saved) connect("token", saved);
 	else render();
 }

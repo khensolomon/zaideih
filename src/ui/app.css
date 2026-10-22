@@ -956,6 +956,10 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 .admin .adm-token { width: 100%; display: grid; gap: 10px; text-align: left; }
 .admin .adm-token .btn { justify-content: center; gap: 8px; }
 .admin .adm-token .btn svg { width: 18px; height: 18px; }
+.admin .adm-github { width: 100%; justify-content: center; gap: 10px; min-height: 48px; font-size: 16px; }
+.admin .adm-github svg { width: 20px; height: 20px; }
+.admin .adm-small { font-size: 13px; }
+.admin .adm-howto .adm-token { margin: 12px 0 4px; }
 .admin .adm-howto { width: 100%; text-align: left; font-size: 14px; color: var(--ink-2); }
 .admin .adm-howto summary { cursor: pointer; text-align: center; color: var(--ink-3); }
 .admin .adm-howto ol { padding-left: 20px; line-height: 1.5; }

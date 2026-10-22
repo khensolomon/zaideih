@@ -2,6 +2,9 @@
 *.v[0-9]*
 tmp/
 
+# Keys: the GitHub App private key lives only in the Worker secret GITHUB_APP_KEY
+*.pem
+
 # Dependencies
 node_modules/
 

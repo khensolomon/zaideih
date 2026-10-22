@@ -6,7 +6,7 @@ import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
-import { ADMIN_URL } from "./config.js";
+import { ADMIN_URL, AUTH_URL } from "./config.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -54,7 +54,7 @@ route("admin", () => ({
 		if (!ADMIN_URL) { root.innerHTML = html`<h1>Admin</h1><p>The admin page works in the web app only.</p>`; return; }
 		try {
 			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
-			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), desktop: document.documentElement.dataset.platform === "desktop" });
+			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, desktop: document.documentElement.dataset.platform === "desktop" });
 		} catch (err) {
 			console.error(err);
 			root.innerHTML = html`<h1>Admin</h1><p class="adm-error">The admin page could not load: ${err.message}</p>`;
