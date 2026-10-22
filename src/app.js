@@ -194,12 +194,19 @@ async function render({ keepScroll = false } = {}) {
 }
 
 function markNav(path) {
+	// A language, the genres or Most played: their own sidebar entry is the current one, not Home.
+	const browse = /^lang\/\d+/.exec(path)?.[0] ?? (path.startsWith("genre") ? "genres" : path === "top" ? "top" : null);
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path === "about" || path === "terms" || path === "help" || path === "admin" ? path : "home";
+		: path === "about" || path === "terms" || path === "help" || path === "admin" ? path
+		: browse ? null : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
 		else a.removeAttribute("aria-current");
+	}
+	for (const a of $$(".rail .langs a, #app-menu .am-group a")) {
+		if (browse && a.getAttribute("href") === `#/${browse}`) a.setAttribute("aria-current", "page");
+		else if (!a.dataset.nav) a.removeAttribute("aria-current");
 	}
 }
 
