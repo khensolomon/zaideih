@@ -117,6 +117,7 @@ export function compile({ albums, artists, category }) {
 	const normalized = { n: 0 };
 	let trackCount = 0;
 	let totalSeconds = 0;
+	let hiddenCount = 0;
 
 	if (!Array.isArray(albums)) errors.push("albums.json: expected an array");
 	else {
@@ -142,17 +143,22 @@ export function compile({ albums, artists, category }) {
 				if (!isText(t.t)) errors.push(`${tw} (id ${t.i}): title is empty`);
 				if (!isNonNegInt(t.d)) errors.push(`${tw} (id ${t.i}): duration (d) must be a non-negative integer`);
 				if (!isNonNegInt(t.p)) errors.push(`${tw} (id ${t.i}): plays (p) must be a non-negative integer`);
+				if (t.h !== undefined && typeof t.h !== "boolean") errors.push(`${tw} (id ${t.i}): hidden (h) must be true or false`);
 				// An empty artist list is legitimate source data (credited as unknown in the UI).
 				if (!Array.isArray(t.a)) errors.push(`${tw} (id ${t.i}): artists (a) must be an array`);
 				else for (const a of t.a) {
 					if (!artistById.has(a)) errors.push(`${tw} (id ${t.i}): unknown artist id ${a}`);
-					usedArtists.add(a);
+					if (t.h !== true) usedArtists.add(a);
 				}
+				// Hidden tracks (h: true, set on the admin page) stay in the source, keeping
+				// their id, but are not shipped: likes and playlists simply no longer list them.
+				if (t.h === true) { hiddenCount += 1; continue; }
 				tracks.push([t.i, canonicalText(t.t, normalized), t.a, t.d, t.p]);
 				trackCount += 1;
 				totalSeconds += isNonNegInt(t.d) ? t.d : 0;
 			}
-			outAlbums.push([al.ui, canonicalText(al.ab, normalized), al.lg, al.gr, al.yr?.[0] ?? 0, tracks]);
+			// An album whose every track is hidden is left out as a whole.
+			if (tracks.length) outAlbums.push([al.ui, canonicalText(al.ab, normalized), al.lg, al.gr, al.yr?.[0] ?? 0, tracks]);
 		}
 	}
 
@@ -192,6 +198,7 @@ export function compile({ albums, artists, category }) {
 			genres: catalog.genre.length,
 			hours: Math.round(totalSeconds / 3600),
 			normalized: normalized.n,
+			hidden: hiddenCount,
 		},
 	};
 }
@@ -232,7 +239,7 @@ async function main() {
 
 	console.log(`source     ${src}`);
 	console.log(`albums     ${stats.albums}`);
-	console.log(`tracks     ${stats.tracks} (${stats.hours} hours)`);
+	console.log(`tracks     ${stats.tracks} (${stats.hours} hours)${stats.hidden ? `, ${stats.hidden} hidden and not shipped` : ""}`);
 	console.log(`artists    ${stats.artists} referenced, ${stats.artistsUnused} unreferenced and omitted`);
 	console.log(`languages  ${stats.languages}`);
 	console.log(`genres     ${stats.genres}`);

@@ -150,6 +150,23 @@ const worklet = await esbuild.build({
 const workletFile = Object.keys(worklet.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/sound-worklet\.[^/]+\.js$/.test(p));
 if (!workletFile) die(`unexpected esbuild output for the sound worklet: ${Object.keys(worklet.metafile.outputs).join(", ")}`);
 
+// 1b. The admin page (src/admin): its own file, loaded only when #/admin opens.
+const admin = values.platform === "web" ? await esbuild.build({
+	entryPoints: { admin: "src/admin/admin.js" },
+	outdir: join(OUT, "assets"),
+	entryNames: "[name].[hash]",
+	bundle: true,
+	format: "esm",
+	target: TARGET,
+	minify: !dev,
+	sourcemap: dev ? "inline" : false,
+	legalComments: "none",
+	metafile: true,
+	logLevel: "warning",
+}) : null;
+const adminFile = admin ? Object.keys(admin.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/admin\.[^/]+\.js$/.test(p)) : "";
+if (admin && !adminFile) die(`unexpected esbuild output for the admin page: ${Object.keys(admin.metafile.outputs).join(", ")}`);
+
 // 2. App bundle (JS + CSS + fonts), content-hashed.
 const app = await esbuild.build({
 	entryPoints: { app: platform.entry, style: "src/ui/app.css" },
@@ -172,6 +189,7 @@ const app = await esbuild.build({
 		__GA_ID__: JSON.stringify(gaId),
 		__PLAYS_URL__: JSON.stringify(playsUrl),
 		__SOUND_WORKLET__: JSON.stringify(workletFile),
+		__ADMIN__: JSON.stringify(adminFile),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -231,7 +249,8 @@ if (values.platform === "web") {
 	const media = ["'self'", "blob:", audioOrigin].join(" ");
 	// Google's documented hosts for GA4 (gtag.js), added only when analytics is built in.
 	const ga = gaId ? { script: " https://*.googletagmanager.com", img: " https://*.google-analytics.com https://*.googletagmanager.com", connect: " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" } : { script: "", img: "", connect: "" };
-	const connect = ["'self'", audioOrigin].join(" ") + ga.connect;
+	// api.github.com: the admin page (src/admin) commits catalog edits through GitHub.
+	const connect = ["'self'", audioOrigin, "https://api.github.com"].join(" ") + ga.connect;
 	await writeFile(join(OUT, "_headers"), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
