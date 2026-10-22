@@ -89,6 +89,14 @@ export function buildModel(raw, meta) {
 	for (const a of artists.values()) a.albums = [...a.albums].sort((x, y) => (y.year || 0) - (x.year || 0));
 
 	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [] };
+	/*
+	 * Songs and albums outside the public catalog (the signed-in person's own
+	 * uploads, src/core/uploads.js): found by id like catalog ones, but never
+	 * part of the catalog's lists, counts, search or play totals.
+	 */
+	model.extra = { tracks: new Map(), albums: new Map() };
+	model.track = (id) => tracks.get(id) ?? model.extra.tracks.get(id);
+	model.album = (id) => albums.get(id) ?? model.extra.albums.get(id);
 	recount(model);
 	return model;
 }

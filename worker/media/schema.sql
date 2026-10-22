@@ -60,3 +60,51 @@ CREATE TABLE IF NOT EXISTS plays (
     PRIMARY KEY (track_id, day)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_plays_day ON plays (day);
+
+-- =============================================================================
+-- members: GitHub accounts that use their personal library (docs/library.md)
+-- =============================================================================
+-- Keyed by GitHub's numeric id, since logins can change. Written by the
+-- Worker on library requests (library.js). Roles other than moderator come
+-- from GitHub on every request; blocking and moderator rights are Zaideih's.
+-- Not rebuildable from git: `tools/d1.mjs reset` refuses while it has rows.
+--
+--   Blocked:     SELECT login, blocked_by, blocked_reason FROM members WHERE blocked_at IS NOT NULL;
+--   Moderators:  SELECT login FROM members WHERE moderator = 1;
+CREATE TABLE IF NOT EXISTS members (
+    github_id       INTEGER PRIMARY KEY,
+    login           TEXT    NOT NULL,
+    moderator       INTEGER NOT NULL DEFAULT 0,  -- 1: may block members and delete uploads
+    blocked_at      INTEGER,                     -- unix seconds; NULL when not blocked
+    blocked_by      TEXT,
+    blocked_reason  TEXT,
+    first_seen      INTEGER NOT NULL,
+    last_seen       INTEGER NOT NULL
+);
+
+-- =============================================================================
+-- uploads: files in members' personal libraries (R2 users/<github_id>/<id>.<ext>)
+-- =============================================================================
+-- status: uploading (row made, file not yet stored), private. Later:
+-- requested, published, rejected. Upload ids are not catalog track ids.
+-- Not rebuildable from git: `tools/d1.mjs reset` refuses while it has rows.
+--
+--   Space per member:  SELECT owner_id, COUNT(*), SUM(size) FROM uploads GROUP BY owner_id;
+CREATE TABLE IF NOT EXISTS uploads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id    INTEGER NOT NULL,
+    r2_key      TEXT    NOT NULL UNIQUE,
+    size        INTEGER NOT NULL,
+    format      TEXT    NOT NULL,               -- mp3, m4a, flac, wav, ogg
+    duration    INTEGER NOT NULL,               -- seconds
+    title       TEXT    NOT NULL,
+    artist      TEXT    NOT NULL DEFAULT '',
+    album       TEXT    NOT NULL DEFAULT '',
+    year        INTEGER,
+    track_no    INTEGER,
+    file_name   TEXT    NOT NULL,               -- as uploaded, for the owner's reference
+    status      TEXT    NOT NULL DEFAULT 'uploading',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uploads_owner ON uploads (owner_id, status);

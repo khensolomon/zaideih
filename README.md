@@ -28,6 +28,7 @@ Started in 2006 and launched in 2007, Zaideih has been rebuilt several times: AS
 - Player with a queue, shuffle and repeat, lock-screen and media-key controls, and animated backgrounds in Now playing that follow the music.
 - Sound for old recordings, applied while listening: skip silent tape at the start and end, clean up air blowing, rumble and hiss, even out volume between recordings, play one-sided recordings in both ears, and a ten-band equaliser with presets.
 - Generated artwork: album covers and artist pictures drawn from the catalog itself.
+- Your own music: signed in with GitHub, upload music you own to a private library that only you can play, on any device. See [docs/library.md](docs/library.md).
 
 ## Development
 
@@ -74,7 +75,7 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 | `src/` | Shared app: catalog, search, player, library, offline downloads, play counts, UI |
 | `platforms/web/` | PWA entry point, service worker, manifest, icons |
 | `platforms/desktop/` | Electron main process |
-| `worker/media/` | Cloudflare Worker: streams audio from R2, counts plays and serves their totals (`media.zaideih.com`); D1 schema in `schema.sql` |
+| `worker/media/` | Cloudflare Worker (`media.zaideih.com`): streams audio from R2, counts plays and serves their totals, finishes the GitHub sign-in, and keeps personal libraries; D1 schema in `schema.sql` |
 | `tools/` | Catalog compiler, media paths, D1 schema and reset (`d1.mjs`), platform build, versions and release plan, playback diagnostics |
 | `wrangler.jsonc` | The site on Cloudflare (Workers static assets from `dist/web`) |
 | `.github/workflows/` | `ci.yml` checks every push; `release.yml` deploys `release:` pushes |
@@ -83,6 +84,7 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 
 - [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline and play counts
 - [docs/worker-audio.md](docs/worker-audio.md): deploying and checking the audio Worker
+- [docs/library.md](docs/library.md): personal libraries (uploads, signed streaming, moderation)
 - [docs/releasing.md](docs/releasing.md): one-time Cloudflare and GitHub setup, release targets, rollback
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
 
@@ -90,7 +92,9 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 
 - [x] Show the counted plays in the app
 - [x] Hidden admin page to edit the catalog through GitHub
-- [ ] Add albums and upload audio from the admin page
+- [x] Personal libraries: private uploads with moderation
+- [ ] Add albums from R2 folders to the catalog
+- [ ] Ask for an upload to be published; share links for rights holders
 - [ ] Lyrics from `assets/lyric/`
 - [ ] Desktop installers, and downloads saved as files
 

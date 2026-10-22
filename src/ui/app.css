@@ -470,8 +470,10 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .segmented a:hover { text-decoration: none; }
 /* Phones: the tabs share the width equally, so they never scroll sideways. */
 @media (max-width: 899px) {
-	.segmented { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; overflow: hidden; border-radius: 18px; }
-	.segmented a, .segmented button { padding: 8px 2px; border-radius: 14px; text-align: center; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; }
+	/* Columns as wide as their words, sharing what is left; scrolls sideways rather than cutting a word. */
+	.segmented { display: grid; grid-auto-flow: column; grid-auto-columns: auto; width: 100%; overflow-x: auto; scrollbar-width: none; border-radius: 18px; }
+	.segmented::-webkit-scrollbar { display: none; }
+	.segmented a, .segmented button { padding: 8px 8px; border-radius: 14px; text-align: center; font-size: 14.5px; }
 	.segmented button span { display: block; margin: 0; font-size: 12px; }
 	.lib-actions { display: flex; gap: 8px; width: 100%; justify-content: flex-end; }
 	.lib-actions .btn { min-height: 36px; padding: 0 14px; font-size: 14px; }
@@ -902,6 +904,31 @@ dialog::backdrop { background: rgb(0 0 0 / 0.55); }
 dialog h2 { font-size: 20px; margin-bottom: 12px; }
 dialog input[type="text"] { width: 100%; min-height: 44px; padding: 0 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface-2); }
 dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
+dialog .up-edit label { display: grid; gap: 4px; margin-bottom: 10px; font-size: 14px; color: var(--ink-2); }
+dialog .up-edit input { width: 100%; min-height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); }
+dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ---------- My uploads (src/ui/uploads-view.js) ---------- */
+.up-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+.up-head > div { flex: 1 1 280px; min-width: 0; }
+.up-head h3 { margin: 0 0 4px; }
+.up-pick { cursor: pointer; }
+.up-review { margin-bottom: 22px; }
+.up-review h3 { margin: 0 0 4px; }
+.up-files { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.up-file { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.up-file:first-child { border-top: 0; padding-top: 0; }
+.up-fields { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.up-fields input { min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; }
+.up-meta { font-size: 12.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+.up-file.refused { grid-template-columns: 1fr; }
+.up-name { font-weight: 600; overflow-wrap: anywhere; }
+.up-why { color: var(--danger-ink); font-size: 14px; }
+.up-progress { display: block; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.up-progress span { display: block; height: 100%; background: var(--ink); transition: width 0.2s linear; }
+.up-done { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); }
+.up-done svg { width: 16px; height: 16px; }
+@media (max-width: 640px) { .up-fields { grid-template-columns: 1fr; } }
 
 .toasts { position: fixed; z-index: 70; left: 50%; transform: translateX(-50%); bottom: calc(var(--deck) + 20px + env(safe-area-inset-bottom)); display: grid; gap: 8px; width: min(520px, calc(100vw - 24px)); }
 .toast { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: var(--radius-m); background: var(--ink); color: #3a3a3a; font-size: 15px; box-shadow: 0 8px 24px var(--shadow); }
@@ -1042,6 +1069,21 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 	.admin .adm-tabs { gap: 22px; }
 }
 @media (min-width: 900px) { .admin .adm-head { top: 0; padding-top: 14px; } }
+/* Members: moderation of personal libraries. */
+.admin .adm-members { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 4px; }
+.admin .adm-members > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.admin .adm-members > li[data-blocked="true"] .adm-member b { text-decoration: line-through; opacity: 0.7; }
+.admin .adm-member { display: grid; gap: 2px; min-width: 0; }
+.admin .adm-member small { color: var(--ink-3); }
+.admin .adm-members .adm-actions { margin: 0; justify-content: flex-end; }
+.admin .adm-block { display: flex; gap: 6px; }
+.admin .adm-block input { width: 180px; min-height: 40px; }
+.admin .adm-tag { font-size: 11.5px; font-weight: 650; padding: 1px 7px; border-radius: 6px; background: rgb(255 255 255 / 0.12); color: var(--ink-2); }
+.admin .adm-tag.danger { color: var(--danger-ink); }
+.admin .adm-member-uploads { grid-column: 1 / -1; margin: 4px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+.admin .adm-member-uploads li { display: flex; justify-content: space-between; gap: 12px; }
+.admin .adm-member-uploads small { display: block; color: var(--ink-3); }
+@media (max-width: 760px) { .admin .adm-members > li { grid-template-columns: 1fr; } .admin .adm-members .adm-actions { justify-content: flex-start; } }
 /* Tools: one collapsible check each. */
 .admin .adm-check { border: 1px solid var(--line); border-radius: var(--radius-s); margin-bottom: 8px; padding: 0 12px; }
 .admin .adm-check summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; }

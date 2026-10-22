@@ -182,7 +182,8 @@ export function createPlayQueue({
 export function startPlayCounting(audio, currentTrack, queue = createPlayQueue()) {
 	if (!queue.enabled) return queue;
 	const tracker = createPlayTracker();
-	const count = (id) => { if (id !== null) queue.add(id); };
+	// Only catalog songs count; uploads (text ids, src/core/uploads.js) never do.
+	const count = (id) => { if (typeof id === "number") queue.add(id); };
 	audio.addEventListener("loadstart", () => tracker.load(currentTrack()?.id ?? null));
 	audio.addEventListener("seeking", () => tracker.seek(audio.currentTime));
 	// Passing quickly over silence (core/sound.js) is not listening.

@@ -56,7 +56,7 @@ const state = {
 	context: "",      // label of where playback started, e.g. an album title
 };
 
-const current = () => (state.index >= 0 ? catalog.tracks.get(state.queue[state.index]) ?? null : null);
+const current = () => (state.index >= 0 ? catalog.track(state.queue[state.index]) ?? null : null);
 
 function changed() {
 	emit("player", state);

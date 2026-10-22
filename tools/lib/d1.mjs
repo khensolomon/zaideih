@@ -72,3 +72,16 @@ export function wranglerRows(stdout) {
 	if (parsed[0].success === false) throw new D1Error(`D1 query failed: ${JSON.stringify(parsed[0].error ?? parsed[0])}`);
 	return parsed[0].results ?? [];
 }
+
+/** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
+export const LIBRARY_TABLES = Object.freeze(["members", "uploads"]);
+
+/**
+ * Why a reset must not go ahead, or null: it would lose personal libraries
+ * (`counts`: rows per table) unless `dropLibrary` was chosen.
+ */
+export function libraryGuard(counts, dropLibrary) {
+	const held = LIBRARY_TABLES.filter((t) => (counts[t] ?? 0) > 0);
+	if (!held.length || dropLibrary) return null;
+	return `${held.map((t) => `${t} holds ${counts[t]} row${counts[t] === 1 ? "" : "s"}`).join(" and ")}. Personal libraries cannot be rebuilt from git, and their files would stay in R2 (users/…) without an owner. Use "schema --apply" to add what is missing instead, or re-run with --drop-library to lose them.`;
+}

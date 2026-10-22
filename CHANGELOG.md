@@ -4,6 +4,7 @@
 
 - Rounder covers, centred album and artist headers on phones, select arrows, current language in the sidebar
 - Admin: a header with the person's photo, name, level and what they have had released, plain text tabs; Edit or Suggest an edit on album, artist and song menus for people signed in
+- Personal libraries: anyone signed in with GitHub uploads music of their own (Library, Uploads), played only by them through signed addresses; oversized or unsupported files are refused before sending, with the reason; moderators block accounts and delete uploads (admin page, Members)
 
 ## v26.10.22.7
 

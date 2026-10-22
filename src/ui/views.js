@@ -1,7 +1,8 @@
 /**
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
-import { ADMIN_URL, APP_VERSION } from "../config.js";
+import { ADMIN_URL, APP_VERSION, LIBRARY_URL } from "../config.js";
+import { uploadsPanel } from "./uploads-view.js";
 import { LEVELS, readWho } from "../core/access.js";
 import { analytics } from "../core/analytics.js";
 import { creditOf } from "../core/catalog.js";
@@ -20,7 +21,7 @@ import { careerOf, shadeOf } from "./art.js";
 import { getScope, setScope } from "./suggest.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
 
-const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam" };
+const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam", uploads: "your uploads" };
 export const langLabel = (lang) => LANG_LABEL[lang.name] ?? lang.name[0].toUpperCase() + lang.name.slice(1);
 const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -44,7 +45,7 @@ let discover = null;
 export async function home(c) {
 	discover ??= pickRandom([...c.albums.values()], 12);
 	const recentIds = await library.recent(12);
-	const recent = recentIds.map((id) => c.tracks.get(id)).filter(Boolean);
+	const recent = recentIds.map((id) => c.track(id)).filter(Boolean);
 	const langs = [...c.langs.values()].sort((a, b) => b.albums.length - a.albums.length);
 	const top = c.topTracks.slice(0, 10);
 
@@ -161,7 +162,7 @@ export function lang(c, { id }, query) {
 
 /* ---------- album ---------- */
 export function album(c, { id }) {
-	const a = c.albums.get(id);
+	const a = c.album(id);
 	if (!a) return notFound("album");
 	const ids = a.tracks.map((t) => t.id);
 	const key = registerList(ids, a.title);
@@ -182,7 +183,7 @@ export function album(c, { id }) {
 						${a.year ? html`<span>${a.year}</span>` : ""}
 						${a.genres.map((g) => html`<a class="chip" href="${href(`genre/${g.id}`)}">${g.name}</a>`)}
 						<span>${plural(a.tracks.length, "song")}, ${formatTotal(a.duration)}</span>
-						<span>${compact.format(a.plays)} plays</span>
+						${a.upload ? html`<span>Only you can play these</span>` : html`<span>${compact.format(a.plays)} plays</span>`}
 						${saved ? html`<span class="saved-note">${icon("saved")} ${allSaved ? "Downloaded" : `${saved} of ${ids.length} downloaded`}</span>` : ""}
 					</div>
 				</div>
@@ -193,7 +194,7 @@ export function album(c, { id }) {
 				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}">
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
 				</button>
-				${editLink({ album: a.id })}
+				${a.upload ? "" : editLink({ album: a.id })}
 				<button class="icon-btn" data-act="list-menu" data-list="${key}" aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
 			${chunkedTracks(a.tracks, a.title)}`,
@@ -372,7 +373,7 @@ function resultSections(list, q, r = null) {
 }
 
 /* ---------- library ---------- */
-const LIB_TABS = [["liked", "Liked"], ["playlists", "Playlists"], ["downloads", "Downloads"], ["history", "History"]];
+const LIB_TABS = [["liked", "Liked"], ["playlists", "Playlists"], ["downloads", "Downloads"], ["history", "History"], ...(LIBRARY_URL ? [["uploads", "Uploads"]] : [])];
 
 function libTabs(active) {
 	return html`<nav class="segmented" aria-label="Library sections">${LIB_TABS.map(([k, label]) =>
@@ -382,8 +383,11 @@ function libTabs(active) {
 export async function libraryView(c, { tab = "liked" }) {
 	if (!LIB_TABS.some(([k]) => k === tab)) return notFound("page");
 	let body;
-	if (tab === "liked") {
-		const tracks = (await library.likedIds()).map((id) => c.tracks.get(id)).filter(Boolean);
+	let mount;
+	if (tab === "uploads") {
+		({ body, mount } = uploadsPanel());
+	} else if (tab === "liked") {
+		const tracks = (await library.likedIds()).map((id) => c.track(id)).filter(Boolean);
 		const key = registerList(tracks.map((t) => t.id), "Liked songs");
 		body = tracks.length
 			? html`<div class="actions">
@@ -399,7 +403,7 @@ export async function libraryView(c, { tab = "liked" }) {
 				: html`<div class="empty"><h2>No playlists yet</h2><p>Create one here, or use “Add to playlist” from any song's menu.</p></div>`}`;
 	} else if (tab === "downloads") {
 		const ids = [...offline.state.downloaded];
-		const tracks = ids.map((id) => c.tracks.get(id)).filter(Boolean)
+		const tracks = ids.map((id) => c.track(id)).filter(Boolean)
 			.sort((a, b) => a.album.title.localeCompare(b.album.title) || a.n - b.n);
 		const usage = await offline.usage();
 		const key = registerList(tracks.map((t) => t.id), "Downloads");
@@ -417,7 +421,7 @@ export async function libraryView(c, { tab = "liked" }) {
 				</div>${chunkedTracks(tracks, "Downloads", { showAlbum: true })}`
 				: html`<div class="empty"><h2>Nothing downloaded</h2><p>Download albums or songs to play them without a connection.</p></div>`}`;
 	} else {
-		const tracks = (await library.recent(200)).map((id) => c.tracks.get(id)).filter(Boolean);
+		const tracks = (await library.recent(200)).map((id) => c.track(id)).filter(Boolean);
 		body = tracks.length
 			? html`<div class="actions"><button class="btn danger" data-act="clear-history" data-confirm="Clear your play history on this device?">${icon("trash")} Clear history</button></div>
 				${chunkedTracks(tracks, "History", { showAlbum: true, step: 50 })}`
@@ -432,6 +436,7 @@ export async function libraryView(c, { tab = "liked" }) {
 			</div>
 			${body}
 			<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="#/help">Help</a></p>`,
+		mount,
 	};
 }
 
@@ -496,6 +501,8 @@ export function terms() {
 				<p>Likes, playlists, play history and downloads are stored on your device and are not sent anywhere. Library backups are files you keep. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
 				<p>Play counts: after a song has played for 10 seconds, the app tells the Zaideih audio server which song was played and when, so the site can show how often songs are listened to. Nothing else is sent with it: no account, cookie or device identifier, and nothing from your library. Your network address is used only to stop the same sender from inflating counts, and is not stored. Plays while offline are sent once you are online again.</p>
 				<p>Usage statistics are off unless you allow them. When allowed, Google Analytics counts page visits (the page's address within Zaideih and its title) and song plays (which song, album and language), and sets its own cookies for that; Google processes this data under its own terms. Searches and your library are never sent. The choice is kept per device and can be changed at any time on the <a class="text-link" href="#/about">About</a> page.</p>
+				<h2>Your uploads</h2>
+				<p>Signed in with GitHub, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your GitHub account's id, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
 				<h2>Rights holders</h2>
@@ -555,7 +562,7 @@ export function codeView(c, { code = "" }) {
 	} catch (err) {
 		return { title: "Diagnostic code", body: html`<h1 class="page-title">Diagnostic code</h1>${form}<div class="empty"><h2>Not a valid code</h2><p>${err.message}</p></div>` };
 	}
-	const t = c.tracks.get(d.trackId);
+	const t = c.track(d.trackId);
 	const { cause, steps } = explain(d);
 	const rows = [
 		["Song", t ? html`<a class="text-link" href="${href(`album/${t.album.id}`)}">${t.title}</a> (${creditOf(t.artists)}, ${t.album.title})` : "Not in this catalog"],
@@ -585,7 +592,7 @@ export function codeView(c, { code = "" }) {
 export function playlist(c, { id }) {
 	const p = library.playlist(Number(id));
 	if (!p) return notFound("playlist");
-	const tracks = p.tracks.map((tid) => c.tracks.get(tid)).filter(Boolean);
+	const tracks = p.tracks.map((tid) => c.track(tid)).filter(Boolean);
 	const missing = p.tracks.length - tracks.length;
 	const key = registerList(tracks.map((t) => t.id), p.name);
 	return {

@@ -14,6 +14,8 @@
  *            that either completes or leaves the database as it was. When
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
+ *            Refuses while personal libraries (members, uploads) hold rows,
+ *            unless --drop-library: they cannot be rebuilt from git.
  *
  * Every command except status is a dry run unless --apply is given.
  *
@@ -34,7 +36,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { D1Error, isSystemTable, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
+import { D1Error, LIBRARY_TABLES, isSystemTable, libraryGuard, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
 import { MediaError, d1Sql, validateMedia } from "./lib/media.mjs";
 
 const DATABASE = "audio";
@@ -56,6 +58,7 @@ const { values, positionals } = parseArgs({
 		prune: { type: "boolean", default: false },
 		"keep-plays": { type: "boolean", default: false },
 		"drop-plays": { type: "boolean", default: false },
+		"drop-library": { type: "boolean", default: false },
 	},
 	strict: true,
 });
@@ -148,6 +151,9 @@ try {
 		if (values["keep-plays"] && values["drop-plays"]) fail("choose one of --keep-plays and --drop-plays");
 		const list = tables();
 		const plays = list.includes("plays") ? count("plays") : 0;
+		const held = Object.fromEntries(LIBRARY_TABLES.map((t) => [t, list.includes(t) ? count(t) : 0]));
+		const guard = libraryGuard(held, values["drop-library"]);
+		if (guard) fail(`reset refused: ${guard}`);
 		if (plays > 0 && !values["keep-plays"] && !values["drop-plays"]) {
 			fail(`the plays table holds ${plays} rows of play counts. Re-run with --keep-plays to put them back after the reset, or --drop-plays to lose them.`);
 		}
