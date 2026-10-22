@@ -1,3 +1,7 @@
+# Custom
+*.v[0-9]*
+tmp/
+
 # Dependencies
 node_modules/
 
