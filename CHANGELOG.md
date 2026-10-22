@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.6
+
+- Admin: floating header, centred sign-in and catalog checks; collapsible sidebar
+
 ## v26.10.22.5
 
 - artist "Sangpur": type Unknown → Female (catalog, 1 change)

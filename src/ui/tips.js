@@ -8,7 +8,8 @@
  *
  * Only controls without visible text get a hint; a button that already says
  * what it does needs none. `data-tip` overrides the text when the label is
- * long-winded for a hint.
+ * long-winded for a hint, and `data-hint` names a control whose visible
+ * words can be hidden (the collapsed sidebar).
  */
 const HOVER_DELAY = 450;
 const PRESS_DELAY = 480;
@@ -24,10 +25,11 @@ let swallowClick = false;
 function hintOf(el) {
 	if (!el || el.disabled || el.closest("[hidden], .menu, #sg-panel")) return "";
 	if (el.dataset.tip) return el.dataset.tip;
-	const label = el.getAttribute("aria-label");
+	const label = el.getAttribute("aria-label") ?? el.dataset.hint;
 	if (!label) return "";
-	// Has its own visible words: no hint needed.
-	if (el.textContent.trim()) return "";
+	// Has its own visible words: no hint needed. innerText leaves out hidden
+	// text, so a sidebar link collapsed to its icon gets one.
+	if (el.innerText.trim()) return "";
 	return label;
 }
 

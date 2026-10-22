@@ -43,7 +43,10 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 		/** The token's user, and whether it may write to the repository. */
 		async whoami() {
 			const [user, repo] = await Promise.all([call("GET", "/user"), call("GET", `/repos/${REPO}`)]);
-			return { login: user.login, canWrite: Boolean(repo.permissions?.push) };
+			const p = repo.permissions ?? {};
+			// The repository's own permission names the role on the admin page.
+			const role = p.admin ? "Admin" : p.maintain ? "Maintainer" : p.push ? "Editor" : p.triage ? "Triage" : "Reader";
+			return { login: user.login, name: user.name ?? "", canWrite: Boolean(p.push), role };
 		},
 		/** The newest commit on the base branch. */
 		async head() {
