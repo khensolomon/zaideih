@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.8
+
+- Rounder covers, centred album and artist headers on phones, select arrows, current language in the sidebar
+
 ## v26.10.22.7
 
 - Sign in with GitHub on the admin page

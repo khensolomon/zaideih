@@ -211,6 +211,8 @@ main {
 	.rail h2 { font-size: 13px; font-weight: 600; color: var(--ink-3); margin: 0 12px 6px; }
 	.rail .langs a { display: flex; justify-content: space-between; padding: 7px 12px; border-radius: var(--radius-s); color: var(--ink-2); }
 	.rail .langs a span:last-child { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 14px; }
+	.rail .langs a[aria-current="page"] { background: var(--raised); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+	.rail .langs a:hover { text-decoration: none; background: var(--raised); }
 	main { padding: 32px 40px calc(var(--deck) + 40px); }
 
 	/* Sections fold under their heading; the sidebar collapses to icons. */
@@ -293,8 +295,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 /* ---------- covers (generated, see src/ui/art.js) ---------- */
 .cover {
 	container-type: inline-size;
-	position: relative; overflow: hidden; aspect-ratio: 1; border-radius: var(--radius-s);
-	color: var(--ink);
+	/* A share of the width, so large and small covers look equally round. */
+	position: relative; overflow: hidden; aspect-ratio: 1; border-radius: 7%;
+	color: var(--ink); text-align: left;
 	background: var(--pattern), hsl(0 0% var(--g, 40%));
 	box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
 }
@@ -328,7 +331,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .tile:hover .cover { filter: brightness(1.08); }
 /* The title link stretches over the whole tile. */
 .tile-link { position: static; color: inherit; }
-.tile-link::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-s); }
+.tile-link::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-m); }
 .tile-link:hover { text-decoration: none; }
 .tile-link:focus-visible { outline: none; }
 .tile-link:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 4px; }
@@ -398,6 +401,12 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .hero .saved-note { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .hero .saved-note svg { width: 16px; height: 16px; }
 @media (min-width: 700px) { .hero { grid-template-columns: auto 1fr; gap: 28px; } }
+/* Phones: the cover or picture, the title and the buttons under it, centred. */
+@media (max-width: 699px) {
+	.hero { justify-items: center; text-align: center; }
+	.hero .facts { justify-content: center; }
+	.hero + .actions { justify-content: center; }
+}
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 18px; }
 .btn {
@@ -444,7 +453,17 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 
 /* ---------- controls ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-.select { min-height: 40px; padding: 0 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); }
+/*
+ * Selects draw their own arrow: the browser's sits at the very edge and
+ * differs per platform. The arrow keeps the same inset as the text.
+ */
+.select, .admin select {
+	-webkit-appearance: none; appearance: none; cursor: pointer;
+	min-height: 40px; padding: 0 40px 0 14px; border-radius: 10px; border: 1px solid var(--line);
+	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center / 16px 16px, var(--surface);
+}
+.select:hover { border-color: rgb(255 255 255 / 0.28); }
+.select option, .admin select option { background: var(--surface); color: var(--ink); }
 .segmented { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; overflow-x: auto; max-width: 100%; }
 .segmented a { padding: 6px 14px; border-radius: 999px; color: var(--ink-2); font-weight: 550; white-space: nowrap; }
 .segmented a[aria-current="page"] { background: var(--tab-active); color: var(--ink); }
@@ -1016,6 +1035,7 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 	width: 100%; min-height: 40px; padding: 8px 12px; border-radius: var(--radius-s);
 	border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit;
 }
+.admin select { padding-right: 40px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center / 16px 16px, var(--surface-2); }
 .admin label { display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); }
 .admin .adm-search { min-height: 46px; font-size: 16px; margin-bottom: 14px; }
 .admin .adm-results { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 4px; }
