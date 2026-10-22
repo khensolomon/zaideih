@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.22.7
+
+- Sign in with GitHub on the admin page
+- Levels (admin, editor, contributor, guest, viewer): editors publish and release, everyone else signed in sends suggestions that editors review; every page links to the admin page by level
+- Admin header: the search sits in it, with smaller corners
+
 ## v26.10.22.6
 
 - Admin: floating header, centred sign-in and catalog checks; collapsible sidebar

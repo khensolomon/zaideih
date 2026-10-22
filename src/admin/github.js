@@ -1,9 +1,13 @@
 /**
- * The few GitHub REST calls the admin page needs, with the listener's own
+ * The few GitHub REST calls the admin page needs, with either a GitHub
+ * sign-in (the GitHub App's user token, src/admin/session.js) or a
  * fine-grained token (repository khensolomon/zaideih only: Contents read and
- * write, Pull requests read and write, Checks read). Every failure throws
- * GitHubError with GitHub's own message.
+ * write, Pull requests read and write, Checks read). Both can do only what
+ * the person may do on the repository. Every failure throws GitHubError with
+ * GitHub's own message.
  */
+import { LEVELS, levelOf } from "../core/access.js";
+
 export const REPO = "khensolomon/zaideih";
 export const BASE = "master";
 const API = "https://api.github.com";
@@ -16,13 +20,18 @@ export class GitHubError extends Error {
 	}
 }
 
+/**
+ * @param {string | (() => Promise<string>)} token  a token, or a function that
+ *   answers the current one (a GitHub sign-in renews its token every 8 hours)
+ */
 export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) {
+	const tokenNow = typeof token === "function" ? token : async () => token;
 	async function call(method, path, body, { accept = "application/vnd.github+json", raw = false } = {}) {
 		const res = await fetchImpl(`${API}${path}`, {
 			method,
 			headers: {
 				Accept: accept,
-				Authorization: `Bearer ${token}`,
+				Authorization: `Bearer ${await tokenNow()}`,
 				"X-GitHub-Api-Version": "2022-11-28",
 				...(body ? { "Content-Type": "application/json" } : {}),
 			},
@@ -32,7 +41,7 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 		if (!res.ok) {
 			let detail = "";
 			try { const j = await res.json(); detail = j.message + (j.errors ? ` (${JSON.stringify(j.errors)})` : ""); } catch { /* not JSON */ }
-			const hint = res.status === 401 ? " The token is wrong or expired." : res.status === 403 || res.status === 404 ? " The token may lack a permission (Contents, Pull requests and Checks on the zaideih repository)." : "";
+			const hint = res.status === 401 ? " The sign-in or token is wrong or expired." : res.status === 403 || res.status === 404 ? " The token may lack a permission (Contents, Pull requests and Checks on the zaideih repository)." : "";
 			throw new GitHubError(`GitHub ${method} ${path}: HTTP ${res.status} ${detail}${hint}`.trim(), res.status);
 		}
 		if (raw) return res.text();
@@ -40,13 +49,19 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 	}
 
 	return {
-		/** The token's user, and whether it may write to the repository. */
+		/** The token's user, their level (src/core/access.js) and whether they may write to the repository. */
 		async whoami() {
 			const [user, repo] = await Promise.all([call("GET", "/user"), call("GET", `/repos/${REPO}`)]);
-			const p = repo.permissions ?? {};
-			// The repository's own permission names the role on the admin page.
-			const role = p.admin ? "Admin" : p.maintain ? "Maintainer" : p.push ? "Editor" : p.triage ? "Triage" : "Reader";
-			return { login: user.login, name: user.name ?? "", canWrite: Boolean(p.push), role };
+			const level = levelOf(repo.permissions ?? {});
+			return { login: user.login, name: user.name ?? "", level, canWrite: LEVELS[level].canWrite };
+		},
+		/** Open suggestions (pull requests opened for people without write access, worker/media/suggest.js). */
+		async suggestions() {
+			const prs = await call("GET", `/repos/${REPO}/pulls?state=open&base=${BASE}&per_page=50`);
+			return prs.filter((p) => p.head.ref.startsWith("suggest-")).map((p) => ({
+				number: p.number, title: p.title, url: p.html_url, body: p.body ?? "", created: p.created_at,
+				by: /Suggested by @([\w-]+)/.exec(p.body ?? "")?.[1] ?? p.user.login,
+			}));
 		},
 		/** The newest commit on the base branch. */
 		async head() {

@@ -33,6 +33,17 @@ META_CACHE_VERSION = "1"
 # Origins whose song plays are counted (POST /plays): the released app only,
 # so plays while testing locally never count.
 PLAY_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih"
+# Sign in with GitHub for the admin page (auth.js): the GitHub App "Zaideih"
+# (App ID 5427707). The client secret is a Worker secret:
+#   npx wrangler secret put GITHUB_CLIENT_SECRET --config worker/media/wrangler.toml
+# The App's callback URL is https://media.zaideih.com/auth/callback.
+GITHUB_CLIENT_ID = "Iv23liaAXdaeZkJbwN27"
+# Pages that may sign in; the Worker redirects back to these origins only.
+AUTH_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,http://localhost:8080,http://127.0.0.1:8080"
+# The repository the App is installed on. Suggestions from people without
+# write access are opened there as pull requests by the App (suggest.js),
+# with its private key as the Worker secret GITHUB_APP_KEY (PKCS#8 PEM).
+GITHUB_REPO = "khensolomon/zaideih"
 
 [[d1_databases]]
 binding = "DB"
@@ -54,3 +65,9 @@ simple = { limit = 20, period = 60 }
 name = "TRACK_LIMIT"
 namespace_id = "4202"
 simple = { limit = 1, period = 60 }
+
+# Suggestions (POST /auth/suggest), keyed per GitHub user: at most 2 a minute.
+[[ratelimits]]
+name = "SUGGEST_LIMIT"
+namespace_id = "4203"
+simple = { limit = 2, period = 60 }

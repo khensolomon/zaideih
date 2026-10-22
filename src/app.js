@@ -6,7 +6,8 @@ import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
-import { ADMIN_URL } from "./config.js";
+import { ADMIN_URL, AUTH_URL } from "./config.js";
+import { LEVELS, readWho } from "./core/access.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -54,7 +55,7 @@ route("admin", () => ({
 		if (!ADMIN_URL) { root.innerHTML = html`<h1>Admin</h1><p>The admin page works in the web app only.</p>`; return; }
 		try {
 			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
-			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), desktop: document.documentElement.dataset.platform === "desktop" });
+			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop" });
 		} catch (err) {
 			console.error(err);
 			root.innerHTML = html`<h1>Admin</h1><p class="adm-error">The admin page could not load: ${err.message}</p>`;
@@ -108,6 +109,7 @@ function renderAppMenu() {
 			<a href="#/">${icon("home")}Home</a>
 			<a href="#/search">${icon("search")}Search</a>
 			<a href="#/library">${icon("library")}Library</a>
+			<a href="#/admin" class="am-admin" hidden>${icon("edit")}<span class="lbl">Admin</span></a>
 		</div>
 		<h2>Languages</h2>
 		<div class="am-group">${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}"><span>${V.langLabel(l)}</span><span class="am-count">${l.albums.length.toLocaleString()}</span></a>`)}</div>
@@ -115,6 +117,23 @@ function renderAppMenu() {
 		<div class="am-group"><a href="#/genres">Genres</a><a href="#/top">Most played</a></div>
 		<button class="stats-on" data-act="stats-on" hidden>${icon("chart")}Share listening statistics</button>
 		<div class="am-foot"><a href="#/about">About</a><a href="#/terms">Terms</a><a href="#/help">Help</a></div>`;
+	syncAccess();
+}
+
+/*
+ * What the person signed in on this device may do (src/core/access.js):
+ * editors and admins get a link to the admin page, contributors and guests
+ * "Suggest edits"; listeners see neither (About offers the sign-in).
+ */
+function syncAccess() {
+	const who = ADMIN_URL ? readWho(localStorage) : null;
+	const label = who ? (LEVELS[who.level].canWrite ? "Admin" : "Suggest edits") : "";
+	for (const a of $$(".rail-admin, .am-admin")) {
+		a.hidden = !who;
+		a.dataset.hint = label;
+		$(".lbl", a).textContent = label;
+		a.title = who ? `${who.login}, ${LEVELS[who.level].name}` : "";
+	}
 }
 function openAppMenu() {
 	const menu = $("#app-menu");
@@ -177,7 +196,7 @@ async function render({ keepScroll = false } = {}) {
 function markNav(path) {
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path === "about" || path === "terms" || path === "help" ? path : "home";
+		: path === "about" || path === "terms" || path === "help" || path === "admin" ? path : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
 		else a.removeAttribute("aria-current");
@@ -1252,6 +1271,9 @@ export async function boot(platform) {
 	});
 	clearArtCaches();
 	renderRail();
+	syncAccess();
+	// A sign-in or sign-out in another tab.
+	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.admin.")) syncAccess(); });
 	$("#bar-now").addEventListener("click", openSheet);
 	$("#bar-like").addEventListener("click", async (e) => {
 		const t = player.current();

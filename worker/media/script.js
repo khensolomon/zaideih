@@ -8,6 +8,7 @@
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
+ *   /auth/*               Sign in with GitHub for the admin page (auth.js).
  *
  * Who may fetch audio:
  *   - <audio>/<video> elements (Sec-Fetch-Dest: audio|video) from any page.
@@ -53,6 +54,8 @@
  * `node tools/media.mjs d1 --apply` and `wrangler d1 execute`.
  */
 
+import { handleAuth } from "./auth.js";
+
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
@@ -81,6 +84,7 @@ export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env, ctx);
+		if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return handleAuth(request, env);
 		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
 		if (!audioMatch) return new Response("Not Found", { status: 404 });
 

@@ -18,6 +18,11 @@
  *                       Default: /plays on the audio origin for production
  *                       builds, off for --dev builds; empty disables. Must be
  *                       on the audio origin, which the CSP already allows.
+ *   ZAIDEIH_AUTH_URL    Sign in with GitHub on the admin page
+ *                       (worker/media/auth.js). Default: /auth on the audio
+ *                       origin for web builds (local ones too: the Worker
+ *                       accepts localhost:8080); empty disables. Must be on
+ *                       the audio origin.
  *
  * Usage:
  *   node tools/build.mjs --platform web
@@ -106,6 +111,14 @@ if (playsUrl) {
 	if (origin !== audioOrigin) die(`ZAIDEIH_PLAYS_URL must be on the audio origin ${audioOrigin}, got ${playsUrl}`);
 }
 
+// Sign in with GitHub for the admin page: web builds only (src/admin/session.js).
+const authUrl = values.platform === "web" ? (process.env.ZAIDEIH_AUTH_URL ?? `${audioOrigin}/auth`).trim().replace(/\/+$/, "") : "";
+if (authUrl) {
+	let origin;
+	try { origin = new URL(authUrl).origin; } catch { die(`ZAIDEIH_AUTH_URL is not a valid URL: ${authUrl}`); }
+	if (origin !== audioOrigin) die(`ZAIDEIH_AUTH_URL must be on the audio origin ${audioOrigin}, got ${authUrl}`);
+}
+
 // Analytics: production web builds only, and only after the listener agrees (src/core/analytics.js).
 const gaId = values.platform === "web" && !dev ? (process.env.ZAIDEIH_GA_ID ?? DEFAULT_GA_ID).trim() : "";
 if (gaId && !/^G-[A-Z0-9]{4,}$/.test(gaId)) die(`ZAIDEIH_GA_ID must look like G-XXXXXXXXXX (or be empty to disable analytics), got "${gaId}"`);
@@ -190,6 +203,7 @@ const app = await esbuild.build({
 		__PLAYS_URL__: JSON.stringify(playsUrl),
 		__SOUND_WORKLET__: JSON.stringify(workletFile),
 		__ADMIN__: JSON.stringify(adminFile),
+		__AUTH_URL__: JSON.stringify(authUrl),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -283,3 +297,4 @@ console.log(`built ${values.platform}${dev ? " (dev)" : ""} v${release} (${build
 console.log(`  catalog ${catalogMeta.version} (${catalogMeta.counts.tracks} tracks)`);
 console.log(`  audio   ${audioTemplate}`);
 console.log(`  plays   ${playsUrl || "off"}`);
+console.log(`  auth    ${authUrl || "off"}`);

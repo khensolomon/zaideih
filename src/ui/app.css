@@ -956,25 +956,47 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 .admin .adm-token { width: 100%; display: grid; gap: 10px; text-align: left; }
 .admin .adm-token .btn { justify-content: center; gap: 8px; }
 .admin .adm-token .btn svg { width: 18px; height: 18px; }
+.admin .adm-github { width: 100%; justify-content: center; gap: 10px; min-height: 48px; font-size: 16px; }
+.admin .adm-github svg { width: 20px; height: 20px; }
+.admin .adm-small { font-size: 13px; }
+.admin .adm-howto .adm-token { margin: 12px 0 4px; }
 .admin .adm-howto { width: 100%; text-align: left; font-size: 14px; color: var(--ink-2); }
 .admin .adm-howto summary { cursor: pointer; text-align: center; color: var(--ink-3); }
 .admin .adm-howto ol { padding-left: 20px; line-height: 1.5; }
 /* Connected: a floating header with who and where, and the sections as icon buttons. */
 .admin .adm-head {
 	position: sticky; top: calc(env(safe-area-inset-top) + 62px); z-index: 15;
-	display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-	margin: 0 0 14px; padding: 6px 6px 6px 8px; border-radius: 22px;
+	display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+	margin: 0 0 16px; padding: 6px; border-radius: 14px;
 }
-.admin .adm-head.glass { background: linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04)), rgb(66 66 66 / 0.82); }
-@media (max-width: 640px) {
+.admin .adm-head.glass { background: linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04)), rgb(66 66 66 / 0.86); }
+.admin .adm-head .adm-search {
+	min-height: 40px; margin: 0; padding: 0 14px; font-size: 15px;
+	border: 1px solid rgb(255 255 255 / 0.1); border-radius: 10px; background: rgb(0 0 0 / 0.16);
+}
+.admin .adm-head .adm-search:focus { outline: none; border-color: rgb(255 255 255 / 0.35); background: rgb(0 0 0 / 0.22); }
+.admin .adm-title { margin: 0; font-size: 17px; font-weight: 650; color: var(--ink-2); }
+.admin .adm-level { margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgb(255 255 255 / 0.12); color: var(--ink-2); font-size: 11px; font-weight: 650; vertical-align: 1px; }
+.admin .adm-level[data-level="admin"], .admin .adm-level[data-level="editor"] { background: var(--accent); color: var(--on-accent); }
+.admin .adm-sugg { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--radius-s); color: var(--ink); }
+.admin .adm-sugg:hover { background: var(--surface-2); text-decoration: none; }
+.admin .adm-sugg small { color: var(--ink-3); white-space: nowrap; }
+@media (max-width: 760px) {
+	.admin .adm-head { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+	.admin .adm-head .adm-search, .admin .adm-title { grid-column: 1 / -1; grid-row: 2; }
+	.admin .adm-title { padding: 0 6px 4px; }
+}
+@media (max-width: 520px) {
+	.admin .adm-head { grid-template-columns: minmax(0, 1fr); }
 	.admin .adm-nav { width: 100%; justify-content: space-between; }
+	.admin .adm-head .adm-search, .admin .adm-title { grid-row: 3; }
 }
 .admin .adm-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .admin .adm-who > span:last-child { display: grid; min-width: 0; line-height: 1.25; }
 .admin .adm-who small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.admin .adm-avatar { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--on-accent, #000); font-weight: 700; font-size: 13px; }
+.admin .adm-avatar { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: var(--on-accent, #000); font-weight: 700; font-size: 13px; }
 .admin .adm-nav { display: flex; align-items: center; gap: 2px; }
-.admin .adm-nav .icon-btn { position: relative; width: 42px; height: 42px; color: var(--ink-2); }
+.admin .adm-nav .icon-btn { position: relative; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); }
 .admin .adm-nav .icon-btn:hover { background: rgb(255 255 255 / 0.08); color: var(--ink); }
 .admin .adm-nav .icon-btn[aria-selected="true"] { background: rgb(255 255 255 / 0.16); color: var(--ink); }
 .admin .adm-sep { width: 1px; height: 24px; margin: 0 4px; background: rgb(255 255 255 / 0.18); }
