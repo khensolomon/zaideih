@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.2
+
+- Play counts come back into the app: the audio Worker serves the totals (GET /plays, cached 5 minutes), which are added to the catalog's counts, so Most played, top artists and popularity in the artwork follow real listening; the last totals are kept for offline use. D1: the schema is one file (worker/media/schema.sql, no migrations), and tools/d1.mjs shows, applies, loads or fully resets the database with one command.
+
 ## v26.10.22.1
 
 - Phones: installed on iOS the app runs under a transparent status bar with a soft fade and blur, Now playing included; the browser's top colour follows Now playing. Search suggestions are as wide as the whole search bar, the scope buttons fit, and the list ends above the keyboard.

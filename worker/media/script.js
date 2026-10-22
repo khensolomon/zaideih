@@ -6,6 +6,7 @@
  *                         `music/{folder_path}/{mp3}`, looked up in D1 by track id.
  *   OPTIONS  /audio/:id   CORS preflight for allowed origins.
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
+ *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
  *
  * Who may fetch audio:
@@ -79,7 +80,7 @@ export default {
 	 */
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
-		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env);
+		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env, ctx);
 		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
 		if (!audioMatch) return new Response("Not Found", { status: 404 });
 
@@ -191,14 +192,59 @@ export function parsePlays(text, nowSeconds) {
 	return { plays, rejected };
 }
 
-async function handlePlays(request, env) {
+/*
+ * GET /plays: the counted plays per track, for the app to add to the
+ * catalog's own counts. Public, read-only totals (no listener data), so any
+ * origin may read them. Cached at the edge for PLAY_TOTALS_SECONDS, so D1 is
+ * asked at most once per data centre in that time.
+ *
+ *   {"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}
+ */
+const PLAY_TOTALS_SECONDS = 300;
+const PLAY_RECENT_DAYS = 30;
+
+export async function playTotals(env) {
+	const rows = await env.DB.prepare(
+		`SELECT track_id AS id, SUM(n) AS total, SUM(CASE WHEN day >= date('now', '-${PLAY_RECENT_DAYS - 1} days') THEN n ELSE 0 END) AS recent
+		FROM plays GROUP BY track_id ORDER BY track_id`,
+	).all();
+	return {
+		v: 1,
+		updated: Math.floor(Date.now() / 1000),
+		recentDays: PLAY_RECENT_DAYS,
+		tracks: (rows.results ?? []).map((r) => [r.id, r.total, r.recent]),
+	};
+}
+
+async function handlePlayTotals(request, env, ctx) {
+	const headers = { "Content-Type": "application/json", "Cache-Control": `public, max-age=${PLAY_TOTALS_SECONDS}`, "Access-Control-Allow-Origin": "*" };
+	const key = new Request("https://cache.internal/play-totals/v1");
+	const cached = await caches.default.match(key);
+	if (cached) {
+		const h = new Headers(cached.headers);
+		h.set("Access-Control-Allow-Origin", "*");
+		return new Response(request.method === "HEAD" ? null : cached.body, { status: 200, headers: h });
+	}
+	let body;
+	try {
+		body = JSON.stringify(await playTotals(env));
+	} catch (err) {
+		console.error("reading play totals failed", err);
+		return new Response("play totals are unavailable; try again later", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
+	}
+	ctx.waitUntil(caches.default.put(key, new Response(body, { headers })));
+	return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });
+}
+
+async function handlePlays(request, env, ctx) {
+	if (request.method === "GET" || request.method === "HEAD") return handlePlayTotals(request, env, ctx);
 	const origin = request.headers.get("origin");
 	const allowed = origin && playOriginsOf(env).has(origin) ? origin : null;
 	if (request.method === "OPTIONS") {
 		if (!allowed) return playsResponse(403, "origin not allowed to count plays", null);
 		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": allowed, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
 	}
-	if (request.method !== "POST") return playsResponse(405, "use POST", allowed, { Allow: "POST, OPTIONS" });
+	if (request.method !== "POST") return playsResponse(405, "use GET to read play totals or POST to count plays", allowed, { Allow: "GET, HEAD, POST, OPTIONS" });
 	if (!allowed) return playsResponse(403, "origin not allowed to count plays", null);
 	if (!env.PLAYS_LIMIT || !env.TRACK_LIMIT) {
 		console.error("PLAYS_LIMIT and TRACK_LIMIT rate limiter bindings are required for /plays (wrangler.toml)");

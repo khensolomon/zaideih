@@ -3,9 +3,11 @@
 # Deploy from the repository root:
 #   npx wrangler deploy --config worker/media/wrangler.toml
 #
-# Load or refresh track paths (from assets/data/media.json):
-#   node tools/media.mjs d1 --apply
-#   npx wrangler d1 execute audio --remote --file build/d1/tracks.sql --config worker/media/wrangler.toml
+# The D1 database (schema in schema.sql, no migrations), from the repository root:
+#   node tools/d1.mjs status                       tables and row counts
+#   node tools/d1.mjs schema --apply               create what is missing, keep data
+#   node tools/d1.mjs tracks --apply               load track paths from assets/data/media.json
+#   node tools/d1.mjs reset --keep-plays --apply   drop every table, recreate, reload
 
 name = "media"
 main = "script.js"

@@ -311,6 +311,12 @@ export function artistArt(artist) {
 	return out;
 }
 
+/** Forgets drawn artwork, after play counts change (popularity is part of it). */
+export function clearArtCaches() {
+	motifCache.clear();
+	artCache.clear();
+}
+
 /* ---------- cover as an image (lock screen, media keys) ---------- */
 
 /**

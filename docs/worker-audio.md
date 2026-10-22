@@ -32,7 +32,7 @@ Compared with the version that ran alongside Django (commit `dd79f9f`):
 - `GET /audio/:id`: same lookup (`tracks` table in D1, then `music/{folder_path}/{mp3}` in R2), same Range support, same caching headers
 - `tracks_status` counters (`served`, `not_found`, `fetch_error`)
 - D1 database (`audio`), R2 bucket (`media`), custom domain (`media.zaideih.com`)
-- The D1 schema: only comments in `migrations/0001_initial.sql` changed
+- The D1 schema: the same tables (since then gathered into `schema.sql` with `plays` added; see The D1 schema)
 
 ### What a deploy touches
 
@@ -83,25 +83,25 @@ Expected: `28180`. If the number differs, load the paths from `media.json`. The 
 
 ```bash
 cd ~/dev/zaideih
-node tools/media.mjs d1 --apply
-npx wrangler d1 execute audio --remote --file build/d1/tracks.sql --config worker/media/wrangler.toml
-cd worker/media
+node tools/d1.mjs tracks --apply
 ```
 
-To also delete rows for tracks that are no longer in `media.json`, add `--prune` to the first command.
+To also delete rows for tracks that are no longer in `media.json`, add `--prune`.
 
-### 4. Apply the D1 schema
+### 4. The D1 schema
 
-Every file in `migrations/` is idempotent, so all of them can run on each deploy. `release: audio` does this before deploying; by hand:
+The whole schema is one file, `worker/media/schema.sql`, with no migration history. Every statement is idempotent, and `tools/d1.mjs` (from the repository root, using worker/media's wrangler: `npm --prefix worker/media install`) does the rest. Commands other than `status` are dry runs until `--apply`:
 
-```bash
-npx wrangler d1 execute audio --remote --yes \
-  --command "$(for f in migrations/*.sql; do sed -e 's/--.*$//' "$f"; done)"
-```
+| Command | What it does |
+|---|---|
+| `node tools/d1.mjs status` | Tables and row counts, marking tables that are not in the schema (leftovers to clean up) |
+| `node tools/d1.mjs schema --apply` | Creates what is missing; keeps all data. `release: audio` runs it before deploying |
+| `node tools/d1.mjs tracks --apply` | Loads every track path from `assets/data/media.json` (`--prune` also deletes rows not in it). `release: d1` runs it |
+| `node tools/d1.mjs reset --keep-plays --apply` | Drops every table (Cloudflare's own `_cf_*` excepted, old Django tables included), creates the schema and loads the track paths, as one D1 import that either completes or leaves the database as it was |
 
-The schema goes as one query (`--command`) rather than with `--file`: `--file` uses D1's import, which makes the database unavailable to the Worker while it runs.
+`reset` refuses to run while the `plays` table holds counts unless `--keep-plays` (they are read first and put back, then counted again to check) or `--drop-plays` (they are lost) is given. It writes the script to `build/d1/reset.sql` before running it. `--local` works on the local development database instead (`wrangler dev`).
 
-`0002_plays.sql` adds the `plays` table used by `POST /plays`.
+`schema` is sent as one query (`--command`): the database stays available. `tracks` and `reset` use D1's import (`--file`), which makes the database unavailable to the Worker for the seconds it runs.
 
 ### 5. Deploy
 
@@ -193,6 +193,8 @@ npx wrangler d1 execute audio --remote --command \
 ## Play counts
 
 The app counts a play after 10 seconds of listening (or at the end of a shorter song) and posts it to `POST /plays` (`src/core/plays.js`). The Worker stores one row per track and UTC day in `plays`; nothing about the listener is stored.
+
+The app reads the counts back with `GET /plays` (`src/core/playcounts.js`): `{"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}`, only tracks with plays, sorted by id. It is public (any origin; totals only) and cached for 5 minutes, at the edge (so D1 is asked at most once per data centre in that time) and in browsers. The app adds each total to the catalog's own count, keeps the last answer per device for offline use, and asks again at start and on returning to the app, at most every 10 minutes.
 
 ```bash
 # Plays per day, last 14 days

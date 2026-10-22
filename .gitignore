@@ -14,7 +14,7 @@ platforms/desktop/out/
 # Database dumps contain user data and must never be committed
 *.sql.gz
 *.sql
-!worker/media/migrations/*.sql
+!worker/media/schema.sql
 
 # Environment and editors
 .env

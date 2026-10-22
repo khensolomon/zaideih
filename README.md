@@ -74,8 +74,8 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 | `src/` | Shared app: catalog, search, player, library, offline downloads, play counts, UI |
 | `platforms/web/` | PWA entry point, service worker, manifest, icons |
 | `platforms/desktop/` | Electron main process |
-| `worker/media/` | Cloudflare Worker: streams audio from R2 and counts plays in D1 (`media.zaideih.com`) |
-| `tools/` | Catalog compiler, media paths, platform build, versions and release plan, playback diagnostics |
+| `worker/media/` | Cloudflare Worker: streams audio from R2, counts plays and serves their totals (`media.zaideih.com`); D1 schema in `schema.sql` |
+| `tools/` | Catalog compiler, media paths, D1 schema and reset (`d1.mjs`), platform build, versions and release plan, playback diagnostics |
 | `wrangler.jsonc` | The site on Cloudflare (Workers static assets from `dist/web`) |
 | `.github/workflows/` | `ci.yml` checks every push; `release.yml` deploys `release:` pushes |
 

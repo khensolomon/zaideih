@@ -56,7 +56,7 @@ Cloudflare dashboard, My Profile, API Tokens, Create Token, template **Edit Clou
 
 - Account resources: the account that holds `media` and the `audio` database.
 - Zone resources: none. The token needs no access to the `zaideih.com` zone, because no settings file declares a domain: `media.zaideih.com` (and later `zaideih.com`) are attached in the dashboard, and deploys leave them as they are. Remove any zone permissions the template adds.
-- Add the permission **Account, D1, Edit** (for `release: d1`, and for `release: audio`, which applies the D1 schema in `worker/media/migrations` before deploying).
+- Add the permission **Account, D1, Edit** (for `release: d1`, and for `release: audio`, which applies the D1 schema in `worker/media/schema.sql` before deploying).
 
 Copy the token once; Cloudflare does not show it again. The account id is on the Workers & Pages overview, or `npx wrangler whoami`.
 

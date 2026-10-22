@@ -64,19 +64,19 @@ export function buildModel(raw, meta) {
 		rows.forEach(([id, ttitle, artistIds, duration, plays], idx) => {
 			const trackArtists = artistIds.map((a) => artists.get(a));
 			const t = {
-				id, title: ttitle, album, n: idx + 1, duration, plays,
+				// `base`: the catalog's own count (from before play counting in D1); `plays`
+				// adds the counted plays (applyPlayTotals in core/playcounts.js).
+				id, title: ttitle, album, n: idx + 1, duration, plays, base: plays, recent: 0,
 				artists: trackArtists,
 				search: normalize(ttitle),
 			};
 			t.searchCompact = compact(t.search);
 			album.tracks.push(t);
 			album.duration += duration;
-			album.plays += plays;
 			tracks.set(id, t);
 			for (const a of trackArtists) {
 				a.tracks.push(t);
 				a.albums.add(album);
-				a.plays += plays;
 				credit.set(a, (credit.get(a) ?? 0) + 1);
 			}
 		});
@@ -88,12 +88,32 @@ export function buildModel(raw, meta) {
 
 	for (const a of artists.values()) a.albums = [...a.albums].sort((x, y) => (y.year || 0) - (x.year || 0));
 
-	const byPlays = (x, y) => y.plays - x.plays;
+	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [] };
+	recount(model);
+	return model;
+}
 
-	// Most played artists per language. Ids 0 ("Unknown") and 1 ("Various
-	// Artists") are catch-all credits, not artists, so they are left out.
-	const NOT_ARTISTS = new Set([0, 1]);
-	for (const lang of langs.values()) {
+const TOP_TRACKS = 100;
+const TOP_ARTISTS = 40;
+// Ids 0 ("Unknown") and 1 ("Various Artists") are catch-all credits, not artists.
+const NOT_ARTISTS = new Set([0, 1]);
+
+/**
+ * Recomputes everything derived from the tracks' play counts: album and
+ * artist totals, the most played artists per language and overall, and the
+ * most played tracks. Run after building and whenever the counts change.
+ */
+export function recount(model) {
+	const byPlays = (x, y) => y.plays - x.plays;
+	for (const a of model.artists.values()) a.plays = 0;
+	for (const album of model.albums.values()) {
+		album.plays = 0;
+		for (const t of album.tracks) {
+			album.plays += t.plays;
+			for (const a of t.artists) a.plays += t.plays;
+		}
+	}
+	for (const lang of model.langs.values()) {
 		const plays = new Map();
 		for (const album of lang.albums) {
 			for (const t of album.tracks) {
@@ -107,12 +127,8 @@ export function buildModel(raw, meta) {
 			.slice(0, TOP_ARTISTS_PER_LANGUAGE)
 			.map(([artist, n]) => ({ artist, plays: n }));
 	}
-	return {
-		version: meta.version,
-		langs, genres, artists, albums, tracks,
-		topTracks: [...tracks.values()].sort(byPlays).slice(0, 100),
-		topArtists: [...artists.values()].filter((a) => a.type >= 2).sort(byPlays).slice(0, 40),
-	};
+	model.topTracks = [...model.tracks.values()].sort(byPlays).slice(0, TOP_TRACKS);
+	model.topArtists = [...model.artists.values()].filter((a) => a.type >= 2).sort(byPlays).slice(0, TOP_ARTISTS);
 }
 
 /** Human-readable artist credit for a track or album. */

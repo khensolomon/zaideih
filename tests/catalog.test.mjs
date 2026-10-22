@@ -120,3 +120,28 @@ test("editDistance counts edits and stops early past the limit", () => {
 	assert.equal(editDistance("abc", "abcdef", 1), 2);
 	assert.equal(editDistance("abc", "abcdef", 1, 3), 0, "compares a prefix when given a length");
 });
+
+test("play totals add to the catalog's counts and re-rank albums, artists and tops", async () => {
+	const { applyTotals, parseTotals, totalsUrl } = await import("../src/core/playcounts.js");
+	const { buildModel } = await import("../src/core/catalog.js");
+	const raw = {
+		lang: [[1, "zola"]], genre: [[1, "Gospel"]], artistType: [[2, "Male"]],
+		artists: [[10, "A", "", 2, []], [11, "B", "", 2, []]],
+		albums: [["al1", "One", 1, [1], 1990, [[1, "x", [10], 100, 50], [2, "y", [11], 100, 40]]]],
+	};
+	const m = buildModel(raw, { version: "t" });
+	assert.equal(m.topTracks[0].id, 1);
+	applyTotals(m, parseTotals({ v: 1, updated: 1, tracks: [[2, 30, 5], [999, 4, 4], ["bad", 1, 1]] }));
+	assert.equal(m.tracks.get(2).plays, 70);
+	assert.equal(m.tracks.get(2).recent, 5);
+	assert.equal(m.tracks.get(1).plays, 50, "untouched tracks keep their catalog count");
+	assert.equal(m.topTracks[0].id, 2);
+	assert.equal(m.albums.get("al1").plays, 120);
+	assert.equal(m.artists.get(11).plays, 70);
+	assert.equal(m.langs.get(1).topArtists[0].artist.id, 11);
+	applyTotals(m, parseTotals({ v: 1, tracks: [] }));
+	assert.equal(m.tracks.get(2).plays, 40, "applying again starts from the catalog count, never adds twice");
+	assert.throws(() => parseTotals({ tracks: [] }), /format/);
+	assert.equal(totalsUrl("", "https://media.zaideih.com/audio/{id}"), "https://media.zaideih.com/plays");
+	assert.equal(totalsUrl("https://x.example/plays", ""), "https://x.example/plays");
+});
