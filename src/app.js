@@ -539,11 +539,20 @@ document.addEventListener("click", (e) => {
 	if (ui.classList.contains("awake") && performance.now() - wokeAt > 400) { clearTimeout(watchTimer); ui.classList.remove("awake"); $("#sheet").classList.remove("awake"); } else wakeWatch();
 }, true);
 
+/** The browser's top colour (Safari's bar, Android's status bar): the page's, or Now playing's while it is open. */
+function setThemeColor(color) {
+	const meta = document.querySelector('meta[name="theme-color"]');
+	if (!meta) return;
+	meta.dataset.page ??= meta.content;
+	meta.content = color ?? meta.dataset.page;
+}
+
 function openSheet() {
 	const sheet = $("#sheet");
 	sheet.hidden = false;
 	document.body.style.overflow = "hidden";
 	renderSheet();
+	setThemeColor(sheet.classList.contains("has-scene") ? "#262626" : "#4a4a4a");
 	$("[data-act=close-sheet]", sheet)?.focus();
 }
 function closeSheet() {
@@ -553,6 +562,7 @@ function closeSheet() {
 	sheet.hidden = true;
 	updateScene();
 	document.body.style.overflow = "";
+	setThemeColor(null);
 	$("#bar-now").focus();
 }
 
@@ -1119,6 +1129,19 @@ on("library", () => {
 	for (const b of $$("[data-act=like]")) setLikeState(b, library.isLiked(Number(b.dataset.id)));
 	if (/^(library\/(liked|playlists)|library$|playlist\/)/.test(currentRoute?.path ?? "")) rerender();
 });
+
+/*
+ * The visible height above the on-screen keyboard (--vvh), so the search
+ * suggestions end where the keyboard begins instead of running under it.
+ */
+function trackVisibleHeight() {
+	const vv = window.visualViewport;
+	if (!vv) return;
+	const set = () => document.documentElement.style.setProperty("--vvh", `${Math.round(vv.height)}px`);
+	vv.addEventListener("resize", set);
+	set();
+}
+trackVisibleHeight();
 
 function setOnline() {
 	document.body.classList.toggle("is-offline", !navigator.onLine);
