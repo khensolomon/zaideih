@@ -238,6 +238,29 @@ Only `assets/data/albums.json` and `assets/data/artist.name.json` may change, up
 
 A Worker missing any of these answers `/auth/*` with 503 naming what is missing. A new client secret is generated on the App's page and uploaded the same way; the old one is then deleted there. The private key files are not kept in the repository (`*.pem` is ignored).
 
+## Personal libraries
+
+`/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; the design is in [library.md](library.md).
+
+Setup, once, before the first release that includes them:
+
+```bash
+# the signing key for streaming addresses (any 32 random bytes)
+openssl rand -base64 32 | npx wrangler secret put AUDIO_SIGNING_KEY --config worker/media/wrangler.toml
+# the members and uploads tables (also run by every release: audio)
+node tools/d1.mjs schema --apply
+```
+
+`wrangler.toml` holds `UPLOAD_MAX_BYTES` (95 MB), `UPLOAD_QUOTA_BYTES` (2 GB) and the `UPLOAD_LIMIT` rate limiter. Without any of them, or without the secret, `/library` answers 503 naming what is missing, and `/u/<id>` 503.
+
+```bash
+# Members by space used
+npx wrangler d1 execute audio --remote --command \
+  "SELECT m.login, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id GROUP BY m.github_id ORDER BY mb DESC"
+```
+
+`tools/d1.mjs reset` refuses while `members` or `uploads` hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).
+
 ## Clean-up after Django is retired
 
 - If the Django site on lethil is still running, its track signals now call the removed `/sync/*` endpoints and get 404. Playback is unaffected; Django edits simply no longer reach D1.

@@ -204,6 +204,8 @@ const app = await esbuild.build({
 		__SOUND_WORKLET__: JSON.stringify(workletFile),
 		__ADMIN__: JSON.stringify(adminFile),
 		__AUTH_URL__: JSON.stringify(authUrl),
+		// Personal libraries live beside sign-in on the audio Worker.
+		__LIBRARY_URL__: JSON.stringify(authUrl ? `${audioOrigin}/library` : ""),
 	},
 });
 const outputs = Object.keys(app.metafile.outputs).map((p) => posix(relative(OUT, p)));
@@ -299,3 +301,4 @@ console.log(`  catalog ${catalogMeta.version} (${catalogMeta.counts.tracks} trac
 console.log(`  audio   ${audioTemplate}`);
 console.log(`  plays   ${playsUrl || "off"}`);
 console.log(`  auth    ${authUrl || "off"}`);
+console.log(`  library ${authUrl ? `${audioOrigin}/library` : "off"}`);

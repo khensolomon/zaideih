@@ -6,7 +6,7 @@ import { D1Error, isSystemTable, resetSql, schemaSql, schemaTables, wranglerRows
 const schema = await readFile(new URL("../worker/media/schema.sql", import.meta.url), "utf8");
 
 test("the schema is one idempotent file with the Worker's tables", () => {
-	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays"]);
+	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "members", "uploads"]);
 	const sql = schemaSql(schema);
 	assert.doesNotMatch(sql, /--/);
 	for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) assert.match(stmt, /^CREATE (TABLE|INDEX) IF NOT EXISTS/);
@@ -34,4 +34,11 @@ test("wrangler's JSON output: rows, or a clear error", () => {
 	assert.deepEqual(wranglerRows(out), [{ name: "plays" }]);
 	assert.throws(() => wranglerRows("✘ [ERROR] not logged in"), /did not print JSON/);
 	assert.throws(() => wranglerRows('[{"success":false,"error":"no such table"}]'), /no such table/);
+});
+
+test("reset refuses to lose personal libraries unless asked", async () => {
+	const { libraryGuard } = await import("../tools/lib/d1.mjs");
+	assert.equal(libraryGuard({ members: 0, uploads: 0 }, false), null);
+	assert.match(libraryGuard({ members: 3, uploads: 12 }, false), /^members holds 3 rows and uploads holds 12 rows\. Personal libraries cannot be rebuilt from git.*--drop-library/);
+	assert.equal(libraryGuard({ members: 3, uploads: 12 }, true), null);
 });

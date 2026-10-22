@@ -10,7 +10,7 @@
  * Default (tools/build.mjs): https://media.zaideih.com/audio/{id}, served by
  * worker/media, which resolves the id to the R2 object.
  */
-/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__, __SOUND_WORKLET__, __ADMIN__, __AUTH_URL__ */
+/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__, __SOUND_WORKLET__, __ADMIN__, __AUTH_URL__, __LIBRARY_URL__ */
 export const AUDIO_URL_TEMPLATE = typeof __AUDIO_URL__ === "string" ? __AUDIO_URL__ : "";
 /** Release version, yy.mm.dd.changes (see tools/lib/version.mjs). */
 export const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0.0";
@@ -24,6 +24,8 @@ export const PLAYS_URL = typeof __PLAYS_URL__ === "string" ? __PLAYS_URL__ : "";
 export const SOUND_WORKLET_URL = typeof __SOUND_WORKLET__ === "string" ? __SOUND_WORKLET__ : "";
 /** The admin page bundle (src/admin), relative to the page; empty where it is not built (desktop). */
 export const ADMIN_URL = typeof __ADMIN__ === "string" ? __ADMIN__ : "";
+/** Personal libraries on the audio Worker (worker/media/library.js); empty where they are not built. */
+export const LIBRARY_URL = typeof __LIBRARY_URL__ === "string" ? __LIBRARY_URL__ : "";
 /** Sign in with GitHub for the admin page (worker/media/auth.js); empty where it is not built. */
 export const AUTH_URL = typeof __AUTH_URL__ === "string" ? __AUTH_URL__ : "";
 
@@ -31,6 +33,11 @@ export class AudioSourceError extends Error {}
 
 /** Resolves the network URL for a track, or throws when no template is configured. */
 export function audioUrl(track) {
+	// An upload carries its own signed address (core/uploads.js).
+	if (track.upload) {
+		if (!track.url) throw new AudioSourceError(`"${track.title}" has no address yet; open My uploads to refresh it.`);
+		return track.url;
+	}
 	if (!AUDIO_URL_TEMPLATE) {
 		throw new AudioSourceError("Streaming is not set up for this site. Only downloaded tracks can play.");
 	}

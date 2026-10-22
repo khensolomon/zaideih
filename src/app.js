@@ -6,8 +6,9 @@ import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
-import { ADMIN_URL, AUTH_URL } from "./config.js";
+import { ADMIN_URL, AUTH_URL, LIBRARY_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
+import { uploads } from "./core/uploads.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -55,7 +56,7 @@ route("admin", () => ({
 		if (!ADMIN_URL) { root.innerHTML = html`<h1>Admin</h1><p>The admin page works in the web app only.</p>`; return; }
 		try {
 			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
-			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop" });
+			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop" });
 		} catch (err) {
 			console.error(err);
 			root.innerHTML = html`<h1>Admin</h1><p class="adm-error">The admin page could not load: ${err.message}</p>`;
@@ -125,8 +126,16 @@ function renderAppMenu() {
  * editors and admins get a link to the admin page, contributors and guests
  * "Suggest edits"; listeners see neither (About offers the sign-in).
  */
+let accessKey = null;
 function syncAccess() {
 	const who = ADMIN_URL ? readWho(localStorage) : null;
+	// Someone signed in or out (here or in another tab): their own uploads follow.
+	const key = who ? `${who.login}:${who.via}` : "";
+	if (key !== accessKey && uploads.catalog) {
+		accessKey = key;
+		if (who) uploads.refresh().catch((err) => console.warn("reading My uploads failed", err));
+		else uploads.clear();
+	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Admin" : "Suggest edits") : "";
 	for (const a of $$(".rail-admin, .am-admin")) {
 		a.hidden = !who;
@@ -329,7 +338,7 @@ function renderTime({ position, duration }) {
 
 function markPlaying() {
 	const id = player.current()?.id;
-	for (const row of $$(".track[data-track]")) row.classList.toggle("now", Number(row.dataset.track) === id);
+	for (const row of $$(".track[data-track]")) row.classList.toggle("now", trackIdOf(row.dataset.track) === id);
 }
 
 /* =================================================================== now playing sheet */
@@ -338,7 +347,7 @@ function renderSheet() {
 	const s = player.state;
 	const sheet = $("#sheet");
 	if (!t) { sheet.innerHTML = html`<div class="top"><button class="icon-btn" data-act="close-sheet" aria-label="Close">${icon("down")}</button></div><div class="empty"><h2>Nothing playing</h2></div>`; return; }
-	const queue = s.queue.map((id) => catalog.tracks.get(id)).filter(Boolean);
+	const queue = s.queue.map((id) => catalog.track(id)).filter(Boolean);
 	const upcoming = queue.slice(s.index + 1);
 	const key = registerList(s.queue, s.context);
 	const focusedCtl = sheet.contains(document.activeElement) ? document.activeElement.dataset.ctl : null;
@@ -693,6 +702,29 @@ function promptText(title, value = "", confirm = "Save") {
 	});
 }
 
+/** Changes an upload's title, artist, album, year and track number. */
+function editUpload(track) {
+	const d = $("#dialog");
+	d.innerHTML = html`<form method="dialog" class="up-edit"><h2>Edit details</h2>
+		<label>Title<input name="title" value="${track.title}" required maxlength="200"></label>
+		<label>Artist<input name="artist" value="${track.artists[0]?.name === "Unknown artist" ? "" : track.artists[0]?.name ?? ""}" maxlength="200"></label>
+		<label>Album<input name="album" value="${track.album.title === "Singles" ? "" : track.album.title}" maxlength="200"></label>
+		<div class="up-edit-row"><label>Year<input name="year" type="number" min="1900" max="2100" value="${track.year ?? ""}"></label>
+		<label>Track<input name="track" type="number" min="1" max="999" value="${track.track ?? ""}"></label></div>
+		<div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div></form>`;
+	d.onclose = async () => {
+		if (d.returnValue !== "ok") return;
+		const f = new FormData($("form", d));
+		try {
+			await uploads.edit(track.uploadId, { title: f.get("title"), artist: f.get("artist"), album: f.get("album"), year: f.get("year") || null, track: f.get("track") || null });
+			notify("Saved");
+		} catch (err) {
+			notify(err.message, { kind: "error" });
+		}
+	};
+	d.showModal();
+}
+
 function confirmAction(message, confirm = "Continue") {
 	return new Promise((resolve) => {
 		const d = $("#dialog");
@@ -735,8 +767,19 @@ function trackMenu(anchor, track, extra) {
 			: { label: "Download", run: () => startDownload([track]) },
 		"-",
 		{ label: "Go to album", run: () => { closeSheet(); go(`album/${track.album.id}`); } },
-		...track.artists.slice(0, 2).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } })),
+		...(track.upload ? [] : track.artists.slice(0, 2).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } }))),
 	];
+	if (track.upload) {
+		items.push("-",
+			{ label: "Edit details…", run: () => editUpload(track) },
+			{ label: "Delete from My uploads", run: async () => {
+				if (!(await confirmAction(`Delete “${track.title}” from your uploads? The file is removed for good.`, "Delete"))) return;
+				await uploads.remove(track.uploadId);
+				notify(`“${track.title}” deleted`);
+			} });
+		openMenu(anchor, items);
+		return;
+	}
 	// Signed in to the admin page: straight to this song in its album's editor.
 	const who = ADMIN_URL ? readWho(localStorage) : null;
 	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
@@ -755,19 +798,22 @@ async function startDownload(tracks) {
 	else notify("Already downloaded");
 }
 
+/** A track id from markup: catalog ids are numbers, uploads' ids are text ("u12"). */
+const trackIdOf = (v) => (/^\d+$/.test(v ?? "") ? Number(v) : v);
+
 /* =================================================================== events */
-const listTracks = (key) => (getList(key)?.ids ?? []).map((id) => catalog.tracks.get(id)).filter(Boolean);
+const listTracks = (key) => (getList(key)?.ids ?? []).map((id) => catalog.track(id)).filter(Boolean);
 
 const actions = {
 	async play(el) {
 		const { ids, context } = getList(el.dataset.list);
-		const id = Number(el.dataset.id);
+		const id = trackIdOf(el.dataset.id);
 		if (el.closest("[data-extra=queue]")) return player.jump(Number(el.closest(".track").dataset.index));
 		if (player.current()?.id === id && player.state.queue.join() === ids.join()) return player.toggle();
 		await player.playList(ids, id, context);
 	},
 	async "play-album"(el) {
-		const album = catalog.albums.get(el.dataset.album);
+		const album = catalog.album(el.dataset.album);
 		if (!album) throw new Error("That album is no longer in the catalog.");
 		if (player.state.shuffle) player.setShuffle(false);
 		await player.playList(album.tracks.map((t) => t.id), album.tracks[0].id, album.title);
@@ -783,7 +829,7 @@ const actions = {
 		await player.playList(ids, undefined, context);
 	},
 	async like(el) {
-		const liked = await library.toggleLike(Number(el.dataset.id));
+		const liked = await library.toggleLike(trackIdOf(el.dataset.id));
 		setLikeState(el, liked, { animate: true });
 	},
 	back() {
@@ -838,7 +884,7 @@ const actions = {
 		for (const panel of $$("[data-lang-panel]", section)) panel.hidden = panel.dataset.langPanel !== el.dataset.lang;
 	},
 	menu(el) {
-		const track = catalog.tracks.get(Number(el.dataset.id));
+		const track = catalog.track(trackIdOf(el.dataset.id));
 		trackMenu(el, track, el.closest(".track")?.dataset.extra);
 	},
 	"list-menu"(el) {
@@ -1147,7 +1193,7 @@ on("notice", ({ message, kind, action, code, help }) => {
 /* =================================================================== live updates */
 function refreshDownloadMarks() {
 	for (const row of $$(".track[data-track]")) {
-		const id = Number(row.dataset.track);
+		const id = trackIdOf(row.dataset.track);
 		const span = $(".saved", row);
 		const has = offline.has(id);
 		if (span && (span.childElementCount > 0) !== has) span.innerHTML = has ? icon("saved", "Downloaded") : "";
@@ -1186,7 +1232,8 @@ on("player", (s) => {
 	markPlaying();
 	// One "play_track" per song started; pausing and resuming does not count again.
 	const t = player.current();
-	if (s.playing && t && t.id !== reportedPlay) {
+	// Uploads are private: nothing about them is sent.
+	if (s.playing && t && !t.upload && t.id !== reportedPlay) {
 		reportedPlay = t.id;
 		analytics.event("play_track", { track_id: String(t.id), album_id: t.album.id, language: t.album.lang.name });
 	}
@@ -1213,7 +1260,7 @@ on("time", renderTime);
 on("library", () => {
 	const t = player.current();
 	if (t) setLikeState($("#bar-like"), library.isLiked(t.id));
-	for (const b of $$("[data-act=like]")) setLikeState(b, library.isLiked(Number(b.dataset.id)));
+	for (const b of $$("[data-act=like]")) setLikeState(b, library.isLiked(trackIdOf(b.dataset.id)));
 	if (/^(library\/(liked|playlists)|library$|playlist\/)/.test(currentRoute?.path ?? "")) rerender();
 });
 
@@ -1271,6 +1318,13 @@ export async function boot(platform) {
 		fatal(err);
 		return;
 	}
+	// My uploads: read once someone is signed in (syncAccess), shown where they appear.
+	uploads.catalog = catalog;
+	syncAccess();
+	on("uploads", () => {
+		const path = currentRoute?.path ?? "";
+		if (path === "library/uploads" || path.startsWith("album/u-")) rerender();
+	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
 		onChange: () => {

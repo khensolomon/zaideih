@@ -121,6 +121,8 @@ export function mount(root, ctx) {
 			s.avatar = who.avatar;
 			// Decoration only: the header shows nothing about it when GitHub's search is unavailable.
 			gh.contributions(who.login).then((d) => { s.done = d; render(); }, (err) => console.warn("contributions", err));
+			// Moderators of personal libraries get the Members tab (docs/library.md).
+			libraryCall("GET", "").then((lib) => { s.moderator = Boolean(lib.member?.moderator); s.isOwner = lib.member?.role === "owner"; render(); }, (err) => console.warn("library", err.message));
 			saveWho(localStorage, { login: who.login, level: who.level, via });
 			ctx.onWho?.();
 			await load();
@@ -175,7 +177,7 @@ export function mount(root, ctx) {
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
-		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false;
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.moderator = false; s.isOwner = false; s.members = null;
 		render();
 		if (via === "github") await session.signOut();
 	}
@@ -444,6 +446,75 @@ export function mount(root, ctx) {
 			<p><button class="btn" data-adm="suggestions">Check again</button></p>`;
 	}
 
+	/* ------------------------------------------------------------ members ---- */
+
+	/** The audio Worker's personal-library routes, with this sign-in. */
+	async function libraryCall(method, path, body) {
+		if (!ctx.libraryUrl) throw new Error("personal libraries are not built into this version");
+		const token = s.via === "github" ? await session.token() : store.get(TOKEN_KEY);
+		let res;
+		try {
+			res = await fetch(`${ctx.libraryUrl}${path}`, {
+				method,
+				headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+				body: body ? JSON.stringify(body) : undefined,
+				cache: "no-store",
+			});
+		} catch (err) {
+			throw new SignInError(`the library could not be reached (${err.message})`);
+		}
+		if (res.status === 204) return null;
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(answer?.error ?? `the library answered HTTP ${res.status}`);
+		return answer;
+	}
+
+	async function loadMembers() {
+		s.members = (await libraryCall("GET", "/members")).members;
+		render();
+	}
+
+	async function loadMemberUploads(id) {
+		s.memberUploads = (await libraryCall("GET", `/members/${id}`)).uploads;
+		render();
+	}
+
+	async function setMember(id, change, done) {
+		await libraryCall("POST", `/members/${id}`, change);
+		ctx.notify(done);
+		await loadMembers();
+	}
+
+	async function deleteMemberUpload(id, title) {
+		await libraryCall("DELETE", `/uploads/${id}`);
+		ctx.notify(`Deleted “${title}”`);
+		await Promise.all([loadMembers(), s.memberOpen ? loadMemberUploads(s.memberOpen) : null]);
+	}
+
+	const mb = (n) => `${(n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
+	const ago = (t) => new Date(t * 1000).toLocaleDateString();
+
+	/** Moderators: everyone with a personal library, their space, and block, unblock, delete; the owner also names moderators. */
+	function membersTab() {
+		if (!s.members) return html`<p class="muted">Reading the members…</p>`;
+		return html`<p class="muted">People who have used their own library. Blocking stops their uploads playing at once and is reversible; deleting an upload is permanent. The owner's library is private and cannot be opened here.</p>
+			<ul class="adm-members">${s.members.map((m) => html`<li data-blocked="${String(Boolean(m.blocked))}">
+				<div class="adm-member">
+					<span><b>${m.login}</b>${m.moderator ? html` <span class="adm-tag">moderator</span>` : ""}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</span>
+					<small>${m.uploads.toLocaleString()} upload${m.uploads === 1 ? "" : "s"} · ${mb(m.used)} · last seen ${ago(m.lastSeen)}${m.blocked ? ` · blocked by ${m.blocked.by}: ${m.blocked.reason}` : ""}</small>
+				</div>
+				<div class="adm-actions">
+					${m.uploads ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
+					${m.blocked
+						? html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`
+						: html`<form class="adm-block" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
+					${s.isOwner ? html`<button class="btn" data-adm="member-moderator" data-id="${m.id}" data-on="${String(!m.moderator)}">${m.moderator ? "Remove moderator" : "Make moderator"}</button>` : ""}
+				</div>
+				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="muted">Reading…</p>`) : ""}
+			</li>`)}</ul>
+			<p><button class="btn" data-adm="members-reload">Check again</button></p>`;
+	}
+
 	/* -------------------------------------------------------------- tools ---- */
 
 	function tools() {
@@ -549,11 +620,12 @@ export function mount(root, ctx) {
 		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
 	};
 
-	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", tools: "Tools", stats: "Statistics" };
+	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", members: "Members", tools: "Tools", stats: "Statistics" };
 
 	/** One line about the person: their level and what they have had released. */
 	function status() {
-		const level = LEVELS[s.level]?.name ?? "";
+		// The repository's owner is Zaideih's owner (docs/library.md).
+		const level = s.isOwner ? "Owner" : LEVELS[s.level]?.name ?? "";
 		const d = s.done;
 		const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 		if (!d) return html`<strong>${level}</strong>`;
@@ -593,6 +665,7 @@ export function mount(root, ctx) {
 				${tab("edit")}
 				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
 				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
+				${s.moderator ? tab("members", s.members ? String(s.members.length) : "") : ""}
 				${tab("tools")}
 				${tab("stats")}
 			</nav>
@@ -614,7 +687,7 @@ export function mount(root, ctx) {
 		root.innerHTML = html`${header()}
 			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
 			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
+			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -650,6 +723,7 @@ export function mount(root, ctx) {
 			else if (form.dataset.form === "album" || form.dataset.form === "artist") { keepForm(form); s.error = ""; render(); }
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
+			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
 		} catch (err) {
 			fail(err);
 		}
@@ -666,8 +740,14 @@ export function mount(root, ctx) {
 					if (s.tab === "draft" && s.draft.pr) watch();
 					render();
 					if (s.tab === "suggestions") await loadSuggestions();
+					if (s.tab === "members") await loadMembers();
 					break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
+				case "members-reload": s.members = null; render(); await loadMembers(); break;
+				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
+				case "member-unblock": await setMember(Number(b.dataset.id), { blocked: false }, "Unblocked"); break;
+				case "member-moderator": await setMember(Number(b.dataset.id), { moderator: b.dataset.on === "true" }, b.dataset.on === "true" ? "Now a moderator" : "No longer a moderator"); break;
+				case "upload-delete": await deleteMemberUpload(Number(b.dataset.id), b.dataset.title); break;
 				case "menu": s.menu = !s.menu; render(); break;
 				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;

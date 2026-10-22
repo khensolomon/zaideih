@@ -74,7 +74,8 @@ export function albumTile(album) {
 
 export function artistLinks(artists) {
 	if (!artists.length) return html`<span>Unknown artist</span>`;
-	return artists.map((a, i) => html`${i ? ", " : ""}<a href="${href(`artist/${a.id}`)}">${a.name}</a>`);
+	// Uploads' artists have no artist page.
+	return artists.map((a, i) => (a.upload ? html`${i ? ", " : ""}<span>${a.name}</span>` : html`${i ? ", " : ""}<a href="${href(`artist/${a.id}`)}">${a.name}</a>`));
 }
 
 /* ---------- list registry: maps a rendered list to its playable ids ---------- */

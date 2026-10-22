@@ -84,6 +84,10 @@ A hidden page, `#/admin` (linked nowhere), edits the catalog through GitHub: `as
 - Edit from any page: for someone signed in, album and artist pages show Edit (editors) or Suggest an edit (contributors, guests), and a song's menu Edit song details or Suggest a correction. They open `#/admin?album=<id>[&track=<id>]` or `#/admin?artist=<id>`, which opens that editor (and highlights and focuses the song) once the catalog is loaded, then clears the address. Listeners see none of it.
 - Not yet: adding albums and uploading audio (that needs an upload endpoint on the audio Worker).
 
+## Personal libraries
+
+Signed-in people keep their own music: uploads to the audio Worker (R2 `users/…`, D1 `members` and `uploads`), played through signed addresses, outside the public catalog, with moderation (block, delete, moderator rights). Design, limits and costs: [library.md](library.md). In the app, uploads join `catalog.extra` (`src/core/uploads.js`): found by id (`catalog.track(id)`, `catalog.album(id)`; text ids `u<id>`, `u-album-<n>`) so the player, album page, queue, likes and downloads work as for catalog songs, while catalog lists, search, counts and play totals never include them; they are never counted as plays or sent to analytics. Library has an Uploads tab (`src/ui/uploads-view.js`); files are read in the browser (length from the audio element, tags from `src/core/tags.js`) and checked by the same rules as the Worker (`src/core/upload-rules.js`) before anything is sent.
+
 ## Sound features
 
 Old recordings, many from cassettes, are improved live while they play (`src/core/sound.js`); the audio files are never changed. All of it runs in Web Audio on computers and Android. On iPhone and iPad it is off, because iOS suspends Web Audio when the screen locks, which would stop playback; the Sound panel says so.

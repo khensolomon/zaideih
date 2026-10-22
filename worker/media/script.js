@@ -9,6 +9,8 @@
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
  *   /auth/*               Sign in with GitHub for the admin page (auth.js).
+ *   /library/*            Personal libraries: uploads and moderation (library.js).
+ *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *
  * Who may fetch audio:
  *   - <audio>/<video> elements (Sec-Fetch-Dest: audio|video) from any page.
@@ -55,6 +57,7 @@
  */
 
 import { handleAuth } from "./auth.js";
+import { handleLibrary, handleSignedAudio } from "./library.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
@@ -85,6 +88,9 @@ export default {
 		const url = new URL(request.url);
 		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env, ctx);
 		if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return handleAuth(request, env);
+		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
+		const signed = /^\/u\/(\d+)$/.exec(url.pathname);
+		if (signed) return handleSignedAudio(request, env, Number(signed[1]));
 		const audioMatch = /^\/audio\/(\d+)\/?$/.exec(url.pathname);
 		if (!audioMatch) return new Response("Not Found", { status: 404 });
 

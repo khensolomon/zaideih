@@ -44,6 +44,13 @@ AUTH_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,http://localhost:80
 # write access are opened there as pull requests by the App (suggest.js),
 # with its private key as the Worker secret GITHUB_APP_KEY (PKCS#8 PEM).
 GITHUB_REPO = "khensolomon/zaideih"
+# Personal libraries (library.js, docs/library.md): at most 95 MB per file
+# (a Worker request body may be 100 MB on the Free and Pro plans) and 2 GB
+# per member; the owner has no limit. Streaming addresses are signed with
+# the Worker secret AUDIO_SIGNING_KEY:
+#   openssl rand -base64 32 | npx wrangler secret put AUDIO_SIGNING_KEY --config worker/media/wrangler.toml
+UPLOAD_MAX_BYTES = "95000000"
+UPLOAD_QUOTA_BYTES = "2000000000"
 
 [[d1_databases]]
 binding = "DB"
@@ -71,3 +78,9 @@ simple = { limit = 1, period = 60 }
 name = "SUGGEST_LIMIT"
 namespace_id = "4203"
 simple = { limit = 2, period = 60 }
+
+# Uploads to personal libraries (POST /library/uploads), keyed per GitHub user.
+[[ratelimits]]
+name = "UPLOAD_LIMIT"
+namespace_id = "4204"
+simple = { limit = 30, period = 60 }
