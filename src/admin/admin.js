@@ -224,7 +224,9 @@ export function mount(root, ctx) {
 		const body = `Catalog changes from the admin page, by ${s.user}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nMerging with "Merge and release" on the admin page releases v${next}.`;
 		s.busy = "Opening the pull request…";
 		render();
-		const branch = `admin/${next}-${Date.now().toString(36)}`;
+		// One flat name: a branch under a folder ("admin/…") cannot be created
+		// while a branch with the folder's name ("admin") exists.
+		const branch = `catalog-edit-${next}-${Date.now().toString(36)}`;
 		const pr = await s.gh.propose({ parent: head, files, branch, title: `Catalog: ${note.trim()}`, body });
 		s.draft.pr = { ...pr, branch, title, body, version: next };
 		saveDraft();
