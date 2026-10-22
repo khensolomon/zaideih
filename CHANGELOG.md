@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.1
+
+- Phones: installed on iOS the app runs under a transparent status bar with a soft fade and blur, Now playing included; the browser's top colour follows Now playing. Search suggestions are as wide as the whole search bar, the scope buttons fit, and the list ends above the keyboard.
+
 ## v26.10.21.10
 
 - Skip silence: no more kick at the start of songs. The sound stays muted until the step back to the music has happened, then fades in; between songs it is silent until the next song starts at its own volume.

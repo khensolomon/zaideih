@@ -43,6 +43,12 @@ const PLATFORMS = {
 		public: "platforms/web/public",
 		head: [
 			'<meta name="theme-color" content="#5a5a5a">',
+			// Installed on iOS: the page runs under a transparent status bar (white text);
+			// the top fade and blur keep the bar readable over content (src/ui/app.css).
+			'<meta name="apple-mobile-web-app-capable" content="yes">',
+			'<meta name="mobile-web-app-capable" content="yes">',
+			'<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
+			'<meta name="apple-mobile-web-app-title" content="Zaideih">',
 			'<link rel="manifest" href="manifest.webmanifest">',
 			'<link rel="icon" href="icons/icon.svg" type="image/svg+xml">',
 			'<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">',
