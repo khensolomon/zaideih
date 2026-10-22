@@ -13,6 +13,7 @@
  *   POST /auth/token     {"code", "verifier"}  -> tokens (see tokenAnswer)
  *   POST /auth/refresh   {"refresh_token"}     -> tokens
  *   POST /auth/signout   {"access_token"}      -> 204; revokes the token at GitHub
+ *   POST /auth/suggest   a suggestion from someone without write access (suggest.js)
  *   OPTIONS              CORS preflight for AUTH_ORIGINS.
  *
  * Security:
@@ -31,10 +32,13 @@
  * GITHUB_CLIENT_SECRET (secret).
  */
 
+import { suggest, SuggestError } from "./suggest.js";
+
 const GITHUB = "https://github.com";
 const API = "https://api.github.com";
 const USER_AGENT = "zaideih-media-worker";
 const MAX_BODY = 4096;
+const MAX_SUGGEST_BODY = 20 * 1024 * 1024;
 // Base64url, 43 to 128 characters (RFC 7636 for the challenge; the nonce uses the same shape).
 const TOKENISH = /^[A-Za-z0-9_-]{43,128}$/;
 
@@ -92,9 +96,9 @@ export function tokenAnswer(github, now = Date.now()) {
 	};
 }
 
-async function readJson(request) {
+async function readJson(request, limit = MAX_BODY) {
 	const text = await request.text();
-	if (text.length > MAX_BODY) throw new AuthError("request body too large", 413);
+	if (text.length > limit) throw new AuthError("request body too large", 413);
 	try {
 		const body = JSON.parse(text);
 		if (body && typeof body === "object") return body;
@@ -133,7 +137,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
 			return new Response(null, {
 				status: 204,
-				headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" },
+				headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" },
 			});
 		}
 
@@ -168,12 +172,13 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			return redirect(`${back}#/admin?${answer}`);
 		}
 
-		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout"].includes(route)) {
+		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
 		// Tokens are answered to the admin page's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
-		const body = await readJson(request);
+		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
+		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
 
 		if (route === "/auth/token") {
 			if (typeof body.code !== "string" || !body.code || !TOKENISH.test(body.verifier ?? "")) throw new AuthError("expected {code, verifier}");
@@ -213,6 +218,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 		if (!res.ok && res.status !== 404) throw new AuthError(`GitHub could not revoke the token: HTTP ${res.status}`, 502);
 		return json(204, null, cors);
 	} catch (err) {
+		if (err instanceof SuggestError) return json(err.status, { error: err.message }, cors);
 		if (!(err instanceof AuthError)) {
 			console.error("auth failed", { route, err });
 			return json(500, { error: "sign-in failed on the Worker" }, cors);

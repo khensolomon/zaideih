@@ -1,7 +1,8 @@
 /**
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
-import { APP_VERSION } from "../config.js";
+import { ADMIN_URL, APP_VERSION } from "../config.js";
+import { readWho } from "../core/access.js";
 import { analytics } from "../core/analytics.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
@@ -459,6 +460,7 @@ export function about(c) {
 						: html`<button class="btn" data-act="consent" data-value="granted">Turn on</button>`}</div>
 				</div>` : ""}
 				<p>Artists and rights holders who want a recording credited differently or removed can <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a>.</p>
+				${ADMIN_URL && !readWho(localStorage) ? html`<p>Spotted a wrong title, year or credit? <a class="text-link" href="#/admin">Sign in with GitHub</a> to suggest a correction; an editor reviews it before it is released.</p>` : ""}
 				<p class="about-foot"><span>Version ${APP_VERSION}</span><span>Catalog ${c.version}</span><a class="text-link" href="#/terms">Terms</a></p>
 			</div>`,
 	};

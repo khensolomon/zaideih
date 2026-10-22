@@ -13,7 +13,15 @@
  *                with the next version and a changelog section; the checks
  *                run; "Merge and release" squash-merges it with the release
  *                line, so the release workflow deploys it.
+ *   Suggestions  people without write access (contributors, guests) send
+ *                their draft as a suggestion: the audio Worker opens the pull
+ *                request for them (worker/media/suggest.js); editors see the
+ *                open ones listed and review them on GitHub.
+ *   Tools        catalog checks (src/admin/health.js).
  *   Statistics   counted plays from the audio Worker (GET /plays).
+ *
+ * Levels (src/core/access.js) come from the person's repository permission;
+ * GitHub enforces what each may do on every request.
  *
  * Loaded as its own bundle only when the page is opened (tools/build.mjs).
  */
@@ -26,8 +34,8 @@ import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, s
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
 import { createSession, SESSION_KEY, SignInError } from "./session.js";
+import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
 
-const TOKEN_KEY = "zaideih.admin.token";
 const DRAFT_KEY = "zaideih.admin.draft";
 const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json" };
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
@@ -56,6 +64,8 @@ export function mount(root, ctx) {
 		gh: null,
 		via: null,        // "github" (signed in) or "token"
 		user: null,
+		level: null,      // src/core/access.js
+		suggestions: null, // open suggestions, for editors
 		data: null,       // { head, albums, artists, category, index }
 		draft: store.get(DRAFT_KEY) ?? { changes: [], pr: null },
 		query: "",
@@ -92,20 +102,24 @@ export function mount(root, ctx) {
 		try {
 			const gh = createGitHub(via === "github" ? () => session.token() : token);
 			const who = await gh.whoami();
-			if (!who.canWrite) {
-				throw new SignInError(via === "github"
-					? `${who.login} is signed in but has no write access to ${REPO} (role: ${who.role}). Ask the owner for write access; sending suggestions without it is not available yet.`
-					: `${who.login} cannot write to ${REPO}; give the token Contents and Pull requests (read and write) on that repository`);
+			// Without write access, a GitHub sign-in can still send suggestions (the Worker opens them); a token cannot.
+			if (!who.canWrite && via === "token") {
+				throw new SignInError(`${who.login} cannot write to ${REPO}; give the token Contents and Pull requests (read and write) on that repository, or sign in with GitHub to send suggestions`);
 			}
 			if (via === "token") store.set(TOKEN_KEY, token);
 			s.gh = gh;
 			s.via = via;
 			s.user = who.login;
-			s.role = who.role;
+			s.level = who.level;
+			s.canWrite = who.canWrite;
+			saveWho(localStorage, { login: who.login, level: who.level, via });
+			ctx.onWho?.();
 			await load();
 		} catch (err) {
 			// A sign-in that cannot be used is forgotten here, so the page does not retry it on every visit.
 			if (via === "github") store.set(SESSION_KEY, null);
+			saveWho(localStorage, null);
+			ctx.onWho?.();
 			fail(err);
 		}
 	}
@@ -131,7 +145,9 @@ export function mount(root, ctx) {
 	async function disconnect() {
 		const via = s.via;
 		store.set(TOKEN_KEY, null);
-		s.gh = null; s.via = null; s.user = null; s.data = null;
+		saveWho(localStorage, null);
+		ctx.onWho?.();
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null;
 		render();
 		if (via === "github") await session.signOut();
 	}
@@ -146,6 +162,8 @@ export function mount(root, ctx) {
 		s.busy = "";
 		if (s.draft.pr) watch();
 		render();
+		// Editors: the number of open suggestions on the header's Suggestions button.
+		if (s.canWrite) loadSuggestions().catch(fail);
 	}
 
 	/* ---------------------------------------------------------- editing ---- */
@@ -278,6 +296,49 @@ export function mount(root, ctx) {
 		watch();
 	}
 
+	/** People without write access: the Worker opens the pull request for them (worker/media/suggest.js). */
+	async function sendSuggestion(note) {
+		if (!note.trim()) throw new DraftError("write a short note saying what the suggestion corrects");
+		s.busy = "Reading the newest files from GitHub…";
+		s.error = "";
+		render();
+		const head = await s.gh.head();
+		const want = [DATA.albums, DATA.artists];
+		const fetched = Object.fromEntries(await Promise.all(want.map(async (p) => [p, (await s.gh.file(p, head)).text])));
+		const fresh = { albums: JSON.parse(fetched[DATA.albums]), artists: JSON.parse(fetched[DATA.artists]) };
+		const { albums, artists, missing } = applyChanges(fresh, s.draft.changes);
+		if (missing.length) throw new DraftError(`some changes no longer apply:\n${missing.map((m) => m.reason).join("\n")}\nRemove them from the draft.`);
+		const lines = s.draft.changes.map((c) => describe(c, indexData(fresh), names()));
+		const files = {};
+		if (s.draft.changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
+		if (s.draft.changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
+		s.busy = "Sending the suggestion…";
+		render();
+		let res;
+		try {
+			res = await fetch(`${ctx.authUrl}/suggest`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${await session.token()}` },
+				body: JSON.stringify({ base: head, note: note.trim(), lines, files }),
+				cache: "no-store",
+			});
+		} catch (err) {
+			throw new SignInError(`the suggestion could not be sent (${err.message})`);
+		}
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(`the suggestion was not accepted: ${answer?.error ?? `HTTP ${res.status}`}`);
+		s.draft.pr = { number: answer.number, url: answer.url, branch: answer.branch, suggestion: true };
+		saveDraft();
+		s.busy = "";
+		ctx.notify(`Sent as suggestion #${answer.number}; an editor reviews it`);
+		watch();
+	}
+
+	async function loadSuggestions() {
+		s.suggestions = await s.gh.suggestions();
+		render();
+	}
+
 	function watch() {
 		clearTimeout(poll);
 		const tick = async () => {
@@ -286,7 +347,13 @@ export function mount(root, ctx) {
 				s.pr = await s.gh.status(s.draft.pr.number);
 				if (s.pr.merged || s.pr.state === "closed") {
 					// Merged (here or on GitHub) or closed: the draft is done.
-					if (s.pr.merged) { s.draft = { changes: [], pr: null }; saveDraft(); ctx.notify("Merged: the release deploys in a few minutes"); await load(); }
+					if (s.pr.merged) {
+						const suggestion = s.draft.pr.suggestion;
+						s.draft = { changes: [], pr: null };
+						saveDraft();
+						ctx.notify(suggestion ? "Your suggestion was merged; it ships with the next release" : "Merged: the release deploys in a few minutes");
+						await load();
+					}
 					return render();
 				}
 				render();
@@ -337,6 +404,15 @@ export function mount(root, ctx) {
 			<p><button class="btn" data-adm="totals">Refresh</button></p>`;
 	}
 
+	/* -------------------------------------------------------- suggestions ---- */
+
+	function suggestionsTab() {
+		if (!s.suggestions) return html`<p class="muted">Reading the open suggestions…</p>`;
+		return html`<p class="muted">Changes sent by people without write access, as pull requests. Review each on GitHub; merging adds it to master, and it ships with the next release.</p>
+			${s.suggestions.length ? html`<ul class="adm-results">${s.suggestions.map((p) => html`<li><a class="adm-sugg" href="${p.url}" target="_blank" rel="noopener"><span>#${p.number} ${p.title.replace(/^Suggestion: /, "")}</span><small>by @${p.by} · ${new Date(p.created).toLocaleDateString()}</small></a></li>`)}</ul>` : html`<p class="muted">No open suggestions.</p>`}
+			<p><button class="btn" data-adm="suggestions">Check again</button></p>`;
+	}
+
 	/* -------------------------------------------------------------- tools ---- */
 
 	function tools() {
@@ -372,6 +448,15 @@ export function mount(root, ctx) {
 			const checks = st?.checks ?? [];
 			const done = checks.length && checks.every((c) => c.status === "completed");
 			const green = done && checks.every((c) => ["success", "skipped", "neutral"].includes(c.conclusion));
+			if (pr.suggestion) {
+				return html`<div class="panel">
+					<h3>Suggestion #${pr.number}</h3>
+					<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a></p>
+					<p class="muted">${st?.state === "closed" ? "Closed without merging. Read the comments on GitHub; the draft is kept." : "Waiting for an editor to review it. You can follow and discuss it on GitHub."}</p>
+					<ul class="adm-checks">${checks.map((c) => html`<li data-state="${c.status === "completed" ? c.conclusion : "running"}"><a href="${c.url}" target="_blank" rel="noopener">${c.name}</a>: ${c.status === "completed" ? c.conclusion : "running…"}</li>`)}</ul>
+					<div class="adm-actions"><button class="btn" data-adm="refresh">Check again</button><button class="btn danger" data-adm="forget-pr">Forget this suggestion</button></div>
+				</div>`;
+			}
 			return html`<div class="panel">
 				<h3>Pull request #${pr.number}</h3>
 				<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a> · will release v${pr.version}</p>
@@ -383,9 +468,14 @@ export function mount(root, ctx) {
 		const index = s.data.index;
 		return html`
 			${n ? html`<ol class="adm-draft">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, index, names())}</span><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>` : html`<p class="muted">No changes yet. Find an album or an artist on the Edit tab.</p>`}
-			${n ? html`<form class="adm-publish" data-form="publish">
+			${n && s.canWrite ? html`<form class="adm-publish" data-form="publish">
 				<label>Note for the changelog and the release<input name="note" required maxlength="120" placeholder="Corrected titles and credits"></label>
 				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button><button class="btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+			</form>` : ""}
+			${n && !s.canWrite ? html`<form class="adm-publish" data-form="suggest">
+				<p class="muted">As a ${LEVELS[s.level].name.toLowerCase()}, your changes go to the editors as a suggestion: a pull request in your name that they review before it is released.</p>
+				<label>What does it correct?<input name="note" required maxlength="120" placeholder="Corrected titles and credits"></label>
+				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button><button class="btn danger" type="button" data-adm="discard">Discard the draft</button></div>
 			</form>` : ""}`;
 	}
 
@@ -423,15 +513,32 @@ export function mount(root, ctx) {
 	}
 
 	/** The floating header: who is connected, where the data comes from, and the sections. */
+	const TABS = {
+		edit: "Edit",
+		draft: "Draft",
+		suggestions: "Suggestions",
+		tools: "Tools",
+		stats: "Statistics",
+	};
+
+	/**
+	 * The floating header: who is signed in and at what level, where the data
+	 * comes from, the search (on Edit) or the section's name, and the sections.
+	 */
 	function header() {
 		const n = s.draft.changes.length;
+		const sugg = s.suggestions?.length ?? 0;
 		const tab = (id, name, glyph, badge = "") => html`<button class="icon-btn adm-tab" role="tab" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}" aria-label="${name}">${icon(glyph)}${badge ? html`<span class="adm-badge">${badge}</span>` : ""}</button>`;
 		return html`<header class="adm-head glass">
 			<span class="adm-who"><span class="adm-avatar" aria-hidden="true">${(s.user ?? "?").slice(0, 2).toUpperCase()}</span>
-				<span><b>${s.user}</b><small>${s.role ?? ""} · ${REPO}${s.data ? html` · ${BASE} <code>${s.data.head.slice(0, 7)}</code>` : ""}</small></span></span>
+				<span><b>${s.user} <span class="adm-level" data-level="${s.level}">${LEVELS[s.level]?.name ?? ""}</span></b><small>${REPO}${s.data ? html` · ${BASE} <code>${s.data.head.slice(0, 7)}</code>` : ""}</small></span></span>
+			${s.tab === "edit"
+				? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)">`
+				: html`<h1 class="adm-title">${TABS[s.tab]}</h1>`}
 			<span class="adm-nav" role="tablist">
 				${tab("edit", "Edit", "edit")}
-				${tab("draft", s.draft.pr ? `Draft: pull request #${s.draft.pr.number}` : `Draft${n ? `: ${n} change(s)` : ""}`, "draft", s.draft.pr ? "PR" : n ? String(n) : "")}
+				${tab("draft", s.draft.pr ? `Draft: ${s.draft.pr.suggestion ? "suggestion" : "pull request"} #${s.draft.pr.number}` : `Draft${n ? `: ${n} change(s)` : ""}`, "draft", s.draft.pr ? "PR" : n ? String(n) : "")}
+				${s.canWrite ? tab("suggestions", `Suggestions${sugg ? `: ${sugg} open` : ""}`, "person", sugg ? String(sugg) : "") : ""}
 				${tab("tools", "Tools: catalog checks", "tools")}
 				${tab("stats", "Statistics", "chart")}
 				<span class="adm-sep" aria-hidden="true"></span>
@@ -451,10 +558,9 @@ export function mount(root, ctx) {
 		}
 		if (!s.gh || !s.data) { root.innerHTML = signIn(); return; }
 		root.innerHTML = html`${header()}
-			${s.tab === "edit" ? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist (2 letters or more, or an album id)" aria-label="Find an album or an artist">` : ""}
 			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
 			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
+			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -480,6 +586,7 @@ export function mount(root, ctx) {
 			if (form.dataset.form === "token") await connect("token", new FormData(form).get("token").trim());
 			else if (form.dataset.form === "album" || form.dataset.form === "artist") { keepForm(form); s.error = ""; render(); }
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
+			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
 		} catch (err) {
 			fail(err);
 		}
@@ -489,7 +596,13 @@ export function mount(root, ctx) {
 		if (!b || b.dataset.adm === "search") return;
 		try {
 			switch (b.dataset.adm) {
-				case "tab": s.tab = b.dataset.tab; s.error = ""; if (s.tab === "draft" && s.draft.pr) watch(); render(); break;
+				case "tab":
+					s.tab = b.dataset.tab; s.error = "";
+					if (s.tab === "draft" && s.draft.pr) watch();
+					render();
+					if (s.tab === "suggestions") await loadSuggestions();
+					break;
+				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
 				case "reload": s.health = null; await load(); break;

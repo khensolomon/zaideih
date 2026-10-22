@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "../src/admin/draft.js";
 import { healthChecks, tidyText } from "../src/admin/health.js";
 import { challengeOf, createSession, PENDING_KEY, SESSION_KEY } from "../src/admin/session.js";
+import { LEVELS, levelOf, readWho, saveWho, WHO_KEY } from "../src/core/access.js";
 import { releaseFiles } from "../tools/lib/version.mjs";
 
 const data = () => ({
@@ -195,4 +196,34 @@ test("sign-in: an expired refresh token is not sent anywhere", async () => {
 	assert.equal(auth.calls.length, 0);
 	const off = createSession({ authUrl: "", local, tab: memoryStorage() });
 	await assert.rejects(off.start("https://zaideih.com/"), /not built into this version/);
+});
+
+/* ---------------------------------------------------------------- access ---- */
+
+test("levels follow the repository permission", () => {
+	assert.equal(levelOf({ admin: true, push: true }), "admin");
+	assert.equal(levelOf({ maintain: true, push: true }), "admin");
+	assert.equal(levelOf({ push: true }), "editor");
+	assert.equal(levelOf({ triage: true, pull: true }), "contributor");
+	assert.equal(levelOf({ pull: true }), "guest");
+	assert.equal(levelOf(undefined), "guest");
+	assert.deepEqual(Object.entries(LEVELS).filter(([, l]) => l.canWrite).map(([k]) => k), ["admin", "editor"]);
+});
+
+test("the level shown on every page lasts only as long as the sign-in it came from", () => {
+	const st = memoryStorage();
+	assert.equal(readWho(st), null, "a listener is a viewer");
+	saveWho(st, { login: "ann", level: "guest", via: "github", extra: "dropped" });
+	assert.equal(readWho(st), null, "no sign-in behind it");
+	st.setItem(SESSION_KEY, JSON.stringify({ access_token: "a", expires_at: 100, refresh_token: "r", refresh_expires_at: 1000 }));
+	assert.deepEqual(readWho(st, 500), { login: "ann", level: "guest", via: "github" }, "renewable");
+	assert.equal(readWho(st, 2000), null, "run out");
+	saveWho(st, { login: "kh", level: "editor", via: "token" });
+	assert.equal(readWho(st), null, "token gone");
+	st.setItem("zaideih.admin.token", JSON.stringify("github_pat_x"));
+	assert.equal(readWho(st).level, "editor");
+	st.setItem(WHO_KEY, JSON.stringify({ login: "x", level: "owner", via: "token" }));
+	assert.equal(readWho(st), null, "unknown level");
+	saveWho(st, null);
+	assert.equal(st.getItem(WHO_KEY), null);
 });

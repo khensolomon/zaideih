@@ -14,7 +14,9 @@
  *
  * Pure apart from the injected fetch and storage: tested in Node (tests/admin.test.mjs).
  */
-export const SESSION_KEY = "zaideih.admin.session";
+import { SESSION_KEY } from "../core/access.js";
+
+export { SESSION_KEY };
 export const PENDING_KEY = "zaideih.admin.signin";
 const RENEW_MS = 5 * 60_000;
 

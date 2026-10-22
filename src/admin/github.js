@@ -6,6 +6,8 @@
  * the person may do on the repository. Every failure throws GitHubError with
  * GitHub's own message.
  */
+import { LEVELS, levelOf } from "../core/access.js";
+
 export const REPO = "khensolomon/zaideih";
 export const BASE = "master";
 const API = "https://api.github.com";
@@ -47,13 +49,19 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 	}
 
 	return {
-		/** The token's user, and whether it may write to the repository. */
+		/** The token's user, their level (src/core/access.js) and whether they may write to the repository. */
 		async whoami() {
 			const [user, repo] = await Promise.all([call("GET", "/user"), call("GET", `/repos/${REPO}`)]);
-			const p = repo.permissions ?? {};
-			// The repository's own permission names the role on the admin page.
-			const role = p.admin ? "Admin" : p.maintain ? "Maintainer" : p.push ? "Editor" : p.triage ? "Triage" : "Reader";
-			return { login: user.login, name: user.name ?? "", canWrite: Boolean(p.push), role };
+			const level = levelOf(repo.permissions ?? {});
+			return { login: user.login, name: user.name ?? "", level, canWrite: LEVELS[level].canWrite };
+		},
+		/** Open suggestions (pull requests opened for people without write access, worker/media/suggest.js). */
+		async suggestions() {
+			const prs = await call("GET", `/repos/${REPO}/pulls?state=open&base=${BASE}&per_page=50`);
+			return prs.filter((p) => p.head.ref.startsWith("suggest-")).map((p) => ({
+				number: p.number, title: p.title, url: p.html_url, body: p.body ?? "", created: p.created_at,
+				by: /Suggested by @([\w-]+)/.exec(p.body ?? "")?.[1] ?? p.user.login,
+			}));
 		},
 		/** The newest commit on the base branch. */
 		async head() {

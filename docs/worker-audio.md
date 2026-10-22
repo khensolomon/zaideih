@@ -227,7 +227,14 @@ Setup, once:
 | GitHub App | Callback URL `https://media.zaideih.com/auth/callback`; user tokens expire; webhook off; installable on any account (otherwise only the owner can sign in); installed on `zaideih` only |
 | `wrangler.toml` | `GITHUB_CLIENT_ID` (public) and `AUTH_ORIGINS` |
 | Worker secret | `npx wrangler secret put GITHUB_CLIENT_SECRET --config worker/media/wrangler.toml` |
-| Worker secret, for later use | `GITHUB_APP_KEY`: the App's private key in PKCS#8 form, for pull requests opened on behalf of people without write access (not used yet) |
+| `wrangler.toml` | `GITHUB_REPO` and the `SUGGEST_LIMIT` rate limiter |
+| Worker secret | `GITHUB_APP_KEY`: the App's private key in PKCS#8 form (`openssl pkcs8 -topk8 -nocrypt -in <key>.pem`), for suggestions |
+
+### Suggestions
+
+People without write access cannot push a branch, so `POST /auth/suggest` (`suggest.js`) opens their pull request as the App: the page sends the changed data files built on a master commit, a note and the change lines, with the person's sign-in token. The Worker asks GitHub whose token it is, applies `SUGGEST_LIMIT` (2 a minute per GitHub user), signs a JWT with `GITHUB_APP_KEY`, gets an installation token for `GITHUB_REPO` (Contents and Pull requests write; kept per isolate until 5 minutes before it ends), and creates the commit (authored by the person, with their noreply address), a `suggest-<login>-<time>` branch and a pull request titled `Suggestion: <note>` that names them.
+
+Only `assets/data/albums.json` and `assets/data/artist.name.json` may change, up to 8 MB each; release files, code and workflows cannot. The files are not parsed on the Worker (a 5 MB parse would cost more CPU time than a request is given); the pull request is the gate: nothing reaches master until someone with write access merges it, after the checks have run on it. A merged suggestion ships with the next release.
 
 A Worker missing any of these answers `/auth/*` with 503 naming what is missing. A new client secret is generated on the App's page and uploaded the same way; the old one is then deleted there. The private key files are not kept in the repository (`*.pem` is ignored).
 

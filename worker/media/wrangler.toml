@@ -40,6 +40,10 @@ PLAY_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih"
 GITHUB_CLIENT_ID = "Iv23liaAXdaeZkJbwN27"
 # Pages that may sign in; the Worker redirects back to these origins only.
 AUTH_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,http://localhost:8080,http://127.0.0.1:8080"
+# The repository the App is installed on. Suggestions from people without
+# write access are opened there as pull requests by the App (suggest.js),
+# with its private key as the Worker secret GITHUB_APP_KEY (PKCS#8 PEM).
+GITHUB_REPO = "khensolomon/zaideih"
 
 [[d1_databases]]
 binding = "DB"
@@ -61,3 +65,9 @@ simple = { limit = 20, period = 60 }
 name = "TRACK_LIMIT"
 namespace_id = "4202"
 simple = { limit = 1, period = 60 }
+
+# Suggestions (POST /auth/suggest), keyed per GitHub user: at most 2 a minute.
+[[ratelimits]]
+name = "SUGGEST_LIMIT"
+namespace_id = "4203"
+simple = { limit = 2, period = 60 }
