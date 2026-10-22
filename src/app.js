@@ -737,6 +737,9 @@ function trackMenu(anchor, track, extra) {
 		{ label: "Go to album", run: () => { closeSheet(); go(`album/${track.album.id}`); } },
 		...track.artists.slice(0, 2).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } })),
 	];
+	// Signed in to the admin page: straight to this song in its album's editor.
+	const who = ADMIN_URL ? readWho(localStorage) : null;
+	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
 	if (extra === "queue") {
 		items.push("-", { label: "Remove from queue", run: () => player.removeAt(player.state.queue.indexOf(track.id)) });
 	} else if (extra?.startsWith("playlist:")) {

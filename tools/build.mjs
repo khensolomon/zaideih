@@ -263,13 +263,14 @@ if (values.platform === "web") {
 	const media = ["'self'", "blob:", audioOrigin].join(" ");
 	// Google's documented hosts for GA4 (gtag.js), added only when analytics is built in.
 	const ga = gaId ? { script: " https://*.googletagmanager.com", img: " https://*.google-analytics.com https://*.googletagmanager.com", connect: " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" } : { script: "", img: "", connect: "" };
-	// api.github.com: the admin page (src/admin) commits catalog edits through GitHub.
+	// api.github.com: the admin page (src/admin) commits catalog edits through GitHub;
+	// avatars.githubusercontent.com: the signed-in person's photo in its header.
 	const connect = ["'self'", audioOrigin, "https://api.github.com"].join(" ") + ga.connect;
 	await writeFile(join(OUT, "_headers"), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'${ga.script}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${ga.img}; font-src 'self'; media-src ${media}; connect-src ${connect}; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'${ga.script}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com${ga.img}; font-src 'self'; media-src ${media}; connect-src ${connect}; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 
 /
   Cache-Control: no-cache
