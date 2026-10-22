@@ -6,7 +6,7 @@
 #
 #   release: web        tests -> build -> the site on Cloudflare (wrangler.jsonc)
 #   release: audio      tests -> the audio Worker (worker/media/wrangler.toml)
-#   release: d1         tests -> reload track paths into D1 from media.json
+#   release: d1         tests -> reload track paths into D1 from media.json (tools/d1.mjs tracks)
 #   release: web+audio  several targets, joined with +
 #   release: all        web and audio
 #   release: desktop    not set up yet; the plan stops with that reason
@@ -187,22 +187,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Every migration is idempotent (CREATE ... IF NOT EXISTS) and runs on
-      # each audio release, before the Worker that needs the tables goes live.
-      # Sent as one query (--command), not with --file: --file uses D1's
-      # import, which makes the database unavailable to the Worker while it
-      # runs. Comments are removed first; the migrations keep
-      # "--" out of string literals so this is safe.
+      # The schema (worker/media/schema.sql) is idempotent: it creates what
+      # is missing and keeps all data, before the Worker that needs the tables
+      # goes live. Sent as one query, so the database stays available.
       - name: Apply the D1 schema
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          sql=$(for f in worker/media/migrations/*.sql; do sed -e 's/--.*$//' "$f"; done | grep -v '^[[:space:]]*$')
-          [ -n "$sql" ] || { echo "::error::no SQL found in worker/media/migrations"; exit 1; }
-          npx --yes "$WRANGLER" d1 execute audio --remote --yes --command "$sql" --config worker/media/wrangler.toml
-          npx --yes "$WRANGLER" d1 execute audio --remote --command "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plays'" --json --config worker/media/wrangler.toml | grep -q '"plays"' \
-            || { echo "::error::the plays table is missing after applying the schema"; exit 1; }
+        run: node tools/d1.mjs schema --apply
       - name: Deploy the audio Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -253,7 +245,7 @@ jobs:
 
   # Loads every track path from assets/data/media.json into D1 as upserts.
   # Rows for tracks no longer in media.json stay; removing them is a manual
-  # step (node tools/media.mjs d1 --prune --apply) so a release never deletes.
+  # step (node tools/d1.mjs tracks --prune --apply) so a release never deletes.
   d1:
     needs: [plan, test]
     if: needs.plan.outputs.d1 == 'true'
@@ -272,12 +264,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node tools/media.mjs d1 --apply
       - name: Load the paths into D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes "$WRANGLER" d1 execute audio --remote --yes --file build/d1/tracks.sql --config worker/media/wrangler.toml
+        run: node tools/d1.mjs tracks --apply
 
   # ------------------------------------------------------------ release ----
 

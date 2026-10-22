@@ -7,7 +7,8 @@
  *                            (album and track tables only; nothing else is read).
  *   check                    Validate media.json and its coverage of albums.json.
  *   d1                       Write D1 SQL that loads every track path into the
- *                            audio Worker's `tracks` table.
+ *                            audio Worker's `tracks` table (only the file;
+ *                            tools/d1.mjs tracks --apply writes and loads it).
  *
  * Every command is a dry run unless --apply is given.
  *

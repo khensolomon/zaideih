@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+const edge = new Map();
+globalThis.caches = { default: { match: async (req) => edge.get(req.url)?.clone(), put: async (req, res) => { edge.set(req.url, res); } } };
 const { default: worker, parsePlays, playDay } = await import("../worker/media/script.js");
 const { createPlayQueue, createPlayTracker } = await import("../src/core/plays.js");
 
@@ -38,7 +39,7 @@ const post = (env, body, { origin = "https://zaideih.com", ip = "203.0.113.5", m
 		method,
 		headers: { ...(origin ? { origin } : {}), "cf-connecting-ip": ip, "content-type": "text/plain" },
 		body: method === "POST" ? (typeof body === "string" ? body : JSON.stringify(body)) : undefined,
-	}), env, { waitUntil() {} });
+	}), env, { waitUntil: (p) => p });
 
 test("plays from the app are counted per track and day", async () => {
 	const { env, writes } = makeEnv();
@@ -98,7 +99,7 @@ test("only the released app's origins may count", async () => {
 	const pre = await post(env, null, { method: "OPTIONS", origin: "app://zaideih" });
 	assert.equal(pre.status, 204);
 	assert.equal(pre.headers.get("access-control-allow-origin"), "app://zaideih");
-	assert.equal((await post(env, null, { method: "GET" })).status, 405);
+	assert.equal((await post(env, null, { method: "PUT" })).status, 405);
 });
 
 test("a missing rate limiter is a configuration error, not silent counting", async () => {
@@ -221,4 +222,33 @@ test("with no URL (dev builds) nothing is queued", () => {
 	q.add(1);
 	assert.equal(q.enabled, false);
 	assert.equal(q.pending().length, 0);
+});
+
+test("GET /plays gives the totals per track, public and cached at the edge", async () => {
+	edge.clear();
+	let queries = 0;
+	const env = { DB: { prepare: (sql) => ({ all: async () => { queries += 1; assert.match(sql, /GROUP BY track_id/); return { results: [{ id: 7, total: 12, recent: 3 }, { id: 8, total: 1, recent: 1 }] }; } }) } };
+	const get = () => worker.fetch(new Request("https://media.zaideih.com/plays", { headers: { origin: "https://elsewhere.example" } }), env, { waitUntil: (p) => p });
+	const res = await get();
+	assert.equal(res.status, 200);
+	assert.equal(res.headers.get("access-control-allow-origin"), "*");
+	assert.match(res.headers.get("cache-control"), /max-age=300/);
+	const body = await res.json();
+	assert.equal(body.v, 1);
+	assert.equal(body.recentDays, 30);
+	assert.deepEqual(body.tracks, [[7, 12, 3], [8, 1, 1]]);
+	await new Promise((r) => setTimeout(r, 0));
+	assert.deepEqual((await (await get()).json()).tracks, body.tracks);
+	assert.equal(queries, 1, "the second read comes from the edge cache");
+});
+
+test("GET /plays says so when D1 cannot be read", async () => {
+	edge.clear();
+	const env = { DB: { prepare: () => ({ all: async () => { throw new Error("D1 down"); } }) } };
+	const err = console.error;
+	console.error = () => {};
+	try {
+		const res = await worker.fetch(new Request("https://media.zaideih.com/plays"), env, { waitUntil: (p) => p });
+		assert.equal(res.status, 503);
+	} finally { console.error = err; }
 });

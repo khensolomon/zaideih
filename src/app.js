@@ -5,10 +5,11 @@ import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
+import { startPlayTotals } from "./core/playcounts.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
-import { coverImage, patternOf } from "./ui/art.js";
+import { clearArtCaches, coverImage, patternOf } from "./ui/art.js";
 import { createStage, SceneBuildError, sceneChoice, SCENES, sceneFor, ScenesUnavailableError, setSceneChoice } from "./ui/scenes.js";
 import { openSoundPanel } from "./ui/sound-panel.js";
 import { initTips } from "./ui/tips.js";
@@ -1184,6 +1185,15 @@ export async function boot(platform) {
 		fatal(err);
 		return;
 	}
+	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
+	startPlayTotals(catalog, {
+		onChange: () => {
+			clearArtCaches();
+			const path = currentRoute?.path ?? "";
+			if ((path === "" || /^(top|genres|lang\/|artist\/|album\/|genre\/)/.test(path)) && !document.body.classList.contains("search-open")) rerender();
+		},
+	});
+	clearArtCaches();
 	renderRail();
 	$("#bar-now").addEventListener("click", openSheet);
 	$("#bar-like").addEventListener("click", async (e) => {

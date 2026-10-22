@@ -119,6 +119,8 @@ Google Analytics 4 (`G-65TTKMZEGC`, set at build time as `ZAIDEIH_GA_ID`; empty 
 
 `src/core/plays.js` counts a play after 10 seconds of listening, measured from playback progress (seeking forward does not count; pause and resume count once), or near the end of a song shorter than that. Loading another song, a song ending and a restart from the beginning each start a new play. Plays wait in `localStorage` (`zaideih.plays`, newest 500 kept, a warning when older ones are dropped) and are posted to the audio Worker's `POST /plays` in batches of up to 50, 3 seconds after a play, when the device comes back online, and with `keepalive` when the page is hidden. The body is sent as `text/plain` so the request needs no CORS preflight. Counting is independent of the Google Analytics choice because nothing identifying is sent or stored: the track id and the time only; the Terms page says so. Builds set the address with `ZAIDEIH_PLAYS_URL` (default `/plays` on the audio origin; off in `--dev` builds), and the Worker counts only origins in `PLAY_ORIGINS`, so local testing never counts. Storage, limits and queries: [worker-audio.md](worker-audio.md#play-counts).
 
+The counts come back with `GET /plays` on the same Worker (`src/core/playcounts.js`): totals per track and for the last 30 days, cached 5 minutes. Each track's count becomes its catalog count (`base`, from `albums.json`) plus its total, and album and artist totals, the most played lists and the languages' top artists are recomputed (`recount` in `src/core/catalog.js`), along with the artwork that shows popularity. The last answer is kept per device (`zaideih.playtotals`) and applied at start, so counts are there offline; fresh ones are asked for at start and on returning to the app, at most every 10 minutes, and pages that show counts redraw when they arrive. A failed request keeps the last counts.
+
 ## Offline
 
 | What | Web | Desktop |
@@ -152,5 +154,5 @@ Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both 
 ## Open items
 
 - Adding albums needs a new ingest tool. The Django `scan_library` and `compile_catalog` commands that produced `albums.json` were removed with Django; they remain in git history before this restructure.
-- Play counts shown in the app (`p`) are still the static Django counts in `albums.json`. New plays are counted in D1 (`plays`, see Play counts) but are not yet merged into what the app shows.
+- The Django-era counts in `albums.json` (`p`) stay as each track's base; they could be folded into the file once, at a release that also resets `plays`, if the two sources should become one.
 - `artist.name.json` and `artist.name-id.json` differ only in the type of artist 2074; the build reads `artist.name.json`.
