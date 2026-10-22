@@ -3,6 +3,7 @@
 ## v26.10.22.8
 
 - Rounder covers, centred album and artist headers on phones, select arrows, current language in the sidebar
+- Admin: a header with the person's photo, name, level and what they have had released, plain text tabs; Edit or Suggest an edit on album, artist and song menus for people signed in
 
 ## v26.10.22.7
 

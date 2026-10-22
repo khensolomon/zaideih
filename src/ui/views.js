@@ -2,7 +2,7 @@
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
 import { ADMIN_URL, APP_VERSION } from "../config.js";
-import { readWho } from "../core/access.js";
+import { LEVELS, readWho } from "../core/access.js";
 import { analytics } from "../core/analytics.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
@@ -119,6 +119,18 @@ export function top(c) {
 	};
 }
 
+/*
+ * Edit in the admin page, for people signed in there (src/core/access.js):
+ * editors get "Edit", contributors and guests "Suggest an edit". Listeners
+ * see nothing.
+ */
+function editLink(query) {
+	const who = ADMIN_URL ? readWho(localStorage) : null;
+	if (!who) return "";
+	const label = LEVELS[who.level].canWrite ? "Edit" : "Suggest an edit";
+	return html`<a class="btn" href="${href("admin", query)}" data-edit>${icon("edit")} ${label}</a>`;
+}
+
 /* ---------- language ---------- */
 const SORTS = {
 	plays: { label: "Most played", fn: (a, b) => b.plays - a.plays },
@@ -181,6 +193,7 @@ export function album(c, { id }) {
 				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}">
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
 				</button>
+				${editLink({ album: a.id })}
 				<button class="icon-btn" data-act="list-menu" data-list="${key}" aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
 			${chunkedTracks(a.tracks, a.title)}`,
@@ -215,6 +228,7 @@ export function artist(c, { id }) {
 			<div class="actions">
 				<button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play popular</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle all</button>
+				${editLink({ artist: a.id })}
 			</div>
 			<section class="section" style="margin-top:12px">
 				<header><h2>Popular</h2></header>

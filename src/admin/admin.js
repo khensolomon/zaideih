@@ -65,6 +65,11 @@ export function mount(root, ctx) {
 		via: null,        // "github" (signed in) or "token"
 		user: null,
 		level: null,      // src/core/access.js
+		name: "",
+		avatar: "",
+		done: null,       // { edits, suggestions } released, for the header
+		menu: false,      // the person's menu in the header
+		jump: null,       // { kind, id, track } from a listener page's Edit link
 		suggestions: null, // open suggestions, for editors
 		data: null,       // { head, albums, artists, category, index }
 		draft: store.get(DRAFT_KEY) ?? { changes: [], pr: null },
@@ -112,6 +117,10 @@ export function mount(root, ctx) {
 			s.user = who.login;
 			s.level = who.level;
 			s.canWrite = who.canWrite;
+			s.name = who.name;
+			s.avatar = who.avatar;
+			// Decoration only: the header shows nothing about it when GitHub's search is unavailable.
+			gh.contributions(who.login).then((d) => { s.done = d; render(); }, (err) => console.warn("contributions", err));
 			saveWho(localStorage, { login: who.login, level: who.level, via });
 			ctx.onWho?.();
 			await load();
@@ -142,12 +151,31 @@ export function mount(root, ctx) {
 		await connect("github");
 	}
 
+	/** A listener page's Edit link (#/admin?album=…&track=… or ?artist=…): open that editor. */
+	function openJump() {
+		const { kind, id } = s.jump;
+		const known = kind === "album" ? s.data.index.album.has(id) : s.data.index.artist.has(id);
+		if (!known) { s.error = `That ${kind} is not in the catalog on ${BASE}; it may have been changed since this page was loaded.`; return; }
+		s.tab = "edit";
+		s.open = { kind, id };
+	}
+
+	function focusTrack(trackId) {
+		s.flash = trackId;
+		render();
+		const row = root.querySelector(`[data-track="${trackId}"]`);
+		if (!row) return;
+		row.scrollIntoView({ block: "center" });
+		row.querySelector("input")?.focus({ preventScroll: true });
+		setTimeout(() => { s.flash = null; }, 2000);
+	}
+
 	async function disconnect() {
 		const via = s.via;
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
-		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null;
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false;
 		render();
 		if (via === "github") await session.signOut();
 	}
@@ -161,7 +189,10 @@ export function mount(root, ctx) {
 		s.data = { head, ...parsed, index: indexData(parsed) };
 		s.busy = "";
 		if (s.draft.pr) watch();
+		if (s.jump) openJump();
 		render();
+		if (s.jump?.track) focusTrack(s.jump.track);
+		s.jump = null;
 		// Editors: the number of open suggestions on the header's Suggestions button.
 		if (s.canWrite) loadSuggestions().catch(fail);
 	}
@@ -198,7 +229,7 @@ export function mount(root, ctx) {
 			<h3>Songs</h3>
 			<ol class="adm-tracks">${al.tk.map((t) => {
 				const artists = draftValue("track", t.i, "a", t.a);
-				return html`<li data-track="${t.i}">
+				return html`<li data-track="${t.i}" class="${s.flash === t.i ? "adm-flash" : ""}">
 					<input name="t" value="${draftValue("track", t.i, "t", t.t)}" aria-label="Title of song ${t.i}">
 					<input name="a" value="${artists.map((a) => s.data.index.artist.get(a)?.name ?? `#${a}`).join(", ")}" list="adm-artists" aria-label="Artists of song ${t.i}" title="Artist names, separated by commas">
 					<label class="adm-hide"><input type="checkbox" name="h" ${draftValue("track", t.i, "h", t.h === true) ? "checked" : ""}>Hidden</label>
@@ -513,44 +544,67 @@ export function mount(root, ctx) {
 	}
 
 	/** The floating header: who is connected, where the data comes from, and the sections. */
-	const TABS = {
-		edit: "Edit",
-		draft: "Draft",
-		suggestions: "Suggestions",
-		tools: "Tools",
-		stats: "Statistics",
+	/** GitHub's avatar address at twice the shown size, for sharp photos. */
+	const sized = (url) => {
+		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
 	};
 
+	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", tools: "Tools", stats: "Statistics" };
+
+	/** One line about the person: their level and what they have had released. */
+	function status() {
+		const level = LEVELS[s.level]?.name ?? "";
+		const d = s.done;
+		const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+		if (!d) return html`<strong>${level}</strong>`;
+		if (s.canWrite) {
+			const n = d.edits + d.suggestions;
+			return html`<strong>${level}</strong> · ${n ? `${plural(n, "catalog edit", "catalog edits")} released` : "ready for a first edit"}`;
+		}
+		return html`<strong>${level}</strong> · ${d.suggestions ? `${plural(d.suggestions, "suggestion", "suggestions")} accepted, thank you` : "every correction helps"}`;
+	}
+
 	/**
-	 * The floating header: who is signed in and at what level, where the data
-	 * comes from, the search (on Edit) or the section's name, and the sections.
+	 * The header: the person (photo, name, status), the search on Edit, and
+	 * the sections as text tabs. The photo opens the person's menu.
 	 */
 	function header() {
 		const n = s.draft.changes.length;
 		const sugg = s.suggestions?.length ?? 0;
-		const tab = (id, name, glyph, badge = "") => html`<button class="icon-btn adm-tab" role="tab" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}" aria-label="${name}">${icon(glyph)}${badge ? html`<span class="adm-badge">${badge}</span>` : ""}</button>`;
-		return html`<header class="adm-head glass">
-			<span class="adm-who"><span class="adm-avatar" aria-hidden="true">${(s.user ?? "?").slice(0, 2).toUpperCase()}</span>
-				<span><b>${s.user} <span class="adm-level" data-level="${s.level}">${LEVELS[s.level]?.name ?? ""}</span></b><small>${REPO}${s.data ? html` · ${BASE} <code>${s.data.head.slice(0, 7)}</code>` : ""}</small></span></span>
-			${s.tab === "edit"
-				? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)">`
-				: html`<h1 class="adm-title">${TABS[s.tab]}</h1>`}
-			<span class="adm-nav" role="tablist">
-				${tab("edit", "Edit", "edit")}
-				${tab("draft", s.draft.pr ? `Draft: ${s.draft.pr.suggestion ? "suggestion" : "pull request"} #${s.draft.pr.number}` : `Draft${n ? `: ${n} change(s)` : ""}`, "draft", s.draft.pr ? "PR" : n ? String(n) : "")}
-				${s.canWrite ? tab("suggestions", `Suggestions${sugg ? `: ${sugg} open` : ""}`, "person", sugg ? String(sugg) : "") : ""}
-				${tab("tools", "Tools: catalog checks", "tools")}
-				${tab("stats", "Statistics", "chart")}
-				<span class="adm-sep" aria-hidden="true"></span>
-				<button class="icon-btn" data-adm="reload" aria-label="Load the newest catalog from ${BASE}">${icon("reload")}</button>
-				<button class="icon-btn" data-adm="logout" aria-label="${s.via === "github" ? "Sign out of GitHub on this device" : "Disconnect the token from this device"}">${icon("logout")}</button>
-			</span>
+		const tab = (id, count = "") => html`<button role="tab" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}">${TABS[id]}${count ? html`<span class="n">${count}</span>` : ""}</button>`;
+		const initials = (s.name || s.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+		return html`<header class="adm-head">
+			<div class="adm-me">
+				<button class="adm-me-btn" data-adm="menu" aria-expanded="${String(s.menu)}" aria-label="Account and catalog">
+					${s.avatar ? html`<img class="adm-photo" src="${sized(s.avatar)}" alt="" width="48" height="48">` : html`<span class="adm-photo blank">${initials}</span>`}
+				</button>
+				<div class="adm-name"><b>${s.name || s.user}</b><span class="adm-status">${status()}</span></div>
+				${s.menu ? html`<div class="adm-menu" role="dialog" aria-label="Account and catalog">
+					<p><b style="color:var(--ink)">@${s.user}</b><br>${s.via === "github" ? "Signed in with GitHub" : "Connected with a token"} on this device.</p>
+					<p>Catalog from ${BASE}${s.data ? html` at <code>${s.data.head.slice(0, 7)}</code>` : ""}, ${REPO}.</p>
+					<div class="adm-actions">
+						<button class="btn" data-adm="reload">Load the newest</button>
+						<button class="btn danger" data-adm="logout">${s.via === "github" ? "Sign out" : "Disconnect"}</button>
+					</div>
+				</div>` : ""}
+			</div>
+			${s.tab === "edit" ? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)">` : ""}
+			<nav class="adm-tabs" role="tablist" aria-label="Admin sections">
+				${tab("edit")}
+				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
+				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
+				${tab("tools")}
+				${tab("stats")}
+			</nav>
 		</header>`;
 	}
 
 	function render() {
 		if (!root.isConnected) return;
-		const focusName = document.activeElement?.closest?.(".admin") ? document.activeElement.dataset.adm : null;
+		// A render replaces the page; the field being typed in keeps the focus.
+		const active = document.activeElement?.closest?.(".admin") ? document.activeElement : null;
+		const focusName = active?.dataset.adm ?? null;
+		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
 		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
 		if (ctx.analyticsOn()) {
 			root.innerHTML = signIn(html`<p><b>Turn off usage statistics first.</b></p><p class="muted">The GitHub token is kept on this device, and Google's statistics script on the page could read it. Turn statistics off on the <a class="text-link" href="#/about">About</a> page, then come back.</p>`);
@@ -565,11 +619,20 @@ export function mount(root, ctx) {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
 			el?.setSelectionRange(el.value.length, el.value.length);
+		} else if (focusField) {
+			const scope = focusField.track ? root.querySelector(`[data-track="${focusField.track}"]`) : root;
+			scope?.querySelector(`[name="${focusField.name}"]`)?.focus({ preventScroll: true });
 		}
 	}
 
 	/* ------------------------------------------------------------ events ---- */
 
+	// Escape closes the person's menu wherever the focus is; the listener ends with the page.
+	const onKey = (e) => {
+		if (!root.isConnected) { removeEventListener("keydown", onKey); return; }
+		if (e.key === "Escape" && s.menu) { s.menu = false; render(); root.querySelector("[data-adm=menu]")?.focus(); }
+	};
+	addEventListener("keydown", onKey);
 	// Keep the Tools checks open or closed across renders (toggle does not bubble).
 	root.addEventListener("toggle", (e) => {
 		const id = e.target.dataset?.check;
@@ -593,6 +656,8 @@ export function mount(root, ctx) {
 	});
 	root.addEventListener("click", async (e) => {
 		const b = e.target.closest("[data-adm]");
+		// Any click outside the person's menu closes it.
+		if (s.menu && !e.target.closest(".adm-menu") && b?.dataset.adm !== "menu") { s.menu = false; render(); }
 		if (!b || b.dataset.adm === "search") return;
 		try {
 			switch (b.dataset.adm) {
@@ -603,9 +668,10 @@ export function mount(root, ctx) {
 					if (s.tab === "suggestions") await loadSuggestions();
 					break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
+				case "menu": s.menu = !s.menu; render(); break;
 				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
-				case "reload": s.health = null; await load(); break;
+				case "reload": s.menu = false; s.health = null; await load(); break;
 				case "close": s.open = null; render(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
 				case "discard": s.draft.changes = []; saveDraft(); render(); break;
@@ -624,6 +690,10 @@ export function mount(root, ctx) {
 	});
 
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
+	if (query.has("album")) s.jump = { kind: "album", id: query.get("album"), track: Number(query.get("track")) || null };
+	else if (query.has("artist")) s.jump = { kind: "artist", id: Number(query.get("artist")) };
+	// The link has done its work; Back and reloads land on the plain admin page.
+	if (s.jump) history.replaceState(history.state, "", "#/admin");
 	const saved = store.get(TOKEN_KEY);
 	if (ctx.analyticsOn() || ctx.desktop) render();
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);

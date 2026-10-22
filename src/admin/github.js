@@ -53,7 +53,20 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 		async whoami() {
 			const [user, repo] = await Promise.all([call("GET", "/user"), call("GET", `/repos/${REPO}`)]);
 			const level = levelOf(repo.permissions ?? {});
-			return { login: user.login, name: user.name ?? "", level, canWrite: LEVELS[level].canWrite };
+			return { login: user.login, name: user.name ?? "", avatar: user.avatar_url ?? "", level, canWrite: LEVELS[level].canWrite };
+		},
+		/**
+		 * What the person has had released: their merged catalog edits (pull
+		 * requests titled "Catalog: …") and their merged suggestions (opened by
+		 * the App, naming them). Answers { edits, suggestions }.
+		 */
+		async contributions(login) {
+			const count = async (q) => (await call("GET", `/search/issues?q=${encodeURIComponent(q)}&per_page=1`)).total_count;
+			const [edits, suggestions] = await Promise.all([
+				count(`repo:${REPO} is:pr is:merged author:${login} in:title "Catalog:"`),
+				count(`repo:${REPO} is:pr is:merged in:body "Suggested by @${login}"`),
+			]);
+			return { edits, suggestions };
 		},
 		/** Open suggestions (pull requests opened for people without write access, worker/media/suggest.js). */
 		async suggestions() {
