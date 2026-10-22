@@ -69,7 +69,12 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 			}
 			const newTree = await call("POST", `/repos/${REPO}/git/trees`, { base_tree: base.tree.sha, tree });
 			const commit = await call("POST", `/repos/${REPO}/git/commits`, { message: title, tree: newTree.sha, parents: [parent] });
-			await call("POST", `/repos/${REPO}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.sha });
+			try {
+				await call("POST", `/repos/${REPO}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.sha });
+			} catch (err) {
+				if (err.status === 422) throw new GitHubError(`${err.message}. The branch ${branch} could not be created: a branch of that name, or one named like a folder of it, may already exist.`, 422);
+				throw err;
+			}
 			const pr = await call("POST", `/repos/${REPO}/pulls`, { title, head: branch, base: BASE, body });
 			return { number: pr.number, url: pr.html_url, head: commit.sha };
 		},

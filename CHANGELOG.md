@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.4
+
+- Admin page: publishing failed with "Reference update failed" because a branch named admin exists; edits now go on catalog-edit-… branches, and the error explains a name clash.
+
 ## v26.10.22.3
 
 - Admin page (hidden, #/admin): edit album, song and artist details and hide songs through GitHub, as a pull request that releases on "Merge and release"; counted plays at a glance. The catalog build leaves hidden songs out.
