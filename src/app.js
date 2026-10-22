@@ -189,7 +189,37 @@ const rerender = () => render({ keepScroll: true });
 /* =================================================================== shell */
 function renderRail() {
 	const langs = [...catalog.langs.values()].sort((a, b) => b.albums.length - a.albums.length);
-	$("#rail-langs").innerHTML = html`${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}"><span>${V.langLabel(l)}</span><span>${l.albums.length}</span></a>`)}`;
+	$("#rail-langs").innerHTML = html`${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}" data-hint="${V.langLabel(l)}"><span class="ab" data-ab="${V.langLabel(l).slice(0, 2)}" aria-hidden="true"></span><span class="lbl">${V.langLabel(l)}</span><span class="n">${l.albums.length}</span></a>`)}`;
+	applyRail();
+}
+
+/*
+ * The desktop sidebar: collapsed to icons, and its sections folded, as the
+ * listener left them (kept on this device).
+ */
+const RAIL_KEY = "zaideih.rail";
+function railState() {
+	try {
+		const v = JSON.parse(localStorage.getItem(RAIL_KEY) ?? "{}");
+		return { mini: v.mini === true, closed: Array.isArray(v.closed) ? v.closed : [] };
+	} catch {
+		return { mini: false, closed: [] };
+	}
+}
+function saveRail(state) {
+	try { localStorage.setItem(RAIL_KEY, JSON.stringify(state)); } catch { /* lasts this visit only */ }
+	applyRail(state);
+}
+function applyRail({ mini, closed } = railState()) {
+	document.body.dataset.rail = mini ? "mini" : "full";
+	const toggle = $(".rail-toggle");
+	toggle.setAttribute("aria-expanded", String(!mini));
+	toggle.setAttribute("aria-label", mini ? "Expand the sidebar" : "Collapse the sidebar");
+	for (const sec of document.querySelectorAll(".rail-sec")) {
+		const open = !closed.includes(sec.dataset.sec);
+		sec.dataset.open = String(open);
+		sec.querySelector("h2 button").setAttribute("aria-expanded", String(open));
+	}
 }
 
 /* =================================================================== player bar */
@@ -831,6 +861,15 @@ const actions = {
 		try { localStorage.setItem(WATCH_INFO_KEY, watchInfoKept() ? "auto" : "keep"); } catch { /* lasts this visit only */ }
 		renderWatch();
 		wakeWatch();
+	},
+	rail() {
+		const state = railState();
+		saveRail({ ...state, mini: !state.mini });
+	},
+	"rail-sec"(el) {
+		const state = railState();
+		const id = el.closest(".rail-sec").dataset.sec;
+		saveRail({ ...state, closed: state.closed.includes(id) ? state.closed.filter((x) => x !== id) : [...state.closed, id] });
 	},
 	"stats-on"() {
 		analytics.setChoice("granted");

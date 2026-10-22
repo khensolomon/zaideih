@@ -212,6 +212,50 @@ main {
 	.rail .langs a { display: flex; justify-content: space-between; padding: 7px 12px; border-radius: var(--radius-s); color: var(--ink-2); }
 	.rail .langs a span:last-child { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 14px; }
 	main { padding: 32px 40px calc(var(--deck) + 40px); }
+
+	/* Sections fold under their heading; the sidebar collapses to icons. */
+	.rail svg.i { flex: none; }
+	.rail .langs a svg.i { width: 18px; height: 18px; margin-right: 10px; color: var(--ink-3); }
+	.rail .langs a { align-items: center; }
+	.rail .langs a .lbl { flex: 1; }
+	.rail .langs .ab { display: none; }
+	.rail-sec h2 button {
+		display: flex; align-items: center; justify-content: space-between; width: 100%;
+		padding: 2px 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+	}
+	.rail-sec h2 button:hover { color: var(--ink); }
+	.rail-sec h2 svg { width: 16px; height: 16px; transition: transform 0.18s ease; }
+	.rail-sec[data-open="false"] h2 svg { transform: rotate(-90deg); }
+	.rail-sec[data-open="false"] .langs { display: none; }
+	.rail .brand { align-items: center; }
+	.rail-toggle { margin-left: auto; color: var(--ink-3); }
+	.rail-toggle:hover { color: var(--ink); background: var(--raised); }
+	.shell, .rail { transition: grid-template-columns 0.2s ease; }
+
+	body[data-rail="mini"] { --rail: 76px; }
+	body[data-rail="mini"] .rail { padding: 20px 10px; gap: 18px; overflow-x: hidden; }
+	body[data-rail="mini"] .rail .brand { flex-direction: column; gap: 10px; padding: 0; }
+	body[data-rail="mini"] .rail .logo-link { padding: 0; }
+	body[data-rail="mini"] .rail .offline-pill { font-size: 0; width: 10px; height: 10px; padding: 0; }
+	body[data-rail="mini"] .rail-toggle { margin: 0; }
+	body[data-rail="mini"] .rail .lbl,
+	body[data-rail="mini"] .rail .langs .n,
+	body[data-rail="mini"] .rail-foot { display: none; }
+	body[data-rail="mini"] .rail nav a,
+	body[data-rail="mini"] .rail .langs a { justify-content: center; padding: 10px 0; }
+	body[data-rail="mini"] .rail .langs a svg.i { margin: 0; width: 22px; height: 22px; color: var(--ink-2); }
+	body[data-rail="mini"] .rail .langs .ab {
+		display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
+		background: var(--raised); color: var(--ink-2); font-size: 13px; font-weight: 700;
+	}
+	/* Drawn by CSS, so the link has no visible words of its own and gets a hint. */
+	body[data-rail="mini"] .rail .langs .ab::before { content: attr(data-ab); }
+	body[data-rail="mini"] .rail .langs a:hover .ab, body[data-rail="mini"] .rail .langs a[aria-current] .ab { color: var(--ink); }
+	/* Folding does not apply to icons: a thin line between the groups instead of headings. */
+	body[data-rail="mini"] .rail-sec h2 { margin: 0 8px 8px; height: 1px; background: rgb(255 255 255 / 0.12); overflow: hidden; }
+	body[data-rail="mini"] .rail-sec h2 button { visibility: hidden; }
+	body[data-rail="mini"] .rail-sec[data-open="false"] .langs { display: block; }
+	body[data-rail="mini"] .rail .stats-on { justify-content: center; margin: 0; padding: 10px 0; }
 }
 
 .rail .logo-link { display: inline-flex; align-items: center; gap: 12px; padding: 0 12px; font-weight: 750; font-size: 18px; }
@@ -899,8 +943,51 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 
 /* ---------- admin page (src/admin, hidden at #/admin) ---------- */
 .admin { max-width: 980px; }
-.admin h1 { margin-bottom: 4px; }
-.admin .adm-tabs { margin: 14px 0 18px; }
+/* Sign-in: one card in the middle of the page. */
+.admin .adm-gate { min-height: calc(var(--vvh, 100dvh) - var(--deck) - 160px); display: grid; place-items: center; }
+.admin .adm-card {
+	width: min(440px, 100%); display: grid; gap: 14px; justify-items: center; text-align: center;
+	padding: 32px 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface);
+	box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+}
+.admin .adm-card h1 { margin: 0; font-size: 24px; }
+.admin .adm-card p { margin: 0; }
+.admin .adm-logo { width: 56px; height: 56px; }
+.admin .adm-token { width: 100%; display: grid; gap: 10px; text-align: left; }
+.admin .adm-token .btn { justify-content: center; gap: 8px; }
+.admin .adm-token .btn svg { width: 18px; height: 18px; }
+.admin .adm-howto { width: 100%; text-align: left; font-size: 14px; color: var(--ink-2); }
+.admin .adm-howto summary { cursor: pointer; text-align: center; color: var(--ink-3); }
+.admin .adm-howto ol { padding-left: 20px; line-height: 1.5; }
+/* Connected: a floating header with who and where, and the sections as icon buttons. */
+.admin .adm-head {
+	position: sticky; top: calc(env(safe-area-inset-top) + 62px); z-index: 15;
+	display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+	margin: 0 0 14px; padding: 6px 6px 6px 8px; border-radius: 22px;
+}
+.admin .adm-head.glass { background: linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04)), rgb(66 66 66 / 0.82); }
+@media (max-width: 640px) {
+	.admin .adm-nav { width: 100%; justify-content: space-between; }
+}
+.admin .adm-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.admin .adm-who > span:last-child { display: grid; min-width: 0; line-height: 1.25; }
+.admin .adm-who small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin .adm-avatar { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--on-accent, #000); font-weight: 700; font-size: 13px; }
+.admin .adm-nav { display: flex; align-items: center; gap: 2px; }
+.admin .adm-nav .icon-btn { position: relative; width: 42px; height: 42px; color: var(--ink-2); }
+.admin .adm-nav .icon-btn:hover { background: rgb(255 255 255 / 0.08); color: var(--ink); }
+.admin .adm-nav .icon-btn[aria-selected="true"] { background: rgb(255 255 255 / 0.16); color: var(--ink); }
+.admin .adm-sep { width: 1px; height: 24px; margin: 0 4px; background: rgb(255 255 255 / 0.18); }
+.admin .adm-badge {
+	position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+	background: var(--accent); color: var(--on-accent, #000); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+/* Tools: one collapsible check each. */
+.admin .adm-check { border: 1px solid var(--line); border-radius: var(--radius-s); margin-bottom: 8px; padding: 0 12px; }
+.admin .adm-check summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; }
+.admin .adm-count { align-self: flex-start; white-space: nowrap; font-variant-numeric: tabular-nums; padding: 0 8px; border-radius: 999px; background: var(--surface-2); }
+.admin .adm-count[data-zero="true"] { color: var(--ink-3); }
+@media (min-width: 900px) { .admin .adm-head { top: 12px; } }
 .admin .adm-error { color: var(--danger-ink); white-space: pre-line; }
 .admin .adm-busy { font-style: italic; }
 .admin input:not([type="checkbox"]), .admin select, .admin textarea {
@@ -941,5 +1028,3 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 	.admin .adm-tracks li { grid-template-columns: 1fr auto; }
 	.admin .adm-tracks li [name="a"] { grid-column: 1 / -1; grid-row: 2; }
 }
-.admin .adm-tabs button { cursor: pointer; }
-.admin .adm-tabs button[aria-selected="true"] { background: var(--tab-active); color: var(--ink); }

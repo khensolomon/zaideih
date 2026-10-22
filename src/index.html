@@ -25,21 +25,21 @@
 		<nav class="app-menu" id="app-menu" aria-label="Zaideih menu" hidden></nav>
 
 		<aside class="rail" aria-label="Navigation">
-			<div class="brand"><a class="logo-link" href="#/" aria-label="Zaideih, home"><span class="logo-tile" data-logo></span></a> <small class="offline-pill" data-offline hidden>Offline</small></div>
+			<div class="brand"><a class="logo-link" href="#/" aria-label="Zaideih, home"><span class="logo-tile" data-logo></span></a> <small class="offline-pill" data-offline hidden>Offline</small><button class="icon-btn rail-toggle" data-act="rail" aria-label="Collapse the sidebar" aria-expanded="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
 			<nav>
-				<a href="#/" data-nav="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
-				<a href="#/search" data-nav="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</a>
-				<a href="#/library" data-nav="library"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l6 16"/></svg>Library</a>
+				<a href="#/" data-nav="home" data-hint="Home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span class="lbl">Home</span></a>
+				<a href="#/search" data-nav="search" data-hint="Search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="lbl">Search</span></a>
+				<a href="#/library" data-nav="library" data-hint="Library"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l6 16"/></svg><span class="lbl">Library</span></a>
 			</nav>
-			<div>
-				<h2>Languages</h2>
+			<section class="rail-sec" data-sec="langs">
+				<h2><button data-act="rail-sec" aria-expanded="true" aria-controls="rail-langs">Languages<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
 				<div class="langs" id="rail-langs"></div>
-			</div>
-			<div>
-				<h2>Browse</h2>
-				<div class="langs"><a href="#/genres"><span>Genres</span></a><a href="#/top"><span>Most played</span></a></div>
-			</div>
-			<button class="stats-on" data-act="stats-on" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>Share listening statistics</button>
+			</section>
+			<section class="rail-sec" data-sec="browse">
+				<h2><button data-act="rail-sec" aria-expanded="true" aria-controls="rail-browse">Browse<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+				<div class="langs" id="rail-browse"><a href="#/genres" data-hint="Genres"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg><span class="lbl">Genres</span></a><a href="#/top" data-hint="Most played"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg><span class="lbl">Most played</span></a></div>
+			</section>
+			<button class="stats-on" data-act="stats-on" data-hint="Share listening statistics" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg><span class="lbl">Share listening statistics</span></button>
 			<footer class="rail-foot"><a href="#/about" data-nav="about">About</a><a href="#/terms" data-nav="terms">Terms</a><a href="#/help" data-nav="help">Help</a></footer>
 		</aside>
 

@@ -16,11 +16,14 @@
  *
  * Loaded as its own bundle only when the page is opened (tools/build.mjs).
  */
-import { html } from "../core/html.js";
+import { html, raw } from "../core/html.js";
+import { icon } from "../ui/icons.js";
+import { logoMark } from "../ui/logo.js";
 import { normalize } from "../core/text.js";
 import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../tools/lib/version.mjs";
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
+import { healthChecks } from "./health.js";
 
 const TOKEN_KEY = "zaideih.admin.token";
 const DRAFT_KEY = "zaideih.admin.draft";
@@ -46,6 +49,7 @@ const store = {
 export function mount(root, ctx) {
 	const s = {
 		tab: "edit",
+		openChecks: new Set(),
 		gh: null,
 		user: null,
 		data: null,       // { head, albums, artists, category, index }
@@ -86,6 +90,7 @@ export function mount(root, ctx) {
 			store.set(TOKEN_KEY, token);
 			s.gh = gh;
 			s.user = who.login;
+			s.role = who.role;
 			await load();
 		} catch (err) {
 			fail(err);
@@ -293,6 +298,31 @@ export function mount(root, ctx) {
 			<p><button class="btn" data-adm="totals">Refresh</button></p>`;
 	}
 
+	/* -------------------------------------------------------------- tools ---- */
+
+	function tools() {
+		s.health ??= healthChecks(s.data);
+		return html`<p class="muted">Checks of the source data on ${BASE}. Open an item to edit it; some checks can add all their fixes to the draft at once.</p>
+			${s.health.map((c) => html`<details class="adm-check" ${s.openChecks.has(c.id) ? "open" : ""} data-check="${c.id}">
+				<summary><b>${c.title}</b><span class="adm-count" data-zero="${String(!c.total)}">${c.total.toLocaleString()}</span></summary>
+				<p class="muted">${c.help}</p>
+				${c.fixes ? html`<p><button class="btn" data-adm="fix" data-check="${c.id}">Add all ${c.fixes.length.toLocaleString()} fixes to the draft</button></p>` : ""}
+				${c.total ? html`<ul class="adm-results">${c.items.map((it) => html`<li><button data-adm="open" data-kind="${it.open.kind}" data-id="${it.open.id}">${it.label}</button></li>`)}</ul>${c.total > c.items.length ? html`<p class="muted">and ${(c.total - c.items.length).toLocaleString()} more</p>` : ""}` : html`<p class="muted">Nothing to look at.</p>`}
+			</details>`)}`;
+	}
+
+	function applyFixes(id) {
+		const check = s.health.find((c) => c.id === id);
+		let n = 0;
+		for (const f of check.fixes) {
+			const before = s.draft.changes.length;
+			s.draft.changes = setChange(s.draft.changes, s.data.index, f);
+			if (s.draft.changes.length !== before) n += 1;
+		}
+		saveDraft();
+		ctx.notify(`${n} fix(es) added; the draft has ${s.draft.changes.length} change(s)`);
+	}
+
 	/* ------------------------------------------------------------- views ---- */
 
 	function draftTab() {
@@ -324,44 +354,66 @@ export function mount(root, ctx) {
 		const r = results();
 		const open = s.open && (s.open.kind === "album" ? s.data.index.album.get(s.open.id) : s.data.index.artist.get(s.open.id));
 		return html`
-			<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist (2 letters or more, or an album id)" aria-label="Find an album or an artist">
 			${open ? (s.open.kind === "album" ? albumEditor(open) : artistEditor(open)) : html`
 				${r.albums.length ? html`<h3>Albums</h3><ul class="adm-results">${r.albums.map((a) => html`<li><button data-adm="open" data-kind="album" data-id="${a.ui}">${a.ab}<small>${a.yr?.[0] ?? ""} · ${a.tk.length} songs</small></button></li>`)}</ul>` : ""}
 				${r.artists.length ? html`<h3>Artists</h3><ul class="adm-results">${r.artists.map((a) => html`<li><button data-adm="open" data-kind="artist" data-id="${a.id}">${a.name}<small>${a.aka ?? ""}</small></button></li>`)}</ul>` : ""}`}`;
 	}
 
+	/** The sign-in card, centred on the page: the only thing shown before connecting. */
+	function signIn(message = null) {
+		return html`<div class="adm-gate"><div class="adm-card">
+			<span class="adm-logo logo-tile">${raw(logoMark())}</span>
+			<h1>Zaideih admin</h1>
+			${message ?? html`
+				<p class="muted">Edit the catalog through GitHub: every change becomes a pull request on <b>${REPO}</b>, released when merged.</p>
+				${s.busy ? html`<p class="adm-busy">${s.busy}</p>` : ""}
+				${s.error ? html`<p class="adm-error" role="alert">${s.error}</p>` : ""}
+				<form class="adm-token" data-form="token">
+					<label>GitHub token<input name="token" type="password" autocomplete="off" required placeholder="github_pat_…"></label>
+					<button class="btn primary" type="submit">${icon("github")}Connect</button>
+				</form>
+				<details class="adm-howto"><summary>How to make a token</summary>
+					<ol><li>Open <a class="text-link" href="${TOKEN_URL}" target="_blank" rel="noopener">GitHub, fine-grained tokens</a>.</li>
+					<li>Repository access: only <b>${REPO}</b>.</li>
+					<li>Permissions: <b>Contents</b> and <b>Pull requests</b> read and write, <b>Checks</b> read. Set an expiry date.</li>
+					<li>Paste it here. It stays on this device only.</li></ol>
+				</details>`}
+		</div></div>`;
+	}
+
+	/** The floating header: who is connected, where the data comes from, and the sections. */
+	function header() {
+		const n = s.draft.changes.length;
+		const tab = (id, name, glyph, badge = "") => html`<button class="icon-btn adm-tab" role="tab" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}" aria-label="${name}">${icon(glyph)}${badge ? html`<span class="adm-badge">${badge}</span>` : ""}</button>`;
+		return html`<header class="adm-head glass">
+			<span class="adm-who"><span class="adm-avatar" aria-hidden="true">${(s.user ?? "?").slice(0, 2).toUpperCase()}</span>
+				<span><b>${s.user}</b><small>${s.role ?? ""} · ${REPO}${s.data ? html` · ${BASE} <code>${s.data.head.slice(0, 7)}</code>` : ""}</small></span></span>
+			<span class="adm-nav" role="tablist">
+				${tab("edit", "Edit", "edit")}
+				${tab("draft", s.draft.pr ? `Draft: pull request #${s.draft.pr.number}` : `Draft${n ? `: ${n} change(s)` : ""}`, "draft", s.draft.pr ? "PR" : n ? String(n) : "")}
+				${tab("tools", "Tools: catalog checks", "tools")}
+				${tab("stats", "Statistics", "chart")}
+				<span class="adm-sep" aria-hidden="true"></span>
+				<button class="icon-btn" data-adm="reload" aria-label="Load the newest catalog from ${BASE}">${icon("reload")}</button>
+				<button class="icon-btn" data-adm="logout" aria-label="Disconnect from GitHub">${icon("logout")}</button>
+			</span>
+		</header>`;
+	}
+
 	function render() {
 		if (!root.isConnected) return;
 		const focusName = document.activeElement?.closest?.(".admin") ? document.activeElement.dataset.adm : null;
-		const head = html`<h1>Admin</h1>`;
-		if (ctx.desktop) { root.innerHTML = html`${head}<p>The admin page works in the web app only.</p>`; return; }
+		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
 		if (ctx.analyticsOn()) {
-			root.innerHTML = html`${head}<div class="panel"><h3>Turn off usage statistics first</h3><p>The GitHub token is kept on this device, and Google's statistics script on the page could read it. Turn statistics off on the <a class="text-link" href="#/about">About</a> page, then come back.</p></div>`;
+			root.innerHTML = signIn(html`<p><b>Turn off usage statistics first.</b></p><p class="muted">The GitHub token is kept on this device, and Google's statistics script on the page could read it. Turn statistics off on the <a class="text-link" href="#/about">About</a> page, then come back.</p>`);
 			return;
 		}
-		if (!s.gh) {
-			root.innerHTML = html`${head}
-				${s.busy ? html`<p class="muted">${s.busy}</p>` : ""}
-				${s.error ? html`<p class="adm-error" role="alert">${s.error}</p>` : ""}
-				<form class="panel adm-token" data-form="token">
-					<h3>Connect to GitHub</h3>
-					<p>Create a <a class="text-link" href="${TOKEN_URL}" target="_blank" rel="noopener">fine-grained token</a> for the repository <b>${REPO}</b> only, with <b>Contents</b> and <b>Pull requests</b> set to read and write and <b>Checks</b> to read, and an expiry date. It stays on this device.</p>
-					<label>Token<input name="token" type="password" autocomplete="off" required></label>
-					<div class="adm-actions"><button class="btn primary" type="submit">Connect</button></div>
-				</form>`;
-			return;
-		}
-		const n = s.draft.changes.length;
-		root.innerHTML = html`${head}
-			<p class="muted">${s.user} · ${REPO} · ${s.data ? html`loaded ${BASE} at <code>${s.data.head.slice(0, 7)}</code>` : "loading…"} · <button class="link-btn" data-adm="logout">Disconnect</button></p>
-			<div class="segmented adm-tabs" role="tablist">
-				<button role="tab" data-adm="tab" data-tab="edit" aria-selected="${String(s.tab === "edit")}">Edit</button>
-				<button role="tab" data-adm="tab" data-tab="draft" aria-selected="${String(s.tab === "draft")}">Draft${n ? ` (${n})` : ""}${s.draft.pr ? " · PR" : ""}</button>
-				<button role="tab" data-adm="tab" data-tab="stats" aria-selected="${String(s.tab === "stats")}">Statistics</button>
-			</div>
+		if (!s.gh || !s.data) { root.innerHTML = signIn(); return; }
+		root.innerHTML = html`${header()}
+			${s.tab === "edit" ? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist (2 letters or more, or an album id)" aria-label="Find an album or an artist">` : ""}
 			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
 			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			${!s.data ? "" : s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : statistics()}`;
+			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -371,6 +423,11 @@ export function mount(root, ctx) {
 
 	/* ------------------------------------------------------------ events ---- */
 
+	// Keep the Tools checks open or closed across renders (toggle does not bubble).
+	root.addEventListener("toggle", (e) => {
+		const id = e.target.dataset?.check;
+		if (id) e.target.open ? s.openChecks.add(id) : s.openChecks.delete(id);
+	}, true);
 	root.addEventListener("input", (e) => {
 		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; render(); }
 	});
@@ -391,7 +448,9 @@ export function mount(root, ctx) {
 		try {
 			switch (b.dataset.adm) {
 				case "tab": s.tab = b.dataset.tab; s.error = ""; if (s.tab === "draft" && s.draft.pr) watch(); render(); break;
-				case "open": s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); break;
+				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;
+				case "fix": applyFixes(b.dataset.check); render(); break;
+				case "reload": s.health = null; await load(); break;
 				case "close": s.open = null; render(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
 				case "discard": s.draft.changes = []; saveDraft(); render(); break;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "../src/admin/draft.js";
+import { healthChecks, tidyText } from "../src/admin/health.js";
 import { releaseFiles } from "../tools/lib/version.mjs";
 
 const data = () => ({
@@ -72,4 +73,42 @@ test("source files keep the repository's format, and releases use the shared wri
 	}, "26.10.22.3", ["Catalog fixes"]);
 	assert.match(files["package.json"], /"version": "26.10.22.3"/);
 	assert.ok(files["CHANGELOG.md"].startsWith("# Version\n\n## v26.10.22.3\n\n- Catalog fixes\n\n## v26.10.22.2"));
+});
+
+/* ---------------------------------------------------------------- health ---- */
+
+test("tidyText corrects stray spaces and the Unicode form, and leaves clean text alone", () => {
+	assert.equal(tidyText(" Agape  No.1 "), "Agape No.1");
+	assert.equal(tidyText("Café"), "Café");
+	assert.equal(tidyText("Agape No.1"), null);
+	assert.equal(tidyText(undefined), null);
+});
+
+test("healthChecks lists what needs a look, with fixes that apply to the draft", () => {
+	const data = {
+		albums: [
+			{ ui: "a1", ab: "First  album", yr: [], gr: [], lg: 1, tk: [{ i: 1, t: "Song ", a: [], d: 0 }, { i: 2, t: "Hidden", a: [10], d: 200, h: true }] },
+			{ ui: "a2", ab: "Second", yr: [1990], gr: [3], lg: 1, tk: [{ i: 3, t: "Fine", a: [11], d: 180 }] },
+		],
+		artists: [{ id: 10, name: "Lam Cin" }, { id: 11, name: "Lamcin" }, { id: 12, name: "Nobody" }],
+	};
+	const byId = Object.fromEntries(healthChecks(data).map((c) => [c.id, c]));
+	assert.equal(byId.text.total, 2);
+	assert.deepEqual(byId.text.fixes, [
+		{ kind: "album", id: "a1", field: "ab", value: "First album" },
+		{ kind: "track", id: 1, field: "t", value: "Song" },
+	]);
+	assert.equal(byId["no-artist"].total, 1);
+	assert.equal(byId["no-duration"].total, 1, "the hidden song is not counted");
+	assert.deepEqual(byId["no-year"].items.map((i) => i.id), ["a1"]);
+	assert.deepEqual(byId["no-genre"].items.map((i) => i.id), ["a1"]);
+	assert.deepEqual(byId["duplicate-artist"].items.map((i) => i.id), [10, 11]);
+	assert.deepEqual(byId.hidden.items.map((i) => [i.id, i.open]), [[2, { kind: "album", id: "a1" }]]);
+	assert.deepEqual(byId["unused-artist"].items.map((i) => i.id), [12]);
+	assert.ok(!("fixes" in byId["no-year"]));
+	// The fixes are valid draft changes.
+	const index = indexData(data);
+	let changes = [];
+	for (const f of byId.text.fixes) changes = setChange(changes, index, f);
+	assert.equal(changes.length, 2);
 });
