@@ -145,3 +145,18 @@ test("play totals add to the catalog's counts and re-rank albums, artists and to
 	assert.equal(totalsUrl("", "https://media.zaideih.com/audio/{id}"), "https://media.zaideih.com/plays");
 	assert.equal(totalsUrl("https://x.example/plays", ""), "https://x.example/plays");
 });
+
+test("hidden tracks stay in the source but are not shipped; an album with only hidden tracks is left out", () => {
+	const category = { lang: [{ id: 1, name: "zola" }], genre: [{ id: 2, name: "Gospel" }], artist: [{ id: 2, name: "Male" }], album: [] };
+	const artists = [{ id: 10, name: "A", type: 2 }, { id: 11, name: "B", type: 2 }];
+	const albums = [
+		{ ui: "x", ab: "X", gr: [2], yr: [1990], lg: 1, tk: [{ t: "one", a: [10], d: 1, p: 1, i: 1 }, { t: "two", a: [11], d: 1, p: 1, i: 2, h: true }] },
+		{ ui: "y", ab: "Y", gr: [2], yr: [], lg: 1, tk: [{ t: "three", a: [10], d: 1, p: 1, i: 3, h: true }] },
+	];
+	const { catalog, stats } = compile({ albums, artists, category });
+	assert.deepEqual(catalog.albums.map((a) => a[0]), ["x"]);
+	assert.deepEqual(catalog.albums[0][5].map((t) => t[0]), [1]);
+	assert.deepEqual(catalog.artists.map((a) => a[0]), [10], "an artist only on hidden tracks is not shipped");
+	assert.equal(stats.hidden, 2);
+	assert.throws(() => compile({ albums: [{ ...albums[0], tk: [{ ...albums[0].tk[0], h: "yes" }] }], artists, category }), /hidden \(h\) must be true or false/);
+});

@@ -88,8 +88,9 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 
 ## Roadmap
 
-- [ ] Show the counted plays in the app
-- [ ] Hidden admin page to edit the catalog through GitHub and upload new albums
+- [x] Show the counted plays in the app
+- [x] Hidden admin page to edit the catalog through GitHub
+- [ ] Add albums and upload audio from the admin page
 - [ ] Lyrics from `assets/lyric/`
 - [ ] Desktop installers, and downloads saved as files
 

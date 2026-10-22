@@ -69,6 +69,18 @@ assets/data/*.json ──tools/catalog.mjs──▶ build/catalog/catalog.<hash>
 - Desktop Now playing scrolls as one page: the cover and controls stay in place (`position: sticky`) while the queue scrolls.
 - Hints (`src/ui/tips.js`): icon-only buttons and links show their accessible name in a bubble on hover, on keyboard focus, and on a long press on touch screens (the long press then does not activate the control).
 
+## Admin page
+
+A hidden page, `#/admin` (linked nowhere), edits the catalog through GitHub: `assets/data` in git stays the source of truth, and every edit is a reviewed, released commit. It is its own bundle (`src/admin`, `assets/admin.<hash>.js`), loaded only when the page opens, so listeners never download it; web only.
+
+- Connect: a fine-grained GitHub token for `khensolomon/zaideih` only (Contents and Pull requests read and write, Checks read), kept in `localStorage` on that device (`zaideih.admin.token`). The page checks it can write to the repository. While Google Analytics is on for the device it refuses to start and never reads the token, since a third-party script on the page could read it. The CSP allows `https://api.github.com` for this.
+- Edit: find an album (title or id) or an artist; change an album's title, year, language and genres, its songs' titles and artists (by name, from the catalog's artists), hide or show songs, and an artist's name, other name, type and search spellings. Values are checked and NFC-normalized before they are kept (`cleanValue`); a form with one bad value keeps nothing.
+- Draft (`src/admin/draft.js`): changes are kept as a list of `{kind, id, field, value}`, not as edited files (`zaideih.admin.draft`), shown one line each with Undo. At publish time the newest files are read from master and the changes applied to them, so an edit made on GitHub meanwhile is not overwritten; a change whose record is gone stops the publish and is named.
+- Publish: one commit on a new branch (`admin/<version>-…`) with the changed data files (written in the repository's format, so only the changed lines differ) and the release files for the next version (`releaseFiles` in `tools/lib/version.mjs`, shared with `tools/version.mjs`): both `package.json` files, both lock files and a changelog section from the note. Then a pull request into master, whose checks the page follows. "Merge and release" is enabled when they pass; it squash-merges with `release: web <version> <note>` as the first line, so the release workflow builds and deploys it, and deletes the branch.
+- Hidden songs: `h: true` on the track in `albums.json`. The catalog build leaves them out (and an album whose songs are all hidden), keeping their ids, so likes and playlists simply no longer list them; showing a song again brings it back.
+- Statistics: the counted plays from `GET /plays`, in total and for the last 30 days, with the top 25 songs of each.
+- Not yet: adding albums and uploading audio (that needs an upload endpoint on the audio Worker).
+
 ## Sound features
 
 Old recordings, many from cassettes, are improved live while they play (`src/core/sound.js`); the audio files are never changed. All of it runs in Web Audio on computers and Android. On iPhone and iPad it is off, because iOS suspends Web Audio when the screen locks, which would stop playback; the Sound panel says so.

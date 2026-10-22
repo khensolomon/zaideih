@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.22.3
+
+- Admin page (hidden, #/admin): edit album, song and artist details and hide songs through GitHub, as a pull request that releases on "Merge and release"; counted plays at a glance. The catalog build leaves hidden songs out.
+
 ## v26.10.22.2
 
 - Play counts come back into the app: the audio Worker serves the totals (GET /plays, cached 5 minutes), which are added to the catalog's counts, so Most played, top artists and popularity in the artwork follow real listening; the last totals are kept for offline use. D1: the schema is one file (worker/media/schema.sql, no migrations), and tools/d1.mjs shows, applies, loads or fully resets the database with one command.

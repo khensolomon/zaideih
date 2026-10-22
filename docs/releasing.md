@@ -85,6 +85,12 @@ Streaming from that address needs its origin in the audio Worker's `ALLOWED_ORIG
 
 In the Cloudflare dashboard, Workers & Pages, `zaideih`, Settings, Domains & Routes, add `zaideih.com` and `www.zaideih.com` as custom domains. Cloudflare then points those names at this Worker, replacing whatever serves them now. If DNS records already exist for those names (for example a tunnel to the old server), Cloudflare refuses the custom domain until they are removed. Do this when the switch is intended, ideally in a quiet hour, with the old server still running for a rollback. The domains are not declared in `wrangler.jsonc`, so the release token needs no zone access; later deploys leave them attached.
 
+## Catalog edits from the admin page
+
+The hidden page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge whose first line is `release: web <version> <note>`), so they go through the same checks and workflow as any release. See [architecture.md](architecture.md#admin-page).
+
+Its token: GitHub, Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token. Repository access: only `khensolomon/zaideih`. Permissions: Contents read and write, Pull requests read and write, Checks read (Metadata read is added automatically). Give it an expiry date; paste it on the admin page of the device you edit from. Usage statistics must be off on that device.
+
 ## Rolling back
 
 ```bash

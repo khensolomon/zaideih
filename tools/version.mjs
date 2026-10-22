@@ -11,14 +11,12 @@
  *
  * The local date is used, so a release made just after midnight takes the new day.
  */
-import { access, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import { VersionError, nextVersion, parseVersion } from "./lib/version.mjs";
+import { CHANGELOG_HEAD, VERSION_FILES, VersionError, nextVersion, parseVersion, releaseFiles } from "./lib/version.mjs";
 
-const PACKAGES = ["package.json", "platforms/desktop/package.json"];
-const CHANGELOG = "CHANGELOG.md";
-const CHANGELOG_HEAD = "# Version\n\n";
+const PACKAGES = VERSION_FILES.packages;
+const CHANGELOG = VERSION_FILES.changelog;
 
 function fail(message) {
 	console.error(`error: ${message}`);
@@ -75,26 +73,15 @@ try {
 		console.log("\ndry run: nothing written. Re-run with --apply to update package.json files.");
 		process.exit(0);
 	}
-	for (const p of pkgs) {
-		// Replace only the version value so formatting and key order stay intact.
-		const updated = p.text.replace(/("version"\s*:\s*)"[^"]*"/, `$1"${next}"`);
-		if (updated === p.text && p.json.version !== next) fail(`could not find a version field in ${p.path}`);
-		await writeFile(p.path, updated);
-		console.log(`wrote      ${p.path}`);
-		// npm records the root version twice in the lockfile; keep it in step.
-		const lockPath = join(dirname(p.path), "package-lock.json");
-		if (await access(lockPath).then(() => true, () => false)) {
-			const lock = JSON.parse(await readFile(lockPath, "utf8"));
-			lock.version = next;
-			if (lock.packages?.[""]) lock.packages[""].version = next;
-			await writeFile(lockPath, `${JSON.stringify(lock, null, "\t")}\n`);
-			console.log(`wrote      ${lockPath}`);
-		}
+	// The release files change in one place, shared with the admin page (tools/lib/version.mjs).
+	const texts = {};
+	for (const path of [...VERSION_FILES.packages, ...VERSION_FILES.locks, CHANGELOG]) {
+		const text = await readFile(path, "utf8").catch(() => null);
+		if (text !== null) texts[path] = text;
 	}
-	if (changelog !== null) {
-		const section = `## v${next}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n\n`;
-		await writeFile(CHANGELOG, CHANGELOG_HEAD + section + changelog.slice(CHANGELOG_HEAD.length));
-		console.log(`wrote      ${CHANGELOG}`);
+	for (const [path, text] of Object.entries(releaseFiles(texts, next, changelog === null ? [] : notes))) {
+		await writeFile(path, text);
+		console.log(`wrote      ${path}`);
 	}
 	console.log(`\nRelease with a commit whose first line is: release: web ${next} <note>   (see docs/releasing.md)`);
 } catch (err) {

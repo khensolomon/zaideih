@@ -5,7 +5,8 @@ import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
-import { startPlayTotals } from "./core/playcounts.js";
+import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
+import { ADMIN_URL } from "./config.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -44,6 +45,22 @@ route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
 route("code", V.codeView);
 route("code/:code", V.codeView);
+// Hidden: the admin page (src/admin), its own bundle, loaded only here. Not linked anywhere.
+route("admin", () => ({
+	title: "Admin",
+	body: html`<div class="admin" id="admin-root"><h1>Admin</h1><p class="muted">Loading…</p></div>`,
+	mount: async (view) => {
+		const root = $("#admin-root", view);
+		if (!ADMIN_URL) { root.innerHTML = html`<h1>Admin</h1><p>The admin page works in the web app only.</p>`; return; }
+		try {
+			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
+			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), desktop: document.documentElement.dataset.platform === "desktop" });
+		} catch (err) {
+			console.error(err);
+			root.innerHTML = html`<h1>Admin</h1><p class="adm-error">The admin page could not load: ${err.message}</p>`;
+		}
+	},
+}));
 
 /*
  * In-app navigation depth, stored in history.state so the Back button knows
@@ -141,8 +158,9 @@ async function render({ keepScroll = false } = {}) {
 	updateNavbar(r.path, out.title);
 	// The address without its query: search text never leaves the device, and
 	// a diagnostic code is reported as the bare "code" page.
-	if (!keepScroll) analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
+	if (!keepScroll && r.path !== "admin") analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
 	scrollTo(0, scroll);
+	out.mount?.(view);
 	if (!keepScroll) {
 		const heading = view.querySelector("h1");
 		if (heading && !$("#q")) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
