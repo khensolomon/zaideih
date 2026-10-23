@@ -19,7 +19,7 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Co-owner (`manage`) | Everything below, and gives or takes any right from any member but the owner |
 | Review publishing (`review`) | Approves or rejects requests to publish (to come), and listens to the songs under review |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
-| Storage (`storage`) | Adds files already in R2, from `private/<their github id>/` only |
+| Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their github id>/` until one is set) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
 
@@ -31,17 +31,18 @@ D1 (`worker/media/schema.sql`):
 
 - `members`: one row per GitHub account that has used the library: GitHub id (the key; logins can change), login, block (time, by whom, reason), first and last seen.
 - `member_rights`: the rights the owner has given, one row per member and right.
+- `member_folders`: the storage folder set for a member with the Storage right.
 - `uploads`: one row per uploaded file: id, owner's GitHub id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`; later `requested`, `published`, `rejected`) and when it was added.
 
 R2:
 
 - `music/…`: the catalog.
 - `users/<github id>/<upload id>.<ext>`: uploads.
-- `private/…`: files put in R2 by hand (rclone, wrangler, the dashboard) to be added from storage; `private/<github id>/` for members with the Storage right.
+- Anything else: files put in R2 some other way (rclone, wrangler, the dashboard), wherever their owner keeps them, which can be added from storage. They are never moved, renamed or deleted by Zaideih.
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then.
 
-`tools/d1.mjs reset` refuses while `members`, `uploads` or `member_rights` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
+`tools/d1.mjs reset` refuses while `members`, `uploads`, `member_rights` or `member_folders` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -58,16 +59,14 @@ An upload left `uploading` for an hour (a closed tab) is removed the next time i
 
 ## Adding from storage
 
-Music bought elsewhere, too large to upload or already on hand can be put in R2 directly and added without passing through the browser:
+Music already in R2 (bought elsewhere, too large to upload, kept the way its owner organised it) is added where it is, without being moved or copied:
 
-```bash
-# one folder per album, under private/ (the owner and co-owners) or private/<github id>/ (Storage right)
-npx wrangler r2 object put "media/private/google/Album/01 Song.mp3" --file "01 Song.mp3" --remote
-# or a whole folder with rclone (an R2 remote configured with an R2 API token)
-rclone copy ./Album "r2:media/private/google/Album"
-```
+- The owner and co-owners browse the whole bucket, except `users/` (members' uploads, theirs alone).
+- A member with the Storage right browses one folder: the one the owner or a co-owner set for them on the admin page (Members, Storage folder), or `private/<github id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
 
-Your uploads, Add from storage (`GET /library/storage?prefix=…`) lists the folders and audio files of a folder, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's folder, present, a supported format, a length, not already in a library) and then adds all of them or none. Nothing is copied: the library row names the file where it is, so it uses no space allowance and has no size limit. Taking it out of the library leaves the file in R2. Nothing outside `private/` can be listed or read this way.
+Your uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
+
+Uploads are the only files a library owns (`users/…`): only they count towards space and are deleted with their entry. Files go into R2 with rclone, `npx wrangler r2 object put "media/<folder>/<file>" --file <file> --remote` or the Cloudflare dashboard.
 
 ## Listening
 

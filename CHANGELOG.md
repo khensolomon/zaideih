@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.23.4
+
+- Add from storage works wherever music is kept in R2: the whole bucket (but members' uploads) for the owner and co-owners, a folder the owner sets for members with the Storage right; any folder can be typed, and the last one is remembered
+
 ## v26.10.23.3
 
 - Rights per member, given and taken by the owner and co-owners: co-owner, review publishing, moderate members, storage

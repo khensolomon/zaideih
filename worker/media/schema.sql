@@ -127,3 +127,17 @@ CREATE TABLE IF NOT EXISTS member_rights (
     granted_at  INTEGER NOT NULL,
     PRIMARY KEY (github_id, kind)
 ) WITHOUT ROWID;
+
+-- =============================================================================
+-- member_folders: where in R2 a member with the Storage right adds files from
+-- =============================================================================
+-- Set by the owner or a co-owner on the admin page (Members). Without a row
+-- the folder is private/<github_id>/. The owner and co-owners add from the
+-- whole bucket except users/ (members' uploads).
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+CREATE TABLE IF NOT EXISTS member_folders (
+    github_id  INTEGER PRIMARY KEY,
+    prefix     TEXT    NOT NULL,
+    set_by     TEXT    NOT NULL,
+    set_at     INTEGER NOT NULL
+);

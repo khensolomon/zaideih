@@ -120,7 +120,8 @@ export async function memberRow(env, who, nowSeconds = Math.floor(Date.now() / 1
 	).bind(who.id, who.login, nowSeconds).run();
 	const row = await env.DB.prepare("SELECT blocked_at, blocked_by, blocked_reason FROM members WHERE github_id = ?1").bind(who.id).first();
 	const rights = who.role === "owner" ? new Set(Object.keys(RIGHTS)) : ((await rightsOf(env, who.id)).get(who.id) ?? new Set());
-	const me = { ...who, rights };
+	const folder = await env.DB.prepare("SELECT prefix FROM member_folders WHERE github_id = ?1").bind(who.id).first();
+	const me = { ...who, rights, folder: folder?.prefix ?? null };
 	return {
 		...me,
 		moderator: can(me, "moderate"),
