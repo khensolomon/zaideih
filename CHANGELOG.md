@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.23.6
+
+- Published Miaow (10 songs, from @khensolomon's library)
+
 ## v26.10.23.5
 
 - Ask to publish: members ask for an album of their uploads to join the catalog; reviewers listen, approve (songs copied into the catalog, a release pull request opened) or reject with a reason; the owner publishes their own with one switch
