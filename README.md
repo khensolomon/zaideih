@@ -44,7 +44,7 @@ npm run preview    # production build on http://localhost:8080, with the service
 npm run desktop    # desktop app (first time: cd platforms/desktop && npm install)
 ```
 
-Data tools are dry runs by default; `--apply` writes.
+Data tools are dry runs by default; `--apply` writes. Accounts, credentials and settings for a deployment of its own: [docs/setup.md](docs/setup.md).
 
 ### Testing locally
 
@@ -82,8 +82,9 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 
 ### Documentation
 
-- [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline and play counts
-- [docs/worker-audio.md](docs/worker-audio.md): deploying and checking the audio Worker
+- [docs/setup.md](docs/setup.md): from a fresh clone to a release: accounts, credentials (where to get them, where they go, what they may do) and settings
+- [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline, play counts, admin page
+- [docs/worker-audio.md](docs/worker-audio.md): the audio Worker: routes, deploying, checking, sign-in
 - [docs/library.md](docs/library.md): personal libraries (uploads, signed streaming, moderation)
 - [docs/releasing.md](docs/releasing.md): one-time Cloudflare and GitHub setup, release targets, rollback
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release

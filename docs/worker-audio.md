@@ -1,55 +1,15 @@
 # Audio Worker
 
-The audio Worker (`worker/media`) streams songs from R2 at `https://media.zaideih.com/audio/{id}`. This guide covers what changed in the Worker when Django was removed, how to deploy it, how to verify it, and how to roll back.
+The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the catalog's songs from R2 and serves everything else the app needs from a server:
 
-## What changed in the Worker
+| Route | What | Code |
+|---|---|---|
+| `GET /audio/:id` | a catalog song from R2 (`music/…`, path from D1 `tracks`), with ranges | `script.js` |
+| `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
+| `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
+| `/library/*`, `GET /u/:id` | personal libraries: uploads, moderation, signed streaming | `library.js`, `members.js` |
 
-Compared with the version that ran alongside Django (commit `dd79f9f`):
-
-### Removed
-
-| Item | What it did | Why it went |
-|------|-------------|-------------|
-| `POST /sync/track/:id` | Django pushed a track's folder and file name into D1 when a track was saved | Django is gone; D1 is now loaded from `assets/data/media.json` |
-| `DELETE /sync/track/:id` | Django removed a track from D1 | Same |
-| `GET /sync/ping` | Health check used by Django's `check_d1` command | Same |
-| HMAC signature check (`SECRET_SHARED`) | Verified that `/sync/*` calls came from Django | Nothing left to verify |
-| `APP_URL` variable | Django's address | Not used anymore |
-| `migrations/cleanup.sql` | Cleaned a `play_telemetry` table | That table does not exist in the current schema |
-
-### Added
-
-| Item | What it does |
-|------|--------------|
-| `ALLOWED_ORIGINS` variable | Lists the sites allowed to read audio with CORS: the web app, the desktop app (`app://zaideih`) and local testing (`localhost:8080`) |
-| CORS headers for allowed origins | `Access-Control-Allow-Origin` and the range headers the browser needs. Required for the live visualizer and for offline downloads |
-| `fetch()` requests from allowed origins | The app downloads songs for offline play with `fetch()`. These requests were refused with 403 before |
-| `OPTIONS /audio/:id` | CORS preflight answer for allowed origins |
-| Pinned `wrangler` version (4.150.0) | Previously `latest`, which could change between deploys |
-
-### Unchanged
-
-- `GET /audio/:id`: same lookup (`tracks` table in D1, then `music/{folder_path}/{mp3}` in R2), same Range support, same caching headers
-- `tracks_status` counters (`served`, `not_found`, `fetch_error`)
-- D1 database (`audio`), R2 bucket (`media`), custom domain (`media.zaideih.com`)
-- The D1 schema: the same tables (since then gathered into `schema.sql` with `plays` added; see The D1 schema)
-
-### What a deploy touches
-
-`wrangler deploy` uploads the Worker code and replaces the plain variables (`[vars]`) with the ones in `wrangler.toml`. It does **not** change:
-
-- data in D1 (tracks, counters)
-- files in R2
-- secrets: `SECRET_SHARED` stays set, unused, until it is deleted
-- the custom domain: `media.zaideih.com` is attached in the dashboard (Workers & Pages, `media`, Settings, Domains & Routes) and is not declared in `wrangler.toml`, so deploys need no access to the `zaideih.com` zone and leave the domain as it is. Re-attach it there if the Worker is ever deleted and recreated.
-
-So after the deploy the Worker has `ALLOWED_ORIGINS` and no longer has `APP_URL`. Nothing else changed in Cloudflare.
-
-## Why playback stopped before the deploy
-
-Since v26.10.19.2 the player requests audio with `crossorigin` so the visualizer can analyse the sound. Browsers only allow that when the response carries CORS headers. The old Worker sent none, so the browser refused the audio. The new Worker sends them for every origin in `ALLOWED_ORIGINS`.
-
-Any address the app runs from must be in `ALLOWED_ORIGINS`, or playback fails there.
+Bindings and settings are in `wrangler.toml`; secrets are listed in [setup.md](setup.md). This guide covers deploying, verifying, inspecting and rolling back, then each part in turn.
 
 ## Deploy
 
@@ -68,10 +28,10 @@ npx wrangler login     # authorizes wrangler in the browser
 In `worker/media/wrangler.toml`:
 
 ```toml
-ALLOWED_ORIGINS = "https://zaideih.com,https://www.zaideih.com,app://zaideih,http://localhost:8080,http://127.0.0.1:8080"
+ALLOWED_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih,http://localhost:8080,http://127.0.0.1:8080"
 ```
 
-Add any other address the app is served from, for example a Cloudflare Pages URL such as `https://zaideih.pages.dev`. Origins are exact: scheme, host and port, with no trailing slash.
+Add any other address the app is served from, for example the site's `workers.dev` address, and the same to `AUTH_ORIGINS` for sign-in. Origins are exact: scheme, host and port, with no trailing slash.
 
 ### 3. Check the track paths in D1
 
@@ -260,6 +220,55 @@ npx wrangler d1 execute audio --remote --command \
 ```
 
 `tools/d1.mjs reset` refuses while `members` or `uploads` hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).
+
+## History: the Worker without Django
+
+Compared with the version that ran alongside Django (commit `dd79f9f`):
+
+### Removed
+
+| Item | What it did | Why it went |
+|------|-------------|-------------|
+| `POST /sync/track/:id` | Django pushed a track's folder and file name into D1 when a track was saved | Django is gone; D1 is now loaded from `assets/data/media.json` |
+| `DELETE /sync/track/:id` | Django removed a track from D1 | Same |
+| `GET /sync/ping` | Health check used by Django's `check_d1` command | Same |
+| HMAC signature check (`SECRET_SHARED`) | Verified that `/sync/*` calls came from Django | Nothing left to verify |
+| `APP_URL` variable | Django's address | Not used anymore |
+| `migrations/cleanup.sql` | Cleaned a `play_telemetry` table | That table does not exist in the current schema |
+
+### Added
+
+| Item | What it does |
+|------|--------------|
+| `ALLOWED_ORIGINS` variable | Lists the sites allowed to read audio with CORS: the web app, the desktop app (`app://zaideih`) and local testing (`localhost:8080`) |
+| CORS headers for allowed origins | `Access-Control-Allow-Origin` and the range headers the browser needs. Required for the live visualizer and for offline downloads |
+| `fetch()` requests from allowed origins | The app downloads songs for offline play with `fetch()`. These requests were refused with 403 before |
+| `OPTIONS /audio/:id` | CORS preflight answer for allowed origins |
+| Pinned `wrangler` version (4.150.0) | Previously `latest`, which could change between deploys |
+
+### Unchanged
+
+- `GET /audio/:id`: same lookup (`tracks` table in D1, then `music/{folder_path}/{mp3}` in R2), same Range support, same caching headers
+- `tracks_status` counters (`served`, `not_found`, `fetch_error`)
+- D1 database (`audio`), R2 bucket (`media`), custom domain (`media.zaideih.com`)
+- The D1 schema: the same tables (since then gathered into `schema.sql` with `plays` added; see The D1 schema)
+
+### What a deploy touches
+
+`wrangler deploy` uploads the Worker code and replaces the plain variables (`[vars]`) with the ones in `wrangler.toml`. It does **not** change:
+
+- data in D1 (tracks, counters)
+- files in R2
+- secrets: `SECRET_SHARED` stays set, unused, until it is deleted
+- the custom domain: `media.zaideih.com` is attached in the dashboard (Workers & Pages, `media`, Settings, Domains & Routes) and is not declared in `wrangler.toml`, so deploys need no access to the `zaideih.com` zone and leave the domain as it is. Re-attach it there if the Worker is ever deleted and recreated.
+
+So after the deploy the Worker has `ALLOWED_ORIGINS` and no longer has `APP_URL`. Nothing else changed in Cloudflare.
+
+### Why playback stopped before the deploy
+
+Since v26.10.19.2 the player requests audio with `crossorigin` so the visualizer can analyse the sound. Browsers only allow that when the response carries CORS headers. The old Worker sent none, so the browser refused the audio. The new Worker sends them for every origin in `ALLOWED_ORIGINS`.
+
+Any address the app runs from must be in `ALLOWED_ORIGINS`, or playback fails there.
 
 ## Clean-up after Django is retired
 

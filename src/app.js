@@ -144,9 +144,32 @@ function syncAccess() {
 		a.title = who ? `${who.login}, ${LEVELS[who.level].name}` : "";
 	}
 }
+/*
+ * While the logo menu is open the page behind it stays still and blurred.
+ * iOS scrolls a page even with overflow hidden, so the page is pinned in
+ * place (position fixed at its scroll offset) and put back on close.
+ */
+let lockedAt = null;
+function lockPage() {
+	if (lockedAt !== null) return;
+	lockedAt = scrollY;
+	Object.assign(document.body.style, { position: "fixed", top: `${-lockedAt}px`, left: "0", right: "0" });
+	document.documentElement.classList.add("menu-open");
+	$("#menu-scrim").hidden = false;
+}
+function unlockPage() {
+	if (lockedAt === null) return;
+	Object.assign(document.body.style, { position: "", top: "", left: "", right: "" });
+	document.documentElement.classList.remove("menu-open");
+	$("#menu-scrim").hidden = true;
+	scrollTo(0, lockedAt);
+	lockedAt = null;
+}
+
 function openAppMenu() {
 	const menu = $("#app-menu");
 	if (!menu.childElementCount) renderAppMenu();
+	lockPage();
 	menu.hidden = false;
 	syncStatsButtons();
 	$(".nav-logo").setAttribute("aria-expanded", "true");
@@ -156,6 +179,7 @@ function closeAppMenu({ restoreFocus = false } = {}) {
 	const menu = $("#app-menu");
 	if (menu.hidden) return;
 	menu.hidden = true;
+	unlockPage();
 	$(".nav-logo").setAttribute("aria-expanded", "false");
 	if (restoreFocus) $(".nav-logo").focus();
 }
@@ -772,7 +796,7 @@ function trackMenu(anchor, track, extra) {
 	if (track.upload) {
 		items.push("-",
 			{ label: "Edit details…", run: () => editUpload(track) },
-			{ label: "Delete from My uploads", run: async () => {
+			{ label: "Delete from your uploads", run: async () => {
 				if (!(await confirmAction(`Delete “${track.title}” from your uploads? The file is removed for good.`, "Delete"))) return;
 				await uploads.remove(track.uploadId);
 				notify(`“${track.title}” deleted`);
@@ -1271,8 +1295,18 @@ on("library", () => {
 function trackVisibleHeight() {
 	const vv = window.visualViewport;
 	if (!vv) return;
-	const set = () => document.documentElement.style.setProperty("--vvh", `${Math.round(vv.height)}px`);
-	vv.addEventListener("resize", set);
+	// --vvt: how far the visible area sits below the top of the layout (the
+	// keyboard pushes it); the fixed top controls move by it to stay in view.
+	let frame = 0;
+	const set = () => {
+		frame = 0;
+		const root = document.documentElement.style;
+		root.setProperty("--vvh", `${Math.round(vv.height)}px`);
+		root.setProperty("--vvt", `${Math.max(0, Math.round(vv.offsetTop))}px`);
+	};
+	const soon = () => { frame ||= requestAnimationFrame(set); };
+	vv.addEventListener("resize", soon);
+	vv.addEventListener("scroll", soon);
 	set();
 }
 trackVisibleHeight();
@@ -1318,12 +1352,12 @@ export async function boot(platform) {
 		fatal(err);
 		return;
 	}
-	// My uploads: read once someone is signed in (syncAccess), shown where they appear.
+	// Your uploads: read once someone is signed in (syncAccess), shown where they appear.
 	uploads.catalog = catalog;
 	syncAccess();
 	on("uploads", () => {
 		const path = currentRoute?.path ?? "";
-		if (path === "library/uploads" || path.startsWith("album/u-")) rerender();
+		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-")) rerender();
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
@@ -1352,13 +1386,21 @@ export async function boot(platform) {
 	startPlayCounting(player.audio, () => player.current());
 	renderBar();
 	document.addEventListener("click", (e) => {
-		// A tap outside the open logo menu closes it.
-		if (!$("#app-menu").hidden && !e.target.closest("#app-menu, .nav-logo")) closeAppMenu();
+		// A tap outside the open logo menu closes it, and so does any link in it,
+		// including one to the page already open (which changes nothing else).
+		if ($("#app-menu").hidden) return;
+		if (!e.target.closest("#app-menu, .nav-logo") || e.target.closest("#app-menu a")) closeAppMenu();
 	});
 	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
 	trackDepth();
 	await render();
 	document.body.classList.add("ready");
+	// The loading screen (index.html) fades once the first page is drawn.
+	const splash = $("#splash");
+	if (splash) {
+		splash.classList.add("done");
+		setTimeout(() => splash.remove(), 400);
+	}
 	showConsent();
 	syncStatsButtons();
 	initTips();

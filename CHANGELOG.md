@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.23.1
+
+- Phones: the top controls stay put when the page is pulled past its ends and while the keyboard is open; round buttons stay round beside long titles; lighter shadows and a frosted band under the status bar
+- Phones: the menu closes on any of its links and holds the page still and blurred behind it; no scroll bar on touch screens and installed apps; 17 px text; no selecting or long-pressing controls and list items; no double-tap zoom
+- A loading screen instead of a blank page while the app starts
+- Library: Liked songs first, then playlists, then Downloads, Recently played and Your uploads, then the backup; each section has its own page
+- Docs: docs/setup.md (accounts, credentials and settings); the audio Worker, releasing and architecture docs brought up to date
+
 ## v26.10.22.8
 
 - Rounder covers, centred album and artist headers on phones, select arrows, current language in the sidebar

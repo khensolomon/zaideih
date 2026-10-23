@@ -63,8 +63,8 @@ jobs:
       message: ${{ steps.plan.outputs.message }}
       notes: ${{ steps.plan.outputs.notes }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       # Values arrive through env, never pasted into the script, so a commit
@@ -115,8 +115,8 @@ jobs:
             echo "::error::secrets not set:$missing; see docs/releasing.md"
             exit 1
           fi
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -183,8 +183,8 @@ jobs:
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ] || { echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set; see docs/releasing.md"; exit 1; }
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       # The schema (worker/media/schema.sql) is idempotent: it creates what
@@ -260,8 +260,8 @@ jobs:
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ] || { echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set; see docs/releasing.md"; exit 1; }
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Load the paths into D1
@@ -286,7 +286,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tag and publish the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -50,6 +50,8 @@ Run workflow (Actions, release) offers the same targets for the current `master`
 
 ## One-time setup
 
+[setup.md](setup.md) lists every account, credential and setting in order; the release-specific parts are below.
+
 ### 1. Cloudflare API token
 
 Cloudflare dashboard, My Profile, API Tokens, Create Token, template **Edit Cloudflare Workers**. Then:
@@ -75,21 +77,17 @@ The deploy jobs run in the environments `web` and `audio`, which GitHub creates 
 
 A 403 from the live checks is usually Cloudflare bot protection refusing GitHub's machines, not a failed deploy. The workers.dev address is not behind it.
 
-### 3. The first web release goes to workers.dev
+### 3. Domains
 
-`wrangler.jsonc` deploys the site as a Worker named `zaideih` with static assets, served only at `https://zaideih.<subdomain>.workers.dev` until a route is added. Cloudflare applies `dist/web/_headers` (CSP and caching) as in local development.
+`wrangler.jsonc` deploys the site as a Worker named `zaideih` with static assets, at `https://zaideih.<subdomain>.workers.dev` and at the custom domain `zaideih.com`, attached in the dashboard (Workers & Pages, `zaideih`, Settings, Domains & Routes). `media.zaideih.com` is attached to the audio Worker the same way. Neither is declared in a settings file, so the release token needs no zone access and deploys leave the domains as they are. Cloudflare applies `dist/web/_headers` (CSP and caching) as in local development.
 
-Streaming from that address needs its origin in the audio Worker's `ALLOWED_ORIGINS` (`worker/media/wrangler.toml`), since the player requests audio in CORS mode: add `https://zaideih.<subdomain>.workers.dev` and release `audio`. Without it every song fails there with a CORS error.
-
-### 4. Moving zaideih.com to the new site
-
-In the Cloudflare dashboard, Workers & Pages, `zaideih`, Settings, Domains & Routes, add `zaideih.com` and `www.zaideih.com` as custom domains. Cloudflare then points those names at this Worker, replacing whatever serves them now. If DNS records already exist for those names (for example a tunnel to the old server), Cloudflare refuses the custom domain until they are removed. Do this when the switch is intended, ideally in a quiet hour, with the old server still running for a rollback. The domains are not declared in `wrangler.jsonc`, so the release token needs no zone access; later deploys leave them attached.
+Every address the app is served from must be in the audio Worker's `ALLOWED_ORIGINS` (and in `AUTH_ORIGINS` for sign-in), or songs fail there with a CORS error; changing them needs `release: audio`.
 
 ## Catalog edits from the admin page
 
-The hidden page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge whose first line is `release: web <version> <note>`), so they go through the same checks and workflow as any release. See [architecture.md](architecture.md#admin-page).
+The admin page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge whose first line is `release: web <version> <note>`), so they go through the same checks and workflow as any release. People sign in with GitHub (or a fine-grained token, see [setup.md](setup.md)); usage statistics must be off on that device. See [architecture.md](architecture.md#admin-page).
 
-Its token: GitHub, Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token. Repository access: only `khensolomon/zaideih`. Permissions: Contents read and write, Pull requests read and write, Checks read (Metadata read is added automatically). Give it an expiry date; paste it on the admin page of the device you edit from. Usage statistics must be off on that device.
+Suggestions from people without write access arrive as pull requests titled `Suggestion: …`. Merging one adds it to `master` without releasing; it ships with the next release.
 
 ## Rolling back
 
@@ -105,10 +103,10 @@ Cloudflare's Deployments tab lists each version with the release tag and note. A
 
 | Step | Usual cause |
 |---|---|
-| plan | the message names an unknown target, a version different from `package.json`, or a version without a `CHANGELOG.md` section; the reason is on the run's summary |
+| plan | the message names an unknown target, a version different from `package.json`, or a version without a `CHANGELOG.md` section; the reason is on the run's summary. After `tools/version.mjs --apply` the first line must carry the new version |
 | test | the same failure `check` would show on the branch |
 | web or audio, "secrets not set" | step 2 is missing |
 | deploy, authentication or permission errors | the token lacks a permission or zone from step 1 |
 | live checks, 403 | bot protection; use the workers.dev address |
 | live checks, wrong version | the deploy did not reach the address checked, or a cache in front of it; the site's `index.html` always revalidates |
-| publish, tag names another commit | the version was released before; bump it |
+| publish, tag names another commit | the version was released before (a tag names one commit, so the same version cannot be released twice); bump it with `tools/version.mjs --apply` and release the new version |
