@@ -7,7 +7,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | `GET /audio/:id` | a catalog song from R2 (`music/…`, path from D1 `tracks`), with ranges | `script.js` |
 | `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
 | `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
-| `/library/*`, `GET /u/:id` | personal libraries: uploads, moderation, signed streaming | `library.js`, `members.js` |
+| `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, signed streaming | `library.js`, `members.js` |
 
 Bindings and settings are in `wrangler.toml`; secrets are listed in [setup.md](setup.md). This guide covers deploying, verifying, inspecting and rolling back, then each part in turn.
 

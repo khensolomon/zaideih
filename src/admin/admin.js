@@ -60,6 +60,7 @@ export function mount(root, ctx) {
 	const s = {
 		tab: "edit",
 		openChecks: new Set(),
+		rights: new Set(),      // in personal libraries (worker/media/members.js)
 		tokenOpen: false,
 		gh: null,
 		via: null,        // "github" (signed in) or "token"
@@ -122,7 +123,12 @@ export function mount(root, ctx) {
 			// Decoration only: the header shows nothing about it when GitHub's search is unavailable.
 			gh.contributions(who.login).then((d) => { s.done = d; render(); }, (err) => console.warn("contributions", err));
 			// Moderators of personal libraries get the Members tab (docs/library.md).
-			libraryCall("GET", "").then((lib) => { s.moderator = Boolean(lib.member?.moderator); s.isOwner = lib.member?.role === "owner"; render(); }, (err) => console.warn("library", err.message));
+			// Rights in personal libraries (worker/media/members.js): the Members tab, and what it offers.
+			libraryCall("GET", "").then((lib) => {
+				s.rights = new Set(lib.member?.rights ?? []);
+				s.isOwner = lib.member?.role === "owner";
+				render();
+			}, (err) => console.warn("library", err.message));
 			saveWho(localStorage, { login: who.login, level: who.level, via });
 			ctx.onWho?.();
 			await load();
@@ -177,7 +183,7 @@ export function mount(root, ctx) {
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
-		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.moderator = false; s.isOwner = false; s.members = null;
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.members = null;
 		render();
 		if (via === "github") await session.signOut();
 	}
@@ -494,22 +500,36 @@ export function mount(root, ctx) {
 	const mb = (n) => `${(n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
 	const ago = (t) => new Date(t * 1000).toLocaleDateString();
 
-	/** Moderators: everyone with a personal library, their space, and block, unblock, delete; the owner also names moderators. */
+	/** What this person may do here; co-owners (and the owner) may do everything. */
+	const may = (right) => s.isOwner || s.rights.has("manage") || s.rights.has(right);
+
+	const RIGHT_NAMES = {
+		manage: ["Co-owner", "everything below, and gives or takes any right"],
+		review: ["Review publishing", "approves or rejects requests to publish"],
+		moderate: ["Moderate members", "blocks members and deletes uploads"],
+		storage: ["Storage", "adds files from their own folder in storage"],
+	};
+
+	/**
+	 * Members of personal libraries, for anyone the owner has given a right:
+	 * space and uploads; blocking and deleting with Moderate members; giving
+	 * and taking rights for the owner and co-owners.
+	 */
 	function membersTab() {
 		if (!s.members) return html`<p class="muted">Reading the members…</p>`;
-		return html`<p class="muted">People who have used their own library. Blocking stops their uploads playing at once and is reversible; deleting an upload is permanent. The owner's library is private and cannot be opened here.</p>
+		return html`<p class="muted">People who have used their own library. Blocking stops their uploads playing at once and is reversible; deleting an upload is permanent. The owner's library is private and cannot be opened here; nobody can block the owner or change the owner's rights.</p>
 			<ul class="adm-members">${s.members.map((m) => html`<li data-blocked="${String(Boolean(m.blocked))}">
 				<div class="adm-member">
-					<span><b>${m.login}</b>${m.moderator ? html` <span class="adm-tag">moderator</span>` : ""}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</span>
+					<span><b>${m.login}</b>${m.owner ? html` <span class="adm-tag">owner</span>` : m.rights.map((r) => html` <span class="adm-tag">${RIGHT_NAMES[r]?.[0] ?? r}</span>`)}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</span>
 					<small>${m.uploads.toLocaleString()} upload${m.uploads === 1 ? "" : "s"} · ${mb(m.used)} · last seen ${ago(m.lastSeen)}${m.blocked ? ` · blocked by ${m.blocked.by}: ${m.blocked.reason}` : ""}</small>
 				</div>
-				<div class="adm-actions">
-					${m.uploads ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
-					${m.blocked
+				${m.owner ? "" : html`<div class="adm-actions">
+					${m.uploads && may("moderate") ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
+					${!may("moderate") ? "" : m.blocked
 						? html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`
 						: html`<form class="adm-block" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
-					${s.isOwner ? html`<button class="btn" data-adm="member-moderator" data-id="${m.id}" data-on="${String(!m.moderator)}">${m.moderator ? "Remove moderator" : "Make moderator"}</button>` : ""}
-				</div>
+				</div>`}
+				${!m.owner && may("manage") ? html`<fieldset class="adm-rights"><legend>Rights of ${m.login}</legend>${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => html`<label title="${what}"><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${m.rights.includes(r) ? "checked" : ""}>${name}</label>`)}</fieldset>` : ""}
 				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="muted">Reading…</p>`) : ""}
 			</li>`)}</ul>
 			<p><button class="btn" data-adm="members-reload">Check again</button></p>`;
@@ -665,7 +685,7 @@ export function mount(root, ctx) {
 				${tab("edit")}
 				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
 				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
-				${s.moderator ? tab("members", s.members ? String(s.members.length) : "") : ""}
+				${s.rights.size ? tab("members", s.members ? String(s.members.length) : "") : ""}
 				${tab("tools")}
 				${tab("stats")}
 			</nav>
@@ -746,7 +766,12 @@ export function mount(root, ctx) {
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
 				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
 				case "member-unblock": await setMember(Number(b.dataset.id), { blocked: false }, "Unblocked"); break;
-				case "member-moderator": await setMember(Number(b.dataset.id), { moderator: b.dataset.on === "true" }, b.dataset.on === "true" ? "Now a moderator" : "No longer a moderator"); break;
+				case "member-right": {
+					const on = b.checked;
+					const name = RIGHT_NAMES[b.dataset.right][0];
+					await setMember(Number(b.dataset.id), { rights: { [b.dataset.right]: on } }, `${name} ${on ? "given" : "taken"}`);
+					break;
+				}
 				case "upload-delete": await deleteMemberUpload(Number(b.dataset.id), b.dataset.title); break;
 				case "menu": s.menu = !s.menu; render(); break;
 				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;

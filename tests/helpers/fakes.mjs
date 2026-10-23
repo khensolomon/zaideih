@@ -62,6 +62,20 @@ export function fakeR2() {
 			};
 		},
 		async delete(key) { objects.delete(key); },
+		async head(key) { const o = objects.get(key); return o ? { size: o.bytes.length } : null; },
+		/** Like R2's list(): objects under a prefix, and with a delimiter the "folders" one level down. */
+		async list({ prefix = "", delimiter, limit = 1000 } = {}) {
+			const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
+			const folders = new Set();
+			const direct = [];
+			for (const k of keys) {
+				const rest = k.slice(prefix.length);
+				const cut = delimiter ? rest.indexOf(delimiter) : -1;
+				if (cut >= 0) folders.add(prefix + rest.slice(0, cut + 1));
+				else direct.push({ key: k, size: objects.get(k).bytes.length });
+			}
+			return { objects: direct.slice(0, limit), delimitedPrefixes: [...folders], truncated: direct.length > limit, cursor: direct.length > limit ? "next" : undefined };
+		},
 	};
 }
 

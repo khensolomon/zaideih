@@ -162,6 +162,28 @@ export const uploads = {
 		await this.refresh();
 	},
 
+	/** A folder of storage (private/…): { root, prefix, folders, files, others, cursor }. Needs the Storage right. */
+	browse(prefix = "", cursor = "") {
+		const q = new URLSearchParams();
+		if (prefix) q.set("prefix", prefix);
+		if (cursor) q.set("cursor", cursor);
+		return call("GET", `/storage${q.size ? `?${q}` : ""}`);
+	},
+
+	/** Adds prepared files from storage (see prepareStored()) to the library, all or none. */
+	async addFromStorage(items) {
+		const answer = await call("POST", "/storage/add", {
+			items: items.map((r) => ({ key: r.key, title: r.title, artist: r.artist, album: r.album, year: r.year, track: r.track, duration: r.duration })),
+		});
+		await this.refresh();
+		return answer;
+	},
+
+	/** Where this person may add files from storage, or null (core/library rights). */
+	get storageRoot() {
+		return this.state.member?.storageRoot ?? null;
+	},
+
 	async remove(uploadId) {
 		await call("DELETE", `/uploads/${uploadId}`);
 		await this.refresh();
@@ -199,12 +221,13 @@ export const uploads = {
 
 /* ----------------------------------------------------------- preparing ---- */
 
-/** The length of an audio file in seconds, read by the browser; rejects when it cannot play it. */
-function lengthOf(file) {
+/** The length of an audio file (a File, or an address) in seconds, read by the browser; rejects when it cannot play it. */
+function lengthOf(source) {
 	return new Promise((resolve, reject) => {
 		const audio = new Audio();
-		const url = URL.createObjectURL(file);
-		const done = (fn, v) => { clearTimeout(timer); URL.revokeObjectURL(url); audio.removeAttribute("src"); fn(v); };
+		const local = typeof source !== "string";
+		const url = local ? URL.createObjectURL(source) : source;
+		const done = (fn, v) => { clearTimeout(timer); if (local) URL.revokeObjectURL(url); audio.removeAttribute("src"); fn(v); };
 		const timer = setTimeout(() => done(reject, new Error("timeout")), LENGTH_TIMEOUT_MS);
 		audio.preload = "metadata";
 		audio.onloadedmetadata = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? done(resolve, audio.duration) : done(reject, new Error("no length")));
@@ -222,7 +245,9 @@ export async function prepare(files, { maxBytes, spaceLeft }) {
 	const out = [];
 	let left = spaceLeft;
 	for (const file of files) {
-		const item = { file, format: formatOf(file.name), duration: 0, ...detailsFromName(file.name), album: "", year: null, error: "" };
+		// From a chosen folder, the album defaults to the folder the file is in.
+		const folder = (file.webkitRelativePath ?? "").split("/").slice(-2, -1)[0] ?? "";
+		const item = { file, name: file.name, size: file.size, format: formatOf(file.name), duration: 0, ...detailsFromName(file.name), album: folder, year: null, error: "" };
 		try {
 			checkFile({ fileName: file.name, format: item.format, size: file.size }, { maxBytes, spaceLeft: left });
 			try {
@@ -235,6 +260,34 @@ export async function prepare(files, { maxBytes, spaceLeft }) {
 			left -= file.size;
 		} catch (err) {
 			item.error = err instanceof UploadRuleError ? err.message : `"${file.name}" could not be read (${err.message})`;
+		}
+		out.push(item);
+	}
+	return out;
+}
+
+/**
+ * Reads files already in storage (from browse()) the same way: length from
+ * the audio element and tags from the file's first bytes, through their
+ * signed addresses; the album defaults to the folder's name. Nothing is
+ * checked against space: these files were not uploaded and use none.
+ */
+export async function prepareStored(files, folderName = "") {
+	const out = [];
+	for (const f of files) {
+		const item = { remote: true, key: f.key, url: f.url, name: f.name, size: f.size, format: f.format, duration: 0, ...detailsFromName(f.name), album: folderName, year: null, error: "" };
+		try {
+			try {
+				item.duration = await lengthOf(f.url);
+			} catch {
+				throw new UploadRuleError(`"${f.name}" has no readable length; it may not be audio, or it is damaged`);
+			}
+			const res = await fetch(f.url, { headers: { Range: `bytes=0-${TAG_BYTES - 1}` }, cache: "no-store" });
+			if (!res.ok) throw new UploadRuleError(`"${f.name}" could not be read: HTTP ${res.status}`);
+			const tags = readTags(new Uint8Array(await res.arrayBuffer()));
+			Object.assign(item, Object.fromEntries(Object.entries(tags).filter(([, v]) => v)));
+		} catch (err) {
+			item.error = err instanceof UploadRuleError ? err.message : `"${f.name}" could not be read (${err.message})`;
 		}
 		out.push(item);
 	}

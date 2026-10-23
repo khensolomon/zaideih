@@ -1,5 +1,10 @@
 # Version
 
+## v26.10.23.3
+
+- Rights per member, given and taken by the owner and co-owners: co-owner, review publishing, moderate members, storage
+- Your uploads: add music already in storage (R2, private/) without uploading it, and add a whole folder from a computer
+
 ## v26.10.23.2
 
 - Phones: the top controls no longer slide down when a page is pulled past its bottom

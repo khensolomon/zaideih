@@ -14,7 +14,7 @@
  *            that either completes or leaves the database as it was. When
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
- *            Refuses while personal libraries (members, uploads) hold rows,
+ *            Refuses while personal libraries (members, uploads, member_rights) hold rows,
  *            unless --drop-library: they cannot be rebuilt from git.
  *
  * Every command except status is a dry run unless --apply is given.
