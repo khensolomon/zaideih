@@ -6,7 +6,7 @@ import { D1Error, isSystemTable, resetSql, schemaSql, schemaTables, wranglerRows
 const schema = await readFile(new URL("../worker/media/schema.sql", import.meta.url), "utf8");
 
 test("the schema is one idempotent file with the Worker's tables", () => {
-	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "members", "uploads", "member_rights", "member_folders"]);
+	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "members", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks"]);
 	const sql = schemaSql(schema);
 	assert.doesNotMatch(sql, /--/);
 	for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) assert.match(stmt, /^CREATE (TABLE|INDEX) IF NOT EXISTS/);

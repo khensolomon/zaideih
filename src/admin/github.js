@@ -118,6 +118,8 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 				merged: pr.merged,
 				mergeable: pr.mergeable,
 				head: pr.head.sha,
+				branch: pr.head.ref,
+				title: pr.title,
 				url: pr.html_url,
 				checks: runs.check_runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion, url: r.html_url })),
 			};

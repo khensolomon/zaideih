@@ -36,6 +36,7 @@
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
 import { can, MemberError, memberRow, RIGHTS, rightsOf, whoIs } from "./members.js";
 import { formatOf } from "../../src/core/upload-rules.js";
+import { handleRequests, settleReleased } from "./requests.js";
 
 export { checkNewUpload, FORMATS };
 
@@ -49,7 +50,7 @@ const SIGNED_FOR_S = 6 * 3600;
 export const UPLOADS_ROOT = "users/";
 /** A member with the Storage right and no folder set adds from here: private/<github id>/. */
 export const STORAGE_DEFAULT = "private/";
-const isUpload = (key) => key.startsWith(UPLOADS_ROOT);
+export const isUpload = (key) => key.startsWith(UPLOADS_ROOT);
 const MAX_ADD = 200;
 const MAX_LIST = 1000;
 const STALE_UPLOAD_S = 3600;
@@ -134,13 +135,13 @@ export function looksLike(format, b) {
 
 /* ------------------------------------------------------------- answers ---- */
 
-function json(status, body, cors) {
+export function json(status, body, cors) {
 	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", Vary: "Origin" });
 	if (cors) headers.set("Access-Control-Allow-Origin", cors);
 	return new Response(body === null ? null : JSON.stringify(body), { status, headers });
 }
 
-async function readJson(request, limit = MAX_JSON) {
+export async function readJson(request, limit = MAX_JSON) {
 	const text = await request.text();
 	if (text.length > limit) throw new LibraryError("request body too large", 413);
 	try {
@@ -178,14 +179,17 @@ async function dropStale(env, ownerId, nowSeconds) {
 
 async function library(env, me, cfg, origin, nowSeconds) {
 	await dropStale(env, me.id, nowSeconds);
+	await settleReleased(env);
 	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 AND status <> 'uploading' ORDER BY album COLLATE NOCASE, track_no, title COLLATE NOCASE").bind(me.id).all();
 	const { used } = await usedBytes(env, me.id);
 	const uploads = [];
 	for (const r of rows.results ?? []) uploads.push({ ...publicUpload(r), url: await signedUrl(origin, r.id, env.AUDIO_SIGNING_KEY, nowSeconds) });
+	const requests = (await env.DB.prepare("SELECT id, album, lang, note, status, reason, reviewer, catalog_album, pr_url, created_at, decided_at FROM publish_requests WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(me.id).all()).results ?? [];
 	return {
 		member: { id: me.id, login: me.login, role: me.role, moderator: me.moderator, rights: [...me.rights], storageRoot: storageRootOf(me) },
 		space: { used, quota: me.role === "owner" ? null : cfg.quota, maxFile: cfg.maxBytes },
 		uploads,
+		requests: requests.map((q) => ({ id: q.id, album: q.album, lang: q.lang, note: q.note, status: q.status, reason: q.reason, reviewer: q.reviewer, catalogAlbum: q.catalog_album, pr: q.pr_url, created: q.created_at, decided: q.decided_at })),
 	};
 }
 
@@ -235,6 +239,7 @@ async function storeFile(request, env, me, id, nowSeconds) {
 async function editUpload(env, me, id, body, nowSeconds) {
 	const row = await uploadRow(env, id);
 	if (!row || row.owner_id !== me.id || row.status === "uploading") throw new LibraryError("no such upload in your library", 404);
+	if (row.status === "requested") throw new LibraryError(`"${row.title}" is waiting for review; withdraw the request to change it`, 409);
 	const d = checkDetails(body, true);
 	const fields = Object.keys(d);
 	if (!fields.length) throw new LibraryError("nothing to change");
@@ -250,6 +255,11 @@ async function deleteUpload(env, me, id) {
 	const isOwnersUpload = isOwnerLogin(env, ownerOfRow?.login);
 	const mine = row?.owner_id === me.id;
 	if (!row || (!mine && !(can(me, "moderate") && !isOwnersUpload))) throw new LibraryError("no such upload, or not yours to delete", 404);
+	if (row.status === "requested") throw new LibraryError(`"${row.title}" is waiting for review; withdraw the request first`, 409);
+	// A published song is in the catalog: its library entry stays, so the member stays credited with it.
+	if ((row.status === "published" || row.status === "released") && !can(me, "manage")) {
+		throw new LibraryError(`"${row.title}" is published in the catalog; a song is removed from the catalog by the owner, on request`, 409);
+	}
 	// A file added from storage was put there by hand and stays; only uploads are deleted.
 	if (isUpload(row.r2_key)) await env.BUCKET.delete(row.r2_key);
 	await env.DB.prepare("DELETE FROM uploads WHERE id = ?1").bind(id).run();
@@ -282,7 +292,7 @@ async function memberUploads(env, gid) {
 	if (!m) throw new LibraryError("no such member", 404);
 	// The owner's library is the owner's alone.
 	if (isOwnerLogin(env, m.login)) throw new LibraryError("the owner's library is private", 403);
-	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 ORDER BY created_at DESC").bind(gid).all();
+	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(gid).all();
 	return { login: m.login, uploads: (rows.results ?? []).map(publicUpload) };
 }
 
@@ -452,6 +462,10 @@ export async function handleLibrary(request, env, { fetchImpl, now = () => Date.
 		const m = request.method;
 		let match;
 		if (path === "/library" && m === "GET") return json(200, await library(env, me, cfg, url.origin, nowSeconds), cors);
+		if (path === "/library/requests" || path.startsWith("/library/requests/")) {
+			const answer = await handleRequests(request, env, me, path, url.origin, cors, nowSeconds);
+			if (answer) return answer;
+		}
 		if (path === "/library/uploads" && m === "POST") return json(201, await createUpload(env, me, cfg, await readJson(request), nowSeconds), cors);
 		if (path === "/library/storage" && m === "GET") return json(200, await listStorage(env, me, url.searchParams.get("prefix"), url.searchParams.get("cursor"), url.origin, nowSeconds), cors);
 		if (path === "/library/storage/add" && m === "POST") return json(201, await addFromStorage(env, me, await readJson(request, 256 * 1024), nowSeconds), cors);

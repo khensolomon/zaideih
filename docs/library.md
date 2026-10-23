@@ -2,7 +2,7 @@
 
 Anyone signed in with GitHub can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (this release). Still to come: asking for an upload to be published, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (this release). Still to come: asking to remove a published song, and share links.
 
 ## Roles and rights
 
@@ -17,7 +17,7 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Right | Allows |
 |---|---|
 | Co-owner (`manage`) | Everything below, and gives or takes any right from any member but the owner |
-| Review publishing (`review`) | Approves or rejects requests to publish (to come), and listens to the songs under review |
+| Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their github id>/` until one is set) |
 
@@ -32,7 +32,9 @@ D1 (`worker/media/schema.sql`):
 - `members`: one row per GitHub account that has used the library: GitHub id (the key; logins can change), login, block (time, by whom, reason), first and last seen.
 - `member_rights`: the rights the owner has given, one row per member and right.
 - `member_folders`: the storage folder set for a member with the Storage right.
-- `uploads`: one row per uploaded file: id, owner's GitHub id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`; later `requested`, `published`, `rejected`) and when it was added.
+- `uploads`: one row per uploaded file: id, owner's GitHub id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`, `requested` while asked to be published, `published` once approved, `released` once in the catalog) and when it was added.
+- `publish_requests`: one row per album asked to be published: the member, the album name, language, note, status (`open`, `withdrawn`, `rejected`, `approved`, `released`), who decided, the reason, the catalog album id and the pull request.
+- `published_tracks`: for each approved song, its upload, request, catalog track id and catalog file (`music/…`).
 
 R2:
 
@@ -40,9 +42,9 @@ R2:
 - `users/<github id>/<upload id>.<ext>`: uploads.
 - Anything else: files put in R2 some other way (rclone, wrangler, the dashboard), wherever their owner keeps them, which can be added from storage. They are never moved, renamed or deleted by Zaideih.
 
-Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then.
+Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).
 
-`tools/d1.mjs reset` refuses while `members`, `uploads`, `member_rights` or `member_folders` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
+`tools/d1.mjs reset` refuses while `members`, `uploads`, `member_rights`, `member_folders`, `publish_requests` or `published_tracks` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -67,6 +69,19 @@ Music already in R2 (bought elsewhere, too large to upload, kept the way its own
 Your uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
 
 Uploads are the only files a library owns (`users/…`): only they count towards space and are deleted with their entry. Files go into R2 with rclone, `npx wrangler r2 object put "media/<folder>/<file>" --file <file> --remote` or the Cloudflare dashboard.
+
+## Asking to publish
+
+A member can ask for an album of their uploads to join the public catalog. The catalog stays in git and is changed only by a reviewed, released pull request; publishing is that, prepared from the member's files.
+
+1. **Ask** (the album's page in the app, Ask to publish): the whole album, with its language, a note for the reviewer (who made it, why it may be shared) and a statement that they may share it. Only MP3 can be published, since the catalog streams MP3 (`media.json`, `/audio`); an album with other formats is refused naming the files, to be uploaded again as MP3. While asked, its songs cannot be edited or deleted; the member can withdraw the request.
+2. **Review** (admin page, Requests, with Review publishing): every song can be listened to. **Reject** needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
+3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. The admin page then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, on the admin page (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
+4. **Released**: once D1 `tracks` holds every song of the request, the next library read settles it: the member's uploaded copies (`users/…`) are deleted and their library entries point at the catalog's files, so they play as before and no longer use the member's space. A song added from storage keeps its file. The album page says "In the catalog, published by you" with a link to the catalog album.
+
+The member stays credited: published songs stay in their library and cannot be deleted from it by them (the owner and co-owners can); corrections go through Suggest on the admin page like any catalog edit.
+
+The owner, co-owners and reviewers do not ask anyone: on their own album the page has a **Public in the catalog** switch. Turning it on asks and opens the approval form at once (`#/admin?review=<id>`); turning it off while still waiting withdraws.
 
 ## Listening
 
@@ -95,5 +110,6 @@ Deleting is permanent. Blocking is the reversible step.
 
 ## To come
 
-- Ask to publish (agreed 2026-10-23): a member asks for a whole album, MP3 or M4A only, with its language and a note on the rights. Review publishing listens and approves or rejects with a reason; approving fills the album form from the upload, copies the files to `music/<language>/<album>/`, and opens the usual pull request (released as `web+d1`). After the release the member's private copies are removed; the member stays credited, with "Suggest a correction" and "Ask to remove" on their published songs, both reviewed. The owner can do or undo any of it.
+- Ask to remove: a member asks for a song they published to leave the catalog, reviewed like asking to publish. Until then the owner removes it with a catalog edit.
+- M4A (AAC) for publishing: needs the catalog's player and `media.json` to accept it; MP3 only for now.
 - Share links: chosen songs, a note and an expiry ("never" allowed), revocable, with a record of when they were opened; for showing pending recordings to rights holders without making them public.

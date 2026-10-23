@@ -15,7 +15,7 @@
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
  *            Refuses while personal libraries (members, uploads, member_rights,
- *            member_folders) hold rows,
+ *            member_folders, publish_requests, published_tracks) hold rows,
  *            unless --drop-library: they cannot be rebuilt from git.
  *
  * Every command except status is a dry run unless --apply is given.

@@ -986,6 +986,26 @@ dialog .actions { justify-content: flex-end; margin: 18px 0 0; }
 dialog .up-edit label { display: grid; gap: 4px; margin-bottom: 10px; font-size: 14px; color: var(--ink-2); }
 dialog .up-edit input { width: 100%; min-height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); }
 dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+dialog .up-edit select, dialog .up-edit textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; }
+dialog .up-edit select { min-height: 42px; }
+dialog .up-edit label.check { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+dialog .up-edit label.check input { width: 20px; min-height: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+dialog .up-edit .muted { color: var(--ink-3); font-size: 14px; margin: 0 0 12px; }
+dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 12px; }
+
+/* Asking to publish, on an album of one's uploads. */
+.publish-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-2); }
+.publish-row small { color: var(--ink-3); font-size: 14px; flex: 1 1 240px; }
+.publish-row[data-state="released"], .publish-row[data-state="published"] { border-color: var(--accent); }
+.switch { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch-track { position: relative; width: 44px; height: 26px; border-radius: 13px; background: var(--line); transition: background 0.2s; flex: none; }
+.switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); box-shadow: 0 1px 3px var(--shadow); transition: transform 0.2s; }
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch input:checked + .switch-track::after { transform: translateX(18px); background: var(--on-accent); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + .switch-track { opacity: 0.6; }
+.switch:has(input:disabled) { cursor: default; }
 
 /* ---------- My uploads (src/ui/uploads-view.js) ---------- */
 .up-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -1181,6 +1201,15 @@ dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; ga
 .admin .adm-member-uploads li { display: flex; justify-content: space-between; gap: 12px; }
 .admin .adm-member-uploads small { display: block; color: var(--ink-3); }
 @media (max-width: 760px) { .admin .adm-members > li { grid-template-columns: 1fr; } .admin .adm-members .adm-actions { justify-content: flex-start; } }
+/* Requests to publish (admin, Requests tab). */
+.admin .adm-request .adm-note { margin: 6px 0 0; color: var(--ink-2); font-size: 0.92em; }
+.admin .adm-request .adm-edit { grid-column: 1 / -1; margin: 8px 0 0; }
+.admin .adm-listen { grid-column: 1 / -1; list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.admin .adm-listen li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 320px); gap: 12px; align-items: center; }
+.admin .adm-listen small { display: block; color: var(--ink-3); }
+.admin .adm-listen audio { width: 100%; height: 36px; }
+.admin .adm-request[data-status="approved"] .adm-tag { background: var(--accent-soft, var(--hover)); }
+@media (max-width: 760px) { .admin .adm-listen li { grid-template-columns: 1fr; } }
 .admin .adm-rights { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 2px 0 0; padding: 0; border: 0; }
 .admin .adm-rights legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .admin .adm-rights label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); cursor: pointer; }

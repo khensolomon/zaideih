@@ -198,8 +198,39 @@ export function album(c, { id }) {
 				${a.upload ? "" : editLink({ album: a.id })}
 				<button class="icon-btn" data-act="list-menu" data-list="${key}" aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
+			${a.upload && a.named ? publishRow(c, a) : ""}
 			${chunkedTracks(a.tracks, a.title)}`,
 	};
+}
+
+/**
+ * Asking to publish an album of one's uploads (docs/library.md). Reviewers
+ * (the owner, co-owners, Review publishing) have a switch that goes
+ * straight to the approval form; members ask, and see the answer here.
+ */
+function publishRow(c, a) {
+	const r = a.request;
+	const st = a.publish;
+	const inCatalog = r?.catalogAlbum && c.album(r.catalogAlbum) && !c.album(r.catalogAlbum).upload
+		? html` <a class="text-link" href="${href(`album/${r.catalogAlbum}`)}">Open it in the catalog</a>` : "";
+	const said = {
+		requested: uploads.canReview ? html`Waiting for approval. <a class="text-link" href="#/admin?review=${r?.id}">Approve it</a>` : "Waiting for a reviewer. You can still listen; changes wait until it is decided.",
+		published: html`Approved${r?.reviewer ? ` by ${r.reviewer}` : ""}: it joins the catalog with the next release. Published by you.`,
+		released: html`In the catalog, published by you.${inCatalog}`,
+		private: r?.status === "rejected" ? html`Not published: ${r.reason}` : uploads.canReview ? "Only you can play it." : "Only you can play it. Ask to share it with everyone in the catalog.",
+	}[st];
+	if (uploads.canReview) {
+		const locked = st === "published" || st === "released";
+		return html`<div class="publish-row" data-state="${st}">
+			<label class="switch"><input type="checkbox" role="switch" data-act="publish-toggle" data-album="${a.id}" ${st !== "private" ? "checked" : ""} ${locked ? "disabled" : ""}><span class="switch-track" aria-hidden="true"></span>Public in the catalog</label>
+			<small>${said}</small>
+		</div>`;
+	}
+	return html`<div class="publish-row" data-state="${st}">
+		${st === "private" ? html`<button class="btn" data-act="ask-publish" data-album="${a.id}">${icon("upload")} ${r?.status === "rejected" ? "Ask again" : "Ask to publish"}</button>` : ""}
+		${st === "requested" ? html`<button class="btn" data-act="withdraw-publish" data-id="${r?.id}">Withdraw the request</button>` : ""}
+		<small>${said}</small>
+	</div>`;
 }
 
 /* ---------- artist ---------- */
@@ -555,7 +586,7 @@ export function terms() {
 				<p>Play counts: after a song has played for 10 seconds, the app tells the Zaideih audio server which song was played and when, so the site can show how often songs are listened to. Nothing else is sent with it: no account, cookie or device identifier, and nothing from your library. Your network address is used only to stop the same sender from inflating counts, and is not stored. Plays while offline are sent once you are online again.</p>
 				<p>Usage statistics are off unless you allow them. When allowed, Google Analytics counts page visits (the page's address within Zaideih and its title) and song plays (which song, album and language), and sets its own cookies for that; Google processes this data under its own terms. Searches and your library are never sent. The choice is kept per device and can be changed at any time on the <a class="text-link" href="#/about">About</a> page.</p>
 				<h2>Your uploads</h2>
-				<p>Signed in with GitHub, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your GitHub account's id, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good.</p>
+				<p>Signed in with GitHub, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your GitHub account's id, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good. You can also ask for an album of yours to be published in the catalog for everyone: a reviewer listens first, and once it is released it is part of the public catalog, credited to you.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
 				<h2>Rights holders</h2>

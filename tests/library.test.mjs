@@ -315,3 +315,102 @@ test("library requests need a sign-in, an allowed origin and the setup", { skip 
 	const limited = setup({ UPLOAD_LIMIT: fakeLimiter(false) });
 	assert.equal((await limited.call("tok-ann", "POST", "/library/uploads", song())).status, 429);
 });
+
+test("asking to publish: a member asks, a reviewer listens and approves, the release settles it", { skip }, async () => {
+	const { env, call } = setup({ UPLOAD_QUOTA_BYTES: "5000" });
+	const a = await upload(call, "tok-ann", song({ title: "One", track: 1 }), mp3(600));
+	const b = await upload(call, "tok-ann", song({ title: "Two", track: 2, fileName: "Two.mp3" }), mp3(600));
+	await upload(call, "tok-ann", song({ title: "Other", album: "Elsewhere" }), mp3(600));
+	await call("tok-mod", "GET", "/library");
+
+	assert.equal((await call("tok-ann", "POST", "/library/requests", { album: "Nope", lang: 1 })).status, 404);
+	assert.equal((await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990" })).status, 400, "a language is required");
+	const asked = await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990", lang: 1, note: "I recorded it" });
+	assert.equal(asked.status, 201, await asked.clone().text());
+	const { id, songs } = await asked.json();
+	assert.equal(songs, 2);
+	assert.equal((await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990", lang: 1 })).status, 409, "asked once");
+	assert.equal((await call("tok-ann", "PATCH", `/library/uploads/${a.id}`, { album: "x" })).status, 409, "frozen while waiting");
+	assert.equal((await call("tok-ann", "DELETE", `/library/uploads/${a.id}`)).status, 409);
+
+	// A member sees their own; without the right, nobody else's, and cannot decide.
+	const own = await (await call("tok-ann", "GET", "/library/requests")).json();
+	assert.equal(own.reviewer, false);
+	assert.deepEqual(own.requests.map((r) => [r.album, r.status, r.songs.length]), [["Tape 1990", "open", 2]]);
+	assert.deepEqual((await (await call("tok-mod", "GET", "/library/requests")).json()).requests, []);
+	assert.equal((await call("tok-mod", "POST", `/library/requests/${id}/reject`, { reason: "no" })).status, 403);
+	assert.equal((await (await call("tok-ann", "GET", "/library")).json()).requests[0].status, "open");
+
+	await call("tok-owner", "POST", "/library/members/7", { rights: { review: true } });
+	const queue = await (await call("tok-mod", "GET", "/library/requests")).json();
+	assert.equal(queue.reviewer, true);
+	const req = queue.requests.find((r) => r.id === id);
+	assert.equal(req.login, "ann");
+	assert.equal((await handleSignedAudio(new Request(req.songs[0].url), env, req.songs[0].upload)).status, 200, "the reviewer listens");
+
+	const tracks = [{ upload: a.id, track: 30001, key: "music/tape-1990/One.mp3" }, { upload: b.id, track: 30002, key: "music/tape-1990/Two.mp3" }];
+	const approve = (body) => call("tok-mod", "POST", `/library/requests/${id}/approve`, body);
+	assert.equal((await approve({ album: "z", tracks })).status, 400, "a catalog album id");
+	assert.equal((await approve({ album: "0123456789abcdef", tracks: tracks.slice(0, 1) })).status, 400, "every song");
+	assert.equal((await approve({ album: "0123456789abcdef", tracks: [tracks[0], { ...tracks[1], key: "users/x.mp3" }] })).status, 400, "under music/");
+	assert.equal((await approve({ album: "0123456789abcdef", tracks: [tracks[0], { ...tracks[1], key: "music/../x.mp3" }] })).status, 400);
+	env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (30002, 'x', 'y.mp3', 0)").run();
+	assert.equal((await approve({ album: "0123456789abcdef", tracks })).status, 409, "track id in use");
+	env.DB.raw.prepare("DELETE FROM tracks WHERE id = 30002").run();
+	await env.BUCKET.put("music/tape-1990/Two.mp3", mp3(10));
+	assert.equal((await approve({ album: "0123456789abcdef", tracks })).status, 409, "nothing is overwritten");
+	assert.ok(!env.BUCKET.objects.has("music/tape-1990/One.mp3"), "nothing copied before the checks pass");
+	await env.BUCKET.delete("music/tape-1990/Two.mp3");
+
+	const ok = await approve({ album: "0123456789abcdef", tracks });
+	assert.equal(ok.status, 200, await ok.clone().text());
+	assert.equal(env.BUCKET.objects.get("music/tape-1990/One.mp3").bytes.length, 600);
+	assert.equal(env.BUCKET.objects.get("music/tape-1990/One.mp3").type, "audio/mpeg");
+	assert.equal((await approve({ album: "0123456789abcdef", tracks })).status, 409, "once");
+	assert.equal((await call("tok-mod", "POST", `/library/requests/${id}/pr`, { url: "https://evil.example/pull/1" })).status, 400);
+	assert.equal((await call("tok-mod", "POST", `/library/requests/${id}/pr`, { url: "https://github.com/khensolomon/zaideih/pull/90" })).status, 204);
+	assert.equal((await call("tok-ann", "DELETE", `/library/uploads/${a.id}`)).status, 409, "a published song stays credited");
+
+	let lib = await (await call("tok-ann", "GET", "/library")).json();
+	assert.deepEqual([lib.requests[0].status, lib.requests[0].pr, lib.requests[0].reviewer], ["approved", "https://github.com/khensolomon/zaideih/pull/90", "modi"]);
+	assert.deepEqual(lib.uploads.filter((u) => u.album === "Tape 1990").map((u) => u.status), ["published", "published"]);
+
+	// The release loads the tracks; the uploaded copies go and the library points at the catalog's files.
+	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, 'tape-1990', ?, 0)").run(t.track, t.key.split("/").pop());
+	lib = await (await call("tok-ann", "GET", "/library")).json();
+	assert.equal(lib.requests[0].status, "released");
+	assert.ok(!env.BUCKET.objects.has(`users/42/${a.id}.mp3`));
+	const one = lib.uploads.find((u) => u.id === a.id);
+	assert.equal(one.status, "released");
+	assert.equal((await handleSignedAudio(new Request(one.url), env, a.id)).status, 200, "it still plays, from the catalog's file");
+	const used = (await (await call("tok-ann", "GET", "/library")).json()).space.used;
+	assert.equal(used, 600, "published songs no longer use the member's space");
+});
+
+test("asking to publish: MP3 only, withdrawing and rejecting give the songs back", { skip }, async () => {
+	const { env, call } = setup();
+	await upload(call, "tok-ann", song({ title: "One" }), mp3(600));
+	const flac = Uint8Array.from([..."fLaC"].map((c) => c.charCodeAt(0)).concat(Array(596).fill(0)));
+	await upload(call, "tok-ann", song({ title: "Two", fileName: "Two.flac", format: "flac" }), flac);
+	const refused = await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990", lang: 1 });
+	assert.equal(refused.status, 415);
+	assert.match((await refused.json()).error, /Only MP3 can be published\. "Two.flac" is FLAC/);
+	const two = (await (await call("tok-ann", "GET", "/library")).json()).uploads.find((u) => u.format === "flac");
+	await call("tok-ann", "DELETE", `/library/uploads/${two.id}`);
+
+	const { id } = await (await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990", lang: 1 })).json();
+	assert.equal((await call("tok-spam", "DELETE", `/library/requests/${id}`)).status, 403);
+	assert.equal((await call("tok-ann", "DELETE", `/library/requests/${id}`)).status, 204);
+	assert.equal((await call("tok-ann", "DELETE", `/library/requests/${id}`)).status, 409);
+	let lib = await (await call("tok-ann", "GET", "/library")).json();
+	assert.equal(lib.uploads[0].status, "private");
+	assert.equal(lib.requests[0].status, "withdrawn");
+
+	// The owner holds every right: asks and decides; a rejection says why.
+	const again = await (await call("tok-ann", "POST", "/library/requests", { album: "Tape 1990", lang: 1 })).json();
+	assert.equal((await call("tok-owner", "POST", `/library/requests/${again.id}/reject`, {})).status, 400, "a reason");
+	assert.equal((await call("tok-owner", "POST", `/library/requests/${again.id}/reject`, { reason: "Not your recording" })).status, 200);
+	lib = await (await call("tok-ann", "GET", "/library")).json();
+	assert.deepEqual([lib.requests[0].status, lib.requests[0].reason, lib.uploads[0].status], ["rejected", "Not your recording", "private"]);
+	assert.equal(env.BUCKET.objects.size, 1);
+});

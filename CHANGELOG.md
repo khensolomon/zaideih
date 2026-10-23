@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.23.5
+
+- Ask to publish: members ask for an album of their uploads to join the catalog; reviewers listen, approve (songs copied into the catalog, a release pull request opened) or reject with a reason; the owner publishes their own with one switch
+
 ## v26.10.23.4
 
 - Add from storage works wherever music is kept in R2: the whole bucket (but members' uploads) for the owner and co-owners, a folder the owner sets for members with the Storage right; any folder can be typed, and the last one is remembered

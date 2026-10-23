@@ -141,3 +141,40 @@ CREATE TABLE IF NOT EXISTS member_folders (
     set_by     TEXT    NOT NULL,
     set_at     INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- publish_requests: a member's album asked to join the public catalog
+-- =============================================================================
+-- status: open (waiting for review), withdrawn (by the member), rejected
+-- (with a reason), approved (files copied to music/…, the catalog pull
+-- request opened), released (the release loaded the songs: the member's
+-- uploaded copies are gone and the library rows point at the catalog files).
+-- Reviewed by Review publishing; the owner and co-owners may do or undo
+-- anything. Not rebuildable from git: kept by `tools/d1.mjs reset`.
+CREATE TABLE IF NOT EXISTS publish_requests (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id       INTEGER NOT NULL,
+    album          TEXT    NOT NULL,
+    lang           INTEGER NOT NULL,
+    note           TEXT    NOT NULL DEFAULT '',
+    status         TEXT    NOT NULL DEFAULT 'open',
+    reviewer       TEXT,
+    reason         TEXT,
+    catalog_album  TEXT,
+    pr_url         TEXT,
+    created_at     INTEGER NOT NULL,
+    decided_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_publish_requests_status ON publish_requests (status, created_at);
+
+-- =============================================================================
+-- published_tracks: each song of an approved request and its catalog place
+-- =============================================================================
+-- The member stays credited: their library lists these as published by them.
+CREATE TABLE IF NOT EXISTS published_tracks (
+    upload_id   INTEGER PRIMARY KEY,
+    request_id  INTEGER NOT NULL,
+    owner_id    INTEGER NOT NULL,
+    track_id    INTEGER NOT NULL UNIQUE,
+    r2_key      TEXT    NOT NULL UNIQUE      -- music/<folder>/<file>
+);
