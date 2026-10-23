@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.23.2
+
+- Phones: the top controls no longer slide down when a page is pulled past its bottom
+
 ## v26.10.23.1
 
 - Phones: the top controls stay put when the page is pulled past its ends and while the keyboard is open; round buttons stay round beside long titles; lighter shadows and a frosted band under the status bar
