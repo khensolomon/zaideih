@@ -35,6 +35,7 @@ import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import * as esbuild from "esbuild";
 import { VersionError, parseVersion } from "./lib/version.mjs";
+import { logoMark } from "../src/ui/logo.js";
 
 const DEFAULT_AUDIO_URL = "https://media.zaideih.com/audio/{id}";
 const DEFAULT_GA_ID = "G-65TTKMZEGC";
@@ -223,12 +224,14 @@ await cp(join(CATALOG, catalogMeta.catalog), join(OUT, "catalog", catalogMeta.ca
 
 // 4. index.html.
 const template = await readFile("src/index.html", "utf8");
-for (const marker of ["%JS%", "%CSS%", "<!--%HEAD%-->"]) {
+for (const marker of ["%JS%", "%CSS%", "<!--%HEAD%-->", "<!--%LOGO%-->"]) {
 	if (!template.includes(marker)) die(`src/index.html is missing the ${marker} placeholder`);
 }
 const index = template
 	.replace("%JS%", js)
 	.replace("%CSS%", css)
+	// The loading screen's logo, there before any script runs.
+	.replace("<!--%LOGO%-->", String(logoMark()))
 	// The release workflow reads data-version from the live page to confirm a deploy.
 	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);

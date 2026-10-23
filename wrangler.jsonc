@@ -4,11 +4,11 @@
 // dist/web/_headers (CSP and caching). The release workflow builds dist/web
 // and runs `wrangler deploy` with this file (docs/releasing.md).
 //
-// The site is served at https://zaideih.<account subdomain>.workers.dev.
-// zaideih.com is to be attached as a custom domain in the Cloudflare
-// dashboard when the switch is intended, not as routes in this file: routes
-// here make every deploy look up the zaideih.com zone, which would need zone
-// permissions on the release workflow's token (docs/releasing.md).
+// The site is served at https://zaideih.<account subdomain>.workers.dev and
+// at zaideih.com, a custom domain attached in the Cloudflare dashboard, not
+// declared as routes in this file: routes here make every deploy look up the
+// zaideih.com zone, which would need zone permissions on the release
+// workflow's token (docs/releasing.md).
 {
 	"name": "zaideih",
 	"compatibility_date": "2026-05-01",

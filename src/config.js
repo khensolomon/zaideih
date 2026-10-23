@@ -35,7 +35,7 @@ export class AudioSourceError extends Error {}
 export function audioUrl(track) {
 	// An upload carries its own signed address (core/uploads.js).
 	if (track.upload) {
-		if (!track.url) throw new AudioSourceError(`"${track.title}" has no address yet; open My uploads to refresh it.`);
+		if (!track.url) throw new AudioSourceError(`"${track.title}" has no address yet; open Your uploads to refresh it.`);
 		return track.url;
 	}
 	if (!AUDIO_URL_TEMPLATE) {

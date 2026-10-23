@@ -1,5 +1,5 @@
 /**
- * Library, My uploads: the signed-in person's own music (core/uploads.js,
+ * Library, Your uploads: the signed-in person's own music (core/uploads.js,
  * docs/library.md). Choosing files reads them in the browser first; files
  * that cannot be uploaded are listed with the reason and never sent. The
  * rest can be corrected (title, artist, album) and are uploaded one after
@@ -53,7 +53,7 @@ function reviewList() {
 	</section>`;
 }
 
-/** The My uploads tab of the Library page: { body, mount }. */
+/** The Your uploads page of Library: { body, mount }. */
 export function uploadsPanel() {
 	const st = uploads.state;
 	if (!uploads.available) {

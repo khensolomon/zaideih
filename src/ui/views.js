@@ -3,6 +3,7 @@
  */
 import { ADMIN_URL, APP_VERSION, LIBRARY_URL } from "../config.js";
 import { uploadsPanel } from "./uploads-view.js";
+import { uploads } from "../core/uploads.js";
 import { LEVELS, readWho } from "../core/access.js";
 import { analytics } from "../core/analytics.js";
 import { creditOf } from "../core/catalog.js";
@@ -373,15 +374,70 @@ function resultSections(list, q, r = null) {
 }
 
 /* ---------- library ---------- */
-const LIB_TABS = [["liked", "Liked"], ["playlists", "Playlists"], ["downloads", "Downloads"], ["history", "History"], ...(LIBRARY_URL ? [["uploads", "Uploads"]] : [])];
+/*
+ * Library. The overview puts first what is used most: liked songs, then
+ * playlists; then what lives on this device (downloads, history), the
+ * person's own uploads, and the backup. Each has its own page below
+ * #/library/<section>.
+ */
+const LIB_SECTIONS = {
+	liked: "Liked songs",
+	playlists: "Playlists",
+	downloads: "Downloads",
+	history: "Recently played",
+	...(LIBRARY_URL ? { uploads: "Your uploads" } : {}),
+};
 
-function libTabs(active) {
-	return html`<nav class="segmented" aria-label="Library sections">${LIB_TABS.map(([k, label]) =>
-		html`<a href="#/library/${k}" ${k === active ? html`aria-current="page"` : ""}>${label}</a>`)}</nav>`;
+const libFoot = html`<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="#/help">Help</a></p>`;
+
+function playlistCards(lists) {
+	return html`<div class="playlists">${lists.map((p) => html`<a href="${href(`playlist/${p.id}`)}"><span class="pl-icon" aria-hidden="true">${icon("queue")}</span><b>${p.name}</b><span>${plural(p.tracks.length, "song")}</span></a>`)}</div>`;
 }
 
-export async function libraryView(c, { tab = "liked" }) {
-	if (!LIB_TABS.some(([k]) => k === tab)) return notFound("page");
+function libRow(section, glyph, label, detail) {
+	return html`<a class="lib-row" href="#/library/${section}"><span class="lib-row-icon" aria-hidden="true">${icon(glyph)}</span><span class="lib-row-text"><b>${label}</b><small>${detail}</small></span>${icon("chevron")}</a>`;
+}
+
+async function libraryHome(c) {
+	const liked = (await library.likedIds()).map((id) => c.track(id)).filter(Boolean);
+	const likedKey = registerList(liked.map((t) => t.id), "Liked songs");
+	const recent = (await library.recent(6)).map((id) => c.track(id)).filter(Boolean);
+	const usage = await offline.usage();
+	const lists = library.playlists;
+	const st = uploads.state;
+	return {
+		title: "Library",
+		body: html`<h1 class="page-title">Library</h1>
+			<div class="lib-liked">
+				<a class="lib-liked-link" href="#/library/liked">
+					<span class="lib-liked-art" aria-hidden="true">${icon("heart")}</span>
+					<span><b>Liked songs</b><small>${liked.length ? plural(liked.length, "song") : "Tap the heart on any song to keep it here"}</small></span>
+				</a>
+				${liked.length ? html`<button class="play-btn lib-liked-play" data-act="play-all" data-list="${likedKey}" aria-label="Play liked songs">${icon("play")}</button>` : ""}
+			</div>
+			<section class="section">
+				<header><h2><a href="#/library/playlists">Playlists</a></h2><button class="btn" data-act="new-playlist">${icon("plus")} New</button></header>
+				${lists.length ? playlistCards(lists.slice(0, 6)) : html`<p class="muted">Make a playlist here, or use “Add to playlist” in any song's menu.</p>`}
+				${lists.length > 6 ? html`<p><a class="text-link" href="#/library/playlists">All ${lists.length} playlists</a></p>` : ""}
+			</section>
+			<section class="section lib-rows">
+				${libRow("downloads", "download", "Downloads", usage.count ? `${plural(usage.count, "song")} on this device, ${formatBytes(usage.bytes)}` : "Nothing downloaded yet")}
+				${libRow("history", "clock", "Recently played", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
+				${LIBRARY_URL ? libRow("uploads", "upload", "Your uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in with GitHub to keep music of your own") : ""}
+			</section>
+			<section class="section lib-backup">
+				<header><h2>Keep your library</h2></header>
+				<p class="muted">Likes, playlists and history stay on this device. A backup file moves them to another device or keeps them safe.</p>
+				<div class="actions"><button class="btn" data-act="export">${icon("download")} Back up</button>
+				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></div>
+			</section>
+			${libFoot}`,
+	};
+}
+
+export async function libraryView(c, { tab }) {
+	if (!tab) return libraryHome(c);
+	if (!LIB_SECTIONS[tab]) return notFound("page");
 	let body;
 	let mount;
 	if (tab === "uploads") {
@@ -399,7 +455,7 @@ export async function libraryView(c, { tab = "liked" }) {
 	} else if (tab === "playlists") {
 		body = html`<div class="actions"><button class="btn primary" data-act="new-playlist">${icon("plus")} New playlist</button></div>
 			${library.playlists.length
-				? html`<div class="playlists">${library.playlists.map((p) => html`<a href="${href(`playlist/${p.id}`)}">${p.name}<span>${plural(p.tracks.length, "song")}</span></a>`)}</div>`
+				? playlistCards(library.playlists)
 				: html`<div class="empty"><h2>No playlists yet</h2><p>Create one here, or use “Add to playlist” from any song's menu.</p></div>`}`;
 	} else if (tab === "downloads") {
 		const ids = [...offline.state.downloaded];
@@ -428,14 +484,11 @@ export async function libraryView(c, { tab = "liked" }) {
 			: html`<div class="empty"><h2>Nothing played yet</h2><p>Songs appear here after they start playing.</p></div>`;
 	}
 	return {
-		title: "Library",
-		body: html`<h1 class="page-title">Library</h1>
-			<div class="toolbar">${libTabs(tab)}
-				<span class="lib-actions"><button class="btn" data-act="export">Back up library</button>
-				<label class="btn" style="cursor:pointer">Restore<input type="file" accept="application/json" data-act="import" class="sr"></label></span>
-			</div>
+		title: LIB_SECTIONS[tab],
+		body: html`<p class="crumb"><a href="#/library">Library</a></p>
+			<h1 class="page-title">${LIB_SECTIONS[tab]}</h1>
 			${body}
-			<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="#/help">Help</a></p>`,
+			${libFoot}`,
 		mount,
 	};
 }

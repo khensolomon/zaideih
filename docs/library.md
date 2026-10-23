@@ -2,7 +2,7 @@
 
 Anyone signed in with GitHub can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: the design below is agreed (2026-10-22). Built so far: roles, uploads, My uploads, signed streaming and moderation (block, delete, moderator rights). Still to come: adding albums from R2 folders, asking for an upload to be published, and share links.
+Status: the design below is agreed (2026-10-22). Built (v26.10.22.8): roles, uploads, Your uploads in Library, signed streaming and moderation (block, delete, moderator rights). Still to come: adding albums from R2 folders, asking for an upload to be published, and share links.
 
 ## Roles
 
@@ -44,7 +44,7 @@ An upload left `uploading` for an hour (a closed tab) is removed the next time i
 
 `GET /library` answers the member's uploads with a signed address for each: `/u/<id>?e=<expiry>&s=<signature>`, an HMAC-SHA256 of the id and expiry with the Worker secret `AUDIO_SIGNING_KEY`, valid for six hours. Audio elements cannot send a sign-in, so the address itself is the permission. `/u/<id>` streams from R2 with ranges like `/audio/<id>`, never cached publicly, and refuses an expired or wrong signature, an unknown upload and an upload whose owner is blocked. Uploads are never counted as plays.
 
-The app lists them in Library as My uploads, grouped by album, and plays them in the normal player; their addresses are renewed whenever the list is read.
+The app lists them in Library as Your uploads, grouped by album, and plays them in the normal player; their addresses are renewed whenever the list is read.
 
 ## Moderation
 
