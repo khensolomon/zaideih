@@ -5,8 +5,11 @@
  *   Add music        files from the device, uploaded
  *   Add a folder     every audio file in a folder of the device (desktop
  *                    browsers), uploaded; the album defaults to the folder
- *   Add from storage files already in R2 under private/ (the Storage right):
- *                    added to the library where they are, without copying
+ *   Add from storage files already in R2, wherever they are kept (the whole
+ *                    bucket for the owner and co-owners, a member's folder
+ *                    with the Storage right): added to the library where
+ *                    they are, without copying. The last folder opened is
+ *                    remembered on the device, and any folder can be typed.
  *
  * Every file is read in the browser first (length, tags); files that cannot
  * be added are listed with the reason and never sent. The rest can be
@@ -39,9 +42,13 @@ function space(st) {
 
 /* ------------------------------------------------------------- storage ---- */
 
+const LAST_KEY = "zaideih.storage.last";
+const lastFolder = () => { try { return localStorage.getItem(LAST_KEY) ?? ""; } catch { return ""; } };
+const rememberFolder = (p) => { try { localStorage.setItem(LAST_KEY, p); } catch { /* this visit only */ } };
+
 function crumbs(root, prefix) {
 	const parts = prefix.slice(root.length).split("/").filter(Boolean);
-	const out = [{ name: root.replace(/\/$/, ""), prefix: root }];
+	const out = [{ name: root ? root.replace(/\/$/, "") : "Storage", prefix: root }];
 	parts.forEach((p, i) => out.push({ name: p, prefix: `${root}${parts.slice(0, i + 1).join("/")}/` }));
 	return out;
 }
@@ -58,6 +65,7 @@ function storagePanel() {
 				: html`<button class="link-btn" data-up="open" data-prefix="${c.prefix}">${c.name}</button><span aria-hidden="true">/</span>`)}</nav>
 			<button class="icon-btn" data-up="store-close" aria-label="Close storage">${icon("close")}</button>
 		</header>
+		<form class="up-goto" data-up="goto"><input name="folder" value="${b.prefix}" placeholder="${root || "Folder/Album/"}" aria-label="Folder in storage" spellcheck="false" autocomplete="off"><button class="btn" type="submit">Open</button></form>
 		${b.loading ? html`<p class="muted">Reading the folder…</p>` : ""}
 		${b.error ? html`<p class="up-why">${b.error}</p>` : ""}
 		${b.folders?.length ? html`<ul class="up-folders">${b.folders.map((f) => html`<li><button data-up="open" data-prefix="${f.prefix}">${icon("album")}<span>${f.name}</span>${icon("chevron")}</button></li>`)}</ul>` : ""}
@@ -65,7 +73,7 @@ function storagePanel() {
 				<label ${f.added ? 'data-added="true"' : ""}><input type="checkbox" data-up="pick-stored" data-key="${f.key}" ${f.added ? "disabled" : ""} ${b.selected.has(f.key) ? "checked" : ""}>
 				<span>${f.name}</span><small>${f.added ? "in a library" : `${f.format.toUpperCase()} · ${megabytes(f.size)}`}</small></label>
 			</li>`)}</ul>` : ""}
-		${!b.loading && !b.error && !b.folders?.length && !b.files?.length ? html`<p class="muted">This folder has no audio files. Put files in R2 under ${root} (with rclone, wrangler or the Cloudflare dashboard), then open it again.</p>` : ""}
+		${!b.loading && !b.error && !b.folders?.length && !b.files?.length ? html`<p class="muted">This folder has no folders or audio files.${root ? ` Your storage is ${root}; files put there (with rclone, wrangler or the Cloudflare dashboard) appear here.` : ""}</p>` : ""}
 		${b.others ? html`<p class="muted">${b.others === 1 ? "1 other file here is not audio and is not listed." : `${b.others} other files here are not audio and are not listed.`}</p>` : ""}
 		${b.cursor ? html`<p><button class="btn" data-up="more-stored">Show more files</button></p>` : ""}
 		<div class="actions">
@@ -120,7 +128,7 @@ export function uploadsPanel() {
 			<div class="up-add">
 				<label class="btn primary up-pick">${icon("plus")} Add music<input type="file" multiple accept="${ACCEPT}" class="sr" data-up="pick" ${sending ? "disabled" : ""}></label>
 				${canPickFolders() ? html`<label class="btn up-pick">${icon("album")} Add a folder<input type="file" webkitdirectory multiple class="sr" data-up="pick-folder" ${sending ? "disabled" : ""}></label>` : ""}
-				${uploads.storageRoot ? html`<button class="btn" data-up="store-open" ${sending ? "disabled" : ""}>${icon("upload")} Add from storage</button>` : ""}
+				${uploads.storageRoot !== null ? html`<button class="btn" data-up="store-open" ${sending ? "disabled" : ""}>${icon("upload")} Add from storage</button>` : ""}
 			</div>
 		</section>
 		<div id="up-store">${storagePanel()}</div>
@@ -150,12 +158,13 @@ function mount(page) {
 	const waiting = () => review.filter((r) => r.state !== "done");
 	const openFolder = async (prefix, cursor = "") => {
 		const keepFiles = cursor ? browse.files : [];
-		browse = { ...(browse ?? {}), prefix: prefix || uploads.storageRoot, loading: true, error: "", selected: cursor ? browse.selected : new Set() };
+		browse = { ...(browse ?? {}), prefix: prefix ?? uploads.storageRoot, loading: true, error: "", selected: cursor ? browse.selected : new Set() };
 		if (!cursor) Object.assign(browse, { folders: [], files: [], others: 0, cursor: null });
 		redraw();
 		try {
 			const r = await uploads.browse(prefix, cursor);
 			browse = { ...browse, ...r, files: [...keepFiles, ...r.files], loading: false };
+			rememberFolder(r.prefix);
 		} catch (err) {
 			browse = { ...browse, loading: false, error: err.message };
 		}
@@ -183,14 +192,27 @@ function mount(page) {
 		redraw();
 	});
 
+	view.addEventListener("submit", async (e) => {
+		if (e.target.dataset?.up !== "goto") return;
+		e.preventDefault();
+		// A typed folder: leading slashes dropped, a trailing one added.
+		let p = new FormData(e.target).get("folder").trim().replace(/^\/+/, "");
+		if (p && !p.endsWith("/")) p += "/";
+		await openFolder(p || uploads.storageRoot);
+	});
 	view.addEventListener("click", async (e) => {
 		const b = e.target.closest("[data-up]");
 		if (!b || b.matches("input")) return;
 		const act = b.dataset.up;
 		if (act === "retry") { uploads.refresh().catch(() => {}); return; }
-		if (act === "store-open") { await openFolder(uploads.storageRoot); return; }
+		if (act === "store-open") {
+			// Back where the last visit left off, when that is still inside this person's storage.
+			const last = lastFolder();
+			await openFolder(last.startsWith(uploads.storageRoot) ? last : uploads.storageRoot);
+			return;
+		}
 		if (act === "store-close") { browse = null; redraw(); return; }
-		if (act === "open") { await openFolder(b.dataset.prefix); return; }
+		if (act === "open") { await openFolder(b.dataset.prefix ?? ""); return; }
 		if (act === "more-stored") { await openFolder(browse.prefix, browse.cursor); return; }
 		if (act === "all-stored") {
 			const free = browse.files.filter((f) => !f.added);

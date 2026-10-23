@@ -507,7 +507,7 @@ export function mount(root, ctx) {
 		manage: ["Co-owner", "everything below, and gives or takes any right"],
 		review: ["Review publishing", "approves or rejects requests to publish"],
 		moderate: ["Moderate members", "blocks members and deletes uploads"],
-		storage: ["Storage", "adds files from their own folder in storage"],
+		storage: ["Storage", "adds files from a folder in storage the owner sets"],
 	};
 
 	/**
@@ -530,6 +530,7 @@ export function mount(root, ctx) {
 						: html`<form class="adm-block" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
 				</div>`}
 				${!m.owner && may("manage") ? html`<fieldset class="adm-rights"><legend>Rights of ${m.login}</legend>${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => html`<label title="${what}"><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${m.rights.includes(r) ? "checked" : ""}>${name}</label>`)}</fieldset>` : ""}
+				${!m.owner && may("manage") && m.rights.includes("storage") && !m.rights.includes("manage") ? html`<form class="adm-folder" data-form="folder" data-id="${m.id}"><label>Storage folder<input name="folder" value="${m.folder}" spellcheck="false" autocomplete="off" aria-describedby="folder-help-${m.id}"></label><button class="btn" type="submit">Save</button><small id="folder-help-${m.id}">Where in R2 ${m.login} adds files from, e.g. <code>shared/${m.login}/</code>. Empty: <code>private/${m.id}/</code>.</small></form>` : ""}
 				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="muted">Reading…</p>`) : ""}
 			</li>`)}</ul>
 			<p><button class="btn" data-adm="members-reload">Check again</button></p>`;
@@ -743,6 +744,7 @@ export function mount(root, ctx) {
 			else if (form.dataset.form === "album" || form.dataset.form === "artist") { keepForm(form); s.error = ""; render(); }
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
+			else if (form.dataset.form === "folder") await setMember(Number(form.dataset.id), { folder: String(new FormData(form).get("folder")).trim() }, "Storage folder saved");
 			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
 		} catch (err) {
 			fail(err);

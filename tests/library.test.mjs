@@ -228,21 +228,23 @@ test("rights: the owner and co-owners give and take them; each right allows its 
 	assert.equal((await call("tok-spam", "GET", "/library/members")).status, 403);
 });
 
-test("storage: files already in R2 join a library without copying, inside each person's own folder", { skip }, async () => {
+test("storage: files already in R2 join a library where they are, wherever they are kept", { skip }, async () => {
 	const { env, call } = setup();
 	const put = (key, n = 300) => env.BUCKET.put(key, mp3(n));
-	await put("private/google/Album A/01 One.mp3");
-	await put("private/google/Album A/02 Two.mp3");
-	await env.BUCKET.put("private/google/Album A/cover.jpg", "x");
+	await put("Google Music/Album A/01 One.mp3");
+	await put("Google Music/Album A/02 Two.mp3");
+	await env.BUCKET.put("Google Music/Album A/cover.jpg", "x");
 	await put("private/7/mine.mp3");
+	await put("shared/pau/song.mp3");
 	await put("music/zola/Agape/1.mp3");
 	await put("users/42/1.mp3");
 
-	// The owner (and co-owners) browse all of private/.
+	// The owner (and co-owners) browse the whole bucket, except members' uploads.
 	const top = await (await call("tok-owner", "GET", "/library/storage")).json();
-	assert.equal(top.root, "private/");
-	assert.deepEqual(top.folders.map((f) => f.name), ["7", "google"]);
-	const album = await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("private/google/Album A/")}`)).json();
+	assert.equal(top.root, "");
+	assert.deepEqual(top.folders.map((f) => f.name), ["Google Music", "music", "private", "shared"]);
+	assert.equal((await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("users/42/")}`)).status, 403, "users/ is the members' own");
+	const album = await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("Google Music/Album A/")}`)).json();
 	assert.deepEqual(album.files.map((f) => [f.name, f.size, f.format, f.added]), [["01 One.mp3", 300, "mp3", false], ["02 Two.mp3", 300, "mp3", false]]);
 	assert.equal(album.others, 1, "the cover is not listed");
 
@@ -254,7 +256,7 @@ test("storage: files already in R2 join a library without copying, inside each p
 	assert.equal(new TextDecoder().decode(await part.arrayBuffer()), "ID3");
 	const forged = await worker.fetch(new Request(`${W}${k.pathname}?e=9999999999&s=${"a".repeat(43)}`), env, { waitUntil() {} });
 	assert.equal(forged.status, 403);
-	assert.equal((await worker.fetch(new Request(`${W}/k/${Buffer.from("music/zola/Agape/1.mp3").toString("base64url")}?e=1&s=x`), env, { waitUntil() {} })).status, 404, "only private/ can be named");
+	assert.equal((await worker.fetch(new Request(`${W}/k/${Buffer.from("users/42/1.mp3").toString("base64url")}?e=1&s=x`), env, { waitUntil() {} })).status, 404, "uploads are never read through /k/");
 
 	// Adding: no copy, no space used; listed as added.
 	const items = album.files.map((f, i) => ({ key: f.key, title: f.name, album: "Album A", track: i + 1, duration: 200 }));
@@ -264,28 +266,40 @@ test("storage: files already in R2 join a library without copying, inside each p
 	const lib = await (await call("tok-owner", "GET", "/library")).json();
 	assert.equal(lib.uploads.length, 2);
 	assert.equal(lib.space.used, 0);
-	assert.equal(env.BUCKET.objects.size, 6, "nothing copied");
-	assert.equal((await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("private/google/Album A/")}`)).json()).files[0].added, true);
+	assert.equal(env.BUCKET.objects.size, 7, "nothing copied");
+	assert.equal((await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("Google Music/Album A/")}`)).json()).files[0].added, true);
 	assert.equal((await call("tok-owner", "POST", "/library/storage/add", { items: items.slice(0, 1) })).status, 409, "a file joins one library once");
+	assert.equal((await call("tok-owner", "POST", "/library/storage/add", { items: [{ key: "users/42/1.mp3", title: "x", duration: 9 }] })).status, 403, "nor can an upload be taken");
 	assert.equal((await handleSignedAudio(new Request(lib.uploads[0].url), env, lib.uploads[0].id)).status, 200, "it plays");
 
-	// Taking it out of the library leaves the file where it was put.
+	// Taking it out of the library leaves the file where it is kept.
 	assert.equal((await call("tok-owner", "DELETE", `/library/uploads/${lib.uploads[0].id}`)).status, 204);
-	assert.ok(env.BUCKET.objects.has("private/google/Album A/01 One.mp3"));
+	assert.ok(env.BUCKET.objects.has("Google Music/Album A/01 One.mp3"));
 
-	// Storage right: only private/<github id>/.
+	// Storage right: one folder, private/<github id>/ until the owner sets another.
 	await call("tok-mod", "GET", "/library");
 	assert.equal((await call("tok-mod", "GET", "/library/storage")).status, 403, "no right, no storage");
 	await call("tok-owner", "POST", "/library/members/7", { rights: { storage: true } });
 	const mine = await (await call("tok-mod", "GET", "/library/storage")).json();
 	assert.equal(mine.root, "private/7/");
 	assert.deepEqual(mine.files.map((f) => f.name), ["mine.mp3"]);
-	for (const prefix of ["private/", "private/google/", "music/", "private/7/../google/", "private/7"]) {
-		assert.ok([400, 403].includes((await call("tok-mod", "GET", `/library/storage?prefix=${encodeURIComponent(prefix)}`)).status), prefix);
+	for (const prefix of ["", "private/", "Google Music/", "private/7/../google/", "private/7", "users/"]) {
+		assert.ok([400, 403].includes((await call("tok-mod", "GET", `/library/storage?prefix=${encodeURIComponent(prefix)}`)).status), prefix || "(top)");
 	}
-	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/google/Album A/02 Two.mp3", title: "x", duration: 9 }] })).status, 403);
+	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "Google Music/Album A/02 Two.mp3", title: "x", duration: 9 }] })).status, 403);
 	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/7/mine.mp3", title: "Mine", duration: 0 }] })).status, 400, "length is required");
 	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/7/mine.mp3", title: "Mine", duration: 61 }] })).status, 201);
+
+	// The owner moves a member's folder to wherever their music is kept; never users/ or the whole bucket.
+	assert.equal((await call("tok-owner", "POST", "/library/members/7", { folder: "users/" })).status, 403);
+	assert.equal((await call("tok-owner", "POST", "/library/members/7", { folder: "" })).status, 200, "empty resets to the default");
+	assert.equal((await call("tok-owner", "POST", "/library/members/7", { folder: "shared/pau" })).status, 400, "a folder ends with /");
+	const moved = await call("tok-owner", "POST", "/library/members/7", { folder: "shared/pau/" });
+	assert.equal((await moved.json()).member.folder, "shared/pau/");
+	assert.equal((await call("tok-mod", "POST", "/library/members/7", { folder: "Google Music/" })).status, 403, "only the owner and co-owners set folders");
+	const theirs = await (await call("tok-mod", "GET", "/library/storage")).json();
+	assert.equal(theirs.root, "shared/pau/");
+	assert.deepEqual(theirs.files.map((f) => f.name), ["song.mp3"]);
 });
 
 test("library requests need a sign-in, an allowed origin and the setup", { skip }, async () => {

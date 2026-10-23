@@ -10,15 +10,17 @@
  *   PATCH  /library/uploads/<id>            {title?, artist?, album?, year?, track?}
  *   DELETE /library/uploads/<id>            the uploader, or `moderate`; a file added from
  *                                           storage stays in R2
- *   GET    /library/storage?prefix=<p>      `storage`: folders and audio files under private/
- *                                           (all of it for co-owners, private/<github id>/ otherwise),
- *                                           each file with a signed address to read it
+ *   GET    /library/storage?prefix=<p>      `storage`: folders and audio files in R2 (the whole
+ *                                           bucket but users/ for the owner and co-owners, the
+ *                                           member's folder otherwise), each file with a signed
+ *                                           address to read it
  *   POST   /library/storage/add             {items: [{key, title, artist?, album?, year?, track?, duration}]}
  *                                           files already in storage, added to the library without copying
  *   GET    /library/members                 any right: every member with space, uploads and rights
  *   GET    /library/members/<github id>     `moderate`: one member's uploads (titles only, no addresses)
  *   POST   /library/members/<github id>     `moderate`: {blocked: true, reason} | {blocked: false};
- *                                           `manage`: {rights: {<right>: true|false, ...}}
+ *                                           `manage`: {rights: {<right>: true|false, ...}},
+ *                                           {folder: "<prefix>/" | null} (where Storage adds from)
  * Streaming (no sign-in; the address is the permission):
  *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload
  *   GET/HEAD /k/<key, base64url>?e&s               a file in storage, for reading its details
@@ -38,8 +40,16 @@ import { formatOf } from "../../src/core/upload-rules.js";
 export { checkNewUpload, FORMATS };
 
 const SIGNED_FOR_S = 6 * 3600;
-/** Files placed in R2 by hand for personal libraries live under this prefix. */
-export const STORAGE_ROOT = "private/";
+/*
+ * Storage: files already in R2 that join a library where they are. Uploads
+ * are the only files a library owns (users/<github id>/…): they count
+ * towards space and are deleted with their entry. Every other file was put
+ * in R2 some other way, wherever its owner keeps it, and is left alone.
+ */
+export const UPLOADS_ROOT = "users/";
+/** A member with the Storage right and no folder set adds from here: private/<github id>/. */
+export const STORAGE_DEFAULT = "private/";
+const isUpload = (key) => key.startsWith(UPLOADS_ROOT);
 const MAX_ADD = 200;
 const MAX_LIST = 1000;
 const STALE_UPLOAD_S = 3600;
@@ -90,7 +100,8 @@ export async function signedKeyUrl(origin, key, secret, nowSeconds = Math.floor(
 export function keyOf(encoded) {
 	try {
 		const key = new TextDecoder("utf-8", { fatal: true }).decode(fromB64url(encoded));
-		return key.startsWith(STORAGE_ROOT) ? key : null;
+		// Uploads have their own addresses (/u/), checked against their owner.
+		return key && !isUpload(key) ? key : null;
 	} catch {
 		return null;
 	}
@@ -152,7 +163,7 @@ async function uploadRow(env, id) {
 
 /** Space used by uploads; files added from storage were not uploaded and use none. */
 async function usedBytes(env, ownerId) {
-	const r = await env.DB.prepare(`SELECT COALESCE(SUM(size), 0) AS used, COUNT(*) AS n FROM uploads WHERE owner_id = ?1 AND r2_key NOT LIKE '${STORAGE_ROOT}%'`).bind(ownerId).first();
+	const r = await env.DB.prepare(`SELECT COALESCE(SUM(size), 0) AS used, COUNT(*) AS n FROM uploads WHERE owner_id = ?1 AND r2_key LIKE '${UPLOADS_ROOT}%'`).bind(ownerId).first();
 	return { used: r?.used ?? 0, count: r?.n ?? 0 };
 }
 
@@ -240,7 +251,7 @@ async function deleteUpload(env, me, id) {
 	const mine = row?.owner_id === me.id;
 	if (!row || (!mine && !(can(me, "moderate") && !isOwnersUpload))) throw new LibraryError("no such upload, or not yours to delete", 404);
 	// A file added from storage was put there by hand and stays; only uploads are deleted.
-	if (!row.r2_key.startsWith(STORAGE_ROOT)) await env.BUCKET.delete(row.r2_key);
+	if (isUpload(row.r2_key)) await env.BUCKET.delete(row.r2_key);
 	await env.DB.prepare("DELETE FROM uploads WHERE id = ?1").bind(id).run();
 	return null;
 }
@@ -248,13 +259,15 @@ async function deleteUpload(env, me, id) {
 async function listMembers(env) {
 	const rows = await env.DB.prepare(
 		`SELECT m.github_id, m.login, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
-			COUNT(u.id) AS uploads, COALESCE(SUM(CASE WHEN u.r2_key LIKE '${STORAGE_ROOT}%' THEN 0 ELSE u.size END), 0) AS used
+			COUNT(u.id) AS uploads, COALESCE(SUM(CASE WHEN u.r2_key LIKE '${UPLOADS_ROOT}%' THEN u.size ELSE 0 END), 0) AS used
 		FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id
 		GROUP BY m.github_id ORDER BY used DESC, m.last_seen DESC`,
 	).all();
 	const rights = await rightsOf(env);
+	const folders = new Map(((await env.DB.prepare("SELECT github_id, prefix FROM member_folders").all()).results ?? []).map((f) => [f.github_id, f.prefix]));
 	return (rows.results ?? []).map((r) => ({
 		id: r.github_id, login: r.login, owner: isOwnerLogin(env, r.login),
+		folder: folders.get(r.github_id) ?? `${STORAGE_DEFAULT}${r.github_id}/`,
 		rights: isOwnerLogin(env, r.login) ? Object.keys(RIGHTS) : [...(rights.get(r.github_id) ?? [])],
 		uploads: r.uploads, used: r.used,
 		blocked: r.blocked_at ? { at: r.blocked_at, by: r.blocked_by, reason: r.blocked_reason ?? "" } : null,
@@ -274,7 +287,7 @@ async function memberUploads(env, gid) {
 }
 
 async function setMember(env, me, gid, body, nowSeconds) {
-	if ("rights" in body && !can(me, "manage")) throw new LibraryError("only the owner and co-owners give or take rights", 403);
+	if (("rights" in body || "folder" in body) && !can(me, "manage")) throw new LibraryError("only the owner and co-owners give or take rights", 403);
 	if ("blocked" in body && !can(me, "moderate")) throw new LibraryError("blocking needs the Moderate members right", 403);
 	const m = await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(gid).first();
 	if (!m) throw new LibraryError("no such member", 404);
@@ -297,6 +310,16 @@ async function setMember(env, me, gid, body, nowSeconds) {
 			}
 		}
 	}
+	if ("folder" in body) {
+		if (body.folder === null || body.folder === "") {
+			await env.DB.prepare("DELETE FROM member_folders WHERE github_id = ?1").bind(gid).run();
+		} else {
+			const folder = checkFolder(body.folder);
+			if (folder === "") throw new LibraryError("a member's folder cannot be the whole bucket; make them a co-owner instead");
+			await env.DB.prepare("INSERT INTO member_folders (github_id, prefix, set_by, set_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(github_id) DO UPDATE SET prefix = ?2, set_by = ?3, set_at = ?4")
+				.bind(gid, folder, me.login, nowSeconds).run();
+		}
+	}
 	if ("blocked" in body) {
 		if (typeof body.blocked !== "boolean") throw new LibraryError("blocked must be true or false");
 		// Whoever holds a right answers to the owner and co-owners: only they block such a member.
@@ -313,28 +336,44 @@ async function setMember(env, me, gid, body, nowSeconds) {
 
 /* ------------------------------------------------------------- storage ---- */
 
-/** Where in R2 a person may add files from: all of private/ for co-owners, their own folder otherwise. */
+/**
+ * Where in R2 a person may add files from: the whole bucket ("") for the
+ * owner and co-owners, the folder the owner set for a member with the
+ * Storage right (private/<github id>/ until one is set), or null.
+ */
 export function storageRootOf(me) {
-	if (can(me, "manage")) return STORAGE_ROOT;
-	if (me.rights.has("storage")) return `${STORAGE_ROOT}${me.id}/`;
+	if (can(me, "manage")) return "";
+	if (me.rights.has("storage")) return me.folder ?? `${STORAGE_DEFAULT}${me.id}/`;
 	return null;
 }
 
-/** A folder path inside the person's storage root, or throws. */
+/** A folder as R2 names it ("" for the top, otherwise ending with "/"), never inside users/; or throws. */
+export function checkFolder(prefix) {
+	if (typeof prefix !== "string") throw new LibraryError("a folder is text ending with /");
+	const p = prefix.replace(/^\/+/, "");
+	if (p === "") return "";
+	const parts = p.split("/");
+	if (!p.endsWith("/") || parts.some((part, i) => part === "." || part === ".." || (part === "" && i < parts.length - 1))) {
+		throw new LibraryError(`"${prefix}" is not a folder: one name or more, each followed by /, without . or ..`);
+	}
+	if (isUpload(p) || p === UPLOADS_ROOT.slice(0, -1)) throw new LibraryError(`${UPLOADS_ROOT} holds members' uploads, which are theirs alone`, 403);
+	return p;
+}
+
+/** A folder inside the person's storage root, or throws. */
 function storagePrefix(me, prefix) {
 	const root = storageRootOf(me);
-	if (!root) throw new LibraryError("adding from storage needs the Storage right", 403);
-	const p = prefix ? String(prefix) : root;
-	const parts = p.split("/");
-	if (!p.startsWith(root) || !p.endsWith("/") || parts.some((part, i) => part === "." || part === ".." || (part === "" && i < parts.length - 1))) {
-		throw new LibraryError(`folders to add from start with ${root} and end with /`, 400);
-	}
+	if (root === null) throw new LibraryError("adding from storage needs the Storage right", 403);
+	const p = checkFolder(prefix ?? root);
+	if (!p.startsWith(root)) throw new LibraryError(root ? `your storage is ${root}` : "outside storage", 403);
 	return p;
 }
 
 async function listStorage(env, me, prefix, cursor, origin, nowSeconds) {
 	const p = storagePrefix(me, prefix);
 	const listed = await env.BUCKET.list({ prefix: p, delimiter: "/", limit: MAX_LIST, ...(cursor ? { cursor } : {}) });
+	// Members' uploads are theirs alone: users/ is never shown.
+	listed.delimitedPrefixes = (listed.delimitedPrefixes ?? []).filter((f) => !isUpload(f));
 	const audio = listed.objects.filter((o) => formatOf(o.key));
 	const known = new Set();
 	if (audio.length) {
@@ -357,14 +396,14 @@ async function addFromStorage(env, me, body, nowSeconds) {
 	const items = body.items;
 	if (!Array.isArray(items) || !items.length || items.length > MAX_ADD) throw new LibraryError(`items must list 1 to ${MAX_ADD} files`);
 	const root = storageRootOf(me);
-	if (!root) throw new LibraryError("adding from storage needs the Storage right", 403);
+	if (root === null) throw new LibraryError("adding from storage needs the Storage right", 403);
 	if (!(await env.UPLOAD_LIMIT.limit({ key: `upload:${me.id}` })).success) throw new LibraryError("too many additions in a minute; wait a moment and continue", 429);
 	// Everything is checked before anything is added, so a refused list adds nothing.
 	const checked = [];
 	for (const item of items) {
 		const key = String(item?.key ?? "");
 		const name = key.split("/").pop();
-		if (!key.startsWith(root)) throw new LibraryError(`${key} is outside your storage (${root})`, 403);
+		if (!key || !key.startsWith(root) || isUpload(key)) throw new LibraryError(`${key} is outside your storage${root ? ` (${root})` : ""}`, 403);
 		const format = formatOf(key);
 		if (!format) throw new LibraryError(`"${name}" is not a supported format. Add MP3, M4A (AAC), FLAC, WAV or Ogg.`, 415);
 		const head = await env.BUCKET.head(key);

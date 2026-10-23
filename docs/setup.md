@@ -27,7 +27,7 @@ One account holds everything. `npx wrangler login` (from `worker/media`) authori
 | Audio Worker | `media` | the first `wrangler deploy --config worker/media/wrangler.toml` | `worker/media/wrangler.toml` |
 | Site | `zaideih` | the first web release | `wrangler.jsonc` |
 
-Catalog audio lives in the bucket as `music/<folder>/<file>`, the paths in `assets/data/media.json`. Uploads land in `users/…`; files to add to personal libraries by hand go in `private/…` ([library.md](library.md#adding-from-storage)). Load the tables and paths once: `node tools/d1.mjs schema --apply` and `node tools/d1.mjs tracks --apply`.
+Catalog audio lives in the bucket as `music/<folder>/<file>`, the paths in `assets/data/media.json`. Uploads land in `users/…`. Music kept anywhere else in the bucket can be added to a personal library where it is ([library.md](library.md#adding-from-storage)). Load the tables and paths once: `node tools/d1.mjs schema --apply` and `node tools/d1.mjs tracks --apply`.
 
 Domains are attached in the dashboard, never in the settings files (so the release token needs no access to the zone): Workers & Pages, the Worker, Settings, Domains & Routes, Add custom domain. `media.zaideih.com` on `media`; `zaideih.com` on `zaideih`. A domain with existing DNS records is refused until they are removed.
 

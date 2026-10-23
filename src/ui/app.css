@@ -997,6 +997,8 @@ dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; ga
 .up-store-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .up-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
 .up-crumbs span { color: var(--ink-3); }
+.up-goto { display: flex; gap: 8px; margin: 0 0 12px; }
+.up-goto input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; }
 .up-folders, .up-stored { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; }
 .up-folders button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .up-folders button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -1183,6 +1185,8 @@ dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; ga
 .admin .adm-rights legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .admin .adm-rights label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); cursor: pointer; }
 .admin .adm-rights input { width: 16px; height: 16px; accent-color: var(--accent); }
+.admin .adm-folder { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px 10px; }
+.admin .adm-folder small { grid-column: 1 / -1; color: var(--ink-3); }
 /* Tools: one collapsible check each. */
 .admin .adm-check { border: 1px solid var(--line); border-radius: var(--radius-s); margin-bottom: 8px; padding: 0 12px; }
 .admin .adm-check summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; }
