@@ -61,7 +61,7 @@ async function call(method, path, body) {
 const UPLOADS_LANG = Object.freeze({ id: 0, name: "uploads", albums: [] });
 
 /** Songs and albums for the app from the Worker's list (pure apart from ids). */
-export function shapeUploads(list) {
+export function shapeUploads(list, requests = []) {
 	const albums = new Map();
 	const artists = new Map();
 	const artistOf = (name) => {
@@ -76,13 +76,14 @@ export function shapeUploads(list) {
 			albums.set(albumName, {
 				id: `u-album-${albums.size + 1}`, title: albumName, lang: UPLOADS_LANG, year: null, genres: [],
 				tracks: [], duration: 0, plays: 0, artists: [], search: "", searchCompact: "", upload: true,
+				named: Boolean(u.album), request: null, publish: "private",
 			});
 		}
 		const album = albums.get(albumName);
 		const artist = artistOf(u.artist);
 		const t = {
 			id: `u${u.id}`, uploadId: u.id, title: u.title, album, n: 0, duration: u.duration, plays: 0, base: 0, recent: 0,
-			artists: [artist], url: u.url, upload: true, format: u.format, size: u.size, year: u.year, track: u.track, fileName: u.fileName,
+			artists: [artist], url: u.url, upload: true, format: u.format, size: u.size, year: u.year, track: u.track, fileName: u.fileName, status: u.status,
 		};
 		album.tracks.push(t);
 		album.duration += u.duration;
@@ -93,8 +94,16 @@ export function shapeUploads(list) {
 		tracks.push(t);
 	}
 	for (const album of albums.values()) {
+		// Where the album is in asking to publish (worker/media/requests.js): the furthest any of its songs got.
+		const st = new Set(album.tracks.map((t) => t.status));
+		album.publish = st.has("requested") ? "requested" : st.has("published") ? "published" : st.has("released") ? "released" : "private";
 		album.tracks.sort((a, b) => (a.track ?? 999) - (b.track ?? 999) || a.title.localeCompare(b.title));
 		album.tracks.forEach((t, i) => { t.n = i + 1; });
+	}
+	// The newest request for each album (requests come newest first).
+	for (const q of requests) {
+		const album = albums.get(q.album);
+		if (album && !album.request) album.request = q;
 	}
 	return { tracks, albums: [...albums.values()].sort((a, b) => a.title.localeCompare(b.title)) };
 }
@@ -103,7 +112,7 @@ export function shapeUploads(list) {
 
 export const uploads = {
 	/** { member, space, list, albums, loading, error } */
-	state: { member: null, space: null, list: [], albums: [], loading: false, error: "" },
+	state: { member: null, space: null, list: [], albums: [], requests: [], loading: false, error: "" },
 	catalog: null,
 	timer: 0,
 
@@ -126,13 +135,13 @@ export const uploads = {
 		emit("uploads", this.state);
 		try {
 			const lib = await call("GET", "");
-			const { tracks, albums } = shapeUploads(lib.uploads);
+			const { tracks, albums } = shapeUploads(lib.uploads, lib.requests ?? []);
 			const extra = this.catalog.extra;
 			extra.tracks.clear();
 			extra.albums.clear();
 			for (const t of tracks) extra.tracks.set(t.id, t);
 			for (const a of albums) extra.albums.set(a.id, a);
-			Object.assign(this.state, { member: lib.member, space: lib.space, list: lib.uploads, albums, error: "" });
+			Object.assign(this.state, { member: lib.member, space: lib.space, list: lib.uploads, albums, requests: lib.requests ?? [], error: "" });
 			this.timer = setTimeout(() => this.refresh().catch(() => {}), REFRESH_MS);
 		} catch (err) {
 			this.state.error = err.message;
@@ -147,7 +156,7 @@ export const uploads = {
 		clearTimeout(this.timer);
 		this.catalog?.extra.tracks.clear();
 		this.catalog?.extra.albums.clear();
-		Object.assign(this.state, { member: null, space: null, list: [], albums: [], error: "" });
+		Object.assign(this.state, { member: null, space: null, list: [], albums: [], requests: [], error: "" });
 		emit("uploads", this.state);
 	},
 
@@ -177,6 +186,24 @@ export const uploads = {
 		});
 		await this.refresh();
 		return answer;
+	},
+
+	/** True for the owner and those with Review publishing: publishing their own album is one step. */
+	get canReview() {
+		const m = this.state.member;
+		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage") || m.rights?.includes("review")));
+	},
+
+	/** Asks to publish an album of one's uploads: { lang, note } (a reviewer may leave out the language). Answers { id, songs }. */
+	async askPublish(albumTitle, { lang, note = "" } = {}) {
+		const answer = await call("POST", "/requests", { album: albumTitle, ...(lang ? { lang: Number(lang) } : {}), note });
+		await this.refresh();
+		return answer;
+	},
+
+	async withdrawPublish(requestId) {
+		await call("DELETE", `/requests/${requestId}`);
+		await this.refresh();
 	},
 
 	/** Where this person may add files from storage, or null (core/library rights). */

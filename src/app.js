@@ -749,6 +749,51 @@ function editUpload(track) {
 	d.showModal();
 }
 
+/**
+ * The owner's switch (and every reviewer's): on asks and opens the approval
+ * form on the admin page at once; off withdraws a request still waiting.
+ */
+async function publishToggle(el) {
+	const album = catalog.album(el.dataset.album);
+	try {
+		if (el.checked) {
+			const id = album.request?.status === "open" ? album.request.id : (await uploads.askPublish(album.title)).id;
+			location.hash = `#/admin?review=${id}`;
+		} else if (album.request?.status === "open") {
+			await uploads.withdrawPublish(album.request.id);
+			notify("Withdrawn; only you can play it");
+		}
+	} catch (err) {
+		el.checked = !el.checked;
+		notify(err.message, { kind: "error" });
+	}
+}
+
+/** A member asks to publish an album of their uploads: its language, and who may share it. */
+function askPublish(album) {
+	const other = album.tracks.filter((t) => t.format !== "mp3");
+	const langs = [...catalog.langs.values()].filter((l) => l.id);
+	const d = $("#dialog");
+	d.innerHTML = html`<form method="dialog" class="up-edit"><h2>Ask to publish “${album.title}”</h2>
+		<p class="muted">A reviewer listens and, if approved, adds all ${album.tracks.length === 1 ? "of it" : `${album.tracks.length} songs`} to the catalog for everyone. You stay credited, and it stays in your library.</p>
+		${other.length ? html`<p class="error">Only MP3 can be published: ${other.length === 1 ? `“${other[0].fileName}” is` : `${other.length} songs are`} ${other[0].format.toUpperCase()}. Upload MP3 copies, delete the others, and ask again.</p>` : ""}
+		<label>Language<select name="lang" required><option value="" selected disabled>Choose…</option>${langs.map((l) => html`<option value="${l.id}">${l.name[0].toUpperCase()}${l.name.slice(1)}</option>`)}</select></label>
+		<label>For the reviewer<textarea name="note" rows="3" maxlength="200" placeholder="Who made it, and why you may share it (bought, recorded, the artist's permission)"></textarea></label>
+		<label class="check"><input type="checkbox" name="rights" required> I may share these recordings with everyone</label>
+		<div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok" ${other.length ? "disabled" : ""}>Ask</button></div></form>`;
+	d.onclose = async () => {
+		if (d.returnValue !== "ok") return;
+		const f = new FormData($("form", d));
+		try {
+			await uploads.askPublish(album.title, { lang: f.get("lang"), note: f.get("note") });
+			notify("Asked; a reviewer will listen to it");
+		} catch (err) {
+			notify(err.message, { kind: "error" });
+		}
+	};
+	d.showModal();
+}
+
 function confirmAction(message, confirm = "Continue") {
 	return new Promise((resolve) => {
 		const d = $("#dialog");
@@ -919,6 +964,12 @@ const actions = {
 			{ label: "Add to playlist…", run: () => addToPlaylistMenu(el, ids) },
 		]);
 	},
+	"ask-publish": (el) => askPublish(catalog.album(el.dataset.album)),
+	async "withdraw-publish"(el) {
+		if (!(await confirmAction("Withdraw the request to publish?", "Withdraw"))) return;
+		await uploads.withdrawPublish(Number(el.dataset.id));
+		notify("Withdrawn; the album is yours alone again");
+	},
 	download: (el) => startDownload(listTracks(el.dataset.list)),
 	async "remove-download"(el) {
 		if (el.dataset.confirm && !(await confirmAction(el.dataset.confirm, "Remove"))) return;
@@ -1016,6 +1067,8 @@ document.addEventListener("change", async (e) => {
 	const el = e.target;
 	if (el.dataset.act === "sort") {
 		go(currentRoute.path, { sort: el.value });
+	} else if (el.dataset.act === "publish-toggle") {
+		await publishToggle(el);
 	} else if (el.dataset.act === "import" && el.files?.[0]) {
 		try {
 			const data = JSON.parse(await el.files[0].text());

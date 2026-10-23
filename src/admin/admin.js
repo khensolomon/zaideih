@@ -17,6 +17,10 @@
  *                their draft as a suggestion: the audio Worker opens the pull
  *                request for them (worker/media/suggest.js); editors see the
  *                open ones listed and review them on GitHub.
+ *   Requests     members' albums asked to be published (worker/media/requests.js),
+ *                for Review publishing: listen, then approve (the Worker copies
+ *                the songs into music/, and a pull request adds the album to
+ *                the catalog, src/admin/publish.js) or reject with a reason.
  *   Tools        catalog checks (src/admin/health.js).
  *   Statistics   counted plays from the audio Worker (GET /plays).
  *
@@ -33,11 +37,13 @@ import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../to
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
+import { buildPublish } from "./publish.js";
+import { stringifyMedia } from "../../tools/lib/media.mjs";
 import { createSession, SESSION_KEY, SignInError } from "./session.js";
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
 
 const DRAFT_KEY = "zaideih.admin.draft";
-const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json" };
+const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json", media: "assets/data/media.json" };
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
 const store = {
@@ -80,6 +86,9 @@ export function mount(root, ctx) {
 		error: "",
 		pr: null,         // live status of the open pull request
 		totals: null,
+		requests: null,   // GET /library/requests: { reviewer, requests }
+		reviewing: null,  // the request whose approval form is open
+		jumpReview: null, // #/admin?review=<id>, from "Public in the catalog"
 	};
 	let poll = 0;
 	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
@@ -127,6 +136,7 @@ export function mount(root, ctx) {
 			libraryCall("GET", "").then((lib) => {
 				s.rights = new Set(lib.member?.rights ?? []);
 				s.isOwner = lib.member?.role === "owner";
+				if (may("review")) loadRequests().catch(fail);
 				render();
 			}, (err) => console.warn("library", err.message));
 			saveWho(localStorage, { login: who.login, level: who.level, via });
@@ -183,7 +193,7 @@ export function mount(root, ctx) {
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
-		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.members = null;
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.members = null; s.requests = null; s.reviewing = null;
 		render();
 		if (via === "github") await session.signOut();
 	}
@@ -536,6 +546,168 @@ export function mount(root, ctx) {
 			<p><button class="btn" data-adm="members-reload">Check again</button></p>`;
 	}
 
+	/* ----------------------------------------------------------- requests ---- */
+
+	async function loadRequests() {
+		s.requests = await libraryCall("GET", "/requests");
+		if (s.jumpReview && s.requests.requests.some((r) => r.id === s.jumpReview)) {
+			s.tab = "requests";
+			s.reviewing = s.jumpReview;
+		}
+		s.jumpReview = null;
+		render();
+	}
+
+	/** The album as the reviewer filled it in on the approval form. */
+	function readApproval(formEl) {
+		const f = new FormData(formEl);
+		return {
+			title: f.get("ab"), year: f.get("yr"), lang: Number(f.get("lg")), genres: f.getAll("gr"),
+			songs: [...formEl.querySelectorAll("[data-upload]")].map((li) => ({ upload: Number(li.dataset.upload), title: li.querySelector("[name=t]").value, artists: li.querySelector("[name=a]").value })),
+		};
+	}
+
+	/**
+	 * Approves a request and opens the pull request that adds the album to the
+	 * catalog. Everything is built and checked first; then the Worker copies
+	 * the songs; then the pull request. A request approved earlier whose pull
+	 * request was not opened keeps its album id, track ids and files.
+	 */
+	async function publishRequest(id, formEl) {
+		const req = s.requests.requests.find((r) => r.id === id);
+		const form = readApproval(formEl);
+		s.busy = "Reading the newest catalog from GitHub…";
+		s.error = "";
+		render();
+		const head = await s.gh.head();
+		const want = [DATA.albums, DATA.artists, DATA.media, ...(s.canWrite ? [...VERSION_FILES.packages, ...VERSION_FILES.locks, VERSION_FILES.changelog] : [])];
+		const fetched = Object.fromEntries(await Promise.all(want.map(async (p) => [p, (await s.gh.file(p, head)).text])));
+		const data = { albums: JSON.parse(fetched[DATA.albums]), artists: JSON.parse(fetched[DATA.artists]), media: JSON.parse(fetched[DATA.media]), category: s.data.category };
+		const reserved = new Set(s.requests.requests.filter((r) => r.status === "approved" && r.id !== id).flatMap((r) => (r.songs ?? []).map((u) => u.catalogTrack).filter(Boolean)));
+		const assigned = req.status === "approved"
+			? { album: req.catalogAlbum, tracks: req.songs.map((u) => ({ upload: u.upload, track: u.catalogTrack, key: u.catalogKey })) }
+			: null;
+		const out = buildPublish(data, req, form, { reserved, assigned });
+		if (req.status === "open") {
+			s.busy = `Copying ${out.approve.tracks.length} song(s) into the catalog's storage…`;
+			render();
+			await libraryCall("POST", `/requests/${id}/approve`, out.approve);
+		}
+		const files = { [DATA.albums]: sourceText(out.albums, fetched[DATA.albums]), [DATA.media]: stringifyMedia(out.media) };
+		if (out.newArtists.length) files[DATA.artists] = sourceText(out.artists, fetched[DATA.artists]);
+		const note = `Published ${form.title.trim()}`.slice(0, 120);
+		s.busy = "Opening the pull request…";
+		render();
+		let url;
+		if (s.canWrite) {
+			const current = JSON.parse(fetched["package.json"]).version;
+			parseVersion(current);
+			const next = nextVersion(current);
+			Object.assign(files, releaseFiles(fetched, next, [`${note} (${out.approve.tracks.length} songs, from @${req.login}'s library)`]));
+			// The title is the release line, so merging here or on GitHub releases the site and the track paths.
+			const title = `release: web+d1 ${next} ${note}`;
+			const body = `Publishing request #${id}, approved by ${s.user} on the admin page.\n\n${out.lines.map((l) => `- ${l}`).join("\n")}\n\nThe songs are already copied to ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/. Merging releases v${next}; the member's uploaded copies are removed once the track paths are loaded.`;
+			url = (await s.gh.propose({ parent: head, files, branch: `publish-${id}-${Date.now().toString(36)}`, title, body })).url;
+		} else {
+			url = await suggest({ base: head, note, lines: out.lines, files });
+		}
+		await libraryCall("POST", `/requests/${id}/pr`, { url });
+		s.busy = "";
+		s.reviewing = null;
+		ctx.notify(s.canWrite ? "Approved; the pull request is open" : "Approved; sent to the editors as a suggestion");
+		await loadRequests();
+	}
+
+	/** Sends files as a suggestion (worker/media/suggest.js); answers the pull request's address. */
+	async function suggest(payload) {
+		let res;
+		try {
+			res = await fetch(`${ctx.authUrl}/suggest`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${await session.token()}` },
+				body: JSON.stringify(payload),
+				cache: "no-store",
+			});
+		} catch (err) {
+			throw new SignInError(`the suggestion could not be sent (${err.message})`);
+		}
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(`the suggestion was not accepted: ${answer?.error ?? `HTTP ${res.status}`}`);
+		return answer.url;
+	}
+
+	/** Merges a publishing pull request with its own title, the release line, once its checks pass. */
+	async function mergePublished(url) {
+		const number = Number(url.split("/").pop());
+		s.busy = "Checking the pull request…";
+		render();
+		const st = await s.gh.status(number);
+		if (st.merged) { s.busy = ""; ctx.notify("Already merged"); return loadRequests(); }
+		const done = st.checks.length && st.checks.every((c) => c.status === "completed");
+		if (!done || !st.checks.every((c) => ["success", "skipped", "neutral"].includes(c.conclusion))) {
+			throw new DraftError(done ? "a check failed on the pull request; open it on GitHub" : "the checks are still running; try again in a minute");
+		}
+		s.busy = "Merging…";
+		render();
+		await s.gh.merge(number, st.head, st.title, "");
+		await s.gh.deleteBranch(st.branch).catch((err) => console.warn("the branch could not be deleted", err));
+		s.busy = "";
+		ctx.notify("Merged: the release deploys in a few minutes");
+		await loadRequests();
+	}
+
+	const STATUS_NAMES = { open: "waiting", withdrawn: "withdrawn", rejected: "rejected", approved: "approved, waiting for the release", released: "in the catalog" };
+
+	function approvalForm(r) {
+		const cat = s.data.category;
+		const years = r.songs.map((u) => u.year).filter(Boolean);
+		const lang = r.lang || 0;
+		return html`<form class="adm-edit" data-form="approve" data-id="${r.id}">
+			<h3>${r.status === "approved" ? "Open the pull request again" : "Approve and publish"}</h3>
+			<label>Title<input name="ab" value="${r.album}" required></label>
+			<div class="adm-row">
+				<label>Year<input name="yr" type="number" min="1900" max="2100" value="${years[0] ?? ""}" placeholder="none"></label>
+				<label>Language<select name="lg" required>${lang ? "" : html`<option value="" selected disabled>Choose…</option>`}${cat.lang.filter((l) => l.id).map((l) => html`<option value="${l.id}" ${l.id === lang ? "selected" : ""}>${l.name}</option>`)}</select></label>
+			</div>
+			<fieldset><legend>Genres</legend><div class="adm-chips">${cat.genre.map((g) => html`<label class="adm-chip"><input type="checkbox" name="gr" value="${g.id}">${g.name}</label>`)}</div></fieldset>
+			<ol class="adm-tracks">${r.songs.map((u) => html`<li data-upload="${u.upload}">
+				<input name="t" value="${u.title}" required aria-label="Title of ${u.fileName}">
+				<input name="a" value="${u.artist}" list="adm-artists" aria-label="Artists of ${u.fileName}" title="Artist names, separated by commas; a new name is added to the catalog">
+				<small>${u.fileName} · ${Math.floor(u.duration / 60)}:${String(Math.round(u.duration % 60)).padStart(2, "0")}</small>
+			</li>`)}</ol>
+			<datalist id="adm-artists">${s.data.artists.map((a) => html`<option value="${a.name}">`)}</datalist>
+			<p class="muted">The songs are copied into the catalog's storage under music/, and ${s.canWrite ? "a pull request adds the album; merging it releases the site and the track paths" : "the album goes to the editors as a suggestion"}. The member stays credited in their library.</p>
+			<div class="adm-actions"><button class="btn primary" type="submit">${r.status === "approved" ? "Open the pull request" : "Approve and publish"}</button><button class="btn" type="button" data-adm="req-close">Close</button></div>
+		</form>`;
+	}
+
+	function requestsTab() {
+		if (!s.requests) return html`<p class="muted">Reading the requests…</p>`;
+		const list = s.requests.requests;
+		const open = list.filter((r) => r.status === "open");
+		const rest = list.filter((r) => r.status !== "open");
+		const item = (r) => html`<li class="adm-request" data-status="${r.status}">
+			<div class="adm-member">
+				<span><b>${r.album}</b> <span class="adm-tag">${STATUS_NAMES[r.status]}</span></span>
+				<small>@${r.login ?? r.owner} · asked ${ago(r.created)}${r.songs ? ` · ${r.songs.length} song${r.songs.length === 1 ? "" : "s"}` : ""}${r.reviewer && r.status !== "open" ? ` · ${r.status} by ${r.reviewer}` : ""}</small>
+				${r.note ? html`<p class="adm-note">“${r.note}”</p>` : ""}
+				${r.reason ? html`<p class="adm-note">Reason: ${r.reason}</p>` : ""}
+				${r.pr ? html`<p><a class="text-link" href="${r.pr}" target="_blank" rel="noopener">${r.pr.replace("https://github.com/", "")}</a></p>` : ""}
+			</div>
+			${r.songs && (r.status === "open" || r.status === "approved") && s.reviewing !== r.id ? html`<ol class="adm-listen">${r.songs.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.fileName].filter(Boolean).join(" · ")}</small></span><audio controls preload="none" src="${u.url}"></audio></li>`)}</ol>` : ""}
+			${s.reviewing === r.id ? approvalForm(r) : html`<div class="adm-actions">
+				${r.status === "open" ? html`<button class="btn primary" data-adm="req-review" data-id="${r.id}">Approve…</button>
+					<form class="adm-block" data-form="reject" data-id="${r.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. not their recording" aria-label="Reason for rejecting ${r.album}"><button class="btn danger" type="submit">Reject</button></form>` : ""}
+				${r.status === "approved" && !r.pr ? html`<button class="btn primary" data-adm="req-review" data-id="${r.id}">Open the pull request</button>` : ""}
+				${r.status === "approved" && r.pr && s.canWrite && r.pr.includes(`/${REPO}/pull/`) ? html`<button class="btn" data-adm="req-merge" data-url="${r.pr}">Merge and release</button>` : ""}
+			</div>`}
+		</li>`;
+		return html`<p class="muted">Members ask to publish an album of their own uploads. Listen first: approve only music they may share. Approving copies the songs into the catalog; rejecting gives them back to the member with your reason.</p>
+			${open.length ? html`<ul class="adm-members">${open.map(item)}</ul>` : html`<p class="muted">No requests waiting.</p>`}
+			${rest.length ? html`<h3>Decided</h3><ul class="adm-members">${rest.map(item)}</ul>` : ""}
+			<p><button class="btn" data-adm="requests-reload">Check again</button></p>`;
+	}
+
 	/* -------------------------------------------------------------- tools ---- */
 
 	function tools() {
@@ -641,7 +813,7 @@ export function mount(root, ctx) {
 		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
 	};
 
-	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", members: "Members", tools: "Tools", stats: "Statistics" };
+	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", requests: "Requests", members: "Members", tools: "Tools", stats: "Statistics" };
 
 	/** One line about the person: their level and what they have had released. */
 	function status() {
@@ -686,6 +858,7 @@ export function mount(root, ctx) {
 				${tab("edit")}
 				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
 				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
+				${may("review") ? tab("requests", s.requests ? String(s.requests.requests.filter((r) => r.status === "open").length || "") : "") : ""}
 				${s.rights.size ? tab("members", s.members ? String(s.members.length) : "") : ""}
 				${tab("tools")}
 				${tab("stats")}
@@ -708,7 +881,7 @@ export function mount(root, ctx) {
 		root.innerHTML = html`${header()}
 			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
 			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
+			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "requests" ? requestsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -745,6 +918,12 @@ export function mount(root, ctx) {
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
 			else if (form.dataset.form === "folder") await setMember(Number(form.dataset.id), { folder: String(new FormData(form).get("folder")).trim() }, "Storage folder saved");
+			else if (form.dataset.form === "approve") await publishRequest(Number(form.dataset.id), form);
+			else if (form.dataset.form === "reject") {
+				await libraryCall("POST", `/requests/${form.dataset.id}/reject`, { reason: new FormData(form).get("reason") });
+				ctx.notify("Rejected; the member sees your reason");
+				await loadRequests();
+			}
 			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
 		} catch (err) {
 			fail(err);
@@ -763,7 +942,12 @@ export function mount(root, ctx) {
 					render();
 					if (s.tab === "suggestions") await loadSuggestions();
 					if (s.tab === "members") await loadMembers();
+					if (s.tab === "requests") await loadRequests();
 					break;
+				case "requests-reload": s.requests = null; render(); await loadRequests(); break;
+				case "req-review": s.reviewing = Number(b.dataset.id); render(); root.querySelector("[data-form=approve]")?.scrollIntoView({ block: "start" }); break;
+				case "req-close": s.reviewing = null; render(); break;
+				case "req-merge": await mergePublished(b.dataset.url); break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
 				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
@@ -799,8 +983,9 @@ export function mount(root, ctx) {
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
 	if (query.has("album")) s.jump = { kind: "album", id: query.get("album"), track: Number(query.get("track")) || null };
 	else if (query.has("artist")) s.jump = { kind: "artist", id: Number(query.get("artist")) };
+	if (query.has("review")) s.jumpReview = Number(query.get("review"));
 	// The link has done its work; Back and reloads land on the plain admin page.
-	if (s.jump) history.replaceState(history.state, "", "#/admin");
+	if (s.jump || s.jumpReview) history.replaceState(history.state, "", "#/admin");
 	const saved = store.get(TOKEN_KEY);
 	if (ctx.analyticsOn() || ctx.desktop) render();
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);

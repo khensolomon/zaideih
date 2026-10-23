@@ -78,3 +78,15 @@ test("uploads join the app as albums of their own, outside the catalog", () => {
 	assert.equal(tracks.find((t) => t.id === "u6").artists[0].name, "Unknown artist");
 	assert.ok(a.album.id.startsWith("u-album-"));
 });
+
+test("an album of uploads knows where it is in asking to publish", () => {
+	const row = (id, album, status) => ({ id, title: `S${id}`, artist: "Ann", album, year: null, track: id, duration: 100, size: 1, format: "mp3", fileName: `${id}.mp3`, status, url: "u" });
+	const { albums } = shapeUploads(
+		[row(1, "Tape", "requested"), row(2, "Tape", "requested"), row(3, "Live", "released"), row(4, "", "private")],
+		[{ id: 9, album: "Tape", status: "open" }, { id: 3, album: "Tape", status: "rejected" }, { id: 2, album: "Live", status: "released", catalogAlbum: "0123456789abcdef" }],
+	);
+	const by = Object.fromEntries(albums.map((a) => [a.title, a]));
+	assert.deepEqual([by.Tape.publish, by.Tape.request.id, by.Tape.named], ["requested", 9, true]);
+	assert.deepEqual([by.Live.publish, by.Live.request.catalogAlbum], ["released", "0123456789abcdef"]);
+	assert.deepEqual([by.Singles.publish, by.Singles.request, by.Singles.named], ["private", null, false]);
+});

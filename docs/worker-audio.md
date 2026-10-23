@@ -7,7 +7,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | `GET /audio/:id` | a catalog song from R2 (`music/…`, path from D1 `tracks`), with ranges | `script.js` |
 | `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
 | `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
-| `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, signed streaming | `library.js`, `members.js` |
+| `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, asking to publish, signed streaming | `library.js`, `members.js`, `requests.js` |
 
 Bindings and settings are in `wrangler.toml`; secrets are listed in [setup.md](setup.md). This guide covers deploying, verifying, inspecting and rolling back, then each part in turn.
 
@@ -194,13 +194,24 @@ Setup, once:
 
 People without write access cannot push a branch, so `POST /auth/suggest` (`suggest.js`) opens their pull request as the App: the page sends the changed data files built on a master commit, a note and the change lines, with the person's sign-in token. The Worker asks GitHub whose token it is, applies `SUGGEST_LIMIT` (2 a minute per GitHub user), signs a JWT with `GITHUB_APP_KEY`, gets an installation token for `GITHUB_REPO` (Contents and Pull requests write; kept per isolate until 5 minutes before it ends), and creates the commit (authored by the person, with their noreply address), a `suggest-<login>-<time>` branch and a pull request titled `Suggestion: <note>` that names them.
 
-Only `assets/data/albums.json` and `assets/data/artist.name.json` may change, up to 8 MB each; release files, code and workflows cannot. The files are not parsed on the Worker (a 5 MB parse would cost more CPU time than a request is given); the pull request is the gate: nothing reaches master until someone with write access merges it, after the checks have run on it. A merged suggestion ships with the next release.
+Only `assets/data/albums.json`, `assets/data/artist.name.json` and `assets/data/media.json` (a reviewer without write access publishing a member's album, [library.md](library.md#asking-to-publish)) may change, up to 8 MB each; release files, code and workflows cannot. The files are not parsed on the Worker (a 5 MB parse would cost more CPU time than a request is given); the pull request is the gate: nothing reaches master until someone with write access merges it, after the checks have run on it. A merged suggestion ships with the next release.
 
 A Worker missing any of these answers `/auth/*` with 503 naming what is missing. A new client secret is generated on the App's page and uploaded the same way; the old one is then deleted there. The private key files are not kept in the repository (`*.pem` is ignored).
 
 ## Personal libraries
 
-`/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; the design is in [library.md](library.md).
+`/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; `/library/requests*` (`requests.js`) asking to publish them. The design is in [library.md](library.md).
+
+| Route | Who | Does |
+|---|---|---|
+| `POST /library/requests` `{album, lang, note}` | the member | asks to publish an album of their uploads (MP3 only, else 415 naming the files) |
+| `GET /library/requests` | signed in | the person's own requests; with Review publishing, every open one and the 50 latest decided, each song with a signed address |
+| `DELETE /library/requests/<id>` | the member, a co-owner | withdraws an open request |
+| `POST /library/requests/<id>/reject` `{reason}` | Review publishing | rejects; the songs are private again |
+| `POST /library/requests/<id>/approve` `{album, tracks: [{upload, track, key}]}` | Review publishing | checks every key (`music/…`, free) and track id (unused), then copies each upload there |
+| `POST /library/requests/<id>/pr` `{url}` | Review publishing | records the pull request |
+
+An approved request is settled on the next `GET /library` or `GET /library/requests` after the release has loaded its track paths into `tracks`.
 
 Setup, once, before the first release that includes them:
 
@@ -219,7 +230,7 @@ npx wrangler d1 execute audio --remote --command \
   "SELECT m.login, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id GROUP BY m.github_id ORDER BY mb DESC"
 ```
 
-`tools/d1.mjs reset` refuses while `members` or `uploads` hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).
+`tools/d1.mjs reset` refuses while the library tables (`members`, `uploads`, `member_rights`, `member_folders`, `publish_requests`, `published_tracks`) hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).
 
 ## History: the Worker without Django
 

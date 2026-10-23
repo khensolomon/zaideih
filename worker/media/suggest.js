@@ -26,7 +26,8 @@
 
 const API = "https://api.github.com";
 const USER_AGENT = "zaideih-media-worker";
-export const SUGGEST_PATHS = new Set(["assets/data/albums.json", "assets/data/artist.name.json"]);
+// media.json: a reviewer without write access publishing a member's album (docs/library.md).
+export const SUGGEST_PATHS = new Set(["assets/data/albums.json", "assets/data/artist.name.json", "assets/data/media.json"]);
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_NOTE = 120;
 const MAX_LINES = 300;
