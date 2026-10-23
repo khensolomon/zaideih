@@ -1292,6 +1292,8 @@ on("library", () => {
  * The visible height above the on-screen keyboard (--vvh), so the search
  * suggestions end where the keyboard begins instead of running under it.
  */
+// Less covered than this is a toolbar or a rounding difference, not a keyboard.
+const KEYBOARD_MIN = 120;
 function trackVisibleHeight() {
 	const vv = window.visualViewport;
 	if (!vv) return;
@@ -1302,7 +1304,13 @@ function trackVisibleHeight() {
 		frame = 0;
 		const root = document.documentElement.style;
 		root.setProperty("--vvh", `${Math.round(vv.height)}px`);
-		root.setProperty("--vvt", `${Math.max(0, Math.round(vv.offsetTop))}px`);
+		// Only the keyboard moves the controls. Pulling past the bottom of a page
+		// (iOS rubber band) also shifts the visible area, by up to the pull, and
+		// the controls would slide down with it; there the visible area is as
+		// tall as the window, so nothing is covered and the offset is ignored.
+		const covered = Math.max(0, innerHeight - vv.height);
+		const offset = covered > KEYBOARD_MIN ? Math.min(Math.max(0, vv.offsetTop), covered) : 0;
+		root.setProperty("--vvt", `${Math.round(offset)}px`);
 	};
 	const soon = () => { frame ||= requestAnimationFrame(set); };
 	vv.addEventListener("resize", soon);
