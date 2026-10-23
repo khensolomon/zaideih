@@ -14,7 +14,8 @@
  *   admin      admin or maintain on the repository
  *   editor     write
  *   member     any other GitHub account
- * Moderator rights and blocks are Zaideih's own (D1 `members`).
+ * Rights the owner gives (D1 `member_rights`) and blocks (D1 `members`)
+ * are Zaideih's own.
  */
 const API = "https://api.github.com";
 const USER_AGENT = "zaideih-media-worker";
@@ -76,21 +77,54 @@ export async function whoIs(request, env, { fetchImpl = (...a) => fetch(...a), n
 	return who;
 }
 
+/*
+ * Rights (docs/library.md). The owner holds all of them; `manage` (a
+ * co-owner) implies the others and gives or takes any right from anyone
+ * but the owner.
+ */
+export const RIGHTS = Object.freeze({
+	manage: "Co-owner",
+	review: "Review publishing",
+	moderate: "Moderate members",
+	storage: "Storage",
+});
+
+/** True when the person may do what `right` covers. */
+export const can = (me, right) => me.role === "owner" || me.rights.has("manage") || me.rights.has(right);
+
+/** Rights held per member (all members, or one): Map<github_id, Set<right>>, the old moderator flag counting as moderate. */
+export async function rightsOf(env, id = null) {
+	const where = id === null ? "" : " WHERE github_id = ?1";
+	const bind = (stmt) => (id === null ? stmt : stmt.bind(id));
+	const rows = await bind(env.DB.prepare(`SELECT github_id, kind FROM member_rights${where}`)).all();
+	const legacy = await bind(env.DB.prepare(`SELECT github_id FROM members${where ? `${where} AND` : " WHERE"} moderator = 1`)).all();
+	const out = new Map();
+	const add = (gid, kind) => {
+		if (!out.has(gid)) out.set(gid, new Set());
+		out.get(gid).add(kind);
+	};
+	for (const r of rows.results ?? []) add(r.github_id, r.kind);
+	for (const r of legacy.results ?? []) add(r.github_id, "moderate");
+	return out;
+}
+
 /**
  * The person's row in D1 `members`, created on first use; the login and
  * last_seen are refreshed at most hourly. Answers
- * { ...who, moderator, blocked: null | { at, by, reason } }.
+ * { ...who, rights: Set, moderator, blocked: null | { at, by, reason } }.
  */
 export async function memberRow(env, who, nowSeconds = Math.floor(Date.now() / 1000)) {
 	await env.DB.prepare(
 		`INSERT INTO members (github_id, login, first_seen, last_seen) VALUES (?1, ?2, ?3, ?3)
 		ON CONFLICT(github_id) DO UPDATE SET login = ?2, last_seen = ?3 WHERE members.last_seen < ?3 - ${SEEN_EVERY_S} OR members.login <> ?2`,
 	).bind(who.id, who.login, nowSeconds).run();
-	const row = await env.DB.prepare("SELECT moderator, blocked_at, blocked_by, blocked_reason FROM members WHERE github_id = ?1").bind(who.id).first();
+	const row = await env.DB.prepare("SELECT blocked_at, blocked_by, blocked_reason FROM members WHERE github_id = ?1").bind(who.id).first();
+	const rights = who.role === "owner" ? new Set(Object.keys(RIGHTS)) : ((await rightsOf(env, who.id)).get(who.id) ?? new Set());
+	const me = { ...who, rights };
 	return {
-		...who,
-		// The owner always moderates; nobody can block the owner.
-		moderator: who.role === "owner" || row?.moderator === 1,
+		...me,
+		moderator: can(me, "moderate"),
+		// Nobody can block the owner.
 		blocked: who.role !== "owner" && row?.blocked_at ? { at: row.blocked_at, by: row.blocked_by, reason: row.blocked_reason ?? "" } : null,
 	};
 }

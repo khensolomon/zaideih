@@ -74,7 +74,7 @@ export function wranglerRows(stdout) {
 }
 
 /** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
-export const LIBRARY_TABLES = Object.freeze(["members", "uploads"]);
+export const LIBRARY_TABLES = Object.freeze(["members", "uploads", "member_rights"]);
 
 /**
  * Why a reset must not go ahead, or null: it would lose personal libraries

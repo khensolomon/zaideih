@@ -992,6 +992,22 @@ dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; ga
 .up-head > div { flex: 1 1 280px; min-width: 0; }
 .up-head h3 { margin: 0 0 4px; }
 .up-pick { cursor: pointer; }
+.up-add { display: flex; flex-wrap: wrap; gap: 10px; }
+.up-store { margin-bottom: 18px; }
+.up-store-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.up-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.up-crumbs span { color: var(--ink-3); }
+.up-folders, .up-stored { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; }
+.up-folders button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.up-folders button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.up-folders button svg { flex: none; width: 20px; height: 20px; color: var(--ink-3); }
+.up-folders button:hover { background: var(--raised); }
+.up-stored label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 46px; padding: 0 10px; border-radius: 12px; cursor: pointer; }
+.up-stored label:hover { background: var(--raised); }
+.up-stored label span { overflow-wrap: anywhere; }
+.up-stored label small { color: var(--ink-3); white-space: nowrap; }
+.up-stored label[data-added="true"] { opacity: 0.55; cursor: default; }
+.up-stored input { width: 18px; height: 18px; accent-color: var(--accent); }
 .up-review { margin-bottom: 22px; }
 .up-review h3 { margin: 0 0 4px; }
 .up-files { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
@@ -1163,6 +1179,10 @@ dialog .up-edit .up-edit-row { display: grid; grid-template-columns: 1fr 1fr; ga
 .admin .adm-member-uploads li { display: flex; justify-content: space-between; gap: 12px; }
 .admin .adm-member-uploads small { display: block; color: var(--ink-3); }
 @media (max-width: 760px) { .admin .adm-members > li { grid-template-columns: 1fr; } .admin .adm-members .adm-actions { justify-content: flex-start; } }
+.admin .adm-rights { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 2px 0 0; padding: 0; border: 0; }
+.admin .adm-rights legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.admin .adm-rights label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.admin .adm-rights input { width: 16px; height: 16px; accent-color: var(--accent); }
 /* Tools: one collapsible check each. */
 .admin .adm-check { border: 1px solid var(--line); border-radius: var(--radius-s); margin-bottom: 8px; padding: 0 12px; }
 .admin .adm-check summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; }

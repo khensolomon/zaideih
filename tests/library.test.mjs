@@ -14,6 +14,7 @@ const PEOPLE = {
 	"tok-ann": { user: { id: 42, login: "ann" }, permissions: { pull: true } },
 	"tok-mod": { user: { id: 7, login: "modi" }, permissions: { push: true } },
 	"tok-spam": { user: { id: 99, login: "spammer" }, permissions: { pull: true } },
+	"tok-co": { user: { id: 5, login: "lian" }, permissions: { pull: true } },
 };
 const github = async (url, init) => {
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
@@ -169,20 +170,24 @@ test("a half-done upload is cleared after an hour", { skip }, async () => {
 	assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM uploads").first()).n, 0);
 });
 
-test("moderation: the owner grants rights; moderators block and delete; the owner's library stays private", { skip }, async () => {
+test("rights: the owner and co-owners give and take them; each right allows its own part", { skip }, async () => {
 	const { env, call } = setup();
 	const spam = await upload(call, "tok-spam", song({ title: "BUY NOW" }), mp3(600));
 	const owners = await upload(call, "tok-owner", song({ title: "Bought album" }), mp3(600));
-	await call("tok-mod", "GET", "/library");
+	for (const t of ["tok-mod", "tok-ann", "tok-co"]) await call(t, "GET", "/library");
 
-	assert.equal((await call("tok-mod", "GET", "/library/members")).status, 403, "not yet a moderator");
-	const grant = await call("tok-owner", "POST", "/library/members/7", { moderator: true });
+	assert.equal((await call("tok-mod", "GET", "/library/members")).status, 403, "no right yet");
+	const grant = await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
 	assert.equal(grant.status, 200);
-	assert.equal((await grant.json()).member.moderator, true);
-	assert.equal((await call("tok-mod", "POST", "/library/members/42", { moderator: true })).status, 403, "only the owner grants rights");
+	assert.deepEqual((await grant.json()).member.rights, ["moderate"]);
+	assert.equal((await call("tok-mod", "POST", "/library/members/42", { rights: { review: true } })).status, 403, "a moderator gives no rights");
+	assert.equal((await call("tok-owner", "POST", "/library/members/42", { rights: { owner: true } })).status, 400, "unknown right");
 
 	const members = (await (await call("tok-mod", "GET", "/library/members")).json()).members;
-	assert.deepEqual(members.map((m) => [m.login, m.uploads, m.used]).sort(), [["khensolomon", 1, 600], ["modi", 0, 0], ["spammer", 1, 600]]);
+	const row = (login) => members.find((m) => m.login === login);
+	assert.equal(row("khensolomon").owner, true);
+	assert.deepEqual(row("khensolomon").rights, ["manage", "review", "moderate", "storage"]);
+	assert.deepEqual([row("spammer").uploads, row("spammer").used], [1, 600]);
 	assert.equal((await call("tok-mod", "GET", "/library/members/1")).status, 403, "the owner's library is private");
 	assert.equal((await (await call("tok-mod", "GET", "/library/members/99")).json()).uploads[0].title, "BUY NOW");
 
@@ -195,18 +200,92 @@ test("moderation: the owner grants rights; moderators block and delete; the owne
 	assert.equal((await closed.json()).error, "Your library is closed by modi: spam");
 	assert.equal((await handleSignedAudio(new Request(lib.uploads[0].url), env, spam.id)).status, 403);
 	assert.equal((await call("tok-mod", "POST", "/library/members/1", { blocked: true, reason: "x" })).status, 403, "nobody blocks the owner");
-
-	// Moderators delete others' uploads, never the owner's.
-	assert.equal((await call("tok-mod", "DELETE", `/library/uploads/${owners.id}`)).status, 404);
+	assert.equal((await call("tok-mod", "DELETE", `/library/uploads/${owners.id}`)).status, 404, "nor deletes the owner's uploads");
 	assert.equal((await call("tok-mod", "DELETE", `/library/uploads/${spam.id}`)).status, 204);
 	assert.equal((await call("tok-mod", "POST", "/library/members/99", { blocked: false })).status, 200);
-	assert.equal((await call("tok-spam", "GET", "/library")).status, 200, "unblocked");
 
-	// A moderator cannot block another moderator; the owner can.
-	await call("tok-ann", "GET", "/library");
-	assert.equal((await call("tok-owner", "POST", "/library/members/42", { moderator: true })).status, 200);
-	assert.equal((await call("tok-mod", "POST", "/library/members/42", { blocked: true, reason: "x" })).status, 403);
-	assert.equal((await call("tok-owner", "POST", "/library/members/42", { blocked: true, reason: "x" })).status, 200);
+	// Review publishing alone lists members but does not moderate.
+	await call("tok-owner", "POST", "/library/members/42", { rights: { review: true } });
+	assert.equal((await call("tok-ann", "GET", "/library/members")).status, 200);
+	assert.equal((await call("tok-ann", "POST", "/library/members/99", { blocked: true, reason: "x" })).status, 403);
+
+	// A co-owner gives and takes any right, also from others with rights, but never touches the owner.
+	await call("tok-owner", "POST", "/library/members/5", { rights: { manage: true } });
+	assert.equal((await call("tok-co", "POST", "/library/members/7", { rights: { moderate: false, storage: true } })).status, 200);
+	assert.deepEqual((await (await call("tok-mod", "GET", "/library")).json()).member.rights, ["storage"]);
+	assert.equal((await call("tok-co", "POST", "/library/members/42", { blocked: true, reason: "holds rights" })).status, 200, "co-owners block members with rights");
+	assert.equal((await call("tok-co", "POST", "/library/members/1", { rights: { manage: false } })).status, 403);
+	assert.equal((await call("tok-co", "GET", "/library/members/1")).status, 403, "the owner's library stays private to co-owners too");
+
+	// A moderator cannot block someone who holds a right.
+	await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
+	assert.equal((await call("tok-mod", "POST", "/library/members/5", { blocked: true, reason: "x" })).status, 403);
+
+	// The flag from before rights existed still counts, until Moderate members is taken.
+	env.DB.raw.prepare("UPDATE members SET moderator = 1 WHERE github_id = 99").run();
+	assert.equal((await call("tok-spam", "GET", "/library/members")).status, 200);
+	await call("tok-owner", "POST", "/library/members/99", { rights: { moderate: false } });
+	assert.equal((await call("tok-spam", "GET", "/library/members")).status, 403);
+});
+
+test("storage: files already in R2 join a library without copying, inside each person's own folder", { skip }, async () => {
+	const { env, call } = setup();
+	const put = (key, n = 300) => env.BUCKET.put(key, mp3(n));
+	await put("private/google/Album A/01 One.mp3");
+	await put("private/google/Album A/02 Two.mp3");
+	await env.BUCKET.put("private/google/Album A/cover.jpg", "x");
+	await put("private/7/mine.mp3");
+	await put("music/zola/Agape/1.mp3");
+	await put("users/42/1.mp3");
+
+	// The owner (and co-owners) browse all of private/.
+	const top = await (await call("tok-owner", "GET", "/library/storage")).json();
+	assert.equal(top.root, "private/");
+	assert.deepEqual(top.folders.map((f) => f.name), ["7", "google"]);
+	const album = await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("private/google/Album A/")}`)).json();
+	assert.deepEqual(album.files.map((f) => [f.name, f.size, f.format, f.added]), [["01 One.mp3", 300, "mp3", false], ["02 Two.mp3", 300, "mp3", false]]);
+	assert.equal(album.others, 1, "the cover is not listed");
+
+	// Its signed address reads the file, with ranges and CORS, so the app can read tags and length.
+	const k = new URL(album.files[0].url);
+	const part = await worker.fetch(new Request(k, { headers: { Range: "bytes=0-2", Origin: ORIGIN } }), env, { waitUntil() {} });
+	assert.equal(part.status, 206);
+	assert.equal(part.headers.get("access-control-allow-origin"), ORIGIN);
+	assert.equal(new TextDecoder().decode(await part.arrayBuffer()), "ID3");
+	const forged = await worker.fetch(new Request(`${W}${k.pathname}?e=9999999999&s=${"a".repeat(43)}`), env, { waitUntil() {} });
+	assert.equal(forged.status, 403);
+	assert.equal((await worker.fetch(new Request(`${W}/k/${Buffer.from("music/zola/Agape/1.mp3").toString("base64url")}?e=1&s=x`), env, { waitUntil() {} })).status, 404, "only private/ can be named");
+
+	// Adding: no copy, no space used; listed as added.
+	const items = album.files.map((f, i) => ({ key: f.key, title: f.name, album: "Album A", track: i + 1, duration: 200 }));
+	const add = await call("tok-owner", "POST", "/library/storage/add", { items });
+	assert.equal(add.status, 201);
+	assert.equal((await add.json()).added.length, 2);
+	const lib = await (await call("tok-owner", "GET", "/library")).json();
+	assert.equal(lib.uploads.length, 2);
+	assert.equal(lib.space.used, 0);
+	assert.equal(env.BUCKET.objects.size, 6, "nothing copied");
+	assert.equal((await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("private/google/Album A/")}`)).json()).files[0].added, true);
+	assert.equal((await call("tok-owner", "POST", "/library/storage/add", { items: items.slice(0, 1) })).status, 409, "a file joins one library once");
+	assert.equal((await handleSignedAudio(new Request(lib.uploads[0].url), env, lib.uploads[0].id)).status, 200, "it plays");
+
+	// Taking it out of the library leaves the file where it was put.
+	assert.equal((await call("tok-owner", "DELETE", `/library/uploads/${lib.uploads[0].id}`)).status, 204);
+	assert.ok(env.BUCKET.objects.has("private/google/Album A/01 One.mp3"));
+
+	// Storage right: only private/<github id>/.
+	await call("tok-mod", "GET", "/library");
+	assert.equal((await call("tok-mod", "GET", "/library/storage")).status, 403, "no right, no storage");
+	await call("tok-owner", "POST", "/library/members/7", { rights: { storage: true } });
+	const mine = await (await call("tok-mod", "GET", "/library/storage")).json();
+	assert.equal(mine.root, "private/7/");
+	assert.deepEqual(mine.files.map((f) => f.name), ["mine.mp3"]);
+	for (const prefix of ["private/", "private/google/", "music/", "private/7/../google/", "private/7"]) {
+		assert.ok([400, 403].includes((await call("tok-mod", "GET", `/library/storage?prefix=${encodeURIComponent(prefix)}`)).status), prefix);
+	}
+	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/google/Album A/02 Two.mp3", title: "x", duration: 9 }] })).status, 403);
+	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/7/mine.mp3", title: "Mine", duration: 0 }] })).status, 400, "length is required");
+	assert.equal((await call("tok-mod", "POST", "/library/storage/add", { items: [{ key: "private/7/mine.mp3", title: "Mine", duration: 61 }] })).status, 201);
 });
 
 test("library requests need a sign-in, an allowed origin and the setup", { skip }, async () => {

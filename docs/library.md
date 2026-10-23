@@ -2,30 +2,46 @@
 
 Anyone signed in with GitHub can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: the design below is agreed (2026-10-22). Built (v26.10.22.8): roles, uploads, Your uploads in Library, signed streaming and moderation (block, delete, moderator rights). Still to come: adding albums from R2 folders, asking for an upload to be published, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (this release). Still to come: asking for an upload to be published, and share links.
 
-## Roles
+## Roles and rights
 
 | Role | Who | May |
 |------|-----|-----|
-| Owner | The owner of the GitHub repository (`GITHUB_REPO`, so `khensolomon`) | Everything. The owner's private music is the owner's alone; no other role can list or play it. Grants and removes moderator rights. Publishes uploads |
-| Moderator | Members the owner has granted the right (`members.moderator`) | Block and unblock members, delete any upload |
-| Admin, editor | Repository permission (admin or maintain, write) | Edit the catalog (see the admin page). Moderation only when granted |
-| Member | Anyone signed in with GitHub | Upload to their own library, play, edit and delete it; suggest catalog edits |
+| Owner | The owner of the GitHub repository (`GITHUB_REPO`, so `khensolomon`) | Everything, always: every right below, giving and taking any right from anyone, overriding any decision. The owner's library is the owner's alone; nobody else can list or play it, block the owner or change the owner's rights |
+| Member | Anyone signed in with GitHub | Their own library: upload, add from storage (with the right), play, edit, delete; suggest catalog edits |
 | Listener | Not signed in | The public app |
 
-Roles come from GitHub on every request the Worker serves (`worker/media/members.js`): the sign-in token is checked with GitHub (`GET /user`, `GET /repos/{repo}` for the permission), cached per isolate for five minutes by a hash of the token. Blocking and moderator rights are Zaideih's own and live in D1.
+The owner trusts members with rights, one by one, on the admin page (Members); each is a row in D1 `member_rights` with who gave it and when:
+
+| Right | Allows |
+|---|---|
+| Co-owner (`manage`) | Everything below, and gives or takes any right from any member but the owner |
+| Review publishing (`review`) | Approves or rejects requests to publish (to come), and listens to the songs under review |
+| Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
+| Storage (`storage`) | Adds files already in R2, from `private/<their github id>/` only |
+
+A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
+
+Roles come from GitHub on every request the Worker serves (`worker/media/members.js`): the sign-in token is checked with GitHub (`GET /user`, `GET /repos/{repo}` for the permission), cached per isolate for five minutes by a hash of the token. Rights and blocks are Zaideih's own and live in D1.
 
 ## Data
 
 D1 (`worker/media/schema.sql`):
 
-- `members`: one row per GitHub account that has used the library: GitHub id (the key; logins can change), login, moderator flag, block (time, by whom, reason), bytes stored, first and last seen.
+- `members`: one row per GitHub account that has used the library: GitHub id (the key; logins can change), login, block (time, by whom, reason), first and last seen.
+- `member_rights`: the rights the owner has given, one row per member and right.
 - `uploads`: one row per uploaded file: id, owner's GitHub id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`; later `requested`, `published`, `rejected`) and when it was added.
 
-R2: `users/<github id>/<upload id>.<ext>`, beside the catalog's `music/…`. Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then.
+R2:
 
-`tools/d1.mjs reset` refuses while `members` or `uploads` hold rows: they cannot be rebuilt from git, and their files would be left in R2 without an owner. `--drop-library` overrides it.
+- `music/…`: the catalog.
+- `users/<github id>/<upload id>.<ext>`: uploads.
+- `private/…`: files put in R2 by hand (rclone, wrangler, the dashboard) to be added from storage; `private/<github id>/` for members with the Storage right.
+
+Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then.
+
+`tools/d1.mjs reset` refuses while `members`, `uploads` or `member_rights` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -40,6 +56,19 @@ R2: `users/<github id>/<upload id>.<ext>`, beside the catalog's `music/…`. Upl
 
 An upload left `uploading` for an hour (a closed tab) is removed the next time its owner lists the library.
 
+## Adding from storage
+
+Music bought elsewhere, too large to upload or already on hand can be put in R2 directly and added without passing through the browser:
+
+```bash
+# one folder per album, under private/ (the owner and co-owners) or private/<github id>/ (Storage right)
+npx wrangler r2 object put "media/private/google/Album/01 Song.mp3" --file "01 Song.mp3" --remote
+# or a whole folder with rclone (an R2 remote configured with an R2 API token)
+rclone copy ./Album "r2:media/private/google/Album"
+```
+
+Your uploads, Add from storage (`GET /library/storage?prefix=…`) lists the folders and audio files of a folder, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's folder, present, a supported format, a length, not already in a library) and then adds all of them or none. Nothing is copied: the library row names the file where it is, so it uses no space allowance and has no size limit. Taking it out of the library leaves the file in R2. Nothing outside `private/` can be listed or read this way.
+
 ## Listening
 
 `GET /library` answers the member's uploads with a signed address for each: `/u/<id>?e=<expiry>&s=<signature>`, an HMAC-SHA256 of the id and expiry with the Worker secret `AUDIO_SIGNING_KEY`, valid for six hours. Audio elements cannot send a sign-in, so the address itself is the permission. `/u/<id>` streams from R2 with ranges like `/audio/<id>`, never cached publicly, and refuses an expired or wrong signature, an unknown upload and an upload whose owner is blocked. Uploads are never counted as plays.
@@ -48,11 +77,12 @@ The app lists them in Library as Your uploads, grouped by album, and plays them 
 
 ## Moderation
 
-Spam is expected. The owner and moderators see every member (login, space used, uploads, last seen) on the admin page and can:
+Spam is expected. Anyone holding a right sees every member (login, rights, space used, uploads, last seen) on the admin page, Members. With Moderate members:
 
 - block a member, with a reason: their uploads stop playing at once, and every library request answers 403 with the reason; unblocking restores everything;
-- delete any upload (the R2 object and the row);
-- (owner only) grant or remove moderator rights.
+- delete any upload (the R2 object and the row; a file added from storage stays in R2).
+
+The owner and co-owners also give and take rights there.
 
 Deleting is permanent. Blocking is the reversible step.
 
@@ -66,6 +96,5 @@ Deleting is permanent. Blocking is the reversible step.
 
 ## To come
 
-- Add from R2: an editor picks a folder already in R2 (`music/…`) that no catalog track uses, fills the album form from the files' tags, and publishes it to the catalog (a pull request adding `albums.json` and `media.json` entries) or keeps it private.
-- Ask to publish: a member asks for an album to go public; the owner approves (the files move to `music/<language>/<album>/`, the songs get catalog ids, the usual pull request opens) or a moderator rejects it with a reason.
+- Ask to publish (agreed 2026-10-23): a member asks for a whole album, MP3 or M4A only, with its language and a note on the rights. Review publishing listens and approves or rejects with a reason; approving fills the album form from the upload, copies the files to `music/<language>/<album>/`, and opens the usual pull request (released as `web+d1`). After the release the member's private copies are removed; the member stays credited, with "Suggest a correction" and "Ask to remove" on their published songs, both reviewed. The owner can do or undo any of it.
 - Share links: chosen songs, a note and an expiry ("never" allowed), revocable, with a record of when they were opened; for showing pending recordings to rights holders without making them public.

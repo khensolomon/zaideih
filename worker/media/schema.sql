@@ -108,3 +108,22 @@ CREATE TABLE IF NOT EXISTS uploads (
     updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_uploads_owner ON uploads (owner_id, status);
+
+-- =============================================================================
+-- member_rights: what the owner has trusted a member with (docs/library.md)
+-- =============================================================================
+-- kind: manage (co-owner: everything below, and gives or takes any right),
+-- review (approves or rejects requests to publish), moderate (blocks
+-- members, deletes uploads), storage (adds files already in R2 under
+-- private/<github_id>/). The repository's owner holds every right without
+-- a row. members.moderator = 1 (from before rights existed) counts as moderate.
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+--
+--   Who holds what:  SELECT m.login, r.kind, r.granted_by FROM member_rights r JOIN members m ON m.github_id = r.github_id;
+CREATE TABLE IF NOT EXISTS member_rights (
+    github_id   INTEGER NOT NULL,
+    kind        TEXT    NOT NULL,
+    granted_by  TEXT    NOT NULL,
+    granted_at  INTEGER NOT NULL,
+    PRIMARY KEY (github_id, kind)
+) WITHOUT ROWID;

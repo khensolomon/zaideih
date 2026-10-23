@@ -1,52 +1,105 @@
 /**
  * Library, Your uploads: the signed-in person's own music (core/uploads.js,
- * docs/library.md). Choosing files reads them in the browser first; files
- * that cannot be uploaded are listed with the reason and never sent. The
- * rest can be corrected (title, artist, album) and are uploaded one after
- * another with progress.
+ * docs/library.md). Music comes three ways:
+ *
+ *   Add music        files from the device, uploaded
+ *   Add a folder     every audio file in a folder of the device (desktop
+ *                    browsers), uploaded; the album defaults to the folder
+ *   Add from storage files already in R2 under private/ (the Storage right):
+ *                    added to the library where they are, without copying
+ *
+ * Every file is read in the browser first (length, tags); files that cannot
+ * be added are listed with the reason and never sent. The rest can be
+ * corrected (title, artist, album) before they are added.
  */
 import { html } from "../core/html.js";
-import { megabytes } from "../core/upload-rules.js";
-import { prepare, uploads } from "../core/uploads.js";
+import { formatOf, megabytes } from "../core/upload-rules.js";
+import { prepare, prepareStored, uploads } from "../core/uploads.js";
 import { formatDuration } from "../core/text.js";
 import { icon } from "./icons.js";
 import { albumTile } from "./parts.js";
 
 const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus";
-let review = []; // prepared files waiting to be sent: survives re-renders of the page
+// State that survives re-renders of the page.
+let review = []; // prepared files waiting to be added
 let sending = false;
+let browse = null; // { prefix, folders, files, others, cursor, selected: Set<key>, loading, error }
+
+/** Folders can be picked in desktop browsers; phones offer files only. */
+const canPickFolders = () => "webkitdirectory" in HTMLInputElement.prototype && matchMedia("(pointer: fine)").matches;
 
 function space(st) {
 	const s = st.space;
 	if (!s) return "";
-	const quota = s.quota === null ? "no limit" : megabytes(s.quota);
 	const pct = s.quota ? Math.min(100, (s.used / s.quota) * 100) : 0;
-	return html`<div class="muted">${megabytes(s.used)} used of ${quota}. Up to ${megabytes(s.maxFile)} per file: MP3, M4A (AAC), FLAC, WAV or Ogg.</div>
+	const used = s.quota === null ? `${megabytes(s.used)} uploaded, with no limit for you.` : `${megabytes(s.used)} used of ${megabytes(s.quota)}.`;
+	return html`<div class="muted">${used} Up to ${megabytes(s.maxFile)} per file: MP3, M4A (AAC), FLAC, WAV or Ogg.</div>
 		${s.quota ? html`<div class="meter" role="img" aria-label="${Math.round(pct)}% of your space used"><span style="width:${pct.toFixed(1)}%"></span></div>` : ""}`;
 }
+
+/* ------------------------------------------------------------- storage ---- */
+
+function crumbs(root, prefix) {
+	const parts = prefix.slice(root.length).split("/").filter(Boolean);
+	const out = [{ name: root.replace(/\/$/, ""), prefix: root }];
+	parts.forEach((p, i) => out.push({ name: p, prefix: `${root}${parts.slice(0, i + 1).join("/")}/` }));
+	return out;
+}
+
+function storagePanel() {
+	if (!browse) return "";
+	const root = uploads.storageRoot;
+	const b = browse;
+	const free = b.files?.filter((f) => !f.added) ?? [];
+	return html`<section class="panel up-store" aria-label="Storage">
+		<header class="up-store-head">
+			<nav class="up-crumbs" aria-label="Folder">${crumbs(root, b.prefix).map((c, i, all) => i === all.length - 1
+				? html`<b>${c.name}</b>`
+				: html`<button class="link-btn" data-up="open" data-prefix="${c.prefix}">${c.name}</button><span aria-hidden="true">/</span>`)}</nav>
+			<button class="icon-btn" data-up="store-close" aria-label="Close storage">${icon("close")}</button>
+		</header>
+		${b.loading ? html`<p class="muted">Reading the folder…</p>` : ""}
+		${b.error ? html`<p class="up-why">${b.error}</p>` : ""}
+		${b.folders?.length ? html`<ul class="up-folders">${b.folders.map((f) => html`<li><button data-up="open" data-prefix="${f.prefix}">${icon("album")}<span>${f.name}</span>${icon("chevron")}</button></li>`)}</ul>` : ""}
+		${b.files?.length ? html`<ul class="up-stored">${b.files.map((f) => html`<li>
+				<label ${f.added ? 'data-added="true"' : ""}><input type="checkbox" data-up="pick-stored" data-key="${f.key}" ${f.added ? "disabled" : ""} ${b.selected.has(f.key) ? "checked" : ""}>
+				<span>${f.name}</span><small>${f.added ? "in a library" : `${f.format.toUpperCase()} · ${megabytes(f.size)}`}</small></label>
+			</li>`)}</ul>` : ""}
+		${!b.loading && !b.error && !b.folders?.length && !b.files?.length ? html`<p class="muted">This folder has no audio files. Put files in R2 under ${root} (with rclone, wrangler or the Cloudflare dashboard), then open it again.</p>` : ""}
+		${b.others ? html`<p class="muted">${b.others === 1 ? "1 other file here is not audio and is not listed." : `${b.others} other files here are not audio and are not listed.`}</p>` : ""}
+		${b.cursor ? html`<p><button class="btn" data-up="more-stored">Show more files</button></p>` : ""}
+		<div class="actions">
+			${free.length ? html`<button class="btn" data-up="all-stored">${b.selected.size === free.length ? "Select none" : "Select all"}</button>` : ""}
+			${b.selected.size ? html`<button class="btn primary" data-up="read-stored">Read ${b.selected.size === 1 ? "1 file" : `${b.selected.size} files`}</button>` : ""}
+		</div>
+	</section>`;
+}
+
+/* -------------------------------------------------------------- review ---- */
 
 function reviewList() {
 	if (!review.length) return "";
 	const ok = review.filter((r) => !r.error && r.state !== "done");
-	const refused = review.filter((r) => r.error && r.state !== "done");
-	return html`<section class="panel up-review" aria-label="Files to upload">
-		<h3>${sending ? "Uploading…" : ok.length ? `Ready to upload: ${ok.length}` : "Nothing can be uploaded"}</h3>
-		${ok.length ? html`<p class="muted">Check the details read from the files; they can be changed later too.</p>` : ""}
+	const stored = ok.filter((r) => r.remote).length;
+	const verb = stored === ok.length ? "Add" : "Upload";
+	return html`<section class="panel up-review" aria-label="Files to add">
+		<h3>${sending ? (verb === "Add" ? "Adding…" : "Uploading…") : ok.length ? `Ready to ${verb.toLowerCase()}: ${ok.length}` : "Nothing can be added"}</h3>
+		${ok.length ? html`<p class="muted">Check the details read from the files; they can be changed later too.${stored ? " Files from storage are added where they are, without copying." : ""}</p>` : ""}
 		<ol class="up-files">${review.map((r, i) => r.error
-			? html`<li class="up-file refused"><span class="up-name">${r.file.name}</span><span class="up-why">${r.error}</span></li>`
+			? html`<li class="up-file refused"><span class="up-name">${r.name}</span><span class="up-why">${r.error}</span></li>`
 			: html`<li class="up-file" data-i="${i}" data-state="${r.state ?? "ready"}">
 				<div class="up-fields">
-					<input name="title" value="${r.title}" aria-label="Title of ${r.file.name}" placeholder="Title" ${sending ? "disabled" : ""}>
+					<input name="title" value="${r.title}" aria-label="Title of ${r.name}" placeholder="Title" ${sending ? "disabled" : ""}>
 					<input name="artist" value="${r.artist}" aria-label="Artist" placeholder="Artist" ${sending ? "disabled" : ""}>
 					<input name="album" value="${r.album}" aria-label="Album" placeholder="Album" ${sending ? "disabled" : ""}>
 				</div>
-				<span class="up-meta">${r.file.name} · ${megabytes(r.file.size)} · ${formatDuration(r.duration)}</span>
+				<span class="up-meta">${r.remote ? "Storage · " : ""}${r.name} · ${megabytes(r.size)} · ${formatDuration(r.duration)}</span>
 				${r.state === "sending" ? html`<span class="up-progress"><span style="width:${Math.round((r.progress ?? 0) * 100)}%"></span></span>` : ""}
-				${r.state === "done" ? html`<span class="up-done">${icon("check")} Uploaded</span>` : ""}
+				${r.state === "done" ? html`<span class="up-done">${icon("check")} ${r.remote ? "Added" : "Uploaded"}</span>` : ""}
 				${r.failed ? html`<span class="up-why">${r.failed}</span>` : ""}
 			</li>`)}</ol>
 		<div class="actions">
-			${ok.length && !sending ? html`<button class="btn primary" data-up="send">${icon("plus")} Upload ${ok.length === 1 ? "1 song" : `${ok.length} songs`}</button>` : ""}
+			${ok.length && !sending ? html`<button class="btn primary" data-up="send">${icon("plus")} ${verb} ${ok.length === 1 ? "1 song" : `${ok.length} songs`}</button>` : ""}
 			${ok.length > 1 && !sending ? html`<button class="btn" data-up="same-album">Same album for all</button>` : ""}
 			${!sending ? html`<button class="btn" data-up="clear">${ok.length ? "Cancel" : "Close"}</button>` : ""}
 		</div>
@@ -64,8 +117,13 @@ export function uploadsPanel() {
 	}
 	const body = html`<div class="up-root"><section class="panel up-head">
 			<div><h3>Your own music</h3>${space(st)}</div>
-			<label class="btn primary up-pick">${icon("plus")} Add music<input type="file" multiple accept="${ACCEPT}" class="sr" data-up="pick" ${sending ? "disabled" : ""}></label>
+			<div class="up-add">
+				<label class="btn primary up-pick">${icon("plus")} Add music<input type="file" multiple accept="${ACCEPT}" class="sr" data-up="pick" ${sending ? "disabled" : ""}></label>
+				${canPickFolders() ? html`<label class="btn up-pick">${icon("album")} Add a folder<input type="file" webkitdirectory multiple class="sr" data-up="pick-folder" ${sending ? "disabled" : ""}></label>` : ""}
+				${uploads.storageRoot ? html`<button class="btn" data-up="store-open" ${sending ? "disabled" : ""}>${icon("upload")} Add from storage</button>` : ""}
+			</div>
 		</section>
+		<div id="up-store">${storagePanel()}</div>
 		<div id="up-review">${reviewList()}</div>
 		${st.albums.length
 			? html`<div class="albums grid">${st.albums.map((a) => albumTile(a))}</div>`
@@ -80,6 +138,8 @@ function mount(page) {
 	const redraw = () => {
 		const box = view.querySelector("#up-review");
 		if (box) box.innerHTML = reviewList();
+		const store = view.querySelector("#up-store");
+		if (store) store.innerHTML = storagePanel();
 	};
 	const keep = () => {
 		for (const li of view.querySelectorAll(".up-file[data-i]")) {
@@ -87,21 +147,69 @@ function mount(page) {
 			for (const f of ["title", "artist", "album"]) r[f] = li.querySelector(`[name=${f}]`).value;
 		}
 	};
+	const waiting = () => review.filter((r) => r.state !== "done");
+	const openFolder = async (prefix, cursor = "") => {
+		const keepFiles = cursor ? browse.files : [];
+		browse = { ...(browse ?? {}), prefix: prefix || uploads.storageRoot, loading: true, error: "", selected: cursor ? browse.selected : new Set() };
+		if (!cursor) Object.assign(browse, { folders: [], files: [], others: 0, cursor: null });
+		redraw();
+		try {
+			const r = await uploads.browse(prefix, cursor);
+			browse = { ...browse, ...r, files: [...keepFiles, ...r.files], loading: false };
+		} catch (err) {
+			browse = { ...browse, loading: false, error: err.message };
+		}
+		redraw();
+	};
+
 	view.addEventListener("change", async (e) => {
-		if (e.target.dataset?.up !== "pick") return;
-		const files = [...e.target.files];
+		const act = e.target.dataset?.up;
+		if (act === "pick-stored") {
+			const key = e.target.dataset.key;
+			if (e.target.checked) browse.selected.add(key);
+			else browse.selected.delete(key);
+			redraw();
+			return;
+		}
+		if (act !== "pick" && act !== "pick-folder") return;
+		let files = [...e.target.files];
 		e.target.value = "";
+		// A folder brings covers and notes too; only its audio files are offered.
+		if (act === "pick-folder") files = files.filter((f) => formatOf(f.name));
 		if (!files.length) return;
 		keep();
-		const left = uploads.spaceLeft() - review.filter((r) => !r.error && r.state !== "done").reduce((n, r) => n + r.file.size, 0);
-		review = [...review.filter((r) => r.state !== "done"), ...(await prepare(files, { maxBytes: uploads.state.space.maxFile, spaceLeft: left }))];
+		const left = uploads.spaceLeft() - waiting().filter((r) => !r.error && !r.remote).reduce((n, r) => n + r.size, 0);
+		review = [...waiting(), ...(await prepare(files, { maxBytes: uploads.state.space.maxFile, spaceLeft: left }))];
 		redraw();
 	});
+
 	view.addEventListener("click", async (e) => {
 		const b = e.target.closest("[data-up]");
-		if (!b) return;
+		if (!b || b.matches("input")) return;
 		const act = b.dataset.up;
 		if (act === "retry") { uploads.refresh().catch(() => {}); return; }
+		if (act === "store-open") { await openFolder(uploads.storageRoot); return; }
+		if (act === "store-close") { browse = null; redraw(); return; }
+		if (act === "open") { await openFolder(b.dataset.prefix); return; }
+		if (act === "more-stored") { await openFolder(browse.prefix, browse.cursor); return; }
+		if (act === "all-stored") {
+			const free = browse.files.filter((f) => !f.added);
+			browse.selected = browse.selected.size === free.length ? new Set() : new Set(free.map((f) => f.key));
+			redraw();
+			return;
+		}
+		if (act === "read-stored") {
+			keep();
+			const chosen = browse.files.filter((f) => browse.selected.has(f.key));
+			const folderName = browse.prefix.split("/").filter(Boolean).pop() ?? "";
+			browse = { ...browse, loading: true };
+			redraw();
+			const items = await prepareStored(chosen, folderName);
+			review = [...waiting().filter((r) => !items.some((i) => i.key && i.key === r.key)), ...items];
+			browse = null;
+			redraw();
+			return;
+		}
 		if (act === "clear") { review = []; redraw(); return; }
 		keep();
 		if (act === "same-album") {
@@ -114,8 +222,23 @@ function mount(page) {
 		if (act !== "send") return;
 		sending = true;
 		redraw();
+		// Files from storage go in one request: all are added or none.
+		const stored = review.filter((r) => r.remote && !r.error && r.state !== "done");
+		if (stored.length) {
+			for (const r of stored) { r.state = "sending"; r.failed = ""; }
+			redraw();
+			try {
+				const untitled = stored.find((r) => !r.title.trim());
+				if (untitled) throw new Error(`"${untitled.name}" needs a title`);
+				await uploads.addFromStorage(stored);
+				for (const r of stored) r.state = "done";
+			} catch (err) {
+				for (const r of stored) { r.state = "ready"; r.failed = err.message; }
+			}
+			redraw();
+		}
 		for (const r of review) {
-			if (r.error || r.state === "done") continue;
+			if (r.remote || r.error || r.state === "done") continue;
 			r.state = "sending";
 			r.failed = "";
 			r.progress = 0;
@@ -136,7 +259,7 @@ function mount(page) {
 		}
 		sending = false;
 		const failed = review.filter((r) => r.failed);
-		review = failed.length ? review.filter((r) => r.state !== "done") : [];
+		review = failed.length ? waiting() : [];
 		await uploads.refresh().catch(() => {});
 	});
 }

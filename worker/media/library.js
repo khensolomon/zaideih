@@ -8,23 +8,40 @@
  *                                           -> {id, upload: "/library/uploads/<id>/file"}
  *   PUT    /library/uploads/<id>/file       the file itself (Content-Length must match)
  *   PATCH  /library/uploads/<id>            {title?, artist?, album?, year?, track?}
- *   DELETE /library/uploads/<id>            the owner, or a moderator
- *   GET    /library/members                 moderators: every member with space and uploads used
- *   GET    /library/members/<github id>     moderators: one member's uploads (titles only, no addresses)
- *   POST   /library/members/<github id>     moderators: {blocked: true, reason} | {blocked: false};
- *                                           owner only: {moderator: true|false}
+ *   DELETE /library/uploads/<id>            the uploader, or `moderate`; a file added from
+ *                                           storage stays in R2
+ *   GET    /library/storage?prefix=<p>      `storage`: folders and audio files under private/
+ *                                           (all of it for co-owners, private/<github id>/ otherwise),
+ *                                           each file with a signed address to read it
+ *   POST   /library/storage/add             {items: [{key, title, artist?, album?, year?, track?, duration}]}
+ *                                           files already in storage, added to the library without copying
+ *   GET    /library/members                 any right: every member with space, uploads and rights
+ *   GET    /library/members/<github id>     `moderate`: one member's uploads (titles only, no addresses)
+ *   POST   /library/members/<github id>     `moderate`: {blocked: true, reason} | {blocked: false};
+ *                                           `manage`: {rights: {<right>: true|false, ...}}
  * Streaming (no sign-in; the address is the permission):
- *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>
+ *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload
+ *   GET/HEAD /k/<key, base64url>?e&s               a file in storage, for reading its details
+ *
+ * Rights (members.js): the repository's owner holds all; co-owners
+ * (`manage`) hold all and give or take any of them; nobody but the owner
+ * sees the owner's library, and nobody can block the owner or change the
+ * owner's rights.
  *
  * Bindings: DB, BUCKET, GITHUB_REPO, AUTH_ORIGINS, UPLOAD_MAX_BYTES,
  * UPLOAD_QUOTA_BYTES (vars), AUDIO_SIGNING_KEY (secret), UPLOAD_LIMIT (rate limiter).
  */
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
-import { MemberError, memberRow, whoIs } from "./members.js";
+import { can, MemberError, memberRow, RIGHTS, rightsOf, whoIs } from "./members.js";
+import { formatOf } from "../../src/core/upload-rules.js";
 
 export { checkNewUpload, FORMATS };
 
 const SIGNED_FOR_S = 6 * 3600;
+/** Files placed in R2 by hand for personal libraries live under this prefix. */
+export const STORAGE_ROOT = "private/";
+const MAX_ADD = 200;
+const MAX_LIST = 1000;
 const STALE_UPLOAD_S = 3600;
 const MAX_JSON = 8192;
 
@@ -62,6 +79,23 @@ export async function signedUrl(origin, id, secret, nowSeconds = Math.floor(Date
 	return `${origin}/u/${id}?e=${e}&s=${b64url(sig)}`;
 }
 
+/** The signed address of a file in storage, for reading its details: `<origin>/k/<key>?e&s`. */
+export async function signedKeyUrl(origin, key, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
+	const e = nowSeconds + SIGNED_FOR_S;
+	const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), new TextEncoder().encode(`k:${key}.${e}`));
+	return `${origin}/k/${b64url(new TextEncoder().encode(key))}?e=${e}&s=${b64url(sig)}`;
+}
+
+/** The storage key of a /k/ address, or null when it is not a valid key. */
+export function keyOf(encoded) {
+	try {
+		const key = new TextDecoder("utf-8", { fatal: true }).decode(fromB64url(encoded));
+		return key.startsWith(STORAGE_ROOT) ? key : null;
+	} catch {
+		return null;
+	}
+}
+
 /** True when the address's signature is right and it has not expired. */
 export async function verifySigned(id, e, s, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
 	if (!/^\d+$/.test(e ?? "") || Number(e) < nowSeconds || !/^[A-Za-z0-9_-]{43}$/.test(s ?? "")) return false;
@@ -95,9 +129,9 @@ function json(status, body, cors) {
 	return new Response(body === null ? null : JSON.stringify(body), { status, headers });
 }
 
-async function readJson(request) {
+async function readJson(request, limit = MAX_JSON) {
 	const text = await request.text();
-	if (text.length > MAX_JSON) throw new LibraryError("request body too large", 413);
+	if (text.length > limit) throw new LibraryError("request body too large", 413);
 	try {
 		const v = JSON.parse(text);
 		if (v && typeof v === "object" && !Array.isArray(v)) return v;
@@ -116,8 +150,9 @@ async function uploadRow(env, id) {
 	return env.DB.prepare("SELECT * FROM uploads WHERE id = ?1").bind(id).first();
 }
 
+/** Space used by uploads; files added from storage were not uploaded and use none. */
 async function usedBytes(env, ownerId) {
-	const r = await env.DB.prepare("SELECT COALESCE(SUM(size), 0) AS used, COUNT(*) AS n FROM uploads WHERE owner_id = ?1").bind(ownerId).first();
+	const r = await env.DB.prepare(`SELECT COALESCE(SUM(size), 0) AS used, COUNT(*) AS n FROM uploads WHERE owner_id = ?1 AND r2_key NOT LIKE '${STORAGE_ROOT}%'`).bind(ownerId).first();
 	return { used: r?.used ?? 0, count: r?.n ?? 0 };
 }
 
@@ -137,7 +172,7 @@ async function library(env, me, cfg, origin, nowSeconds) {
 	const uploads = [];
 	for (const r of rows.results ?? []) uploads.push({ ...publicUpload(r), url: await signedUrl(origin, r.id, env.AUDIO_SIGNING_KEY, nowSeconds) });
 	return {
-		member: { id: me.id, login: me.login, role: me.role, moderator: me.moderator },
+		member: { id: me.id, login: me.login, role: me.role, moderator: me.moderator, rights: [...me.rights], storageRoot: storageRootOf(me) },
 		space: { used, quota: me.role === "owner" ? null : cfg.quota, maxFile: cfg.maxBytes },
 		uploads,
 	};
@@ -203,21 +238,25 @@ async function deleteUpload(env, me, id) {
 	const ownerOfRow = row ? await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(row.owner_id).first() : null;
 	const isOwnersUpload = isOwnerLogin(env, ownerOfRow?.login);
 	const mine = row?.owner_id === me.id;
-	if (!row || (!mine && !(me.moderator && !isOwnersUpload))) throw new LibraryError("no such upload, or not yours to delete", 404);
-	await env.BUCKET.delete(row.r2_key);
+	if (!row || (!mine && !(can(me, "moderate") && !isOwnersUpload))) throw new LibraryError("no such upload, or not yours to delete", 404);
+	// A file added from storage was put there by hand and stays; only uploads are deleted.
+	if (!row.r2_key.startsWith(STORAGE_ROOT)) await env.BUCKET.delete(row.r2_key);
 	await env.DB.prepare("DELETE FROM uploads WHERE id = ?1").bind(id).run();
 	return null;
 }
 
 async function listMembers(env) {
 	const rows = await env.DB.prepare(
-		`SELECT m.github_id, m.login, m.moderator, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
-			COUNT(u.id) AS uploads, COALESCE(SUM(u.size), 0) AS used
+		`SELECT m.github_id, m.login, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
+			COUNT(u.id) AS uploads, COALESCE(SUM(CASE WHEN u.r2_key LIKE '${STORAGE_ROOT}%' THEN 0 ELSE u.size END), 0) AS used
 		FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id
 		GROUP BY m.github_id ORDER BY used DESC, m.last_seen DESC`,
 	).all();
+	const rights = await rightsOf(env);
 	return (rows.results ?? []).map((r) => ({
-		id: r.github_id, login: r.login, moderator: r.moderator === 1, uploads: r.uploads, used: r.used,
+		id: r.github_id, login: r.login, owner: isOwnerLogin(env, r.login),
+		rights: isOwnerLogin(env, r.login) ? Object.keys(RIGHTS) : [...(rights.get(r.github_id) ?? [])],
+		uploads: r.uploads, used: r.used,
 		blocked: r.blocked_at ? { at: r.blocked_at, by: r.blocked_by, reason: r.blocked_reason ?? "" } : null,
 		firstSeen: r.first_seen, lastSeen: r.last_seen,
 	}));
@@ -235,18 +274,33 @@ async function memberUploads(env, gid) {
 }
 
 async function setMember(env, me, gid, body, nowSeconds) {
-	if ("moderator" in body && me.role !== "owner") throw new LibraryError("only the owner grants or removes moderator rights", 403);
-	const m = await env.DB.prepare("SELECT login, moderator FROM members WHERE github_id = ?1").bind(gid).first();
+	if ("rights" in body && !can(me, "manage")) throw new LibraryError("only the owner and co-owners give or take rights", 403);
+	if ("blocked" in body && !can(me, "moderate")) throw new LibraryError("blocking needs the Moderate members right", 403);
+	const m = await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(gid).first();
 	if (!m) throw new LibraryError("no such member", 404);
 	if (isOwnerLogin(env, m.login)) throw new LibraryError("the owner cannot be blocked or changed", 403);
-	if ("moderator" in body) {
-		if (typeof body.moderator !== "boolean") throw new LibraryError("moderator must be true or false");
-		await env.DB.prepare("UPDATE members SET moderator = ?1 WHERE github_id = ?2").bind(body.moderator ? 1 : 0, gid).run();
+	const held = (await rightsOf(env, gid)).get(gid) ?? new Set();
+	if ("rights" in body) {
+		const change = body.rights;
+		if (!change || typeof change !== "object" || Array.isArray(change)) throw new LibraryError("rights must be an object of right: true or false");
+		for (const [kind, on] of Object.entries(change)) {
+			if (!RIGHTS[kind]) throw new LibraryError(`unknown right "${kind}"; rights are ${Object.keys(RIGHTS).join(", ")}`);
+			if (typeof on !== "boolean") throw new LibraryError(`${kind} must be true or false`);
+		}
+		for (const [kind, on] of Object.entries(change)) {
+			if (on) {
+				await env.DB.prepare("INSERT INTO member_rights (github_id, kind, granted_by, granted_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING").bind(gid, kind, me.login, nowSeconds).run();
+			} else {
+				await env.DB.prepare("DELETE FROM member_rights WHERE github_id = ?1 AND kind = ?2").bind(gid, kind).run();
+				// The flag from before rights existed goes with Moderate members.
+				if (kind === "moderate") await env.DB.prepare("UPDATE members SET moderator = 0 WHERE github_id = ?1").bind(gid).run();
+			}
+		}
 	}
 	if ("blocked" in body) {
 		if (typeof body.blocked !== "boolean") throw new LibraryError("blocked must be true or false");
-		// Moderators answer to the owner: only the owner blocks a moderator.
-		if (m.moderator === 1 && me.role !== "owner") throw new LibraryError("only the owner blocks a moderator", 403);
+		// Whoever holds a right answers to the owner and co-owners: only they block such a member.
+		if (held.size && !can(me, "manage")) throw new LibraryError("only the owner and co-owners block a member who holds rights", 403);
 		if (body.blocked) {
 			const reason = cleanText(body.reason, "reason", true);
 			await env.DB.prepare("UPDATE members SET blocked_at = ?1, blocked_by = ?2, blocked_reason = ?3 WHERE github_id = ?4").bind(nowSeconds, me.login, reason, gid).run();
@@ -255,6 +309,81 @@ async function setMember(env, me, gid, body, nowSeconds) {
 		}
 	}
 	return (await listMembers(env)).find((x) => x.id === gid) ?? null;
+}
+
+/* ------------------------------------------------------------- storage ---- */
+
+/** Where in R2 a person may add files from: all of private/ for co-owners, their own folder otherwise. */
+export function storageRootOf(me) {
+	if (can(me, "manage")) return STORAGE_ROOT;
+	if (me.rights.has("storage")) return `${STORAGE_ROOT}${me.id}/`;
+	return null;
+}
+
+/** A folder path inside the person's storage root, or throws. */
+function storagePrefix(me, prefix) {
+	const root = storageRootOf(me);
+	if (!root) throw new LibraryError("adding from storage needs the Storage right", 403);
+	const p = prefix ? String(prefix) : root;
+	const parts = p.split("/");
+	if (!p.startsWith(root) || !p.endsWith("/") || parts.some((part, i) => part === "." || part === ".." || (part === "" && i < parts.length - 1))) {
+		throw new LibraryError(`folders to add from start with ${root} and end with /`, 400);
+	}
+	return p;
+}
+
+async function listStorage(env, me, prefix, cursor, origin, nowSeconds) {
+	const p = storagePrefix(me, prefix);
+	const listed = await env.BUCKET.list({ prefix: p, delimiter: "/", limit: MAX_LIST, ...(cursor ? { cursor } : {}) });
+	const audio = listed.objects.filter((o) => formatOf(o.key));
+	const known = new Set();
+	if (audio.length) {
+		const rows = await env.DB.prepare(`SELECT r2_key FROM uploads WHERE r2_key IN (${audio.map(() => "?").join(",")})`).bind(...audio.map((o) => o.key)).all();
+		for (const r of rows.results ?? []) known.add(r.r2_key);
+	}
+	const files = [];
+	for (const o of audio) {
+		files.push({ key: o.key, name: o.key.slice(p.length), size: o.size, format: formatOf(o.key), added: known.has(o.key), url: await signedKeyUrl(origin, o.key, env.AUDIO_SIGNING_KEY, nowSeconds) });
+	}
+	return {
+		root: storageRootOf(me), prefix: p,
+		folders: (listed.delimitedPrefixes ?? []).map((f) => ({ prefix: f, name: f.slice(p.length, -1) })),
+		files, others: listed.objects.length - audio.length,
+		cursor: listed.truncated ? listed.cursor : null,
+	};
+}
+
+async function addFromStorage(env, me, body, nowSeconds) {
+	const items = body.items;
+	if (!Array.isArray(items) || !items.length || items.length > MAX_ADD) throw new LibraryError(`items must list 1 to ${MAX_ADD} files`);
+	const root = storageRootOf(me);
+	if (!root) throw new LibraryError("adding from storage needs the Storage right", 403);
+	if (!(await env.UPLOAD_LIMIT.limit({ key: `upload:${me.id}` })).success) throw new LibraryError("too many additions in a minute; wait a moment and continue", 429);
+	// Everything is checked before anything is added, so a refused list adds nothing.
+	const checked = [];
+	for (const item of items) {
+		const key = String(item?.key ?? "");
+		const name = key.split("/").pop();
+		if (!key.startsWith(root)) throw new LibraryError(`${key} is outside your storage (${root})`, 403);
+		const format = formatOf(key);
+		if (!format) throw new LibraryError(`"${name}" is not a supported format. Add MP3, M4A (AAC), FLAC, WAV or Ogg.`, 415);
+		const head = await env.BUCKET.head(key);
+		if (!head) throw new LibraryError(`${key} is not in storage`, 404);
+		const duration = Number(item.duration);
+		if (!Number.isFinite(duration) || duration < 1 || duration > 6 * 3600) throw new LibraryError(`"${name}" has no readable length; it may not be audio, or it is damaged`);
+		const exists = await env.DB.prepare("SELECT owner_id FROM uploads WHERE r2_key = ?1").bind(key).first();
+		if (exists) throw new LibraryError(`"${name}" is already in ${exists.owner_id === me.id ? "your" : "another"} library`, 409);
+		checked.push({ key, name, format, size: head.size, duration: Math.round(duration), d: checkDetails(item) });
+	}
+	const added = [];
+	for (const c of checked) {
+		const res = await env.DB.prepare(
+			`INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, artist, album, year, track_no, file_name, status, created_at, updated_at)
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'private', ?12, ?12)`,
+		).bind(me.id, c.key, c.size, c.format, c.duration, c.d.title, c.d.artist, c.d.album, c.d.year, c.d.track_no, c.name, nowSeconds).run();
+		added.push(res.meta.last_row_id);
+	}
+	return { added };
 }
 
 /**
@@ -285,16 +414,21 @@ export async function handleLibrary(request, env, { fetchImpl, now = () => Date.
 		let match;
 		if (path === "/library" && m === "GET") return json(200, await library(env, me, cfg, url.origin, nowSeconds), cors);
 		if (path === "/library/uploads" && m === "POST") return json(201, await createUpload(env, me, cfg, await readJson(request), nowSeconds), cors);
+		if (path === "/library/storage" && m === "GET") return json(200, await listStorage(env, me, url.searchParams.get("prefix"), url.searchParams.get("cursor"), url.origin, nowSeconds), cors);
+		if (path === "/library/storage/add" && m === "POST") return json(201, await addFromStorage(env, me, await readJson(request, 256 * 1024), nowSeconds), cors);
 		if ((match = /^\/library\/uploads\/(\d+)\/file$/.exec(path)) && m === "PUT") return json(200, await storeFile(request, env, me, Number(match[1]), nowSeconds), cors);
 		if ((match = /^\/library\/uploads\/(\d+)$/.exec(path))) {
 			if (m === "PATCH") return json(200, await editUpload(env, me, Number(match[1]), await readJson(request), nowSeconds), cors);
 			if (m === "DELETE") return json(204, await deleteUpload(env, me, Number(match[1])), cors);
 		}
 		if (path === "/library/members" || path.startsWith("/library/members/")) {
-			if (!me.moderator) throw new LibraryError("moderators only", 403);
+			if (!me.rights.size) throw new LibraryError("members are listed for those the owner has given a right", 403);
 			if (path === "/library/members" && m === "GET") return json(200, { members: await listMembers(env) }, cors);
 			if ((match = /^\/library\/members\/(\d+)$/.exec(path))) {
-				if (m === "GET") return json(200, await memberUploads(env, Number(match[1])), cors);
+				if (m === "GET") {
+					if (!can(me, "moderate")) throw new LibraryError("a member's uploads are listed for Moderate members", 403);
+					return json(200, await memberUploads(env, Number(match[1])), cors);
+				}
 				if (m === "POST") return json(200, { member: await setMember(env, me, Number(match[1]), await readJson(request), nowSeconds) }, cors);
 			}
 		}
@@ -320,18 +454,48 @@ export async function handleSignedAudio(request, env, id) {
 	).bind(id).first();
 	if (!row || row.status === "uploading") return text(404, "no such upload");
 	if (row.blocked_at) return text(403, "this library is closed");
+	return streamObject(request, env, row.r2_key, row.format);
+}
+
+/**
+ * GET/HEAD /k/<key>?e&s: a file in storage, for the app to read its tags
+ * and length before adding it (see listStorage). The address is the
+ * permission, and only private/ can be named.
+ */
+export async function handleSignedKey(request, env, encoded) {
+	const url = new URL(request.url);
+	const text = (status, body) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+	const origin = request.headers.get("origin");
+	const allowed = origin && env.AUTH_ORIGINS?.split(",").map((s) => s.trim()).includes(origin) ? origin : null;
+	if (request.method === "OPTIONS") {
+		if (!allowed) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
+		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": allowed, "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS", "Access-Control-Allow-Headers": "Range", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
+	}
+	if (request.method !== "GET" && request.method !== "HEAD") return text(405, "Method Not Allowed");
+	if (!env.AUDIO_SIGNING_KEY || !env.BUCKET) return text(503, "personal libraries are not set up on this Worker");
+	const key = keyOf(encoded);
+	if (!key) return text(404, "no such file");
+	if (!(await verifySigned(`k:${key}`, url.searchParams.get("e"), url.searchParams.get("s"), env.AUDIO_SIGNING_KEY))) return text(403, "this address has expired or is not valid; open the folder again");
+	const format = formatOf(key);
+	if (!format) return text(415, "not an audio file");
+	return streamObject(request, env, key, format);
+}
+
+/** An R2 object as an HTTP answer, with ranges, and CORS for the app's origins. */
+async function streamObject(request, env, key, format) {
+	const text = (status, body) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 	const range = request.headers.get("range");
 	const m = /^bytes=(\d+)-(\d+)?$/.exec(range ?? "");
 	const options = m ? { range: m[2] ? { offset: Number(m[1]), length: Number(m[2]) - Number(m[1]) + 1 } : { offset: Number(m[1]) } } : undefined;
-	const object = await env.BUCKET.get(row.r2_key, options);
+	const object = await env.BUCKET.get(key, options);
 	if (!object) return text(404, "the file is missing");
 	const headers = new Headers({
-		"Content-Type": FORMATS[row.format]?.type ?? "application/octet-stream",
+		"Content-Type": FORMATS[format]?.type ?? "application/octet-stream",
 		"Accept-Ranges": "bytes",
 		"Cache-Control": "private, max-age=3600",
 		"X-Content-Type-Options": "nosniff",
 	});
-	// Downloads for offline listening fetch with CORS.
+	// The app reads with CORS: downloads for offline listening, and tags before adding from storage.
 	const origin = request.headers.get("origin");
 	if (origin && env.AUTH_ORIGINS?.split(",").map((s) => s.trim()).includes(origin)) {
 		headers.set("Access-Control-Allow-Origin", origin);
