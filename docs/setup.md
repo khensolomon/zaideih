@@ -74,7 +74,8 @@ More: [worker-audio.md](worker-audio.md#sign-in-with-github).
 - **Why**: most listeners sign in with Google ([accounts.md](accounts.md#sign-in-with-google)).
 - **Get it**: [console.cloud.google.com](https://console.cloud.google.com), a project named Zaideih, then Google Auth Platform:
   1. **Get started** (Branding): app name **Zaideih**, a support email, audience **External**, a contact email.
-  2. **Branding**: home page `https://zaideih.com`, privacy policy `https://zaideih.com/#/terms`, authorised domain `zaideih.com`. A logo is optional, and adding one asks Google to verify the branding first.
+  2. **Branding**: home page `https://zaideih.com`, privacy policy `https://zaideih.com/privacy`, authorised domain `zaideih.com`. Google's review reads both pages without running scripts, so both say what they need in plain HTML: the home page's own description in `src/index.html` (replaced by the app when it starts) and the policy in `src/privacy.html`. A `#/…` address cannot be a policy: Google never sees what follows `#`.
+     - Branding verification also needs proof that the domain is the project owner's: [Google Search Console](https://search.google.com/search-console), Add property, **Domain** `zaideih.com`, add the TXT record it shows in Cloudflare's DNS for zaideih.com, Verify, with the same Google account that owns the Cloud project. Google asks for 24 hours after that before retrying the verification.
   3. **Data access**: nothing to add; `openid`, `email` and `profile` are there by default and need no review.
   4. **Audience**: **Publish app** (In production). While it is in Testing, only the test users listed there can sign in.
   5. **Clients**, Create client: **Web application**, named "Zaideih Worker"; Authorised redirect URIs: `https://media.zaideih.com/auth/google/callback`. No JavaScript origins (the browser never talks to Google's API).

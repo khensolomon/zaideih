@@ -121,7 +121,7 @@ function renderAppMenu() {
 		<h2>Browse</h2>
 		<div class="am-group"><a href="#/genres">Genres</a><a href="#/top">Most played</a></div>
 		<button class="stats-on" data-act="stats-on" hidden>${icon("chart")}Share listening statistics</button>
-		<div class="am-foot"><a href="#/about">About</a><a href="#/terms">Terms</a><a href="#/help">Help</a></div>`;
+		<div class="am-foot"><a href="#/about">About</a><a href="#/terms">Terms</a><a href="/privacy">Privacy</a><a href="#/help">Help</a></div>`;
 	syncAccess();
 }
 

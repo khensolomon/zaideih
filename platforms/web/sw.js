@@ -80,6 +80,12 @@ async function shell(request) {
 	const hit = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
 	if (hit) return hit;
 	if (request.mode === "navigate") {
+		// A page with a file of its own (privacy → privacy.html) is that file; every other address is the app.
+		const rel = new URL(request.url).pathname.slice(scope.pathname.length).replace(/\/$/, "");
+		if (rel && rel !== "index.html") {
+			const page = await cache.match(new URL(rel.endsWith(".html") ? rel : `${rel}.html`, scope).href);
+			if (page) return page;
+		}
 		const index = await cache.match(new URL("./", scope).href);
 		if (index) return index;
 	}

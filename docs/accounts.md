@@ -64,4 +64,4 @@ Migrations are for changes `CREATE … IF NOT EXISTS` cannot make, such as renam
 
 ## Privacy
 
-Emails are stored only as the provider gives them, to recognise the same person. They are shown to nobody in the app.
+Emails are stored only as the provider gives them, to recognise the same person. They are shown to nobody in the app. The privacy policy for people using Zaideih is `src/privacy.html`, served at `/privacy` as a page of its own (readable without script, as Google's sign-in review requires); the service worker serves it offline too. Deleting an account on request (the policy promises 30 days) is a manual step for now: the member's rows in `members`, `member_logins`, `member_sessions`, `member_rights`, `member_folders`, their uploads and `users/<id>/` in R2.

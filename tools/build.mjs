@@ -235,6 +235,8 @@ const index = template
 	// The release workflow reads data-version from the live page to confirm a deploy.
 	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
+// The privacy policy: a page of its own, readable without any script (served at /privacy).
+await cp("src/privacy.html", join(OUT, "privacy.html"));
 
 // 5. Build id = hash of everything shipped; names the service worker cache.
 const files = (await walk(OUT)).map((p) => posix(relative(OUT, p))).sort();
@@ -247,7 +249,7 @@ if (values.platform === "web") {
 	const precache = [
 		"./",
 		...files.filter((f) =>
-			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" ||
+			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" || f === "privacy.html" ||
 			f === "catalog/meta.json" || f === `catalog/${catalogMeta.catalog}`),
 	];
 	await esbuild.build({
@@ -280,6 +282,8 @@ if (values.platform === "web") {
 /
   Cache-Control: no-cache
 /index.html
+  Cache-Control: no-cache
+/privacy
   Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache

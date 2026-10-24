@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Privacy policy | Zaideih</title>
+	<meta name="description" content="What Zaideih, the music app at zaideih.com, keeps about the people who use it, why, and how to have it deleted.">
+	<!--
+		A page of its own, readable without running any script (Google's
+		sign-in review reads it so), linked from the app (Terms, the sidebar,
+		Your account). Kept in step with the app's Terms page (src/ui/views.js)
+		and docs/accounts.md; "Last updated" changes with its content.
+	-->
+	<style>
+		:root { color-scheme: light dark; --bg: #5a5a5a; --ink: #fff; --ink-2: #e6e6e6; --line: #727272; }
+		@media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --ink: #1d1d1d; --ink-2: #3c3c3c; --line: #d6d6d6; } }
+		body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+		main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+		h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; margin: 0 0 8px; }
+		h2 { font-size: 21px; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+		p, li { color: var(--ink-2); }
+		a { color: var(--ink); }
+		table { border-collapse: collapse; width: 100%; font-size: 15px; }
+		th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); }
+		.back { display: inline-block; margin-bottom: 24px; }
+	</style>
+</head>
+<body>
+<main>
+	<a class="back" href="/">← Zaideih</a>
+	<h1>Privacy policy</h1>
+	<p>Zaideih (zaideih.com) is a free music app for Zola, Myanmar, Mizo and Falam music. This page sets out what Zaideih keeps about the people who use it, why, who can see it, and how to have it deleted.</p>
+	<p>Last updated: 24 October 2026.</p>
+
+	<h2>Listening, without an account</h2>
+	<p>Listening needs no account. Liked songs, playlists, play history and downloads are stored on your device and are not sent anywhere. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
+	<p>Play counts: after a song has played for 10 seconds, the app tells the Zaideih audio server which song was played and when, so the site can show how often songs are listened to. Nothing else is sent with it: no account, cookie or device identifier. Your network address is used only to stop the same sender from inflating counts, and is not stored.</p>
+	<p>Usage statistics (Google Analytics) are off unless you allow them on the About page. When allowed, they count page visits within Zaideih and song plays, and Google sets its own cookies for that. Searches and your library are never sent. The choice is kept on your device and can be changed at any time.</p>
+
+	<h2>Signing in</h2>
+	<p>An account is only for keeping music of your own, and for catalog editors. You can sign in with Google or with GitHub; signing in with both, with the same verified email address, is one account.</p>
+	<table>
+		<tr><th>Signing in with</th><th>Zaideih receives and keeps</th><th>Used for</th></tr>
+		<tr><td>Google</td><td>Your Google account id, your name, your email address and whether Google has verified it (the <code>openid</code>, <code>email</code> and <code>profile</code> permissions)</td><td>Recognising you when you sign in again, and recognising that a Google and a GitHub sign-in with the same verified email are the same person. Your name is shown to you, and to the moderators of uploads.</td></tr>
+		<tr><td>GitHub</td><td>Your GitHub account id, your username and your verified email addresses</td><td>The same; and for catalog editors, editing the catalog through GitHub with their own GitHub permissions.</td></tr>
+	</table>
+	<p>Your profile photo, contacts and anything else in your Google or GitHub account are not kept. Google's own sign-in tokens are used once to read the details above and are never stored. Nothing is posted to Google or GitHub on your behalf, except catalog corrections an editor or contributor chooses to send, which become public changes on GitHub in their name.</p>
+	<p>Zaideih's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements: it is used only to sign you in, never for advertising, never sold, and never shared except with the hosting provider below to run the service.</p>
+	<p>After signing in, your device keeps a sign-in token. The server keeps only a one-way fingerprint (hash) of it. It ends 90 days after you last use it, or when you sign out.</p>
+
+	<h2>Your own music</h2>
+	<p>Signed in, you can upload music to a private library that only you can play, or add files already kept in Zaideih's storage if the owner has given you that right. Zaideih keeps the files and the details you give (title, artist, album, year). Upload only recordings you are entitled to keep, such as music you bought or recorded.</p>
+	<p>Moderators chosen by the owner can see the titles of uploads and block accounts that upload spam or abusive files, or files reported by rights holders. Nobody else can see or play your library. If you ask for an album of yours to be published, a reviewer listens to it; once published it is part of the public catalog, credited to you.</p>
+
+	<h2>Where it is kept, and for how long</h2>
+	<p>Everything is kept by Cloudflare, which hosts Zaideih (its storage and database services), and is sent over encrypted connections. Account details are kept while the account exists. Uploaded files are kept until you delete them; a deleted upload is removed at once. Sign-in tokens end 90 days after their last use.</p>
+
+	<h2>Your choices</h2>
+	<ul>
+		<li>Sign out on any device from <a href="/#/account">Your account</a>; it removes the sign-in token there and on the server.</li>
+		<li>Remove a Google or GitHub sign-in from your account on the same page.</li>
+		<li>Delete any of your uploads at any time from Your uploads.</li>
+		<li>To have your account and everything kept for it deleted, <a href="https://github.com/khensolomon/zaideih/issues">open an issue</a> asking for it (without personal details in it); it is done within 30 days. You can also revoke Zaideih's access at <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a> (Google) or in your GitHub settings under Applications.</li>
+	</ul>
+
+	<h2>Changes and contact</h2>
+	<p>This policy may change with new releases of the app; the date above shows the last change. Questions about it, and requests about your data: <a href="https://github.com/khensolomon/zaideih/issues">github.com/khensolomon/zaideih/issues</a>.</p>
+	<p><a href="/#/terms">Terms</a> · <a href="/#/about">About</a> · <a href="/">Zaideih</a></p>
+</main>
+</body>
+</html>

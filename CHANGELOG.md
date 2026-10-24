@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.3
+
+- Google sign-in review: a privacy policy page of its own (/privacy), and the home page describing Zaideih before the app starts; the Google client id
+
 ## v26.10.24.2
 
 - Sign in with Google, and Your account: see and add your sign-ins, sign out; Google and GitHub with the same verified email are one account
