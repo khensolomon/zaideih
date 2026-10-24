@@ -1500,7 +1500,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-body { max-width: 40em; margin: 0 0 16px; font-size: var(--ly-size, 18px); line-height: 1.6; }
 .ly-block { margin: 0 0 22px; }
 /* Part names stay out of the way of the words: small and dimmer. */
-.ly-part { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #d2d2d2; opacity: 0.85; }
+.ly-part { margin: 0 0 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgb(255 255 255 / 0.48); }
 /* Shared lyrics (ui/lyrics-share.js): the same song on other albums, and the recordings a text is shared with. */
 /* The lyrics page's head: a small cover, the title, and Play on the line under it with whether this song is playing. */
 .ly-hero { grid-template-columns: 88px minmax(0, 1fr); gap: 16px; align-items: end; text-align: left; justify-items: start; }
@@ -1673,9 +1673,9 @@ body[data-studio] main { max-width: none; padding-top: 0; }
 .st-marks { position: absolute; inset: 0; pointer-events: none; }
 .st-bar { position: absolute; left: 0; width: 2px; border-radius: 1px; background: var(--line); }
 .st-bar-chorus { background: var(--accent); }
-.st-label { position: absolute; right: 0; padding-top: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
-.st-label-chorus { color: var(--ink); }
-.st-again { position: absolute; right: 0; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.st-label { position: absolute; right: 0; padding-top: 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(255 255 255 / 0.48); white-space: nowrap; }
+.st-label-chorus { color: rgb(255 255 255 / 0.7); }
+.st-again { position: absolute; right: 0; font-size: 11px; color: rgb(255 255 255 / 0.48); white-space: nowrap; }
 .st-insert { position: absolute; left: -6px; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-top: 4px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 .st-insert svg.i { width: 16px; height: 16px; }
 .st-status { margin: 22px 0 0 118px; font-size: 13px; color: var(--ink-3); }

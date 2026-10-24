@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.31
+
+- Lyrics: part names clearly smaller and dimmer
+
 ## v26.10.24.30
 
 - Getting around while listening: player More, sleep timer, share
