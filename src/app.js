@@ -14,6 +14,7 @@ import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
 import { accountView } from "./ui/account-view.js";
 import { lyricsView } from "./ui/lyrics-view.js";
+import { lyricsStudio } from "./ui/lyrics-studio.js";
 import { LYRICS_URL } from "./core/lyrics.js";
 import { probeOn, startProbe, toggleProbe } from "./ui/viewport-probe.js";
 import { go, href, parse, route } from "./core/router.js";
@@ -50,7 +51,15 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
-route("lyrics/:id", (c, { id }) => lyricsView(c, Number(id), { notify, promptText, confirmAction, canModerate: () => uploads.canLyrics, redrawn: watchLargeTitle }));
+route("lyrics/:id", (c, { id }) => lyricsView(c, Number(id), { notify, promptText, redrawn: watchLargeTitle }));
+route("lyrics/:id/studio", (c, { id }) => lyricsStudio(c, Number(id), {
+	notify, promptText, confirmAction,
+	// After the click that asks for it, which would otherwise close it at once (the page's click handler).
+	openMenu: (anchor, items) => setTimeout(() => openMenu(anchor, items)),
+	canModerate: () => uploads.canLyrics,
+	// From this song on, in its album, as a tap on the song in the album would.
+	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
+}));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -219,6 +228,11 @@ async function render({ keepScroll = false } = {}) {
 	if (!r) { go("", undefined, { replace: true }); return; }
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
+	// The lyrics studio is a page of its own: the sidebar narrows to icons while it is open (not saved as the listener's choice).
+	const studio = /^lyrics\/\d+\/studio$/.test(r.path);
+	document.body.toggleAttribute("data-studio", studio);
+	if (studio) document.body.dataset.rail = "mini";
+	else applyRail();
 	const scroll = keepScroll ? scrollY : 0;
 	currentRoute = r;
 	resetLists();
@@ -1393,6 +1407,8 @@ function trackVisibleHeight() {
 		const covered = Math.max(0, innerHeight - vv.height);
 		const offset = covered > KEYBOARD_MIN ? Math.min(Math.max(0, vv.offsetTop), covered) : 0;
 		root.setProperty("--vvt", `${Math.round(offset)}px`);
+		// --kb: how much of the layout the keyboard covers below the visible area (the studio lifts the player above it).
+		root.setProperty("--kb", `${covered > KEYBOARD_MIN ? Math.max(0, Math.round(innerHeight - vv.height - Math.max(0, vv.offsetTop))) : 0}px`);
 	};
 	const soon = () => { frame ||= requestAnimationFrame(set); };
 	vv.addEventListener("resize", soon);

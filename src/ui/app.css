@@ -1314,7 +1314,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-text { font: inherit; font-size: 18px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 16px; max-width: 40em; }
 .ly-text.my { line-height: 2; }
 /* The lyrics as shown: parts, the chorus marked by a bar, notes set apart. */
-.ly-body { max-width: 40em; margin: 0 0 16px; font-size: 18px; line-height: 1.6; }
+.ly-body { max-width: 40em; margin: 0 0 16px; font-size: var(--ly-size, 18px); line-height: 1.6; }
 .ly-block { margin: 0 0 22px; }
 .ly-part { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
 .ly-repeat { margin-left: 4px; letter-spacing: 0; text-transform: none; font-weight: 600; }
@@ -1377,3 +1377,125 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-versions summary { cursor: pointer; padding: 4px 0; }
 .ly-shown { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--raised); margin-left: 4px; }
 .ly-versions .ly-text { font-size: 15px; margin: 10px 0; }
+.ly-credits { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); }
+.ly-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 16px; }
+.ly-bar .ly-chips { margin: 0; }
+.ly-bar-end { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: auto; }
+.ly-small { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.ly-size { font-size: 14px; font-weight: 700; }
+
+/* =================================================================== lyrics studio (ui/lyrics-studio.js) */
+/* A page of its own: its header replaces the floating bar on phones; the sidebar narrows on wide screens (app.js). */
+body[data-studio] .navbar, body[data-studio] .shell::before, body[data-studio] .shell::after { display: none; }
+body[data-studio] .shell { padding-top: 0; }
+body[data-studio] main { max-width: none; padding-top: 0; }
+.st-head {
+	position: sticky; top: 0; z-index: 17; display: flex; align-items: center; gap: 12px;
+	margin: 0 -16px; padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+	background: var(--mist); border-bottom: 1px solid rgb(255 255 255 / 0.1);
+}
+.st-icon { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; color: var(--ink); }
+.st-icon:hover { background: var(--raised); }
+.st-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.st-title b { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-title span { font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-modes { flex: none; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface); }
+.st-mode { display: inline-grid; place-items: center; width: 42px; height: 38px; border: 0; border-radius: 999px; background: none; color: var(--ink-2); }
+.st-mode[aria-selected="true"] { background: var(--raised); color: var(--ink); }
+.st-mode:hover { color: var(--ink); }
+.st-mode svg.i { width: 20px; height: 20px; }
+.st-save { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); }
+.st-save svg.i { stroke-width: 2.4; }
+.st-save:disabled { background: var(--raised); color: var(--ink-3); }
+.st-page { max-width: 900px; margin: 0 auto; padding: 20px 0 24px; }
+.st-pad { padding: 24px 0; }
+@media (min-width: 900px) {
+	.st-head { margin: 0 -28px; padding: 14px 28px; }
+	.st-title { flex-direction: row; align-items: baseline; gap: 10px; }
+	.st-title b { font-size: 18px; }
+}
+
+.st-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 14px; margin: 0 0 14px; border-radius: var(--radius-m); background: var(--surface); }
+.st-banner p { flex: 1 1 280px; margin: 0; font-size: 15px; }
+.st-banner details { flex-basis: 100%; }
+.st-bad { background: var(--danger-bg); color: #fff; }
+
+.st-details { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 22px 118px; }
+.st-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 0; background: var(--raised); color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; }
+.st-chip span { color: var(--ink-3); font-weight: 500; }
+.st-chip-add { width: 32px; padding: 0; justify-content: center; background: none; border: 1px dashed var(--line); }
+.st-chip-add svg.i { width: 16px; height: 16px; }
+
+/* The editor: a real textarea over a layer drawing the same text with what is recognised tinted (.st-mirror),
+   bars along each part (.st-marks), and the part labels in the margin. Both use the same font, size and wrapping. */
+.st-editor { position: relative; display: grid; grid-template-columns: 76px minmax(0, 1fr); column-gap: 20px; }
+.st-margin { position: relative; }
+.st-field { position: relative; }
+.st-mirror, .st-field textarea {
+	box-sizing: border-box; width: 100%; margin: 0; padding: 0 0 0 22px; border: 0;
+	font: inherit; font-size: 19px; line-height: 1.85; letter-spacing: normal;
+	white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4;
+}
+.st-mirror { position: absolute; inset: 0 0 auto 0; color: transparent; pointer-events: none; }
+.st-mirror mark { color: transparent; border-radius: 5px; }
+.st-mirror .mk-num, .st-mirror .mk-head { background: rgb(255 255 255 / 0.16); box-shadow: 0 0 0 2px rgb(255 255 255 / 0.16); }
+.st-mirror .mk-detail { background: rgb(255 255 255 / 0.07); }
+.st-mirror .mk-chord { background: rgb(236 236 236 / 0.24); }
+.st-mirror .mk-time { background: rgb(255 255 255 / 0.1); }
+.st-mirror .mk-echo { background: rgb(255 255 255 / 0.06); }
+.st-field textarea {
+	position: relative; display: block; min-height: 240px; resize: none; overflow: hidden;
+	background: transparent; color: var(--ink); caret-color: var(--ink); outline: none;
+}
+.st-field textarea::placeholder { color: var(--ink-3); opacity: 1; }
+.st-field.my .st-mirror, .st-field.my textarea { line-height: 2.05; }
+.st-marks { position: absolute; inset: 0; pointer-events: none; }
+.st-bar { position: absolute; left: 0; width: 2px; border-radius: 1px; background: var(--line); }
+.st-bar-chorus { background: var(--accent); }
+.st-label { position: absolute; right: 0; padding-top: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.st-label-chorus { color: var(--ink); }
+.st-again { position: absolute; right: 0; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.st-insert { position: absolute; left: -6px; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-top: 4px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.st-insert svg.i { width: 16px; height: 16px; }
+.st-status { margin: 22px 0 0 118px; font-size: 13px; color: var(--ink-3); }
+.st-page > .ly-guide { margin-left: 118px; max-width: 40em; }
+.st-keys { display: none; }
+
+/* Phones: a narrower margin; the insert row and the app's player above the keyboard while writing. */
+@media (max-width: 899px) {
+	.st-editor { grid-template-columns: 50px minmax(0, 1fr); column-gap: 8px; }
+	.st-mirror, .st-field textarea { font-size: 17px; padding-left: 14px; }
+	.st-label { font-size: 10px; padding-top: 7px; }
+	.st-insert { display: none; }
+	.st-details, .st-status, .st-page > .ly-guide { margin-left: 72px; }
+	.st-modes .st-mode { width: 38px; }
+	.st-keys {
+		display: flex; gap: 6px; position: fixed; z-index: 19;
+		left: var(--deck-gap); right: var(--deck-gap);
+		bottom: calc(max(var(--deck-gap), env(safe-area-inset-bottom)) + var(--deck) + 8px);
+		transform: translateY(calc(-1 * var(--kb, 0px)));
+	}
+	.st-keys button { flex: 1; min-height: 42px; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.16); background: rgb(78 78 78 / 0.95); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; }
+	body[data-studio] .bar { transform: translateY(calc(-1 * var(--kb, 0px))); }
+	body[data-studio] main { padding-bottom: calc(var(--deck) + 120px + env(safe-area-inset-bottom)); }
+}
+
+.st-preview { max-width: 40em; }
+.st-timing { list-style: none; margin: 14px 0 0; padding: 0; max-width: 44em; }
+.st-tpart { margin: 14px 0 2px 76px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.st-trow { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: baseline; width: 100%; padding: 6px 10px 6px 0; border: 0; border-radius: 12px; background: none; color: var(--ink-2); font: inherit; font-size: 17px; text-align: left; }
+.st-trow:hover { background: var(--surface); }
+.st-ttime { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-3); text-align: right; padding-right: 14px; }
+.st-tagain { color: var(--ink-3); }
+.st-tnext { background: var(--raised); color: var(--ink); font-size: 20px; font-weight: 700; }
+.st-tnext .st-ttime { color: var(--ink); }
+.st-tap { position: sticky; bottom: calc(var(--deck) + 2 * var(--deck-gap) + 8px); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0 6px; margin-top: 14px; background: linear-gradient(180deg, transparent, var(--mist) 30%); }
+.st-tapbtn { width: min(100%, 520px); min-height: 68px; justify-content: center; font-size: 19px; border-radius: 999px; }
+.st-tlinks { display: flex; gap: 22px; }
+.st-history { max-width: 44em; }
+.st-history h2 { font-size: 15px; color: var(--ink-3); margin: 22px 0 8px; }
+.st-reports ul { margin: 0 0 10px; padding-left: 1.2em; }
+.admin .adm-lyrics h2 { font-size: 15px; color: var(--ink-3); margin: 22px 0 8px; }
+.admin .adm-lyrics .adm-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.admin .adm-lyrics .adm-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.admin .adm-lyrics .adm-note { color: var(--ink-2); font-size: 0.92em; }

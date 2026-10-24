@@ -52,7 +52,9 @@ export const isChord = (s) => CHORD.test(s);
 const TIME = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/y;
 const LRC_TAG = /^\[(ar|ti|al|au|by|offset|length|re|ve|#)\s*:(.*)\]$/i;
 const DIRECTIVE = /^\{\s*([A-Za-z_-]+)\s*(?::\s*([^}]*?))?\s*\}$/;
-const PLAIN_DETAIL = /^(key|capo|tempo|bpm|time|time signature)\s*[:=]\s*(.{1,30})$/i;
+const PLAIN_DETAIL = /^(key|capo|tempo|bpm|time signature|time|hymn|original title|original|english title|english|words (?:and|&) music(?: by)?|words by|words|lyrics by|lyricist|music by|music|composer|tune|scripture)\s*[:=]\s*(.{1,80})$/i;
+/** Detail names, as written at the top, to the name kept in `meta`. */
+const DETAIL_NAMES = { bpm: "tempo", "time signature": "time", "original title": "original", "english title": "original", english: "original", "words by": "words", "lyrics by": "words", lyricist: "words", "music by": "music", composer: "music", tune: "music" };
 const SECTION_REST = /^\s*(?:\d{1,2}[a-z]?|[ivx]{1,4}\b)?\.?\s*(?:[x×]\s?\d{1,2}|\d{1,2}\s?[x×]|\(\s*(?:[x×]\s?\d{1,2}|\d{1,2}\s?[x×])\s*\))?\s*(?:[:\-–—]\s*.{0,30})?$/;
 const REPEAT = /(?:^|\s|\()(?:[x×]\s?(\d{1,2})|(\d{1,2})\s?[x×])\)?\s*$/i;
 
@@ -138,7 +140,7 @@ function timesOf(line) {
 	return times.length ? { times, rest: line.slice(at).trim() } : null;
 }
 
-const DIRECTIVE_META = { title: "title", t: "title", subtitle: "subtitle", st: "subtitle", artist: "artist", composer: "composer", lyricist: "lyricist", key: "key", capo: "capo", tempo: "tempo", time: "time", album: "album", year: "year", copyright: "copyright" };
+const DIRECTIVE_META = { title: "title", t: "title", subtitle: "subtitle", st: "subtitle", artist: "artist", composer: "music", lyricist: "words", key: "key", capo: "capo", tempo: "tempo", time: "time", album: "album", year: "year", copyright: "copyright" };
 const START = { start_of_chorus: "chorus", soc: "chorus", start_of_verse: "verse", sov: "verse", start_of_bridge: "bridge", sob: "bridge", start_of_tab: "tab", sot: "tab", start_of_grid: "tab", sog: "tab" };
 const END = new Set(["end_of_chorus", "eoc", "end_of_verse", "eov", "end_of_bridge", "eob", "end_of_tab", "eot", "end_of_grid", "eog"]);
 const COMMENT = new Set(["comment", "c", "comment_italic", "ci", "comment_box", "cb", "highlight"]);
@@ -163,19 +165,25 @@ export function parseLyrics(text) {
 	let started = false; // past the details at the top
 	const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
 
+	let cur = 0; // the line being read
+	// Blocks keep the lines of the text they span (src to last), for the studio's margin.
 	const open = (kind, label, extra = {}) => {
-		block = { kind, label, repeat: null, recall: false, auto: false, lines: [], ...extra };
+		block = { kind, label, repeat: null, recall: false, auto: false, lines: [], src: cur, last: cur, ...extra };
 		blocks.push(block);
 		return block;
 	};
+	// Where in the text a line of words is, for writing times back (timing in the studio).
+	const at = (line, src, col) => Object.assign(line, { src, col });
 	const add = (line) => {
 		if (!block) open("plain", "");
 		block.lines.push(line);
+		block.last = Math.max(block.last, line.src ?? cur);
 		started = true;
 	};
 	const close = () => { block = null; };
 
 	for (let i = 0; i < lines.length; i++) {
+		cur = i;
 		const raw = lines[i];
 		const line = raw.trimEnd();
 		const trimmed = line.trim();
@@ -199,9 +207,9 @@ export function parseLyrics(text) {
 				open(kind, value || (kind === "tab" ? "" : SECTION_LABELS[kind]));
 				continue;
 			}
-			if (END.has(name)) { inside = null; close(); continue; }
-			if (name === "chorus") { recall(blocks, value); close(); continue; }
-			if (COMMENT.has(name)) { add({ kind: "note", parts: [{ chord: "", text: value }], time: null }); continue; }
+			if (END.has(name)) { if (block) block.last = i; inside = null; close(); continue; }
+			if (name === "chorus") { recall(blocks, value, null, i); close(); continue; }
+			if (COMMENT.has(name)) { add({ kind: "note", parts: [{ chord: "", text: value }], time: null, times: [] }); continue; }
 			continue; // other directives (new_page, columns, define ...) change nothing on a screen
 		}
 
@@ -221,12 +229,14 @@ export function parseLyrics(text) {
 		// Plain details at the very top: "Key: G", "Capo 2".
 		const detail = !started && !block ? PLAIN_DETAIL.exec(trimmed) : null;
 		if (detail) {
-			const name = detail[1].toLowerCase().replace("bpm", "tempo").replace("time signature", "time");
-			meta[name] = detail[2].trim();
+			const name = detail[1].toLowerCase();
+			// "Words and music: X" credits both.
+			if (/^words (and|&) music/.test(name)) meta.words = meta.music = detail[2].trim();
+			else meta[DETAIL_NAMES[name] ?? name] = detail[2].trim();
 			continue;
 		}
 
-		if (inside === "tab") { add({ kind: "tab", parts: [{ chord: "", text: line }], time: null }); continue; }
+		if (inside === "tab") { add({ kind: "tab", parts: [{ chord: "", text: line }], time: null, times: [] }); continue; }
 
 		// A section of its own line: [Chorus], [Verse 2], Chorus:, Refrain:
 		const bracket = /^\[([^\]]+)\]$/.exec(trimmed);
@@ -241,7 +251,7 @@ export function parseLyrics(text) {
 			const nextIsHeader = !next.trim() || /^\[[^\]]+\]$/.test(next.trim()) && !isChord(next.trim().slice(1, -1));
 			const blankAfter = (lines[i + 1] ?? "").trim() === "" && blocks.some((b) => b.kind === "chorus" && b.lines.length);
 			if (sec?.kind === "chorus" && (blankAfter || nextIsHeader) && blocks.some((b) => b.kind === "chorus" && b.lines.length)) {
-				recall(blocks, sec.label, sec.repeat);
+				recall(blocks, sec.label, sec.repeat, i);
 				close();
 				continue;
 			}
@@ -255,7 +265,7 @@ export function parseLyrics(text) {
 		if (inlineSec) {
 			formats.add("hymnbook");
 			open(inlineSec.kind, inlineSec.label, { repeat: inlineSec.repeat });
-			add(wordsLine(inlineHeader[2], null));
+			add(at(wordsLine(inlineHeader[2], formats), i, line.indexOf(inlineHeader[2])));
 			continue;
 		}
 
@@ -265,21 +275,13 @@ export function parseLyrics(text) {
 			formats.add("hymnbook");
 			// Labelled by its number alone, as hymnbooks print it, whatever the language of the rest.
 			open("verse", numbered[1]);
-			add(wordsLine(numbered[2], null));
+			add(at(wordsLine(numbered[2], formats), i, line.indexOf(numbered[2])));
 			continue;
 		}
 
 		// A note: (spoken), (repeat chorus), *softly*.
 		if (/^\(.*\)$/.test(trimmed) && !chordLine(trimmed)) {
-			add({ kind: "note", parts: [{ chord: "", text: trimmed.slice(1, -1).trim() }], time: null });
-			continue;
-		}
-
-		// LRC: [01:23.40]words, possibly several times on one line.
-		const timed = timesOf(trimmed);
-		if (timed) {
-			formats.add("lrc");
-			for (const t of timed.times) add(wordsLine(timed.rest, t));
+			add({ kind: "note", parts: [{ chord: "", text: trimmed.slice(1, -1).trim() }], time: null, times: [] });
 			continue;
 		}
 
@@ -289,23 +291,23 @@ export function parseLyrics(text) {
 			formats.add("chords");
 			const below = lines[i + 1];
 			if (below !== undefined && below.trim() && !chordLine(below) && !DIRECTIVE.test(below.trim()) && !/^\[[^\]]+\]$/.test(below.trim())) {
-				add({ kind: "words", parts: overWords(chords, below.trimEnd()), time: null });
+				add(at({ kind: "words", parts: overWords(chords, below.trimEnd()), time: null, times: [] }, i + 1, 0));
 				i++;
 			} else {
-				add({ kind: "words", parts: chords.map((c) => ({ chord: c.chord, text: " " })), time: null });
+				add({ kind: "words", parts: chords.map((c) => ({ chord: c.chord, text: " " })), time: null, times: [] });
 			}
 			continue;
 		}
 
-		const words = wordsLine(line, null);
+		const words = at(wordsLine(trimmed, formats), i, line.length - line.trimStart().length);
 		if (words.parts.some((p) => p.chord)) formats.add("chordpro");
 		add(words);
 	}
 
-	const timed = blocks.some((b) => b.lines.some((l) => l.time !== null));
-	if (timed) sortTimed(blocks);
 	if (!blocks.some((b) => b.kind !== "plain" && b.kind !== "tab")) findChorus(blocks);
 	if (formats.has("hymnbook")) chorusAfterEachVerse(blocks);
+	const timed = blocks.some((b) => b.lines.some((l) => l.times?.length));
+	if (timed) placeTimes(blocks);
 	for (const b of blocks) if (b.kind === "plain") b.kind = "verse";
 	return {
 		meta,
@@ -316,23 +318,45 @@ export function parseLyrics(text) {
 	};
 }
 
-function wordsLine(line, time) {
-	return { kind: "words", parts: inlineChords(line) ?? [{ chord: "", text: line }], time };
+/** A line of words: its chords, and its LRC times when it starts with them ("[00:12.50]words"). */
+function wordsLine(line, formats) {
+	const t = timesOf(line);
+	if (t) formats?.add("lrc");
+	const words = t ? t.rest : line;
+	return { kind: "words", parts: inlineChords(words) ?? [{ chord: "", text: words }], time: t?.times[0] ?? null, times: t?.times ?? [] };
 }
+
+/** A line shown again (a repeated chorus): the same words, timed by the line's later times. */
+const again = (l) => ({ ...l, of: l.of ?? l, time: null, times: [] });
 
 /** A recall of the last chorus (labelled as asked): its lines again, marked. */
-function recall(blocks, label, repeat = null) {
+function recall(blocks, label, repeat = null, src = null) {
 	const last = [...blocks].reverse().find((b) => b.kind === "chorus" && !b.recall && b.lines.length);
-	blocks.push({ kind: "chorus", label: label || last?.label || SECTION_LABELS.chorus, repeat, recall: true, auto: false, lines: last ? last.lines.map((l) => ({ ...l, time: null })) : [] });
+	blocks.push({ kind: "chorus", label: label || last?.label || SECTION_LABELS.chorus, repeat, recall: true, auto: false, lines: last ? last.lines.map(again) : [], src, last: src });
 }
 
-/** Lines with several times (LRC "[00:10][01:40] same words") are put in the order they are sung. */
-function sortTimed(blocks) {
+/**
+ * A line with several times ("[00:33.80][01:40.10]Vang-liat-na!") is sung
+ * more than once: its first time is its own, the next go to the places it
+ * is shown again (a repeated chorus), in order. Times left over with no
+ * place to go (an LRC file that writes a repeated line once) put every line
+ * in the order it is sung instead, as plain timed lines.
+ */
+function placeTimes(blocks) {
+	const used = new Map();
+	for (const b of blocks) {
+		for (const l of b.lines) {
+			if (!l.of) continue;
+			const k = (used.get(l.of) ?? 0) + 1;
+			used.set(l.of, k);
+			l.time = l.of.times[k] ?? null;
+		}
+	}
 	const all = blocks.flatMap((b) => b.lines);
-	const times = all.filter((l) => l.time !== null).map((l) => l.time);
-	if (times.every((t, i) => i === 0 || t >= times[i - 1])) return;
-	const sorted = [...all].sort((a, b) => (a.time ?? -1) - (b.time ?? -1));
-	blocks.splice(0, blocks.length, { kind: "plain", label: "", repeat: null, recall: false, auto: false, lines: sorted });
+	if (!all.some((l) => !l.of && l.times.length > 1 + (used.get(l) ?? 0))) return;
+	const sung = all.filter((l) => !l.of).flatMap((l) => (l.times.length ? l.times.map((t) => ({ ...l, time: t })) : [l]));
+	sung.sort((a, b) => (a.time ?? -1) - (b.time ?? -1));
+	blocks.splice(0, blocks.length, { kind: "plain", label: "", repeat: null, recall: false, auto: false, lines: sung });
 }
 
 /**
@@ -349,7 +373,7 @@ function chorusAfterEachVerse(blocks) {
 	for (let i = blocks.length - 1; i > at; i--) {
 		if (blocks[i].kind !== "verse" || blocks[i + 1]?.kind === "chorus") continue;
 		const c = choruses[0];
-		blocks.splice(i + 1, 0, { kind: "chorus", label: c.label, repeat: null, recall: true, auto: true, lines: c.lines.map((l) => ({ ...l, time: null })) });
+		blocks.splice(i + 1, 0, { kind: "chorus", label: c.label, repeat: null, recall: true, auto: true, lines: c.lines.map(again), src: null, last: null });
 	}
 }
 
@@ -415,4 +439,126 @@ export function lineAt(parsed, position) {
 		}
 	}
 	return found;
+}
+
+/* ------------------------------------------------- checks and fixes ---- */
+
+/**
+ * True when Myanmar text is in the Zawgyi font encoding rather than Unicode
+ * (docs/lyrics.md): Zaideih keeps Unicode only, and Zawgyi shows as broken
+ * letters everywhere else. Two signs that cannot occur in Unicode Burmese:
+ * the vowel sign E (U+1031) at the start of a word (Zawgyi stores it before
+ * its consonant), and the virama (U+1039) not followed by a consonant
+ * (Zawgyi uses it as the visible asat). Two such signs are needed, so one
+ * stray character in otherwise good text is not taken for Zawgyi.
+ */
+export function looksZawgyi(text) {
+	const s = String(text ?? "");
+	if (!/[က-႟]/.test(s)) return false;
+	const eFirst = (s.match(/(?:^|[^က-႟])ေ/gm) ?? []).length;
+	const looseVirama = (s.match(/္(?![က-အ])/g) ?? []).length;
+	return eFirst + looseVirama >= 2;
+}
+
+const SYLLABLE = /(\S) +[-–] +(?=\S)/g;
+/** True when the text looks copied from sheet music, words split into syllables: "To - pa ngak". */
+export const hasSheetSyllables = (text) => (String(text ?? "").match(SYLLABLE) ?? []).length >= 3;
+/** Joins sheet-music syllables ("To - pa" -> "Topa") and drops a hyphen left at a line's end; other hyphens stay. */
+export const joinSyllables = (text) => String(text ?? "").replace(SYLLABLE, "$1").replace(/ +[-–]$/gm, "");
+
+/** Seconds as LRC writes them: "01:23.40". */
+export function lrcTime(seconds) {
+	const cs = Math.max(0, Math.round(seconds * 100));
+	const m = Math.floor(cs / 6000);
+	const s = Math.floor((cs % 6000) / 100);
+	return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`;
+}
+
+/**
+ * The text with line `src` given these times (seconds), written where its
+ * words start (`col`, after "1. " or "Sakkik: "); its old times are replaced.
+ * No times takes them away.
+ */
+export function setLineTimes(text, src, col, times) {
+	const lines = String(text).split("\n");
+	const line = lines[src] ?? "";
+	const head = line.slice(0, col);
+	const rest = line.slice(col).replace(/^(?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\])+/, "");
+	lines[src] = head + times.map((t) => `[${lrcTime(t)}]`).join("") + rest;
+	return lines.join("\n");
+}
+
+/** Takes every LRC time out of the text (the lines and the [offset] line stay as they were otherwise). */
+export function clearTimes(text) {
+	return String(text).split("\n").filter((l) => !/^\[offset\s*:/i.test(l.trim())).map((l) => l.replace(/\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]/g, "")).join("\n");
+}
+
+/** The detail a line at the top gives ("Key: Eb", "{key: G}"), as its `meta` name, or null. */
+function isDetail(line) {
+	const t = line.trim();
+	const plain = PLAIN_DETAIL.exec(t);
+	if (plain) return /^words (and|&) music/i.test(plain[1]) ? "words" : DETAIL_NAMES[plain[1].toLowerCase()] ?? plain[1].toLowerCase();
+	const d = DIRECTIVE.exec(t);
+	if (d && DIRECTIVE_META[d[1].toLowerCase()]) return DIRECTIVE_META[d[1].toLowerCase()];
+	return null;
+}
+
+/** How many lines at the top are details (blank lines between them, and after them, included). */
+function detailLines(lines) {
+	let end = 0;
+	while (end < lines.length) {
+		if (isDetail(lines[end])) { end++; continue; }
+		if (!lines[end].trim() && end > 0) {
+			const next = lines.slice(end).findIndex((l) => l.trim());
+			if (next < 0) { end = lines.length; break; }
+			if (isDetail(lines[end + next])) { end += next; continue; }
+			end += next;
+		}
+		break;
+	}
+	return end;
+}
+
+/**
+ * The details at the top and the words after them: { head, body, offset }.
+ * The studio edits the body and shows the details as chips; `offset` is the
+ * line in the text where the body starts. head + body is the text again.
+ */
+export function splitDetails(text) {
+	const lines = String(text ?? "").split("\n");
+	const offset = detailLines(lines);
+	return { head: lines.slice(0, offset).map((l) => `${l}\n`).join(""), body: lines.slice(offset).join("\n"), offset };
+}
+
+/** The details the studio offers, in order, as written at the top of the lyrics. */
+export const DETAILS = [
+	["key", "Key"], ["time", "Time"], ["tempo", "Tempo"], ["capo", "Capo"],
+	["hymn", "Hymn"], ["original", "Original title"], ["words", "Words"], ["music", "Music"], ["scripture", "Scripture"],
+];
+
+/**
+ * The text with detail `name` (a `meta` name: "key", "words" ...) set to
+ * `value`, written at the top as "Key: Eb", replacing the line that gives it
+ * now (plain or ChordPro); an empty value takes it away. Other details keep
+ * their place; a blank line keeps the details apart from the words.
+ */
+export function setDetail(text, name, value) {
+	const label = DETAILS.find(([n]) => n === name)?.[1];
+	if (!label) throw new Error(`no such detail: ${name}`);
+	const v = String(value ?? "").replace(/\s+/g, " ").trim();
+	const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
+	const end = detailLines(lines);
+	const head = lines.slice(0, end).filter((l) => l.trim());
+	const body = lines.slice(end);
+	const at = head.findIndex((l) => isDetail(l) === name);
+	const written = v ? (DIRECTIVE.test(head[at]?.trim() ?? "") ? `{${name === "words" ? "lyricist" : name === "music" ? "composer" : name}: ${v}}` : `${label}: ${v}`) : null;
+	if (at >= 0) {
+		if (written) head[at] = written;
+		else head.splice(at, 1);
+	} else if (written) {
+		head.push(written);
+	}
+	while (body.length && !body[0].trim()) body.shift();
+	if (!head.length) return body.join("\n");
+	return body.length ? `${head.join("\n")}\n\n${body.join("\n")}` : head.join("\n");
 }

@@ -63,3 +63,44 @@ export function formatHint(parsed) {
 	if (parsed.blocks.some((b) => b.auto)) found.push("a repeated chorus");
 	return found.length ? `Recognised: ${found.join(", ")}.` : "Plain lyrics: a blank line between verses.";
 }
+
+/** The credits under the title: hymn number, original title, words, music, scripture. */
+export function creditsHtml(parsed) {
+	const m = parsed.meta;
+	const parts = [
+		m.hymn && `Hymn ${m.hymn}`,
+		m.original && html`<i>${m.original}</i>`,
+		m.words && m.music && m.words === m.music ? `Words and music: ${m.words}` : m.words && `Words: ${m.words}`,
+		!(m.words && m.words === m.music) && m.music && `Music: ${m.music}`,
+		m.scripture,
+	].filter(Boolean);
+	if (!parts.length) return "";
+	return html`<p class="ly-credits">${parts.map((p, i) => html`${i ? " · " : ""}${p}`)}</p>`;
+}
+
+/** How to write lyrics: the formats the reader understands, short. */
+export function guideHtml() {
+	return html`<div class="ly-guide-body">
+		<p>Write the words as they are sung, one line per line, with a blank line between parts. Anything not recognised is shown as written.</p>
+		<h4>Parts</h4>
+		<pre>1. Topa ngak ta un…      ← a verse, numbered
+
+Sakkik:                  ← the chorus (or [Chorus], Refrain:)
+Vang-liat-na!…
+
+2. …                     ← the Sakkik is sung again after it</pre>
+		<p>Or in brackets: <code>[Tang 1]</code>, <code>[Sakkik]</code>, <code>[Verse]</code>, <code>[Chorus]</code>, <code>[Bridge x2]</code>. A bracket on its own with nothing under it repeats the last chorus.</p>
+		<h4>Details</h4>
+		<p>Key, time, tempo, capo, hymn number, original title, words, music and scripture: the chips above the text write them at the top, as <code>Key: Eb</code>.</p>
+		<h4>Notes and answering parts</h4>
+		<pre>(softly)                      ← a note on its own line
+Vang-liat-na! (Pen-te-kos…)   ← another voice, shown lighter</pre>
+		<h4>Chords</h4>
+		<pre>A[G]mazing [C]grace how [G]sweet</pre>
+		<p>Or a line of chords above the words, lined up with them. ChordPro (<code>{key: G}</code>, <code>{soc}</code> … <code>{eoc}</code>) is understood.</p>
+		<h4>Timed lyrics</h4>
+		<p>Use Timing: play the song and tap as each line starts. Times are written into the text as <code>[00:12.50]</code>.</p>
+		<h4>Myanmar text</h4>
+		<p>Unicode only. Text in Zawgyi cannot be saved: convert it to Unicode first.</p>
+	</div>`;
+}

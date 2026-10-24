@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.18
+
+- Lyrics studio: write, preview, time and review lyrics
+
 ## v26.10.24.17
 
 - Lyrics: Zolai hymnbook (Tang, Sakkik), the chorus after every verse

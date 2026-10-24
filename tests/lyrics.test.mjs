@@ -125,3 +125,55 @@ test("other origins may read but not edit", { skip }, async () => {
 	assert.equal(res.status, 403);
 	assert.equal((await handleLyrics(new Request(`${W}/lyrics/abc`), env, null)).status, 404);
 });
+
+test("Zawgyi text is refused with a clear message; Unicode Myanmar is kept", { skip }, async () => {
+	const { env, call } = setup();
+	await seed(env);
+	const zawgyi = await call("gh-ann", "POST", "/lyrics/101", { text: "ေနေကာင္းလား", base: 0 });
+	assert.equal(zawgyi.status, 422);
+	assert.match(zawgyi.body.error, /Zawgyi.*Unicode/);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/101", { text: "နေကောင်းလား", base: 0 })).status, 200);
+});
+
+test("a member saves at most MAX_PER_HOUR versions an hour; the Lyrics right has no cap", { skip }, async () => {
+	const { env, call, tick, signIn } = setup();
+	await seed(env);
+	const { MAX_PER_HOUR } = await import("../worker/media/lyrics.js");
+	let base = 0;
+	for (let i = 0; i < MAX_PER_HOUR; i++) base = (await call("gh-ann", "POST", "/lyrics/101", { text: `take ${i}`, base })).body.version;
+	const capped = await call("gh-ann", "POST", "/lyrics/101", { text: "one more", base });
+	assert.equal(capped.status, 429);
+	assert.match(capped.body.error, /last hour/);
+	const mod = (await signIn("gh-mod")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
+	assert.equal((await call("gh-mod", "POST", "/lyrics/101", { text: "the right saves", base })).status, 200);
+	tick(3601);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/101", { text: "an hour later", base: base + 1 })).status, 200);
+});
+
+test("reports: members report, the Lyrics right sees them with recent edits, and a decision resolves them", { skip }, async () => {
+	const { env, call, signIn } = setup();
+	await seed(env);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/101/report", { reason: "wrong song" })).status, 404, "nothing to report yet");
+	await call("gh-ann", "POST", "/lyrics/101", { text: "Words", base: 0 });
+	await call("gh-bo", "POST", "/lyrics/102", { text: "Spam", base: 0 });
+	assert.equal((await call("gh-ann", "POST", "/lyrics/102/report", { reason: "" })).status, 400);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/102/report", { reason: "Not the words of this song" })).status, 201);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/102/report", { reason: "Spam, really" })).status, 201, "a second report replaces the first");
+	assert.equal((await call("gh-ann", "GET", "/lyrics/recent")).status, 403, "the list needs the right");
+	const mod = (await signIn("gh-mod")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
+	const recent = await call("gh-mod", "GET", "/lyrics/recent");
+	assert.equal(recent.status, 200, JSON.stringify(recent.body));
+	assert.deepEqual(recent.body.edits.map((e) => [e.track, e.version, e.by.name]).sort(), [[101, 1, "ann"], [102, 1, "bo"]]);
+	assert.deepEqual(recent.body.reports.map((r) => [r.track, r.reasons.map((x) => x.reason)]), [[102, ["Spam, really"]]]);
+	assert.equal((await call("gh-mod", "GET", "/lyrics/102/versions")).body.reports.length, 1);
+	// Hiding deals with the report.
+	await call("gh-mod", "POST", "/lyrics/102/hide", { reason: "Spam" });
+	assert.deepEqual((await call("gh-mod", "GET", "/lyrics/recent")).body.reports, []);
+	assert.equal((await call("gh-mod", "GET", "/lyrics/recent")).body.edits.find((e) => e.track === 102).hidden, true);
+	// Or resolving without a change.
+	await call("gh-bo", "POST", "/lyrics/101/report", { reason: "typo in line 2" });
+	assert.equal((await call("gh-mod", "POST", "/lyrics/101/resolve", {})).status, 200);
+	assert.deepEqual((await call("gh-mod", "GET", "/lyrics/recent")).body.reports, []);
+});
