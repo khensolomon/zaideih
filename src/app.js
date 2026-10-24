@@ -1426,19 +1426,11 @@ export async function boot(platform) {
 	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
 	setOnline();
 	if (probeOn()) startProbe();
-	// Never a loading screen for ever: after a while it says so and offers to reload.
-	const slowStart = setTimeout(() => {
-		const splash = $("#splash");
-		if (!splash || splash.classList.contains("done")) return;
-		splash.insertAdjacentHTML("beforeend", html`<p class="splash-slow">Zaideih is taking long to start.</p><button class="btn splash-reload" type="button">Reload</button>`);
-		$(".splash-reload", splash).addEventListener("click", () => location.reload());
-	}, 15_000);
+	// A start that never finishes: the loading screen offers a reload by itself (index.html, .splash-late).
 	try {
 		const [model] = await Promise.all([loadCatalog(platform.catalogBase), library.init(), offline.init()]);
-		clearTimeout(slowStart);
 		catalog = model;
 	} catch (err) {
-		clearTimeout(slowStart);
 		fatal(err);
 		return;
 	}
