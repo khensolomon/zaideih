@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.25
+
+- merging artists name (catalog, 6 changes)
+
 ## v26.10.24.24
 
 - the "+" (catalog, 1 change)
