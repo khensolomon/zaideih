@@ -2,7 +2,7 @@
  * Personal libraries (docs/library.md): members' own uploads in R2, played
  * through signed addresses, and moderation.
  *
- * Routes (JSON, `Authorization: Bearer <GitHub sign-in token>`, CORS for AUTH_ORIGINS):
+ * Routes (JSON, `Authorization: Bearer <Zaideih session>` (accounts.js), CORS for AUTH_ORIGINS):
  *   GET    /library                         the member, their space and uploads (with signed addresses)
  *   POST   /library/uploads                 {fileName, size, format, duration, title, artist?, album?, year?, track?}
  *                                           -> {id, upload: "/library/uploads/<id>/file"}
@@ -17,24 +17,25 @@
  *   POST   /library/storage/add             {items: [{key, title, artist?, album?, year?, track?, duration}]}
  *                                           files already in storage, added to the library without copying
  *   GET    /library/members                 any right: every member with space, uploads and rights
- *   GET    /library/members/<github id>     `moderate`: one member's uploads (titles only, no addresses)
- *   POST   /library/members/<github id>     `moderate`: {blocked: true, reason} | {blocked: false};
+ *   GET    /library/members/<member id>     `moderate`: one member's uploads (titles only, no addresses)
+ *   POST   /library/members/<member id>     `moderate`: {blocked: true, reason} | {blocked: false};
  *                                           `manage`: {rights: {<right>: true|false, ...}},
  *                                           {folder: "<prefix>/" | null} (where Storage adds from)
  * Streaming (no sign-in; the address is the permission):
  *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload
  *   GET/HEAD /k/<key, base64url>?e&s               a file in storage, for reading its details
  *
- * Rights (members.js): the repository's owner holds all; co-owners
+ * Rights (members.js): the owner (OWNER_GITHUB_ID) holds all; co-owners
  * (`manage`) hold all and give or take any of them; nobody but the owner
  * sees the owner's library, and nobody can block the owner or change the
  * owner's rights.
  *
- * Bindings: DB, BUCKET, GITHUB_REPO, AUTH_ORIGINS, UPLOAD_MAX_BYTES,
+ * Bindings: DB, BUCKET, OWNER_GITHUB_ID, AUTH_ORIGINS, UPLOAD_MAX_BYTES,
  * UPLOAD_QUOTA_BYTES (vars), AUDIO_SIGNING_KEY (secret), UPLOAD_LIMIT (rate limiter).
  */
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
-import { can, MemberError, memberRow, RIGHTS, rightsOf, whoIs } from "./members.js";
+import { can, MemberError, memberRow, ownerId, RIGHTS, rightsOf } from "./members.js";
+import { sessionMember } from "./accounts.js";
 import { formatOf } from "../../src/core/upload-rules.js";
 import { handleRequests, settleReleased } from "./requests.js";
 
@@ -251,8 +252,7 @@ async function editUpload(env, me, id, body, nowSeconds) {
 async function deleteUpload(env, me, id) {
 	const row = await uploadRow(env, id);
 	// Moderators may delete anyone's uploads except the owner's.
-	const ownerOfRow = row ? await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(row.owner_id).first() : null;
-	const isOwnersUpload = isOwnerLogin(env, ownerOfRow?.login);
+	const isOwnersUpload = row ? row.owner_id === (await ownerId(env)) : false;
 	const mine = row?.owner_id === me.id;
 	if (!row || (!mine && !(can(me, "moderate") && !isOwnersUpload))) throw new LibraryError("no such upload, or not yours to delete", 404);
 	if (row.status === "requested") throw new LibraryError(`"${row.title}" is waiting for review; withdraw the request first`, 409);
@@ -268,41 +268,41 @@ async function deleteUpload(env, me, id) {
 
 async function listMembers(env) {
 	const rows = await env.DB.prepare(
-		`SELECT m.github_id, m.login, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
+		`SELECT m.id, m.name, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
 			COUNT(u.id) AS uploads, COALESCE(SUM(CASE WHEN u.r2_key LIKE '${UPLOADS_ROOT}%' THEN u.size ELSE 0 END), 0) AS used
-		FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id
-		GROUP BY m.github_id ORDER BY used DESC, m.last_seen DESC`,
+		FROM members m LEFT JOIN uploads u ON u.owner_id = m.id
+		GROUP BY m.id ORDER BY used DESC, m.last_seen DESC`,
 	).all();
 	const rights = await rightsOf(env);
-	const folders = new Map(((await env.DB.prepare("SELECT github_id, prefix FROM member_folders").all()).results ?? []).map((f) => [f.github_id, f.prefix]));
+	const folders = new Map(((await env.DB.prepare("SELECT member_id, prefix FROM member_folders").all()).results ?? []).map((f) => [f.member_id, f.prefix]));
+	const owner = await ownerId(env);
 	return (rows.results ?? []).map((r) => ({
-		id: r.github_id, login: r.login, owner: isOwnerLogin(env, r.login),
-		folder: folders.get(r.github_id) ?? `${STORAGE_DEFAULT}${r.github_id}/`,
-		rights: isOwnerLogin(env, r.login) ? Object.keys(RIGHTS) : [...(rights.get(r.github_id) ?? [])],
+		id: r.id, login: r.name, owner: r.id === owner,
+		folder: folders.get(r.id) ?? `${STORAGE_DEFAULT}${r.id}/`,
+		rights: r.id === owner ? Object.keys(RIGHTS) : [...(rights.get(r.id) ?? [])],
 		uploads: r.uploads, used: r.used,
 		blocked: r.blocked_at ? { at: r.blocked_at, by: r.blocked_by, reason: r.blocked_reason ?? "" } : null,
 		firstSeen: r.first_seen, lastSeen: r.last_seen,
 	}));
 }
 
-const isOwnerLogin = (env, login) => login?.toLowerCase() === env.GITHUB_REPO.split("/")[0].toLowerCase();
 
-async function memberUploads(env, gid) {
-	const m = await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(gid).first();
+async function memberUploads(env, memberId) {
+	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
 	if (!m) throw new LibraryError("no such member", 404);
 	// The owner's library is the owner's alone.
-	if (isOwnerLogin(env, m.login)) throw new LibraryError("the owner's library is private", 403);
-	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(gid).all();
-	return { login: m.login, uploads: (rows.results ?? []).map(publicUpload) };
+	if (m.id === (await ownerId(env))) throw new LibraryError("the owner's library is private", 403);
+	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(memberId).all();
+	return { login: m.name, uploads: (rows.results ?? []).map(publicUpload) };
 }
 
-async function setMember(env, me, gid, body, nowSeconds) {
+async function setMember(env, me, memberId, body, nowSeconds) {
 	if (("rights" in body || "folder" in body) && !can(me, "manage")) throw new LibraryError("only the owner and co-owners give or take rights", 403);
 	if ("blocked" in body && !can(me, "moderate")) throw new LibraryError("blocking needs the Moderate members right", 403);
-	const m = await env.DB.prepare("SELECT login FROM members WHERE github_id = ?1").bind(gid).first();
+	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
 	if (!m) throw new LibraryError("no such member", 404);
-	if (isOwnerLogin(env, m.login)) throw new LibraryError("the owner cannot be blocked or changed", 403);
-	const held = (await rightsOf(env, gid)).get(gid) ?? new Set();
+	if (m.id === (await ownerId(env))) throw new LibraryError("the owner cannot be blocked or changed", 403);
+	const held = (await rightsOf(env, memberId)).get(memberId) ?? new Set();
 	if ("rights" in body) {
 		const change = body.rights;
 		if (!change || typeof change !== "object" || Array.isArray(change)) throw new LibraryError("rights must be an object of right: true or false");
@@ -312,22 +312,22 @@ async function setMember(env, me, gid, body, nowSeconds) {
 		}
 		for (const [kind, on] of Object.entries(change)) {
 			if (on) {
-				await env.DB.prepare("INSERT INTO member_rights (github_id, kind, granted_by, granted_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING").bind(gid, kind, me.login, nowSeconds).run();
+				await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING").bind(memberId, kind, me.login, nowSeconds).run();
 			} else {
-				await env.DB.prepare("DELETE FROM member_rights WHERE github_id = ?1 AND kind = ?2").bind(gid, kind).run();
+				await env.DB.prepare("DELETE FROM member_rights WHERE member_id = ?1 AND kind = ?2").bind(memberId, kind).run();
 				// The flag from before rights existed goes with Moderate members.
-				if (kind === "moderate") await env.DB.prepare("UPDATE members SET moderator = 0 WHERE github_id = ?1").bind(gid).run();
+				if (kind === "moderate") await env.DB.prepare("UPDATE members SET moderator = 0 WHERE id = ?1").bind(memberId).run();
 			}
 		}
 	}
 	if ("folder" in body) {
 		if (body.folder === null || body.folder === "") {
-			await env.DB.prepare("DELETE FROM member_folders WHERE github_id = ?1").bind(gid).run();
+			await env.DB.prepare("DELETE FROM member_folders WHERE member_id = ?1").bind(memberId).run();
 		} else {
 			const folder = checkFolder(body.folder);
 			if (folder === "") throw new LibraryError("a member's folder cannot be the whole bucket; make them a co-owner instead");
-			await env.DB.prepare("INSERT INTO member_folders (github_id, prefix, set_by, set_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(github_id) DO UPDATE SET prefix = ?2, set_by = ?3, set_at = ?4")
-				.bind(gid, folder, me.login, nowSeconds).run();
+			await env.DB.prepare("INSERT INTO member_folders (member_id, prefix, set_by, set_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(member_id) DO UPDATE SET prefix = ?2, set_by = ?3, set_at = ?4")
+				.bind(memberId, folder, me.login, nowSeconds).run();
 		}
 	}
 	if ("blocked" in body) {
@@ -336,12 +336,12 @@ async function setMember(env, me, gid, body, nowSeconds) {
 		if (held.size && !can(me, "manage")) throw new LibraryError("only the owner and co-owners block a member who holds rights", 403);
 		if (body.blocked) {
 			const reason = cleanText(body.reason, "reason", true);
-			await env.DB.prepare("UPDATE members SET blocked_at = ?1, blocked_by = ?2, blocked_reason = ?3 WHERE github_id = ?4").bind(nowSeconds, me.login, reason, gid).run();
+			await env.DB.prepare("UPDATE members SET blocked_at = ?1, blocked_by = ?2, blocked_reason = ?3 WHERE id = ?4").bind(nowSeconds, me.login, reason, memberId).run();
 		} else {
-			await env.DB.prepare("UPDATE members SET blocked_at = NULL, blocked_by = NULL, blocked_reason = NULL WHERE github_id = ?1").bind(gid).run();
+			await env.DB.prepare("UPDATE members SET blocked_at = NULL, blocked_by = NULL, blocked_reason = NULL WHERE id = ?1").bind(memberId).run();
 		}
 	}
-	return (await listMembers(env)).find((x) => x.id === gid) ?? null;
+	return (await listMembers(env)).find((x) => x.id === memberId) ?? null;
 }
 
 /* ------------------------------------------------------------- storage ---- */
@@ -439,7 +439,7 @@ async function addFromStorage(env, me, body, nowSeconds) {
  * /library/*.
  * @param {Request} request
  */
-export async function handleLibrary(request, env, { fetchImpl, now = () => Date.now() } = {}) {
+export async function handleLibrary(request, env, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
 	const origin = request.headers.get("origin");
 	let cfg;
@@ -456,7 +456,7 @@ export async function handleLibrary(request, env, { fetchImpl, now = () => Date.
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
 		if (!cors) throw new LibraryError("this origin may not use personal libraries (AUTH_ORIGINS)", 403);
-		const me = await memberRow(env, await whoIs(request, env, { fetchImpl, now }), nowSeconds);
+		const me = await memberRow(env, await sessionMember(env, request, nowSeconds), nowSeconds);
 		if (me.blocked) throw new LibraryError(`Your library is closed by ${me.blocked.by}: ${me.blocked.reason}`, 403);
 		const path = url.pathname.replace(/\/+$/, "");
 		const m = request.method;
@@ -503,7 +503,7 @@ export async function handleSignedAudio(request, env, id) {
 	if (!env.AUDIO_SIGNING_KEY || !env.DB || !env.BUCKET) return text(503, "personal libraries are not set up on this Worker");
 	if (!(await verifySigned(String(id), url.searchParams.get("e"), url.searchParams.get("s"), env.AUDIO_SIGNING_KEY))) return text(403, "this address has expired or is not valid; open the library again");
 	const row = await env.DB.prepare(
-		"SELECT u.r2_key, u.format, u.status, m.blocked_at FROM uploads u LEFT JOIN members m ON m.github_id = u.owner_id WHERE u.id = ?1",
+		"SELECT u.r2_key, u.format, u.status, m.blocked_at FROM uploads u LEFT JOIN members m ON m.id = u.owner_id WHERE u.id = ?1",
 	).bind(id).first();
 	if (!row || row.status === "uploading") return text(404, "no such upload");
 	if (row.blocked_at) return text(403, "this library is closed");

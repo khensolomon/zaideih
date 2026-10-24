@@ -44,6 +44,10 @@ AUTH_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,http://localhost:80
 # write access are opened there as pull requests by the App (suggest.js),
 # with its private key as the Worker secret GITHUB_APP_KEY (PKCS#8 PEM).
 GITHUB_REPO = "khensolomon/zaideih"
+# Zaideih's owner (docs/accounts.md): the member signed in with this GitHub
+# account holds every right. The numeric id, since a login can be renamed
+# and then taken by someone else (GET /repos/khensolomon/zaideih: owner.id).
+OWNER_GITHUB_ID = "1753766"
 # Personal libraries (library.js, docs/library.md): at most 95 MB per file
 # (a Worker request body may be 100 MB on the Free and Pro plans) and 2 GB
 # per member; the owner has no limit. Streaming addresses are signed with

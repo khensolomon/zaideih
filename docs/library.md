@@ -8,8 +8,8 @@ Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in
 
 | Role | Who | May |
 |------|-----|-----|
-| Owner | The owner of the GitHub repository (`GITHUB_REPO`, so `khensolomon`) | Everything, always: every right below, giving and taking any right from anyone, overriding any decision. The owner's library is the owner's alone; nobody else can list or play it, block the owner or change the owner's rights |
-| Member | Anyone signed in with GitHub | Their own library: upload, add from storage (with the right), play, edit, delete; suggest catalog edits |
+| Owner | The member signed in with the repository owner's GitHub account (`OWNER_GITHUB_ID`, [accounts.md](accounts.md#the-owner)) | Everything, always: every right below, giving and taking any right from anyone, overriding any decision. The owner's library is the owner's alone; nobody else can list or play it, block the owner or change the owner's rights |
+| Member | Anyone signed in ([accounts.md](accounts.md)) | Their own library: upload, add from storage (with the right), play, edit, delete; suggest catalog edits |
 | Listener | Not signed in | The public app |
 
 The owner trusts members with rights, one by one, on the admin page (Members); each is a row in D1 `member_rights` with who gave it and when:
@@ -19,27 +19,27 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Co-owner (`manage`) | Everything below, and gives or takes any right from any member but the owner |
 | Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
-| Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their github id>/` until one is set) |
+| Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
 
-Roles come from GitHub on every request the Worker serves (`worker/media/members.js`): the sign-in token is checked with GitHub (`GET /user`, `GET /repos/{repo}` for the permission), cached per isolate for five minutes by a hash of the token. Rights and blocks are Zaideih's own and live in D1.
+Library requests carry a Zaideih session ([accounts.md](accounts.md#sessions)), checked in D1 on every request (`worker/media/members.js`). Rights and blocks are Zaideih's own and live in D1.
 
 ## Data
 
 D1 (`worker/media/schema.sql`):
 
-- `members`: one row per GitHub account that has used the library: GitHub id (the key; logins can change), login, block (time, by whom, reason), first and last seen.
+- `members`: one row per person ([accounts.md](accounts.md)): id, name (the GitHub login, or the name another sign-in gives), block (time, by whom, reason), first and last seen. `member_logins` and `member_sessions` hold their sign-ins and sessions.
 - `member_rights`: the rights the owner has given, one row per member and right.
 - `member_folders`: the storage folder set for a member with the Storage right.
-- `uploads`: one row per uploaded file: id, owner's GitHub id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`, `requested` while asked to be published, `published` once approved, `released` once in the catalog) and when it was added.
+- `uploads`: one row per uploaded file: id, owner's member id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`, `requested` while asked to be published, `published` once approved, `released` once in the catalog) and when it was added.
 - `publish_requests`: one row per album asked to be published: the member, the album name, language, note, status (`open`, `withdrawn`, `rejected`, `approved`, `released`), who decided, the reason, the catalog album id and the pull request.
 - `published_tracks`: for each approved song, its upload, request, catalog track id and catalog file (`music/…`).
 
 R2:
 
 - `music/…`: the catalog.
-- `users/<github id>/<upload id>.<ext>`: uploads.
+- `users/<member id>/<upload id>.<ext>`: uploads.
 - Anything else: files put in R2 some other way (rclone, wrangler, the dashboard), wherever their owner keeps them, which can be added from storage. They are never moved, renamed or deleted by Zaideih.
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).

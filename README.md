@@ -85,6 +85,7 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 - [docs/setup.md](docs/setup.md): from a fresh clone to a release: accounts, credentials (where to get them, where they go, what they may do) and settings
 - [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline, play counts, admin page
 - [docs/worker-audio.md](docs/worker-audio.md): the audio Worker: routes, deploying, checking, sign-in
+- [docs/accounts.md](docs/accounts.md): accounts, sign-ins and sessions
 - [docs/library.md](docs/library.md): personal libraries (uploads, signed streaming, moderation)
 - [docs/releasing.md](docs/releasing.md): one-time Cloudflare and GitHub setup, release targets, rollback
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release

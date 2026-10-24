@@ -41,6 +41,7 @@ import { buildPublish } from "./publish.js";
 import { stringifyMedia } from "../../tools/lib/media.mjs";
 import { createSession, SESSION_KEY, SignInError } from "./session.js";
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
+import { AccountError, createAccount } from "../core/account.js";
 
 const DRAFT_KEY = "zaideih.admin.draft";
 const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json", media: "assets/data/media.json" };
@@ -92,6 +93,8 @@ export function mount(root, ctx) {
 	};
 	let poll = 0;
 	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
+	// The Zaideih session for the audio Worker's own routes (core/account.js), got from this sign-in.
+	const account = createAccount({ authUrl: ctx.authUrl, local: localStorage, githubToken: () => session.token() });
 
 	const saveDraft = () => store.set(DRAFT_KEY, s.draft);
 	const fail = (err) => {
@@ -129,6 +132,8 @@ export function mount(root, ctx) {
 			s.canWrite = who.canWrite;
 			s.name = who.name;
 			s.avatar = who.avatar;
+			// Kept before the library is asked: the Zaideih session is got for the person kept here.
+			saveWho(localStorage, { login: who.login, level: who.level, via });
 			// Decoration only: the header shows nothing about it when GitHub's search is unavailable.
 			gh.contributions(who.login).then((d) => { s.done = d; render(); }, (err) => console.warn("contributions", err));
 			// Moderators of personal libraries get the Members tab (docs/library.md).
@@ -139,7 +144,6 @@ export function mount(root, ctx) {
 				if (may("review")) loadRequests().catch(fail);
 				render();
 			}, (err) => console.warn("library", err.message));
-			saveWho(localStorage, { login: who.login, level: who.level, via });
 			ctx.onWho?.();
 			await load();
 		} catch (err) {
@@ -195,6 +199,7 @@ export function mount(root, ctx) {
 		ctx.onWho?.();
 		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.members = null; s.requests = null; s.reviewing = null;
 		render();
+		await account.signOut().catch((err) => console.warn("the Zaideih session could not be signed out", err));
 		if (via === "github") await session.signOut();
 	}
 
@@ -467,16 +472,16 @@ export function mount(root, ctx) {
 	/** The audio Worker's personal-library routes, with this sign-in. */
 	async function libraryCall(method, path, body) {
 		if (!ctx.libraryUrl) throw new Error("personal libraries are not built into this version");
-		const token = s.via === "github" ? await session.token() : store.get(TOKEN_KEY);
 		let res;
 		try {
-			res = await fetch(`${ctx.libraryUrl}${path}`, {
+			res = await account.send((token) => fetch(`${ctx.libraryUrl}${path}`, {
 				method,
 				headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
 				body: body ? JSON.stringify(body) : undefined,
 				cache: "no-store",
-			});
+			}));
 		} catch (err) {
+			if (err instanceof AccountError) throw new SignInError(err.message);
 			throw new SignInError(`the library could not be reached (${err.message})`);
 		}
 		if (res.status === 204) return null;

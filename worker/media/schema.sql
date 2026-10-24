@@ -1,9 +1,12 @@
--- D1 schema of the audio Worker (database "audio"): the whole schema in one
--- file, with no migration history.
+-- D1 schema of the audio Worker (database "audio"): the whole schema as it
+-- is now, in one file.
 --
 -- Every statement is idempotent (CREATE ... IF NOT EXISTS):
---   node tools/d1.mjs schema --apply   creates what is missing, keeps all data
---                                      (also run by every `release: audio`)
+--   node tools/d1.mjs schema --apply   runs the pending migrations
+--                                      (worker/media/migrations/, for changes
+--                                      CREATE cannot make, such as renames),
+--                                      then creates what is missing; keeps
+--                                      all data (also run by every `release: audio`)
 --   node tools/d1.mjs reset --apply    drops every table, creates this schema
 --                                      and loads the track paths again
 --
@@ -62,18 +65,29 @@ CREATE TABLE IF NOT EXISTS plays (
 CREATE INDEX IF NOT EXISTS idx_plays_day ON plays (day);
 
 -- =============================================================================
--- members: GitHub accounts that use their personal library (docs/library.md)
+-- schema_migrations: which files of worker/media/migrations have run
 -- =============================================================================
--- Keyed by GitHub's numeric id, since logins can change. Written by the
--- Worker on library requests (library.js). Roles other than moderator come
--- from GitHub on every request; blocking and moderator rights are Zaideih's.
+-- A database made from this file records every migration as run, since this
+-- file already has their result.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    name        TEXT    PRIMARY KEY,
+    applied_at  INTEGER NOT NULL
+);
+
+-- =============================================================================
+-- members: Zaideih accounts (docs/accounts.md)
+-- =============================================================================
+-- One row per person, however they sign in (member_logins). Members made
+-- before accounts (migration 0001) kept their GitHub id as their id, so
+-- their files in R2 (users/<id>/…) did not move; new members are numbered
+-- after the highest id. `name` is shown to moderators: the GitHub login, or
+-- the name another sign-in gives. Blocking and rights are Zaideih's own.
 -- Not rebuildable from git: `tools/d1.mjs reset` refuses while it has rows.
 --
---   Blocked:     SELECT login, blocked_by, blocked_reason FROM members WHERE blocked_at IS NOT NULL;
---   Moderators:  SELECT login FROM members WHERE moderator = 1;
+--   Blocked:     SELECT name, blocked_by, blocked_reason FROM members WHERE blocked_at IS NOT NULL;
 CREATE TABLE IF NOT EXISTS members (
-    github_id       INTEGER PRIMARY KEY,
-    login           TEXT    NOT NULL,
+    id              INTEGER PRIMARY KEY,
+    name            TEXT    NOT NULL,
     moderator       INTEGER NOT NULL DEFAULT 0,  -- 1: may block members and delete uploads
     blocked_at      INTEGER,                     -- unix seconds; NULL when not blocked
     blocked_by      TEXT,
@@ -83,10 +97,49 @@ CREATE TABLE IF NOT EXISTS members (
 );
 
 -- =============================================================================
--- uploads: files in members' personal libraries (R2 users/<github_id>/<id>.<ext>)
+-- member_logins: the ways a member signs in
 -- =============================================================================
--- status: uploading (row made, file not yet stored), private. Later:
--- requested, published, rejected. Upload ids are not catalog track ids.
+-- provider: github (subject: GitHub's numeric user id), later google and
+-- passkey. A sign-in whose provider vouches for its email (email_verified = 1)
+-- joins the member who already has that verified email; otherwise a member
+-- adds it while signed in. `login` is the GitHub login (for GitHub only).
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+--
+--   Sign-ins of a member:  SELECT provider, login, email FROM member_logins WHERE member_id = ?;
+CREATE TABLE IF NOT EXISTS member_logins (
+    provider        TEXT    NOT NULL,
+    subject         TEXT    NOT NULL,
+    member_id       INTEGER NOT NULL,
+    login           TEXT,
+    email           TEXT,                        -- lower case
+    email_verified  INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    last_used       INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_member_logins_member ON member_logins (member_id);
+CREATE INDEX IF NOT EXISTS idx_member_logins_email ON member_logins (email) WHERE email_verified = 1;
+
+-- =============================================================================
+-- member_sessions: Zaideih sign-in tokens (worker/media/accounts.js)
+-- =============================================================================
+-- Only a SHA-256 hash of each token is kept. A token lasts SESSION_DAYS after
+-- its last use; signing out deletes its row, and a block applies at once.
+CREATE TABLE IF NOT EXISTS member_sessions (
+    token_hash  TEXT    PRIMARY KEY,
+    member_id   INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL,
+    last_used   INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_member_sessions_member ON member_sessions (member_id);
+
+-- =============================================================================
+-- uploads: files in members' personal libraries (R2 users/<member id>/<id>.<ext>)
+-- =============================================================================
+-- status: uploading (row made, file not yet stored), private, requested,
+-- published, released (see publish_requests). Upload ids are not catalog
+-- track ids. owner_id is the member's id.
 -- Not rebuildable from git: `tools/d1.mjs reset` refuses while it has rows.
 --
 --   Space per member:  SELECT owner_id, COUNT(*), SUM(size) FROM uploads GROUP BY owner_id;
@@ -115,28 +168,29 @@ CREATE INDEX IF NOT EXISTS idx_uploads_owner ON uploads (owner_id, status);
 -- kind: manage (co-owner: everything below, and gives or takes any right),
 -- review (approves or rejects requests to publish), moderate (blocks
 -- members, deletes uploads), storage (adds files already in R2 under
--- private/<github_id>/). The repository's owner holds every right without
--- a row. members.moderator = 1 (from before rights existed) counts as moderate.
+-- private/<member id>/). The owner (the member signed in with the GitHub
+-- account OWNER_GITHUB_ID) holds every right without a row.
+-- members.moderator = 1 (from before rights existed) counts as moderate.
 -- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
 --
---   Who holds what:  SELECT m.login, r.kind, r.granted_by FROM member_rights r JOIN members m ON m.github_id = r.github_id;
+--   Who holds what:  SELECT m.name, r.kind, r.granted_by FROM member_rights r JOIN members m ON m.id = r.member_id;
 CREATE TABLE IF NOT EXISTS member_rights (
-    github_id   INTEGER NOT NULL,
+    member_id   INTEGER NOT NULL,
     kind        TEXT    NOT NULL,
     granted_by  TEXT    NOT NULL,
     granted_at  INTEGER NOT NULL,
-    PRIMARY KEY (github_id, kind)
+    PRIMARY KEY (member_id, kind)
 ) WITHOUT ROWID;
 
 -- =============================================================================
 -- member_folders: where in R2 a member with the Storage right adds files from
 -- =============================================================================
 -- Set by the owner or a co-owner on the admin page (Members). Without a row
--- the folder is private/<github_id>/. The owner and co-owners add from the
+-- the folder is private/<member id>/. The owner and co-owners add from the
 -- whole bucket except users/ (members' uploads).
 -- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
 CREATE TABLE IF NOT EXISTS member_folders (
-    github_id  INTEGER PRIMARY KEY,
+    member_id  INTEGER PRIMARY KEY,
     prefix     TEXT    NOT NULL,
     set_by     TEXT    NOT NULL,
     set_at     INTEGER NOT NULL

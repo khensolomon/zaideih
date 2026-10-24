@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.1
+
+- Accounts: members become Zaideih accounts with GitHub as their first sign-in, joined by verified email; Zaideih's own sign-in sessions for personal libraries; database migrations
+
 ## v26.10.23.6
 
 - Published Miaow (10 songs, from @khensolomon's library)
