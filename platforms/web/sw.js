@@ -3,7 +3,8 @@
  *
  * Strategy:
  *   shell (html, js, css, fonts, icons)   precached at install, cache-first
- *   catalog/meta.json                      network-first, cached copy offline
+ *   catalog/meta.json                      network-first; the cached copy offline, or when
+ *                                          the network has not answered in META_WAIT_MS
  *   catalog/catalog.<hash>.json            cache-first (immutable, content-hashed)
  *   audio                                  never handled here; downloaded audio
  *                                          lives in IndexedDB and plays from Blobs
@@ -42,16 +43,27 @@ self.addEventListener("message", (event) => {
 
 const scope = new URL(self.registration.scope);
 
+// A connection that does not answer in this time is treated as offline for starting the app.
+const META_WAIT_MS = 4000;
+
 async function catalogMeta(request) {
 	const cache = await caches.open(DATA);
-	try {
-		const res = await fetch(request, { cache: "no-cache" });
+	const network = fetch(request, { cache: "no-cache" }).then(async (res) => {
 		if (res.ok) {
 			await cache.put(request, res.clone());
 			const meta = await res.clone().json();
 			pruneCatalogs(cache, meta.catalog);
 		}
 		return res;
+	});
+	const slow = new Promise((resolve) => setTimeout(() => resolve(null), META_WAIT_MS));
+	try {
+		const first = await Promise.race([network, slow]);
+		if (first) return first;
+		// Slow: the saved copy now, and the network's answer is saved when it comes.
+		const hit = await cache.match(request);
+		if (hit) { network.catch(() => {}); return hit; }
+		return await network;
 	} catch (err) {
 		const hit = await cache.match(request);
 		if (hit) return hit;
