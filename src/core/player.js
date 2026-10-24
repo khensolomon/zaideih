@@ -54,7 +54,38 @@ const state = {
 	error: "",
 	errorCode: "",    // diagnostic code for the last failure (see core/diagnostic.js)
 	context: "",      // label of where playback started, e.g. an album title
+	sleep: null,      // sleep timer: { at } (ms, wall clock) or { end: true } (at the end of this song)
 };
+
+/*
+ * Sleep timer: playback fades out and pauses at a time, or stops when the
+ * song playing ends. Not kept across visits: a timer set yesterday means
+ * nothing today.
+ */
+let sleepTimer = 0;
+let fading = false;
+const FADE_MS = 6000;
+
+function sleepNow() {
+	clearTimeout(sleepTimer);
+	state.sleep = null;
+	const from = audio.volume;
+	const start = performance.now();
+	// A slow fade, then the pause, then the volume as it was for the next listen.
+	fading = true;
+	const step = () => {
+		const k = Math.min(1, (performance.now() - start) / FADE_MS);
+		audio.volume = from * (1 - k);
+		if (k < 1 && !audio.paused) { requestAnimationFrame(step); return; }
+		audio.pause();
+		fading = false;
+		audio.volume = from;
+		notify("Sleep timer: playback stopped");
+		changed();
+	};
+	if (audio.paused) { changed(); return; }
+	requestAnimationFrame(step);
+}
 
 const current = () => (state.index >= 0 ? catalog.track(state.queue[state.index]) ?? null : null);
 
@@ -156,10 +187,10 @@ function stopWithError(message, kind = "unknown", extra = {}) {
 		if (current() !== track || state.error !== message) return;
 		state.errorCode = code;
 		changed();
-		notify(message, { kind: "error", code, help: true });
+		notify(message, { kind: "error", code, help: true, playback: true });
 	}, (err) => {
 		console.error("diagnosing the failure failed", err);
-		notify(message, { kind: "error", help: true });
+		notify(message, { kind: "error", help: true, playback: true });
 	});
 }
 
@@ -195,6 +226,14 @@ audio.addEventListener("timeupdate", () => {
 });
 /** What happens when a song ends: repeat it, play the next one, or stop. */
 function songEnded() {
+	if (state.sleep?.end) {
+		state.sleep = null;
+		audio.pause();
+		state.playing = false;
+		notify("Sleep timer: stopped at the end of the song");
+		changed();
+		return;
+	}
 	if (state.repeat === "one") {
 		audio.currentTime = 0;
 		audio.play();
@@ -279,6 +318,8 @@ function saveVolume() {
 	} catch { /* storage unavailable: the setting lasts for this session */ }
 }
 audio.addEventListener("volumechange", () => {
+	// The sleep timer's fade is not the listener's volume.
+	if (fading) return;
 	saveVolume();
 	emit("volume", { volume: audio.volume, muted: audio.muted });
 });
@@ -351,6 +392,22 @@ export const player = {
 	},
 
 	pause() { audio.pause(); },
+
+	/**
+	 * The sleep timer: `minutes` from now, "end" for the end of this song, or
+	 * null for none.
+	 */
+	setSleep(minutes) {
+		clearTimeout(sleepTimer);
+		if (minutes === null) state.sleep = null;
+		else if (minutes === "end") state.sleep = { end: true };
+		else {
+			if (!Number.isFinite(minutes) || minutes <= 0) throw new Error(`a sleep timer needs minutes above 0, not ${minutes}`);
+			state.sleep = { at: Date.now() + minutes * 60_000 };
+			sleepTimer = setTimeout(sleepNow, minutes * 60_000);
+		}
+		changed();
+	},
 	/** Where the song is now, in seconds, exactly (the "time" event comes only a few times a second). */
 	get position() { return audio.currentTime || 0; },
 	toggle() { return state.playing ? player.pause() : player.play(); },

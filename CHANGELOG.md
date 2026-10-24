@@ -1,7 +1,8 @@
 # Version
 
-## v26.10.24.28
+## v26.10.24.29
 
+- Getting around while listening: player More, sleep timer, share
 - Lyrics: play this song
 
 ## v26.10.24.27

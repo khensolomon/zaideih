@@ -266,6 +266,15 @@ async function render({ keepScroll = false } = {}) {
 	if (!keepScroll && r.path !== "admin") analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
 	scrollTo(0, scroll);
 	out.mount?.(view);
+	// The player's Play, while nothing plays, offers this page's own.
+	if (!player.current()) renderBar();
+	// A shared song (?song=<id>): its row, in view and lit for a moment.
+	const shared = r.query?.get?.("song");
+	const row = shared ? view.querySelector(`.track[data-track="${CSS.escape(shared)}"]`) : null;
+	if (row && !keepScroll) {
+		row.scrollIntoView({ block: "center" });
+		row.classList.add("flash");
+	}
 	if (!keepScroll) {
 		const heading = view.querySelector("h1");
 		if (heading && !$("#q")) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
@@ -335,14 +344,18 @@ function applyRail({ mini, closed } = railState()) {
 }
 
 /* =================================================================== player bar */
+/** What the page's own Play plays (data-page-play), for the player's Play while nothing plays; "" when none. */
+const pagePlay = () => $("main [data-page-play]:not([disabled])")?.dataset.pagePlay ?? "";
+
 function renderBar() {
 	const t = player.current();
 	const s = player.state;
 	const bar = $("#bar");
 	bar.classList.toggle("idle", !t);
+	bar.classList.toggle("page-play", !t && Boolean(pagePlay()));
 	$("#bar-now").innerHTML = t
 		? html`${cover(t.album, { label: false })}<span class="meta"><span class="title ${scriptClass(t.title)}">${t.title}</span><span class="sub">${s.error ? s.error : creditOf(t.artists)}</span></span>`
-		: html`<span class="meta"><span class="title">Nothing playing</span><span class="sub">Pick a song to start</span></span>`;
+		: html`<span class="meta"><span class="title">Nothing playing</span><span class="sub">${pagePlay() ? `Play ${pagePlay()}` : "Pick a song to start"}</span></span>`;
 	for (const btn of $$("[data-ctl=toggle]")) {
 		btn.innerHTML = icon(s.playing ? "pause" : "play");
 		btn.setAttribute("aria-label", s.playing ? "Pause" : "Play");
@@ -440,8 +453,8 @@ function renderSheet() {
 			<span class="top-end">
 				<button class="icon-btn" data-act="sound" aria-label="Sound: skip silence, clean up, volume, equaliser" aria-haspopup="dialog">${icon("sliders")}</button>
 				<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
+				<button class="icon-btn sleep-btn" data-act="sleep" aria-pressed="${String(Boolean(s.sleep))}" aria-label="${s.sleep ? `Sleep timer: stops ${sleepText()}` : "Sleep timer"}" title="${s.sleep ? `Sleep timer: stops ${sleepText()}` : "Sleep timer"}" aria-haspopup="menu">${icon("moon")}</button>
 				<button class="icon-btn" data-act="watch" aria-label="Watch the background" hidden>${icon("watch")}</button>
-				${t.upload ? "" : npLyricsButton()}
 				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
 			</span>
 		</div>
@@ -451,8 +464,9 @@ function renderSheet() {
 				<div class="info">
 					<div style="min-width:0">
 						<div class="title ${scriptClass(t.title)}">${t.title}</div>
-						<div class="sub">${creditOf(t.artists, 3)}</div>
+						<div class="sub">${t.upload || !t.artists.length ? creditOf(t.artists, 3) : t.artists.slice(0, 3).map((a, i) => html`${i ? ", " : ""}<a href="${href(`artist/${a.id}`)}" data-act="close-sheet">${a.name}</a>`)}</div>
 					</div>
+					${t.upload ? "" : npLyricsButton()}
 					<button class="icon-btn like" data-act="like" data-id="${t.id}" aria-pressed="${String(library.isLiked(t.id))}" aria-label="${library.isLiked(t.id) ? "Remove from liked songs" : "Add to liked songs"}">${icon("heart")}</button>
 				</div>
 				<canvas class="viz-large" data-viz="large" aria-hidden="true"></canvas>
@@ -886,6 +900,49 @@ async function addToPlaylistMenu(anchor, ids) {
 	openMenu(anchor, items);
 }
 
+/** Shares a page of the app: the device's share sheet where there is one, otherwise the link, copied. */
+async function shareLink(path, title, text = "") {
+	const url = `${location.origin}${location.pathname}#/${path}`;
+	if (navigator.share) {
+		try {
+			await navigator.share({ title, text, url });
+			return;
+		} catch (err) {
+			if (err.name === "AbortError") return;
+			console.warn("the share sheet failed; copying the link instead", err);
+		}
+	}
+	try {
+		await navigator.clipboard.writeText(url);
+		notify("Link copied");
+	} catch {
+		await promptText("Copy this link", url, "Done");
+	}
+}
+
+/** A song's share: its album, opened at the song. */
+const shareSong = (t) => shareLink(`album/${t.album.id}?song=${t.id}`, t.title, `${t.title}, ${creditOf(t.artists)}`);
+
+/** When the sleep timer stops playback, in words; "" when it is off. */
+function sleepText() {
+	const z = player.state.sleep;
+	if (!z) return "";
+	if (z.end) return "at the end of this song";
+	const m = Math.max(1, Math.round((z.at - Date.now()) / 60_000));
+	return `in ${m} min`;
+}
+
+/** The sleep timer: stop in a while, or at the end of the song playing. */
+function sleepMenu(anchor) {
+	const on = sleepText();
+	openMenu(anchor, [
+		{ label: on ? `Sleep timer: stops ${on}` : "Sleep timer" },
+		...[15, 30, 45, 60].map((m) => ({ label: m === 60 ? "In 1 hour" : `In ${m} minutes`, run: () => { player.setSleep(m); notify(`Playback stops in ${m === 60 ? "1 hour" : `${m} minutes`}`); } })),
+		{ label: "At the end of this song", run: () => { player.setSleep("end"); notify("Playback stops at the end of this song"); } },
+		...(on ? ["-", { label: "Turn the timer off", run: () => { player.setSleep(null); notify("Sleep timer off"); } }] : []),
+	]);
+}
+
 /**
  * The player's "More": where the playing song comes from (its album and
  * artists), its lyrics, Now playing and the queue, and adding it to a playlist.
@@ -900,6 +957,8 @@ function barMenu(anchor, track) {
 		"-",
 		{ label: "Add to playlist…", run: () => addToPlaylistMenu(anchor, [track.id]) },
 		{ label: "Show queue", run: () => openSheet() },
+		...(track.upload ? [] : [{ label: "Share…", run: () => shareSong(track) }]),
+		{ label: sleepText() ? `Sleep timer (${sleepText()})…` : "Sleep timer…", run: () => setTimeout(() => sleepMenu(anchor)) },
 	];
 	const who = ADMIN_URL && !track.upload ? readWho(localStorage) : null;
 	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
@@ -917,6 +976,7 @@ function trackMenu(anchor, track, extra) {
 		"-",
 		{ label: "Go to album", run: () => { closeSheet(); go(`album/${track.album.id}`); } },
 		...(LYRICS_URL && !track.upload ? [{ label: "Lyrics", run: () => { closeSheet(); go(`lyrics/${track.id}`); } }] : []),
+		...(track.upload ? [] : [{ label: "Share…", run: () => shareSong(track) }]),
 		...(track.upload ? [] : track.artists.slice(0, 2).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } }))),
 	];
 	if (track.upload) {
@@ -1043,8 +1103,11 @@ const actions = {
 			{ label: "Play next", run: () => { player.playNext(ids); notify("These songs play next"); } },
 			{ label: "Add to queue", run: () => { player.addToQueue(ids); notify(`Added ${ids.length} songs to queue`); } },
 			{ label: "Add to playlist…", run: () => addToPlaylistMenu(el, ids) },
+			...(el.dataset.share ? ["-", { label: "Share…", run: () => shareLink(el.dataset.share, el.dataset.shareTitle ?? "") }] : []),
 		]);
 	},
+	share: (el) => shareLink(el.dataset.share, el.dataset.shareTitle ?? ""),
+	sleep: (el) => sleepMenu(el),
 	"ask-publish": (el) => askPublish(catalog.album(el.dataset.album)),
 	async "withdraw-publish"(el) {
 		if (!(await confirmAction("Withdraw the request to publish?", "Withdraw"))) return;
@@ -1126,10 +1189,21 @@ const actions = {
 document.addEventListener("click", async (e) => {
 	// composedPath: a click that re-rendered part of a menu (the Sound panel) still counts as inside it.
 	if (!e.composedPath().some((el) => el.classList?.contains("menu"))) closeMenu();
+	// A song's lyrics mark opens its lyrics instead of playing it.
+	const lyr = e.target.closest(".track [data-lyrics]");
+	if (lyr) {
+		e.preventDefault();
+		closeSheet();
+		go(`lyrics/${lyr.dataset.lyrics}`);
+		return;
+	}
 	const ctl = e.target.closest("[data-ctl]");
 	if (ctl && ctl.tagName === "BUTTON") {
 		const c = ctl.dataset.ctl;
-		if (c === "toggle") player.toggle();
+		// Nothing playing yet: Play plays what the page is about (its own Play), when it has one.
+		const page = !player.current() && c === "toggle" ? $("main [data-page-play]") : null;
+		if (page) page.click();
+		else if (c === "toggle") player.toggle();
 		else if (c === "next") player.next();
 		else if (c === "prev") player.previous();
 		else if (c === "shuffle") player.setShuffle(!player.state.shuffle);
@@ -1333,7 +1407,9 @@ async function copyCode(code, button) {
 	}
 }
 
-on("notice", ({ message, kind, action, code, help }) => {
+on("notice", ({ message, kind, action, code, help, playback }) => {
+	// A song that cannot play: Now playing already says so, with its code, when it is open.
+	if (playback && !$("#sheet").hidden) return;
 	const box = $("#toasts");
 	const el = document.createElement("div");
 	el.className = `toast toast-in ${kind === "error" ? "error" : ""}`;
