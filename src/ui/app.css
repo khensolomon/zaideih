@@ -1310,9 +1310,53 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .acct-skeleton li::after { content: ""; display: block; width: 60%; height: 14px; border-radius: 7px; background: var(--raised); opacity: 0.6; }
 
 
-/* =================================================================== lyrics (ui/lyrics-view.js) */
+/* =================================================================== lyrics (ui/lyrics-view.js, ui/lyrics-render.js) */
 .ly-text { font: inherit; font-size: 18px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 16px; max-width: 40em; }
 .ly-text.my { line-height: 2; }
+/* The lyrics as shown: parts, the chorus marked by a bar, notes set apart. */
+.ly-body { max-width: 40em; margin: 0 0 16px; font-size: 18px; line-height: 1.6; }
+.ly-block { margin: 0 0 22px; }
+.ly-part { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.ly-repeat { margin-left: 4px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+.ly-line { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ly-line.my { line-height: 1.9; }
+.ly-chorus { padding: 4px 0 4px 16px; border-left: 3px solid var(--accent); font-weight: 600; }
+.ly-prechorus, .ly-postchorus { padding-left: 16px; border-left: 3px dashed var(--line); }
+.ly-bridge { padding: 8px 14px; border-radius: var(--radius-m); background: var(--surface-2); }
+.ly-intro, .ly-outro, .ly-interlude, .ly-spoken { color: var(--ink-2); font-style: italic; }
+.ly-recall { opacity: 0.72; }
+.ly-note { margin: 2px 0; font-size: 15px; font-style: italic; color: var(--ink-3); }
+.ly-note::before { content: "("; }
+.ly-note::after { content: ")"; }
+.ly-tab { font-size: 14px; overflow-x: auto; margin: 0; }
+/* Chords over the words: each piece a column, chord above, words below. */
+.ly-chorded { display: flex; flex-wrap: wrap; align-items: flex-end; white-space: normal; }
+.ly-seg { display: inline-flex; flex-direction: column; }
+.ly-chord { font-size: 14px; font-weight: 700; line-height: 1.3; color: var(--accent); padding-right: 6px; white-space: pre; }
+.ly-w { white-space: pre; }
+.ly-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 14px; }
+.ly-chips li { padding: 4px 12px; border-radius: 999px; background: var(--raised); font-size: 14px; font-weight: 600; }
+.ly-chips span { color: var(--ink-3); font-weight: 500; margin-right: 2px; }
+.ly-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; }
+.ly-transpose { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.ly-transpose > span { min-width: 3ch; text-align: center; font-weight: 600; }
+.ly-transpose .icon-btn { font-size: 20px; width: 40px; height: 40px; }
+/* Timed lyrics: the line being sung, lit; the rest dimmed while it plays. */
+.ly-timed .ly-line[data-time]:not([data-time=""]) { cursor: pointer; border-radius: 8px; transition: color 0.2s, background 0.2s; }
+.ly-timed:has(.ly-now) .ly-line { color: var(--ink-3); }
+.ly-timed .ly-line.ly-now { color: var(--ink); background: var(--raised); box-shadow: -8px 0 0 var(--raised), 8px 0 0 var(--raised); }
+.ly-edit-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+.ly-edit-head .ly-label { margin: 0; white-space: nowrap; }
+.ly-edit-head .segmented { flex: none; }
+.ly-insert { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.ly-insert .btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.ly-edit textarea.ly-mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 15px; }
+.ly-preview { min-height: 30vh; padding: 12px 14px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: var(--radius-m); }
+.ly-guide { margin: 0 0 12px; }
+.ly-guide summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.ly-guide-body h4 { margin: 14px 0 4px; font-size: 14px; }
+.ly-guide-body pre { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; overflow-x: auto; }
+.ly-guide-body p { margin: 6px 0; font-size: 14px; color: var(--ink-2); }
 .ly-empty { text-align: left; padding: 8px 0 16px; }
 .ly-edit { max-width: 40em; }
 .ly-label { display: block; font-weight: 600; margin: 0 0 8px; }
