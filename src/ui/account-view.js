@@ -140,12 +140,12 @@ async function mount(root, ctx) {
 			if (query.get("google-error")) throw new Error(query.get("google-error") === "access_denied" ? "Google sign-in was cancelled." : `Google did not sign you in: ${query.get("google-error")}`);
 			st.busy = "Finishing the Google sign-in…"; draw(root, ctx);
 			const s = await account().google.finish({ code: query.get("google"), nonce: query.get("nonce") });
-			ctx.notify(s.joined === "email" ? `Signed in: joined to your account by your email` : s.joined === "link" ? "Google added to your account" : `Signed in as ${s.member.name}`);
+			ctx.notify(s.joined === "email" ? `Signed in: joined to your account by your email` : s.joined === "link" ? "Google added to your account" : s.joined === "merged" ? "Your two accounts are now one" : `Signed in as ${s.member.name}`);
 			ctx.onChange();
 		} else if (query.has("signin") || query.has("signin-error")) {
 			st.busy = "Finishing the GitHub sign-in…"; draw(root, ctx);
 			const s = await finishGitHub(query);
-			ctx.notify(s.joined === "link" ? "GitHub added to your account" : `Signed in as ${s.member.name}`);
+			ctx.notify(s.joined === "link" ? "GitHub added to your account" : s.joined === "merged" ? "Your two accounts are now one" : `Signed in as ${s.member.name}`);
 			ctx.onChange();
 		}
 		st.busy = "";
@@ -158,5 +158,10 @@ async function mount(root, ctx) {
 		st.busy = "";
 		st.error = err.message;
 		draw(root, ctx);
+		// A sign-in that did not finish leaves the account as it was: show it.
+		if (account().signedIn && !ctx.desktop && !st.me) {
+			st.me = await account().me().catch(() => null);
+			draw(root, ctx);
+		}
 	}
 }

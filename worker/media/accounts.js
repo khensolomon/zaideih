@@ -6,8 +6,10 @@
  * `member_logins`, keyed by the provider and the provider's id for the
  * person. On a sign-in the Worker finds the member:
  *   1. the sign-in is known: its member;
- *   2. linking while signed in (`linkTo`): the signed-in member, unless the
- *      sign-in already belongs to someone else;
+ *   2. linking while signed in (`linkTo`): the signed-in member; when the
+ *      sign-in already belongs to another member, the two members become one
+ *      (mergeMembers), since completing both sign-ins proves one person
+ *      holds both;
  *   3. the provider vouches for an email that exactly one member already has
  *      verified: that member;
  *   4. otherwise a new member.
@@ -74,14 +76,17 @@ export async function githubIdentity(token, fetchImpl) {
 
 /**
  * Finds or makes the member for a sign-in (see the rules at the top) and
- * keeps the sign-in's details. Answers { id, name, joined: "known" | "link" | "email" | "new" }.
+ * keeps the sign-in's details. Answers { id, name, joined: "known" | "link" | "merged" | "email" | "new" }.
  */
 export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
 	const known = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = ?1 AND subject = ?2").bind(who.provider, who.subject).first();
 	let memberId = null;
 	let joined;
-	if (known) {
-		if (linkTo !== null && known.member_id !== linkTo) throw new MemberError(`this ${who.provider} sign-in already belongs to another Zaideih account`, 409);
+	if (known && linkTo !== null && known.member_id !== linkTo) {
+		// Signed in to one account and just signed in to the other: the same person holds both, so they become one.
+		memberId = await mergeMembers(env, linkTo, known.member_id, nowSeconds);
+		joined = "merged";
+	} else if (known) {
 		memberId = known.member_id;
 		joined = "known";
 	} else if (linkTo !== null) {
@@ -113,6 +118,36 @@ export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(
 	const row = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
 	if (!row) throw new MemberError(`member ${memberId} is missing`, 500);
 	return { id: row.id, name: row.name, joined };
+}
+
+/**
+ * Makes two members one, for a person who signed in to both: the older
+ * member stays (its id, so its files in R2 keep their place), and takes the
+ * other's sign-ins, sessions, uploads, publish requests, rights and storage
+ * folder. Refused while either is blocked, so a merge cannot lift a block.
+ * One D1 batch: all of it or none. Answers the id that stays.
+ */
+export async function mergeMembers(env, a, b, nowSeconds) {
+	const rows = (await env.DB.prepare("SELECT id, first_seen, blocked_at FROM members WHERE id IN (?1, ?2)").bind(a, b).all()).results ?? [];
+	if (rows.length !== 2) throw new MemberError("one of the accounts to join no longer exists; sign in again", 409);
+	if (rows.some((r) => r.blocked_at)) throw new MemberError("one of these accounts is blocked; the owner can join them", 403);
+	const [keep, gone] = [...rows].sort((x, y) => x.first_seen - y.first_seen || x.id - y.id).map((r) => r.id);
+	const q = (sql) => env.DB.prepare(sql).bind(keep, gone);
+	await env.DB.batch([
+		q("UPDATE member_logins SET member_id = ?1 WHERE member_id = ?2"),
+		q("UPDATE member_sessions SET member_id = ?1 WHERE member_id = ?2"),
+		q("UPDATE uploads SET owner_id = ?1 WHERE owner_id = ?2"),
+		q("UPDATE publish_requests SET owner_id = ?1 WHERE owner_id = ?2"),
+		q("UPDATE published_tracks SET owner_id = ?1 WHERE owner_id = ?2"),
+		q("INSERT OR IGNORE INTO member_rights (member_id, kind, granted_by, granted_at) SELECT ?1, kind, granted_by, granted_at FROM member_rights WHERE member_id = ?2"),
+		q("DELETE FROM member_rights WHERE member_id = ?2"),
+		q("INSERT OR IGNORE INTO member_folders (member_id, prefix, set_by, set_at) SELECT ?1, prefix, set_by, set_at FROM member_folders WHERE member_id = ?2"),
+		q("DELETE FROM member_folders WHERE member_id = ?2"),
+		env.DB.prepare(`UPDATE members SET moderator = MAX(moderator, (SELECT moderator FROM members WHERE id = ?2)),
+			first_seen = MIN(first_seen, (SELECT first_seen FROM members WHERE id = ?2)), last_seen = ?3 WHERE id = ?1`).bind(keep, gone, nowSeconds),
+		q("DELETE FROM members WHERE id = ?2"),
+	]);
+	return keep;
 }
 
 /* ----------------------------------------------------------- sessions ---- */

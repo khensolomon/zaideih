@@ -115,9 +115,6 @@ test("sign-ins join one member by verified email, or by linking while signed in"
 	// Linking: bo, signed in, adds a Google sign-in that has no email in common.
 	const linked = await signIn(env, { provider: "google", subject: "g-3", name: "Bo", email: "bo@else.example", emailVerified: true }, { linkTo: bo.member.id, nowSeconds: at });
 	assert.deepEqual([linked.id, linked.joined], [bo.member.id, "link"]);
-	await assert.rejects(signIn(env, { provider: "google", subject: "g-1", name: "x" }, { linkTo: bo.member.id, nowSeconds: at }), /already belongs to another Zaideih account/);
-	const viaRoute = await post("/auth/session", "gh-unverified", { link: bo.token });
-	assert.equal(viaRoute.status, 409, "cy's GitHub already has its own account");
 	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM member_logins WHERE member_id = ?").get(bo.member.id).n, 2);
 	assert.equal((await post("/auth/session", "gh-ann", { link: "zs_" + "x".repeat(43) })).status, 401, "linking needs a live session");
 });
@@ -184,4 +181,44 @@ test("Your account: the sign-ins, adding one, and removing all but the last", { 
 	await google("code-khen");
 	assert.equal((await post("/auth/logins/remove", owner.token, { provider: "github", subject: "1753766" })).status, 409, "the owner's GitHub stays");
 	assert.equal((await post("/auth/me", "zs_" + "x".repeat(43))).status, 401);
+});
+
+test("adding a sign-in that has its own account makes the two accounts one", { skip }, async () => {
+	const { env, post, google, lib } = setup();
+	const raw = env.DB.raw;
+	// The owner's GitHub account, from before accounts: an upload, a right, a folder.
+	const owner = await (await post("/auth/session", "gh-owner")).json();
+	raw.prepare("UPDATE members SET first_seen = 100 WHERE id = ?").run(owner.member.id);
+	raw.prepare("INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (?, 'users/1/9.mp3', 5, 'mp3', 1, 'Old', '9.mp3', 'private', 1, 1)").run(owner.member.id);
+	// A Google sign-in made before GitHub gave the email: a second account, with its own upload.
+	PEOPLE["gh-owner"].emails = undefined;
+	raw.prepare("UPDATE member_logins SET email = NULL, email_verified = 0").run();
+	const g = await (await google("code-khen")).json();
+	assert.equal(g.joined, "new");
+	raw.prepare("INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (?, 'users/2/1.mp3', 5, 'mp3', 1, 'New', '1.mp3', 'private', 2, 2)").run(g.member.id);
+	raw.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?, 'storage', 'x', 1)").run(g.member.id);
+	// Signed in with Google, Add GitHub: one account, the older one's id.
+	const merged = await (await post("/auth/session", "gh-owner", { link: g.token })).json();
+	assert.deepEqual([merged.joined, merged.member.id], ["merged", owner.member.id]);
+	assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM members WHERE id = ?").get(g.member.id).n, 0);
+	assert.deepEqual(raw.prepare("SELECT provider FROM member_logins WHERE member_id = ? ORDER BY provider").all(owner.member.id).map((r) => r.provider), ["github", "google"]);
+	assert.deepEqual(raw.prepare("SELECT title FROM uploads WHERE owner_id = ? ORDER BY title").all(owner.member.id).map((r) => r.title), ["New", "Old"]);
+	assert.equal(raw.prepare("SELECT kind FROM member_rights WHERE member_id = ?").get(owner.member.id).kind, "storage");
+	// Every session of either now opens the one account, still the owner's.
+	for (const t of [g.token, owner.token, merged.token]) assert.equal((await (await lib(t)).json()).member.role, "owner");
+	// The other way round (signed in with GitHub, Add Google) is the same; joining again changes nothing.
+	assert.equal((await (await google("code-khen", { link: owner.token })).json()).joined, "known");
+	PEOPLE["gh-owner"].emails = mails(["khen@example.com", true, true]);
+});
+
+test("a blocked account is not joined to another", { skip }, async () => {
+	const { env, post, google } = setup();
+	const ann = await (await post("/auth/session", "gh-noperm")).json();
+	const g = await (await google("code-new")).json();
+	env.DB.raw.prepare("UPDATE members SET blocked_at = 1, blocked_by = 'mod', blocked_reason = 'spam' WHERE id = ?").run(g.member.id);
+	const res = await post("/auth/session", "gh-noperm", { link: "zs_" + "x".repeat(43) });
+	assert.equal(res.status, 401);
+	const tried = await google("code-new", { link: ann.token });
+	assert.equal(tried.status, 403);
+	assert.match(await tried.text(), /blocked; the owner can join them/);
 });
