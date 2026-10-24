@@ -45,7 +45,9 @@ let discover = null;
 
 export async function home(c) {
 	discover ??= pickRandom([...c.albums.values()], 12);
-	const recentIds = await library.recent(12);
+	// Home shows without it when this device's storage does not answer, and says so.
+	let recentFailed = false;
+	const recentIds = await library.recent(12).catch((err) => { console.warn("played recently could not be read", err); recentFailed = true; return []; });
 	const recent = recentIds.map((id) => c.track(id)).filter(Boolean);
 	const langs = [...c.langs.values()].sort((a, b) => b.albums.length - a.albums.length);
 	const top = c.topTracks.slice(0, 10);
@@ -58,6 +60,7 @@ export async function home(c) {
 				<header><h2>Played recently</h2><a href="#/library/history">History</a></header>
 				${chunkedTracks(recent, "Played recently", { step: 6, showAlbum: true })}
 			</section>` : ""}
+			${recentFailed ? html`<p class="muted">Played recently could not be read from this device just now.</p>` : ""}
 
 			${topArtistsByLanguage(c, !recent.length)}
 

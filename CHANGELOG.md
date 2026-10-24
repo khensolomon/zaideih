@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.10
+
+- Installed app: leaving for the privacy page and coming back starts again (the database connection is closed on leaving, and no storage request can wait for ever); Sign in's title moves into the bar like Library's; Home settles on a section's title when a scroll ends near it
+
 ## v26.10.24.9
 
 - Home screen app on iOS 26: the player sits on the bottom edge again on short pages and with the menu open; a stuck start can update itself and offers a reload

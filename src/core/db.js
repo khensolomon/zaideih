@@ -8,6 +8,9 @@
  *   history    play history               key: auto, value: { track, at }
  *   audio      downloaded audio blobs     key: track id, value: { id, blob, size, type, at }
  */
+/** The browser's storage failed or did not answer; the message is for the listener. */
+export class StorageError extends Error {}
+
 const DB_NAME = "zaideih";
 const DB_VERSION = 1;
 
@@ -34,12 +37,12 @@ function open() {
 	if (dbPromise) return dbPromise;
 	dbPromise = new Promise((resolve, reject) => {
 		if (!("indexedDB" in globalThis)) {
-			reject(new Error("This browser does not support IndexedDB, which is required for the library and offline audio."));
+			reject(new StorageError("This browser does not support IndexedDB, which is required for the library and offline audio."));
 			return;
 		}
 		const timer = setTimeout(() => {
 			dbPromise = null;
-			reject(new Error("The library on this device did not open (the browser's storage did not answer). Close Zaideih completely and open it again."));
+			reject(new StorageError("The library on this device did not open (the browser's storage did not answer). Close Zaideih completely and open it again."));
 		}, OPEN_TIMEOUT_MS);
 		const fail = (err) => { clearTimeout(timer); dbPromise = null; reject(err); };
 		idbReady().then(() => {
@@ -60,7 +63,7 @@ function open() {
 				resolve(db);
 			};
 			req.onerror = () => fail(req.error);
-			req.onblocked = () => fail(new Error("The app database is blocked by another open tab. Close other Zaideih tabs and reload."));
+			req.onblocked = () => fail(new StorageError("The app database is blocked by another open tab. Close other Zaideih tabs and reload."));
 		}, fail);
 	});
 	return dbPromise;
@@ -73,17 +76,54 @@ function wrap(req) {
 	});
 }
 
+// A transaction that has not finished by then has hung; it is given up and the connection opened afresh.
+const TX_TIMEOUT_MS = 8000;
+
+/** Forgets the connection (closing it), so the next use opens a new one. */
+function drop() {
+	const p = dbPromise;
+	dbPromise = null;
+	p?.then((d) => d.close(), () => {});
+}
+
 async function run(store, mode, fn) {
 	const db = await open();
 	const tx = db.transaction(store, mode);
-	const result = await fn(tx.objectStore(store));
-	await new Promise((resolve, reject) => {
+	// Listening from the start: a transaction can finish before the work's own promise is seen to settle.
+	const finished = new Promise((resolve, reject) => {
 		tx.oncomplete = resolve;
 		tx.onerror = () => reject(tx.error);
 		tx.onabort = () => reject(tx.error ?? new Error(`transaction on ${store} aborted`));
 	});
-	return result;
+	finished.catch(() => {}); // reported through `work`
+	const work = (async () => {
+		const result = await fn(tx.objectStore(store));
+		await finished;
+		return result;
+	})();
+	work.catch(() => {}); // reported through the race below, or past a time-out
+	let timer = 0;
+	const hung = new Promise((_, reject) => {
+		timer = setTimeout(() => {
+			try { tx.abort(); } catch { /* already over */ }
+			drop();
+			reject(new StorageError("The library on this device did not answer (the browser's storage). Close Zaideih completely and open it again."));
+		}, TX_TIMEOUT_MS);
+	});
+	try {
+		return await Promise.race([work, hung]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
+
+/*
+ * A page leaving (for another page, such as the privacy policy) closes its
+ * connection: Safari keeps the left page in its back-forward cache, and an
+ * open connection held there can keep the next page's database waiting.
+ * The connection is opened again when next used.
+ */
+if (typeof addEventListener === "function") addEventListener("pagehide", drop);
 
 export const db = {
 	get: (store, key) => run(store, "readonly", (s) => wrap(s.get(key))),
