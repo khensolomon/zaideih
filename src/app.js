@@ -75,16 +75,22 @@ route("code/:code", V.codeView);
 // Hidden: the admin page (src/admin), its own bundle, loaded only here. Not linked anywhere.
 route("admin", () => ({
 	title: "Admin",
-	body: html`<div class="admin" id="admin-root"><h1>Admin</h1><p class="muted">Loading…</p></div>`,
+	body: html`<div class="admin" id="admin-root"><p class="muted adm-loading">Loading…</p></div>`,
 	mount: async (view) => {
 		const root = $("#admin-root", view);
-		if (!ADMIN_URL) { root.innerHTML = html`<h1>Admin</h1><p>The admin page works in the web app only.</p>`; return; }
+		if (!ADMIN_URL) { root.innerHTML = html`<p>The admin page works in the web app only.</p>`; return; }
 		try {
 			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
-			mod.mount(root, { catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop" });
+			mod.mount(root, {
+				catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
+				// The app's own player, lyrics index and covers: the admin bundle has no copies of its own.
+				player, onPlayer: (fn) => on("player", fn),
+				lyrics: { has: (id) => lyricsIndex.has(id), get size() { return lyricsIndex.size; } },
+				cover: (albumId) => { const al = catalog.album(albumId); return al ? cover(al, { label: false }) : ""; },
+			});
 		} catch (err) {
 			console.error(err);
-			root.innerHTML = html`<h1>Admin</h1><p class="adm-error">The admin page could not load: ${err.message}</p>`;
+			root.innerHTML = html`<p class="adm-error">The admin page could not load: ${err.message}</p>`;
 		}
 	},
 }));
@@ -230,8 +236,8 @@ async function render({ keepScroll = false } = {}) {
 	if (!r) { go("", undefined, { replace: true }); return; }
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
-	// The lyrics studio is a page of its own: the sidebar narrows to icons while it is open (not saved as the listener's choice).
-	const studio = /^lyrics\/\d+\/studio$/.test(r.path);
+	// The lyrics studio and the admin page are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
+	const studio = /^lyrics\/\d+\/studio$/.test(r.path) || r.path === "admin";
 	document.body.toggleAttribute("data-studio", studio);
 	if (studio) document.body.dataset.rail = "mini";
 	else applyRail();

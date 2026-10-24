@@ -6,22 +6,33 @@
  *                khensolomon/zaideih; either is kept on this device only
  *                (localStorage). Refused while Google Analytics is on here,
  *                since a third-party script on the page could read it.
- *   Edit         find an album or artist; change titles, year, language,
- *                genres, song credits, hide songs, artist names and spellings.
- *                Changes collect in a draft on this device (src/admin/draft.js).
+ *
+ * A page of its own, laid out like the lyrics studio: one header with the
+ * section, a find field (Ctrl+K), the sections as icons with hints, the
+ * draft and the person's photo; the app's own player stays below.
+ *
+ *   Overview     what waits for this person (requests, lyrics reports,
+ *                suggestions, data checks), the draft, lyrics lately, plays.
+ *   Catalog      find an album or artist; its page keeps every change in the
+ *                draft as it is made (src/admin/draft.js): titles, year,
+ *                language, genres, song credits, hiding, artist names and
+ *                spellings. Songs play in the app's player.
  *   Draft        the changes, one line each; publish them as one pull request
  *                with the next version and a changelog section; the checks
  *                run; "Merge and release" squash-merges it with the release
- *                line, so the release workflow deploys it.
+ *                line, so the release workflow deploys it. A bar above the
+ *                player shows the draft while editing.
  *   Suggestions  people without write access (contributors, guests) send
  *                their draft as a suggestion: the audio Worker opens the pull
  *                request for them (worker/media/suggest.js); editors see the
- *                open ones listed and review them on GitHub.
+ *                open ones on the Overview and review them on GitHub.
  *   Requests     members' albums asked to be published (worker/media/requests.js),
  *                for Review publishing: listen, then approve (the Worker copies
  *                the songs into music/, and a pull request adds the album to
- *                the catalog, src/admin/publish.js) or reject with a reason.
- *   Tools        catalog checks (src/admin/health.js).
+ *                the catalog, src/admin/publish.js) or decline with a reason.
+ *   Lyrics       reports and the latest edits, for the Lyrics right.
+ *   Members      rights, blocking and uploads in personal libraries.
+ *   Checks       catalog checks (src/admin/health.js).
  *   Statistics   counted plays from the audio Worker (GET /plays).
  *
  * Levels (src/core/access.js) come from the person's repository permission;
@@ -65,7 +76,7 @@ const store = {
  */
 export function mount(root, ctx) {
 	const s = {
-		tab: "edit",
+		tab: "overview",
 		openChecks: new Set(),
 		rights: new Set(),      // in personal libraries (worker/media/members.js)
 		tokenOpen: false,
@@ -97,12 +108,14 @@ export function mount(root, ctx) {
 	const account = createAccount({ authUrl: ctx.authUrl, local: localStorage, githubToken: () => session.token() });
 
 	const saveDraft = () => store.set(DRAFT_KEY, s.draft);
-	const fail = (err) => {
+	/** Shows what went wrong; `keepPage` leaves the page (and what is typed in it) as it is. */
+	const fail = (err, { keepPage = false } = {}) => {
 		s.busy = "";
 		s.error = err instanceof GitHubError || err instanceof DraftError || err instanceof SignInError ? err.message : `${err.name}: ${err.message}`;
 		// A refused value is the listener's to fix and is shown on the page; anything else also goes to the console.
 		if (!(err instanceof DraftError || err instanceof SignInError)) console.error(err);
-		render();
+		if (keepPage) refreshChrome();
+		else render();
 	};
 
 	const names = () => ({
@@ -207,7 +220,7 @@ export function mount(root, ctx) {
 		const { kind, id } = s.jump;
 		const known = kind === "album" ? s.data.index.album.has(id) : s.data.index.artist.has(id);
 		if (!known) { s.error = `That ${kind} is not in the catalog on ${BASE}; it may have been changed since this page was loaded.`; return; }
-		s.tab = "edit";
+		s.tab = "catalog";
 		s.open = { kind, id };
 	}
 
@@ -247,17 +260,30 @@ export function mount(root, ctx) {
 		render();
 		if (s.jump?.track) focusTrack(s.jump.track);
 		s.jump = null;
-		// Editors: the number of open suggestions on the header's Suggestions button.
+		// Editors: the number of open suggestions, on the Overview.
 		if (s.canWrite) loadSuggestions().catch(fail);
+		// The Overview's listening line; it says nothing more when the counts cannot be read.
+		loadTotals().catch((err) => console.warn("the counted plays could not be read", err));
 	}
 
+
 	/* ---------------------------------------------------------- editing ---- */
+
+	/*
+	 * The album and artist pages: every field is kept in the draft as soon as
+	 * it changes (on leaving a field, or at once for switches and lists), and
+	 * marked until the draft is published. A refused value is shown and stays
+	 * in the field to be corrected; the draft keeps what it had.
+	 */
 
 	/** The value as the draft has it (the change, or the source). */
 	function draftValue(kind, id, field, source) {
 		const c = s.draft.changes.find((x) => x.kind === kind && x.id === id && x.field === field);
 		return c ? c.value : source;
 	}
+
+	/** Whether the draft changes this field (or, without `field`, anything of this item). */
+	const changed = (kind, id, field) => s.draft.changes.some((c) => c.kind === kind && c.id === id && (!field || c.field === field));
 
 	function results() {
 		const q = normalize(s.query);
@@ -267,84 +293,232 @@ export function mount(root, ctx) {
 		return { albums, artists };
 	}
 
+	const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+	const artistNames = (ids) => ids.map((a) => s.data.index.artist.get(a)?.name ?? `#${a}`).join(", ");
+	/** The app's cover for an album (drawn by the app's bundle, so taken as it is). */
+	const coverOf = (id) => raw(String(ctx.cover?.(id) ?? ""));
+
+	/** Artist names typed in a song's row, as ids; an unknown name is refused. */
+	function artistIds(typed, trackId) {
+		return typed.split(",").map((x) => x.trim()).filter(Boolean).map((n) => {
+			const m = /^#(\d+)$/.exec(n);
+			if (m) return Number(m[1]);
+			const hit = s.data.artists.find((a) => a.name === n) ?? s.data.artists.find((a) => normalize(a.name) === normalize(n));
+			if (!hit) throw new DraftError(`no artist named "${n}" (song ${trackId}); add the artist first or pick a name from the list`);
+			return hit.id;
+		});
+	}
+
+	function crumbs(what) {
+		return html`<nav class="adm-crumbs" aria-label="Where"><button class="link-btn" data-adm="close">Catalog</button><span aria-hidden="true">›</span><span>${what}</span></nav>`;
+	}
+
 	function albumEditor(al) {
 		const cat = s.data.category;
 		const yr = draftValue("album", al.ui, "yr", al.yr?.[0] ?? null);
 		const lg = draftValue("album", al.ui, "lg", al.lg);
 		const gr = draftValue("album", al.ui, "gr", al.gr);
-		return html`<form class="adm-edit" data-form="album" data-id="${al.ui}">
-			<h2>Album <small>${al.ui}</small></h2>
-			<label>Title<input name="ab" value="${draftValue("album", al.ui, "ab", al.ab)}" required></label>
-			<div class="adm-row">
-				<label>Year<input name="yr" type="number" min="1900" max="2100" value="${yr ?? ""}" placeholder="none"></label>
-				<label>Language<select name="lg">${cat.lang.map((l) => html`<option value="${l.id}" ${l.id === lg ? "selected" : ""}>${l.name}</option>`)}</select></label>
+		const mark = (f) => (changed("album", al.ui, f) ? " adm-changed" : "");
+		const genre = (id) => cat.genre.find((g) => g.id === id)?.name ?? `#${id}`;
+		const plays = al.tk.reduce((n, t) => n + (t.p ?? 0), 0);
+		const lyricsCount = al.tk.filter((t) => ctx.lyrics?.has(t.i)).length;
+		return html`<div class="adm-item" data-form="album" data-id="${al.ui}">
+			${crumbs(html`Album <code>${al.ui}</code>`)}
+			<div class="adm-hero">
+				<a class="adm-cover" href="#/album/${al.ui}" title="Open in the app">${coverOf(al.ui)}</a>
+				<div class="adm-hero-text">
+					<span class="adm-kicker">Album · ${plural(al.tk.length, "song")} · ${plural(plays, "play")}${lyricsCount ? ` · ${lyricsCount} with lyrics` : ""}</span>
+					<input class="adm-title${mark("ab")}" name="ab" value="${draftValue("album", al.ui, "ab", al.ab)}" required aria-label="Album title" title="Album title" autocomplete="off">
+					<div class="adm-facts">
+						<label class="adm-pill${mark("yr")}" title="Year (empty: none)"><span>Year</span><input name="yr" type="number" min="1900" max="2100" value="${yr ?? ""}" placeholder="none" inputmode="numeric"></label>
+						<label class="adm-pill adm-pill-select${mark("lg")}" title="Language"><select name="lg" aria-label="Language">${cat.lang.map((l) => html`<option value="${l.id}" ${l.id === lg ? "selected" : ""}>${l.name}</option>`)}</select>${icon("down")}</label>
+						<span class="adm-sep" aria-hidden="true"></span>
+						${gr.map((g) => html`<button type="button" class="adm-genre${mark("gr")}" data-adm="genre-drop" data-genre="${g}" aria-label="Remove the genre ${genre(g)}" title="Remove the genre">${genre(g)}${icon("close")}</button>`)}
+						<label class="adm-genre-add" title="Add a genre">${icon("plus")}<span>Genre</span><select name="gr-add" aria-label="Add a genre"><option value="" selected></option>${cat.genre.filter((g) => !gr.includes(g.id)).map((g) => html`<option value="${g.id}">${g.name}</option>`)}</select></label>
+					</div>
+				</div>
 			</div>
-			<fieldset><legend>Genres</legend><div class="adm-chips">${cat.genre.map((g) => html`<label class="adm-chip"><input type="checkbox" name="gr" value="${g.id}" ${gr.includes(g.id) ? "checked" : ""}>${g.name}</label>`)}</div></fieldset>
-			<h3>Songs</h3>
-			<ol class="adm-tracks">${al.tk.map((t) => {
-				const artists = draftValue("track", t.i, "a", t.a);
-				return html`<li data-track="${t.i}" class="${s.flash === t.i ? "adm-flash" : ""}">
-					<input name="t" value="${draftValue("track", t.i, "t", t.t)}" aria-label="Title of song ${t.i}">
-					<input name="a" value="${artists.map((a) => s.data.index.artist.get(a)?.name ?? `#${a}`).join(", ")}" list="adm-artists" aria-label="Artists of song ${t.i}" title="Artist names, separated by commas">
-					<label class="adm-hide"><input type="checkbox" name="h" ${draftValue("track", t.i, "h", t.h === true) ? "checked" : ""}>Hidden</label>
-					<small>#${t.i} · ${t.p.toLocaleString()} plays</small>
-				</li>`;
-			})}</ol>
+			<div class="adm-songs" role="table" aria-label="Songs">
+				<div class="adm-song adm-song-head" role="row"><span role="columnheader"><span class="sr">Listen</span></span><span role="columnheader">Title</span><span role="columnheader">Artists</span><span role="columnheader" class="num">Plays</span><span role="columnheader">Lyrics</span><span role="columnheader" class="end">Shown</span></div>
+				${al.tk.map((t) => {
+					const hidden = draftValue("track", t.i, "h", t.h === true);
+					const has = ctx.lyrics?.has(t.i);
+					return html`<div class="adm-song${changed("track", t.i) ? " adm-changed" : ""}${hidden ? " adm-hidden" : ""}${s.flash === t.i ? " adm-flash" : ""}" role="row" data-track="${t.i}">
+						${listenButton(t.i)}
+						<input name="t" value="${draftValue("track", t.i, "t", t.t)}" aria-label="Title of song ${t.i}" autocomplete="off">
+						<input name="a" value="${artistNames(draftValue("track", t.i, "a", t.a))}" list="adm-artists" aria-label="Artists of song ${t.i}" title="Artist names, separated by commas" autocomplete="off">
+						<span class="num">${(t.p ?? 0).toLocaleString()}</span>
+						<a class="adm-ly${has ? " on" : ""}" href="#/lyrics/${t.i}${has ? "" : "/studio"}" title="${has ? "Read the lyrics" : "Write the lyrics in the studio"}">${has ? html`${icon("lyrics")}<span>Lyrics</span>` : "Write"}</a>
+						<label class="adm-switch end" title="${hidden ? "Hidden in the app" : "Shown in the app"}"><input type="checkbox" name="shown" role="switch" ${hidden ? "" : "checked"} aria-label="Song ${t.i} shown in the app"><span aria-hidden="true"></span></label>
+					</div>`;
+				})}
+			</div>
 			<datalist id="adm-artists">${s.data.artists.map((a) => html`<option value="${a.name}">`)}</datalist>
-			<div class="adm-actions"><button class="btn primary" type="submit">Keep in the draft</button><button class="btn" type="button" data-adm="close">Close</button></div>
-		</form>`;
+			<p class="adm-hint">Each change goes to your draft as you make it. Nothing changes in the app until the draft is published.</p>
+		</div>`;
 	}
 
 	function artistEditor(a) {
 		const cat = s.data.category;
 		const type = draftValue("artist", a.id, "type", a.type);
-		return html`<form class="adm-edit" data-form="artist" data-id="${a.id}">
-			<h2>Artist <small>#${a.id}</small></h2>
-			<label>Name<input name="name" value="${draftValue("artist", a.id, "name", a.name)}" required></label>
-			<label>Also known as<input name="aka" value="${draftValue("artist", a.id, "aka", a.aka ?? "")}"></label>
-			<label>Type<select name="type">${cat.artist.map((t) => html`<option value="${t.id}" ${t.id === type ? "selected" : ""}>${t.name}</option>`)}</select></label>
-			<label>Other spellings (for search), separated by commas<textarea name="thesaurus" rows="3">${draftValue("artist", a.id, "thesaurus", a.thesaurus ?? []).join(", ")}</textarea></label>
-			<div class="adm-actions"><button class="btn primary" type="submit">Keep in the draft</button><button class="btn" type="button" data-adm="close">Close</button></div>
-		</form>`;
+		const mark = (f) => (changed("artist", a.id, f) ? " adm-changed" : "");
+		const albums = s.data.albums.filter((al) => al.tk.some((t) => t.a.includes(a.id)));
+		return html`<div class="adm-item" data-form="artist" data-id="${a.id}">
+			${crumbs(html`Artist <code>${a.id}</code>`)}
+			<div class="adm-hero">
+				<a class="adm-cover adm-cover-artist" href="#/artist/${a.id}" title="Open in the app">${icon("person")}</a>
+				<div class="adm-hero-text">
+					<span class="adm-kicker">Artist · ${plural(albums.length, "album")}</span>
+					<input class="adm-title${mark("name")}" name="name" value="${draftValue("artist", a.id, "name", a.name)}" required aria-label="Artist name" title="Artist name" autocomplete="off">
+					<div class="adm-facts">
+						<label class="adm-pill adm-pill-select${mark("type")}" title="Type"><select name="type" aria-label="Type">${cat.artist.map((t) => html`<option value="${t.id}" ${t.id === type ? "selected" : ""}>${t.name}</option>`)}</select>${icon("down")}</label>
+					</div>
+				</div>
+			</div>
+			<div class="adm-fields">
+				<label class="adm-field${mark("aka")}"><span>Also known as</span><input name="aka" value="${draftValue("artist", a.id, "aka", a.aka ?? "")}" placeholder="none" autocomplete="off"></label>
+				<label class="adm-field${mark("thesaurus")}"><span>Other spellings, for search</span><input name="thesaurus" value="${draftValue("artist", a.id, "thesaurus", a.thesaurus ?? []).join(", ")}" placeholder="Separated by commas" autocomplete="off"></label>
+			</div>
+			${albums.length ? html`<h2 class="adm-h">Albums</h2><ul class="adm-rows">${albums.slice(0, 60).map((al) => albumRow(al))}</ul>${albums.length > 60 ? html`<p class="adm-hint">and ${(albums.length - 60).toLocaleString()} more</p>` : ""}` : ""}
+		</div>`;
 	}
 
-	/** Keeps a form's fields in the draft; every value is checked first, so a mistake changes nothing. */
-	function keepForm(form) {
-		const pending = [];
-		const change = (kind, id, field, raw) => pending.push({ kind, id, field, value: cleanValue({ kind, field }, raw, s.data.category) });
-		const kind = form.dataset.form;
-		const f = new FormData(form);
+	const albumRow = (al) => html`<li><button data-adm="open" data-kind="album" data-id="${al.ui}"><span class="adm-thumb">${coverOf(al.ui)}</span><span class="adm-row-text"><b>${draftValue("album", al.ui, "ab", al.ab)}</b><small>${[al.yr?.[0], plural(al.tk.length, "song")].filter(Boolean).join(" · ")}</small></span>${changed("album", al.ui) || al.tk.some((t) => changed("track", t.i)) ? html`<span class="adm-dot" title="Changed in your draft"></span>` : ""}</button></li>`;
+
+	function catalogView() {
+		const open = s.open && (s.open.kind === "album" ? s.data.index.album.get(s.open.id) : s.data.index.artist.get(s.open.id));
+		if (open) return s.open.kind === "album" ? albumEditor(open) : artistEditor(open);
+		const r = results();
+		const q = s.query.trim();
+		return html`<div class="adm-find-page">
+			<label class="adm-search">${icon("search")}<input type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"></label>
+			${normalize(q).length < 2
+				? html`<p class="adm-hint">Two letters or more, or an album id. ${plural(s.data.albums.length, "album")} and ${plural(s.data.artists.length, "artist")} on ${BASE}.</p>`
+				: !r.albums.length && !r.artists.length ? html`<p class="adm-hint">Nothing found for “${q}”.</p>` : ""}
+			${r.albums.length ? html`<h2 class="adm-h">Albums</h2><ul class="adm-rows">${r.albums.map(albumRow)}</ul>` : ""}
+			${r.artists.length ? html`<h2 class="adm-h">Artists</h2><ul class="adm-rows">${r.artists.map((a) => html`<li><button data-adm="open" data-kind="artist" data-id="${a.id}"><span class="adm-thumb adm-thumb-artist">${icon("person")}</span><span class="adm-row-text"><b>${draftValue("artist", a.id, "name", a.name)}</b><small>${a.aka ?? ""}</small></span>${changed("artist", a.id) ? html`<span class="adm-dot" title="Changed in your draft"></span>` : ""}</button></li>`)}</ul>` : ""}
+		</div>`;
+	}
+
+	/**
+	 * Keeps one field in the draft. Returns true when the page needs drawing
+	 * again (a list or a switch changed); typed fields are marked in place, so
+	 * moving on with Tab keeps its place.
+	 */
+	function keepField(el) {
+		const form = el.closest("[data-form]");
+		const kind = form?.dataset.form;
+		const row = el.closest("[data-track]");
+		let change = null;
 		if (kind === "album") {
 			const id = form.dataset.id;
-			change("album", id, "ab", f.get("ab"));
-			change("album", id, "yr", f.get("yr"));
-			change("album", id, "lg", f.get("lg"));
-			change("album", id, "gr", f.getAll("gr"));
-			for (const li of form.querySelectorAll("[data-track]")) {
-				const tid = Number(li.dataset.track);
-				change("track", tid, "t", li.querySelector("[name=t]").value);
-				const typed = li.querySelector("[name=a]").value.split(",").map((x) => x.trim()).filter(Boolean);
-				const ids = typed.map((n) => {
-					const m = /^#(\d+)$/.exec(n);
-					if (m) return Number(m[1]);
-					const hit = s.data.artists.find((a) => a.name === n) ?? s.data.artists.find((a) => normalize(a.name) === normalize(n));
-					if (!hit) throw new DraftError(`no artist named "${n}" (song ${tid}); add the artist first or pick a name from the list`);
-					return hit.id;
-				});
-				change("track", tid, "a", ids);
-				change("track", tid, "h", li.querySelector("[name=h]").checked);
+			if (row) {
+				const tid = Number(row.dataset.track);
+				if (el.name === "t") change = { kind: "track", id: tid, field: "t", value: el.value };
+				else if (el.name === "a") change = { kind: "track", id: tid, field: "a", value: artistIds(el.value, tid) };
+				else if (el.name === "shown") change = { kind: "track", id: tid, field: "h", value: !el.checked };
+			} else if (["ab", "yr", "lg"].includes(el.name)) change = { kind: "album", id, field: el.name, value: el.value };
+			else if (el.name === "gr-add" && el.value) {
+				const al = s.data.index.album.get(id);
+				change = { kind: "album", id, field: "gr", value: [...draftValue("album", id, "gr", al.gr), Number(el.value)] };
 			}
-		} else {
-			const id = Number(form.dataset.id);
-			change("artist", id, "name", f.get("name"));
-			change("artist", id, "aka", f.get("aka"));
-			change("artist", id, "type", f.get("type"));
-			change("artist", id, "thesaurus", f.get("thesaurus"));
+		} else if (kind === "artist" && ["name", "aka", "type", "thesaurus"].includes(el.name)) {
+			change = { kind: "artist", id: Number(form.dataset.id), field: el.name, value: el.value };
 		}
-		for (const c of pending) s.draft.changes = setChange(s.draft.changes, s.data.index, c);
+		if (!change) return false;
+		const value = cleanValue(change, change.value, s.data.category);
+		s.draft.changes = setChange(s.draft.changes, s.data.index, { ...change, value });
 		saveDraft();
-		ctx.notify(`The draft has ${s.draft.changes.length} change(s)`);
+		el.removeAttribute("aria-invalid");
+		return el.tagName === "SELECT" || el.type === "checkbox";
 	}
+
+	/** After a typed field is kept: its mark, its row's mark, and the draft counts. */
+	function markKept(el) {
+		const form = el.closest("[data-form]");
+		const row = el.closest("[data-track]");
+		if (row) row.classList.toggle("adm-changed", changed("track", Number(row.dataset.track)));
+		else {
+			const kind = form.dataset.form;
+			const id = kind === "album" ? form.dataset.id : Number(form.dataset.id);
+			(el.closest(".adm-pill, .adm-field") ?? el).classList.toggle("adm-changed", changed(kind, id, el.name));
+		}
+		refreshChrome();
+	}
+
+	function removeGenre(id, genreId) {
+		const al = s.data.index.album.get(id);
+		const value = cleanValue({ kind: "album", field: "gr" }, draftValue("album", id, "gr", al.gr).filter((g) => g !== genreId), s.data.category);
+		s.draft.changes = setChange(s.draft.changes, s.data.index, { kind: "album", id, field: "gr", value });
+		saveDraft();
+	}
+
+	/* ---------------------------------------------------------- listening ---- */
+
+	/*
+	 * Catalog songs play in the app's own player. A request's songs are not
+	 * in the catalog yet: they play here, one at a time, and the app's player
+	 * pauses while they do (and the other way round).
+	 */
+	const preview = new Audio();
+	preview.preload = "none";
+	let previewUrl = "";
+
+	function listenButton(trackId) {
+		const now = ctx.player?.current?.()?.id === trackId;
+		const on = now && ctx.player.state.playing;
+		return html`<button type="button" class="adm-listen${now ? " now" : ""}" data-adm="play" data-id="${trackId}" aria-label="${on ? "Pause" : "Listen"}" title="${on ? "Pause" : "Listen"}">${icon(on ? "pause" : "play")}</button>`;
+	}
+
+	async function playSong(trackId) {
+		if (!ctx.player) throw new Error("the player is not available on this page");
+		if (ctx.player.current()?.id === trackId) return ctx.player.toggle();
+		const al = s.data.index.track.get(trackId)?.album;
+		const ids = (al?.tk ?? []).map((t) => t.i).filter((i) => ctx.catalog.track(i));
+		if (!ctx.catalog.track(trackId)) throw new DraftError("this song is hidden, so the app's player does not have it; show it and publish to listen in the app");
+		previewStop();
+		await ctx.player.playList(ids, trackId, al.ab);
+	}
+
+	function previewStop() {
+		preview.pause();
+		previewUrl = "";
+		paintListening();
+	}
+
+	async function previewToggle(url) {
+		if (previewUrl === url && !preview.paused) { preview.pause(); paintListening(); return; }
+		if (previewUrl !== url) { preview.src = url; previewUrl = url; }
+		if (ctx.player?.state.playing) ctx.player.pause();
+		try {
+			await preview.play();
+		} catch (err) {
+			previewUrl = "";
+			throw new DraftError(`this song could not be played here (${err.message}); its file may not be ready yet`);
+		} finally {
+			paintListening();
+		}
+	}
+	preview.addEventListener("ended", () => paintListening());
+	preview.addEventListener("pause", () => paintListening());
+
+	/** The listen buttons, drawn again in place when what is playing changes. */
+	function paintListening() {
+		if (!root.isConnected) return;
+		for (const b of root.querySelectorAll("[data-adm=play]")) b.outerHTML = String(listenButton(Number(b.dataset.id)));
+		for (const b of root.querySelectorAll("[data-adm=preview]")) {
+			const on = b.dataset.url === previewUrl && !preview.paused;
+			b.classList.toggle("now", b.dataset.url === previewUrl);
+			b.setAttribute("aria-label", on ? "Pause" : "Listen");
+			b.innerHTML = String(icon(on ? "pause" : "play"));
+		}
+	}
+	const offPlayer = ctx.onPlayer?.((st) => {
+		if (!root.isConnected) { offPlayer?.(); preview.pause(); return; }
+		if (st.playing && !preview.paused) preview.pause();
+		paintListening();
+	});
+
 
 	/* --------------------------------------------------------- publishing ---- */
 
@@ -467,35 +641,10 @@ export function mount(root, ctx) {
 	/* --------------------------------------------------------- statistics ---- */
 
 	async function loadTotals() {
-		s.busy = "Reading the counted plays…";
-		render();
 		const res = await fetch(ctx.totalsUrl, { cache: "no-store" });
 		if (!res.ok) throw new Error(`GET ${ctx.totalsUrl}: HTTP ${res.status}`);
 		s.totals = await res.json();
-		s.busy = "";
-		render();
-	}
-
-	function statistics() {
-		if (!s.totals) return html`<p><button class="btn" data-adm="totals">Load the counted plays</button></p>`;
-		const rows = s.totals.tracks.map(([id, total, recent]) => ({ id, total, recent, t: ctx.catalog.tracks.get(id) }));
-		const sum = rows.reduce((a, r) => a + r.total, 0);
-		const recentSum = rows.reduce((a, r) => a + r.recent, 0);
-		const list = (sorted, key) => html`<ol class="adm-stats">${sorted.slice(0, 25).map((r) => html`<li><span>${r.t ? r.t.title : `#${r.id} (not in the catalog)`}</span><small>${r.t ? r.t.album.title : ""}</small><b>${r[key].toLocaleString()}</b></li>`)}</ol>`;
-		return html`
-			<p>${sum.toLocaleString()} plays counted on ${rows.length.toLocaleString()} songs; ${recentSum.toLocaleString()} in the last ${s.totals.recentDays} days. Updated ${new Date(s.totals.updated * 1000).toLocaleString()} (the Worker caches 5 minutes).</p>
-			<div class="adm-cols"><section><h3>Last ${s.totals.recentDays} days</h3>${list([...rows].sort((a, b) => b.recent - a.recent), "recent")}</section>
-			<section><h3>Since counting began</h3>${list([...rows].sort((a, b) => b.total - a.total), "total")}</section></div>
-			<p><button class="btn" data-adm="totals">Refresh</button></p>`;
-	}
-
-	/* -------------------------------------------------------- suggestions ---- */
-
-	function suggestionsTab() {
-		if (!s.suggestions) return html`<p class="muted">Reading the open suggestions…</p>`;
-		return html`<p class="muted">Changes sent by people without write access, as pull requests. Review each on GitHub; merging adds it to master, and it ships with the next release.</p>
-			${s.suggestions.length ? html`<ul class="adm-results">${s.suggestions.map((p) => html`<li><a class="adm-sugg" href="${p.url}" target="_blank" rel="noopener"><span>#${p.number} ${p.title.replace(/^Suggestion: /, "")}</span><small>by @${p.by} · ${new Date(p.created).toLocaleDateString()}</small></a></li>`)}</ul>` : html`<p class="muted">No open suggestions.</p>`}
-			<p><button class="btn" data-adm="suggestions">Check again</button></p>`;
+		if (s.tab === "overview" || s.tab === "stats") render();
 	}
 
 	/* ------------------------------------------------------------ members ---- */
@@ -544,32 +693,6 @@ export function mount(root, ctx) {
 		render();
 	}
 
-	function lyricsTab() {
-		const l = s.lyrics;
-		if (!l) return html`<p class="adm-note">Reading the latest lyrics…</p>`;
-		const LANGS = { en: "English", my: "Myanmar" };
-		const song = (id, lang = "") => {
-			const t = ctx.catalog.track(id);
-			const link = `#/lyrics/${id}/studio${lang ? `?lang=${lang}` : ""}`;
-			const tag = lang ? html` <span class="adm-tag">${LANGS[lang] ?? lang} translation</span>` : "";
-			return t ? html`<a href="${link}">${t.title}</a>${tag} <span class="adm-note">${t.album.title}</span>` : html`<a href="${link}">Song ${id}</a>${tag}`;
-		};
-		const when = (sec) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-		return html`<div class="adm-lyrics">
-			<div class="adm-actions"><button class="btn" data-adm="lyrics-reload">Read again</button></div>
-			<h2>Reported${l.reports.length ? ` (${l.reports.length})` : ""}</h2>
-			${l.reports.length ? html`<ul class="adm-list">${l.reports.map((r) => html`<li>
-				<div>${song(r.track, r.lang)}</div>
-				${r.reasons.map((x) => html`<div class="adm-note">“${x.reason}”, ${x.by}, ${when(x.at)}</div>`)}
-			</li>`)}</ul>` : html`<p class="adm-note">Nothing reported.</p>`}
-			<h2>Latest edits</h2>
-			${l.edits.length ? html`<ul class="adm-list">${l.edits.map((e) => html`<li>
-				<div>${song(e.track, e.lang)}${e.hidden ? html` <span class="adm-tag danger">hidden</span>` : ""}</div>
-				<div class="adm-note">Version ${e.version} by ${e.by.name}, ${when(e.at)}${e.note ? `, ${e.note}` : ""}</div>
-			</li>`)}</ul>` : html`<p class="adm-note">No lyrics yet.</p>`}
-		</div>`;
-	}
-
 	async function loadMembers() {
 		s.members = (await libraryCall("GET", "/members")).members;
 		render();
@@ -605,32 +728,6 @@ export function mount(root, ctx) {
 		storage: ["Storage", "adds files from a folder in storage the owner sets"],
 		lyrics: ["Lyrics", "hides lyrics, shows them again, and restores earlier versions"],
 	};
-
-	/**
-	 * Members of personal libraries, for anyone the owner has given a right:
-	 * space and uploads; blocking and deleting with Moderate members; giving
-	 * and taking rights for the owner and co-owners.
-	 */
-	function membersTab() {
-		if (!s.members) return html`<p class="muted">Reading the members…</p>`;
-		return html`<p class="muted">People who have used their own library. Blocking stops their uploads playing at once and is reversible; deleting an upload is permanent. The owner's library is private and cannot be opened here; nobody can block the owner or change the owner's rights.</p>
-			<ul class="adm-members">${s.members.map((m) => html`<li data-blocked="${String(Boolean(m.blocked))}">
-				<div class="adm-member">
-					<span><b>${m.login}</b>${m.owner ? html` <span class="adm-tag">owner</span>` : m.rights.map((r) => html` <span class="adm-tag">${RIGHT_NAMES[r]?.[0] ?? r}</span>`)}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</span>
-					<small>${m.uploads.toLocaleString()} upload${m.uploads === 1 ? "" : "s"} · ${mb(m.used)} · last seen ${ago(m.lastSeen)}${m.blocked ? ` · blocked by ${m.blocked.by}: ${m.blocked.reason}` : ""}</small>
-				</div>
-				${m.owner ? "" : html`<div class="adm-actions">
-					${m.uploads && may("moderate") ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
-					${!may("moderate") ? "" : m.blocked
-						? html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`
-						: html`<form class="adm-block" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
-				</div>`}
-				${!m.owner && may("manage") ? html`<fieldset class="adm-rights"><legend>Rights of ${m.login}</legend>${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => html`<label title="${what}"><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${m.rights.includes(r) ? "checked" : ""}>${name}</label>`)}</fieldset>` : ""}
-				${!m.owner && may("manage") && m.rights.includes("storage") && !m.rights.includes("manage") ? html`<form class="adm-folder" data-form="folder" data-id="${m.id}"><label>Storage folder<input name="folder" value="${m.folder}" spellcheck="false" autocomplete="off" aria-describedby="folder-help-${m.id}"></label><button class="btn" type="submit">Save</button><small id="folder-help-${m.id}">Where in R2 ${m.login} adds files from, e.g. <code>shared/${m.login}/</code>. Empty: <code>private/${m.id}/</code>.</small></form>` : ""}
-				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="muted">Reading…</p>`) : ""}
-			</li>`)}</ul>
-			<p><button class="btn" data-adm="members-reload">Check again</button></p>`;
-	}
 
 	/* ----------------------------------------------------------- requests ---- */
 
@@ -699,7 +796,8 @@ export function mount(root, ctx) {
 		}
 		await libraryCall("POST", `/requests/${id}/pr`, { url });
 		s.busy = "";
-		s.reviewing = null;
+		// Kept open: its pull request and "Merge and release" are what come next.
+		s.reviewing = id;
 		ctx.notify(s.canWrite ? "Approved; the pull request is open" : "Approved; sent to the editors as a suggestion");
 		await loadRequests();
 	}
@@ -744,69 +842,6 @@ export function mount(root, ctx) {
 
 	const STATUS_NAMES = { open: "waiting", withdrawn: "withdrawn", rejected: "rejected", approved: "approved, waiting for the release", released: "in the catalog" };
 
-	function approvalForm(r) {
-		const cat = s.data.category;
-		const years = r.songs.map((u) => u.year).filter(Boolean);
-		const lang = r.lang || 0;
-		return html`<form class="adm-edit" data-form="approve" data-id="${r.id}">
-			<h3>${r.status === "approved" ? "Open the pull request again" : "Approve and publish"}</h3>
-			<label>Title<input name="ab" value="${r.album}" required></label>
-			<div class="adm-row">
-				<label>Year<input name="yr" type="number" min="1900" max="2100" value="${years[0] ?? ""}" placeholder="none"></label>
-				<label>Language<select name="lg" required>${lang ? "" : html`<option value="" selected disabled>Choose…</option>`}${cat.lang.filter((l) => l.id).map((l) => html`<option value="${l.id}" ${l.id === lang ? "selected" : ""}>${l.name}</option>`)}</select></label>
-			</div>
-			<fieldset><legend>Genres</legend><div class="adm-chips">${cat.genre.map((g) => html`<label class="adm-chip"><input type="checkbox" name="gr" value="${g.id}">${g.name}</label>`)}</div></fieldset>
-			<ol class="adm-tracks">${r.songs.map((u) => html`<li data-upload="${u.upload}">
-				<input name="t" value="${u.title}" required aria-label="Title of ${u.fileName}">
-				<input name="a" value="${u.artist}" list="adm-artists" aria-label="Artists of ${u.fileName}" title="Artist names, separated by commas; a new name is added to the catalog">
-				<small>${u.fileName} · ${Math.floor(u.duration / 60)}:${String(Math.round(u.duration % 60)).padStart(2, "0")}</small>
-			</li>`)}</ol>
-			<datalist id="adm-artists">${s.data.artists.map((a) => html`<option value="${a.name}">`)}</datalist>
-			<p class="muted">The songs are copied into the catalog's storage under music/, and ${s.canWrite ? "a pull request adds the album; merging it releases the site and the track paths" : "the album goes to the editors as a suggestion"}. The member stays credited in their library.</p>
-			<div class="adm-actions"><button class="btn primary" type="submit">${r.status === "approved" ? "Open the pull request" : "Approve and publish"}</button><button class="btn" type="button" data-adm="req-close">Close</button></div>
-		</form>`;
-	}
-
-	function requestsTab() {
-		if (!s.requests) return html`<p class="muted">Reading the requests…</p>`;
-		const list = s.requests.requests;
-		const open = list.filter((r) => r.status === "open");
-		const rest = list.filter((r) => r.status !== "open");
-		const item = (r) => html`<li class="adm-request" data-status="${r.status}">
-			<div class="adm-member">
-				<span><b>${r.album}</b> <span class="adm-tag">${STATUS_NAMES[r.status]}</span></span>
-				<small>@${r.login ?? r.owner} · asked ${ago(r.created)}${r.songs ? ` · ${r.songs.length} song${r.songs.length === 1 ? "" : "s"}` : ""}${r.reviewer && r.status !== "open" ? ` · ${r.status} by ${r.reviewer}` : ""}</small>
-				${r.note ? html`<p class="adm-note">“${r.note}”</p>` : ""}
-				${r.reason ? html`<p class="adm-note">Reason: ${r.reason}</p>` : ""}
-				${r.pr ? html`<p><a class="text-link" href="${r.pr}" target="_blank" rel="noopener">${r.pr.replace("https://github.com/", "")}</a></p>` : ""}
-			</div>
-			${r.songs && (r.status === "open" || r.status === "approved") && s.reviewing !== r.id ? html`<ol class="adm-listen">${r.songs.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.fileName].filter(Boolean).join(" · ")}</small></span><audio controls preload="none" src="${u.url}"></audio></li>`)}</ol>` : ""}
-			${s.reviewing === r.id ? approvalForm(r) : html`<div class="adm-actions">
-				${r.status === "open" ? html`<button class="btn primary" data-adm="req-review" data-id="${r.id}">Approve…</button>
-					<form class="adm-block" data-form="reject" data-id="${r.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. not their recording" aria-label="Reason for rejecting ${r.album}"><button class="btn danger" type="submit">Reject</button></form>` : ""}
-				${r.status === "approved" && !r.pr ? html`<button class="btn primary" data-adm="req-review" data-id="${r.id}">Open the pull request</button>` : ""}
-				${r.status === "approved" && r.pr && s.canWrite && r.pr.includes(`/${REPO}/pull/`) ? html`<button class="btn" data-adm="req-merge" data-url="${r.pr}">Merge and release</button>` : ""}
-			</div>`}
-		</li>`;
-		return html`<p class="muted">Members ask to publish an album of their own uploads. Listen first: approve only music they may share. Approving copies the songs into the catalog; rejecting gives them back to the member with your reason.</p>
-			${open.length ? html`<ul class="adm-members">${open.map(item)}</ul>` : html`<p class="muted">No requests waiting.</p>`}
-			${rest.length ? html`<h3>Decided</h3><ul class="adm-members">${rest.map(item)}</ul>` : ""}
-			<p><button class="btn" data-adm="requests-reload">Check again</button></p>`;
-	}
-
-	/* -------------------------------------------------------------- tools ---- */
-
-	function tools() {
-		s.health ??= healthChecks(s.data);
-		return html`<p class="muted">Checks of the source data on ${BASE}. Open an item to edit it; some checks can add all their fixes to the draft at once.</p>
-			${s.health.map((c) => html`<details class="adm-check" ${s.openChecks.has(c.id) ? "open" : ""} data-check="${c.id}">
-				<summary><b>${c.title}</b><span class="adm-count" data-zero="${String(!c.total)}">${c.total.toLocaleString()}</span></summary>
-				<p class="muted">${c.help}</p>
-				${c.fixes ? html`<p><button class="btn" data-adm="fix" data-check="${c.id}">Add all ${c.fixes.length.toLocaleString()} fixes to the draft</button></p>` : ""}
-				${c.total ? html`<ul class="adm-results">${c.items.map((it) => html`<li><button data-adm="open" data-kind="${it.open.kind}" data-id="${it.open.id}">${it.label}</button></li>`)}</ul>${c.total > c.items.length ? html`<p class="muted">and ${(c.total - c.items.length).toLocaleString()} more</p>` : ""}` : html`<p class="muted">Nothing to look at.</p>`}
-			</details>`)}`;
-	}
-
 	function applyFixes(id) {
 		const check = s.health.find((c) => c.id === id);
 		let n = 0;
@@ -821,7 +856,237 @@ export function mount(root, ctx) {
 
 	/* ------------------------------------------------------------- views ---- */
 
-	function draftTab() {
+	const when = (sec) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+	const LANG_NAMES = { en: "English", my: "Myanmar" };
+	const firstName = () => (s.name || s.user || "").split(/\s+/)[0];
+
+	function greeting() {
+		const h = new Date().getHours();
+		return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+	}
+
+	/** What waits for this person, as the Overview's cards: [section, label, count, line]. */
+	function waiting() {
+		const out = [];
+		if (may("review")) {
+			const open = s.requests?.requests.filter((r) => r.status === "open") ?? null;
+			out.push(["requests", "Requests to publish", open?.length, open?.length ? `“${open[0].album}”${open.length > 1 ? ` and ${open.length - 1} more` : ""}` : "Nothing waiting"]);
+		}
+		if (may("lyrics")) {
+			const r = s.lyrics?.reports ?? null;
+			const first = r?.[0];
+			out.push(["lyrics", "Lyrics reported", r?.length, first ? `“${first.reasons[0]?.reason ?? "reported"}” on ${ctx.catalog.track(first.track)?.title ?? `song ${first.track}`}` : "Nothing reported"]);
+		}
+		if (s.canWrite) {
+			const n = s.suggestions?.length;
+			out.push(["suggestions", "Suggestions", n, n ? `${n === 1 ? "A correction" : "Corrections"} from contributors, on GitHub` : "No open suggestions"]);
+		}
+		s.health ??= healthChecks(s.data);
+		const found = s.health.filter((c) => c.total);
+		out.push(["checks", "Data checks", found.reduce((n, c) => n + c.total, 0), found.length ? `${found[0].title}${found.length > 1 ? `, and ${found.length - 1} more check${found.length > 2 ? "s" : ""}` : ""}` : "All clear"]);
+		return out;
+	}
+
+	function overview() {
+		const cards = waiting();
+		const need = cards.filter(([id, , n]) => n && id !== "checks").reduce((a, [, , n]) => a + n, 0);
+		const n = s.draft.changes.length;
+		const recent = (s.lyrics?.edits ?? []).slice(0, 4);
+		const t = s.totals;
+		let top = null;
+		let recentSum = 0;
+		if (t) for (const [id, , last] of t.tracks) { recentSum += last; if (!top || last > top[1]) top = [id, last]; }
+		return html`<div class="adm-overview">
+			<div class="adm-greet"><h1>${greeting()}${firstName() ? `, ${firstName()}` : ""}</h1><span>${need ? `${plural(need, "thing needs", "things need")} you` : "Nothing needs you right now"}</span></div>
+			<section class="adm-cards" aria-label="Needs you">${cards.map(([id, label, count, line]) => html`<button class="adm-card-btn" data-adm="tab" data-tab="${id}">
+				<span class="adm-card-label">${label}${count ? html`<span class="adm-dot"></span>` : ""}</span>
+				<b>${count === undefined || count === null ? "…" : count.toLocaleString()}</b>
+				<span class="adm-card-line">${line}</span>
+			</button>`)}</section>
+			<div class="adm-two">
+				<section aria-label="Your draft">
+					<div class="adm-h-row"><h2 class="adm-h">Your draft</h2><span class="adm-hint">kept on this device</span></div>
+					${s.draft.pr ? html`<p class="adm-line">${s.draft.pr.suggestion ? "Suggestion" : "Pull request"} #${s.draft.pr.number} is open. <button class="link-btn" data-adm="tab" data-tab="draft">Follow it</button></p>`
+						: n ? html`<ol class="adm-changes">${s.draft.changes.slice(-5).reverse().map((c) => html`<li><span>${describe(c, s.data.index, names())}</span><button class="link-btn" data-adm="undo" data-i="${s.draft.changes.indexOf(c)}">Undo</button></li>`)}</ol>
+							${n > 5 ? html`<p class="adm-hint">and ${plural(n - 5, "more change")}</p>` : ""}
+							<div class="adm-actions"><button class="btn primary" data-adm="tab" data-tab="draft">${s.canWrite ? "Review and publish" : "Review and send"}</button></div>`
+						: html`<p class="adm-hint">No changes yet. <button class="link-btn" data-adm="find">Find an album or an artist</button> to start.</p>`}
+				</section>
+				${recent.length ? html`<section aria-label="Lyrics lately">
+					<h2 class="adm-h">Lyrics lately</h2>
+					<ol class="adm-feed">${recent.map((e) => html`<li><span class="adm-feed-icon">${icon("lyrics")}</span><span><a href="#/lyrics/${e.track}${e.lang ? `?lang=${e.lang}` : ""}"><b>${ctx.catalog.track(e.track)?.title ?? `Song ${e.track}`}</b></a>, version ${e.version}<br><small>${e.by.name}${e.lang ? ` · ${LANG_NAMES[e.lang] ?? e.lang}` : ""} · ${when(e.at)}</small></span></li>`)}</ol>
+				</section>` : ""}
+			</div>
+			<section aria-label="Listening">
+				<div class="adm-h-row"><h2 class="adm-h">Listening${t ? `, last ${t.recentDays} days` : ""}</h2><button class="link-btn" data-adm="tab" data-tab="stats">Statistics</button></div>
+				<div class="adm-tiles">
+					<div class="adm-tile"><span>Plays</span><b>${t ? recentSum.toLocaleString() : "…"}</b></div>
+					<div class="adm-tile"><span>Most played</span><b class="adm-tile-text">${top ? html`${ctx.catalog.track(top[0])?.title ?? `#${top[0]}`} <small>${top[1].toLocaleString()}</small>` : "…"}</b></div>
+					<div class="adm-tile"><span>Songs with lyrics</span><b>${ctx.lyrics ? ctx.lyrics.size.toLocaleString() : "…"}</b></div>
+				</div>
+			</section>
+		</div>`;
+	}
+
+	function statistics() {
+		if (!s.totals) return html`<p class="adm-hint">Reading the counted plays…</p>`;
+		const rows = s.totals.tracks.map(([id, total, recent]) => ({ id, total, recent, t: ctx.catalog.track(id) }));
+		const sum = rows.reduce((a, r) => a + r.total, 0);
+		const recentSum = rows.reduce((a, r) => a + r.recent, 0);
+		const list = (sorted, key) => html`<ol class="adm-rank">${sorted.slice(0, 25).map((r) => html`<li><span class="adm-row-text"><b>${r.t ? r.t.title : `#${r.id} (not in the catalog)`}</b><small>${r.t ? r.t.album.title : ""}</small></span><span class="num">${r[key].toLocaleString()}</span></li>`)}</ol>`;
+		return html`<div class="adm-tiles">
+				<div class="adm-tile"><span>Last ${s.totals.recentDays} days</span><b>${recentSum.toLocaleString()}</b></div>
+				<div class="adm-tile"><span>Since counting began</span><b>${sum.toLocaleString()}</b></div>
+				<div class="adm-tile"><span>Songs played</span><b>${rows.length.toLocaleString()}</b></div>
+			</div>
+			<div class="adm-two">
+				<section><h2 class="adm-h">Last ${s.totals.recentDays} days</h2>${list([...rows].sort((a, b) => b.recent - a.recent), "recent")}</section>
+				<section><h2 class="adm-h">Since counting began</h2>${list([...rows].sort((a, b) => b.total - a.total), "total")}</section>
+			</div>
+			<p class="adm-hint">Updated ${new Date(s.totals.updated * 1000).toLocaleString()}; the Worker caches 5 minutes. <button class="link-btn" data-adm="totals">Read again</button></p>`;
+	}
+
+	function suggestionsView() {
+		if (!s.suggestions) return html`<p class="adm-hint">Reading the open suggestions…</p>`;
+		return html`<p class="adm-lead">Changes sent by people without write access, as pull requests. Review each on GitHub; merging adds it to master, and it ships with the next release.</p>
+			${s.suggestions.length ? html`<ul class="adm-rows">${s.suggestions.map((p) => html`<li><a href="${p.url}" target="_blank" rel="noopener"><span class="adm-thumb">${icon("github")}</span><span class="adm-row-text"><b>#${p.number} ${p.title.replace(/^Suggestion: /, "")}</b><small>by @${p.by} · ${new Date(p.created).toLocaleDateString()}</small></span></a></li>`)}</ul>` : html`<p class="adm-hint">No open suggestions.</p>`}
+			<p><button class="link-btn" data-adm="suggestions">Check again</button></p>`;
+	}
+
+	function lyricsView() {
+		const l = s.lyrics;
+		if (!l) return html`<p class="adm-hint">Reading the latest lyrics…</p>`;
+		const song = (id, lang, sub) => {
+			const t = ctx.catalog.track(id);
+			const link = `#/lyrics/${id}/studio${lang ? `?lang=${lang}` : ""}`;
+			return html`<li><a href="${link}"><span class="adm-thumb">${t ? coverOf(t.album.id) : icon("lyrics")}</span><span class="adm-row-text"><b>${t ? t.title : `Song ${id}`}${lang ? html` <span class="adm-tag">${LANG_NAMES[lang] ?? lang}</span>` : ""}</b>${sub}</span></a></li>`;
+		};
+		return html`<p class="adm-lead">Each song opens in the lyrics studio, where its versions, hiding and restoring are.</p>
+			<h2 class="adm-h">Reported${l.reports.length ? ` · ${l.reports.length}` : ""}</h2>
+			${l.reports.length ? html`<ul class="adm-rows">${l.reports.map((r) => song(r.track, r.lang, r.reasons.map((x) => html`<small>“${x.reason}”, ${x.by}, ${when(x.at)}</small>`)))}</ul>` : html`<p class="adm-hint">Nothing reported.</p>`}
+			<h2 class="adm-h">Latest edits</h2>
+			${l.edits.length ? html`<ul class="adm-rows">${l.edits.map((e) => song(e.track, e.lang, html`<small>Version ${e.version} by ${e.by.name}, ${when(e.at)}${e.note ? `, ${e.note}` : ""}${e.hidden ? " · hidden" : ""}</small>`))}</ul>` : html`<p class="adm-hint">No lyrics yet.</p>`}
+			<p><button class="link-btn" data-adm="lyrics-reload">Read again</button></p>`;
+	}
+
+	/**
+	 * Members of personal libraries, for anyone the owner has given a right:
+	 * space and uploads; blocking and deleting with Moderate members; giving
+	 * and taking rights for the owner and co-owners.
+	 */
+	function membersView() {
+		if (!s.members) return html`<p class="adm-hint">Reading the members…</p>`;
+		return html`<p class="adm-lead">People who have used their own library. Blocking stops their uploads playing at once and can be undone; deleting an upload cannot. The owner's library is private, and nobody can block the owner or change the owner's rights.</p>
+			<ul class="adm-members">${s.members.map((m) => html`<li data-blocked="${String(Boolean(m.blocked))}">
+				<div class="adm-member">
+					<span class="adm-thumb adm-thumb-artist">${m.login.slice(0, 1).toUpperCase()}</span>
+					<span class="adm-row-text"><b>${m.login}${m.owner ? html` <span class="adm-tag">owner</span>` : m.rights.map((r) => html` <span class="adm-tag">${RIGHT_NAMES[r]?.[0] ?? r}</span>`)}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</b>
+					<small>${plural(m.uploads, "upload")} · ${mb(m.used)} · last seen ${ago(m.lastSeen)}${m.blocked ? ` · blocked by ${m.blocked.by}: ${m.blocked.reason}` : ""}</small></span>
+				</div>
+				${m.owner ? "" : html`<div class="adm-actions">
+					${m.uploads && may("moderate") ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
+					${!may("moderate") ? "" : m.blocked
+						? html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`
+						: html`<form class="adm-inline" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
+				</div>`}
+				${!m.owner && may("manage") ? html`<fieldset class="adm-rights"><legend>Rights of ${m.login}</legend>${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => html`<label class="adm-chip-check" title="${what}"><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${m.rights.includes(r) ? "checked" : ""}>${name}</label>`)}</fieldset>` : ""}
+				${!m.owner && may("manage") && m.rights.includes("storage") && !m.rights.includes("manage") ? html`<form class="adm-folder" data-form="folder" data-id="${m.id}"><label class="adm-field"><span>Storage folder</span><input name="folder" value="${m.folder}" spellcheck="false" autocomplete="off" aria-describedby="folder-help-${m.id}"></label><button class="btn" type="submit">Save</button><small id="folder-help-${m.id}">Where in R2 ${m.login} adds files from, e.g. <code>shared/${m.login}/</code>. Empty: <code>private/${m.id}/</code>.</small></form>` : ""}
+				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="adm-hint">Reading…</p>`) : ""}
+			</li>`)}</ul>
+			<p><button class="link-btn" data-adm="members-reload">Check again</button></p>`;
+	}
+
+	/* The request being looked at: the chosen one, or the first waiting. */
+	function requestShown() {
+		const list = s.requests?.requests ?? [];
+		return list.find((r) => r.id === s.reviewing) ?? (s.reqFilter === "done" ? null : list.find((r) => r.status === "open")) ?? null;
+	}
+
+	const duration = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+
+	/** The request's album as it will be published: every field editable, every song to listen to. */
+	function requestPane(r) {
+		const cat = s.data.category;
+		const years = (r.songs ?? []).map((u) => u.year).filter(Boolean);
+		const lang = r.lang || 0;
+		const editable = r.status === "open" || (r.status === "approved" && !r.pr);
+		const head = html`<span class="adm-kicker">Request from <b>@${r.login ?? r.owner}</b> · asked ${ago(r.created)}${r.songs ? ` · ${plural(r.songs.length, "song")}` : ""} · ${STATUS_NAMES[r.status]}${r.reviewer && r.status !== "open" ? ` by ${r.reviewer}` : ""}</span>`;
+		const songs = (r.songs ?? []).map((u) => html`<div class="adm-song adm-song-req" role="row" ${editable ? html`data-upload="${u.upload}"` : ""}>
+			<button type="button" class="adm-listen" data-adm="preview" data-url="${u.url}" aria-label="Listen" title="Listen">${icon("play")}</button>
+			${editable ? html`<input name="t" value="${u.title}" required aria-label="Title of ${u.fileName}" autocomplete="off">
+				<input name="a" value="${u.artist}" list="adm-artists" aria-label="Artists of ${u.fileName}" title="Artist names, separated by commas; a new name is added to the catalog" autocomplete="off">`
+				: html`<span>${u.title}</span><span>${u.artist}</span>`}
+			<span class="num" title="${u.fileName}">${duration(u.duration)}</span>
+		</div>`);
+		if (!editable) {
+			return html`<div class="adm-item">
+				<div class="adm-hero"><div class="adm-hero-text">${head}<h2 class="adm-title-text">${r.album}</h2></div></div>
+				${r.note ? html`<p class="adm-quote">“${r.note}”</p>` : ""}
+				${r.reason ? html`<p class="adm-quote">Reason: ${r.reason}</p>` : ""}
+				${r.pr ? html`<p><a class="text-link" href="${r.pr}" target="_blank" rel="noopener">${r.pr.replace("https://github.com/", "")}</a></p>` : ""}
+				${songs.length ? html`<div class="adm-songs" role="table" aria-label="Songs">${songs}</div>` : ""}
+				${r.status === "approved" && r.pr && s.canWrite && r.pr.includes(`/${REPO}/pull/`) ? html`<div class="adm-actions"><button class="btn primary" data-adm="req-merge" data-url="${r.pr}">Merge and release</button></div>` : ""}
+			</div>`;
+		}
+		return html`<form class="adm-item" data-form="approve" data-id="${r.id}">
+			<div class="adm-hero"><div class="adm-hero-text">
+				${head}
+				<input class="adm-title" name="ab" value="${r.album}" required aria-label="Album title" autocomplete="off">
+				<div class="adm-facts">
+					<label class="adm-pill" title="Year (empty: none)"><span>Year</span><input name="yr" type="number" min="1900" max="2100" value="${years[0] ?? ""}" placeholder="none" inputmode="numeric"></label>
+					<label class="adm-pill adm-pill-select" title="Language"><select name="lg" required aria-label="Language">${lang ? "" : html`<option value="" selected disabled>Language…</option>`}${cat.lang.filter((l) => l.id).map((l) => html`<option value="${l.id}" ${l.id === lang ? "selected" : ""}>${l.name}</option>`)}</select>${icon("down")}</label>
+				</div>
+			</div></div>
+			${r.note ? html`<p class="adm-quote">“${r.note}”</p>` : ""}
+			<div class="adm-facts" data-genres aria-label="Genres">
+				<span class="adm-facts-label">Genres</span>
+				<label class="adm-genre-add" title="Add a genre">${icon("plus")}<span>Genre</span><select data-adm-genre-add aria-label="Add a genre"><option value="" selected></option>${cat.genre.map((g) => html`<option value="${g.id}">${g.name}</option>`)}</select></label>
+			</div>
+			<div class="adm-songs" role="table" aria-label="Songs">${songs}</div>
+			<datalist id="adm-artists">${s.data.artists.map((a) => html`<option value="${a.name}">`)}</datalist>
+			<p class="adm-hint">Listen first: approve only music the member may share. The songs are copied into the catalog's storage under music/, and ${s.canWrite ? "a pull request adds the album; merging it releases the site and the track paths" : "the album goes to the editors as a suggestion"}. The member stays credited in their library.</p>
+			<div class="adm-actions adm-actions-end">
+				<button class="btn primary" type="submit">${r.status === "approved" ? "Open the pull request" : "Approve and publish"}</button>
+				${r.status === "open" ? html`<span class="adm-grow"></span>${s.rejecting === r.id
+					? html`<span class="adm-inline"><input name="reason" form="reject-${r.id}" required maxlength="200" placeholder="Reason, e.g. not their recording" aria-label="Reason for declining"><button class="btn danger" type="submit" form="reject-${r.id}">Decline</button><button class="link-btn" type="button" data-adm="reject-cancel">Cancel</button></span>`
+					: html`<button class="link-btn" type="button" data-adm="reject-open" data-id="${r.id}">Decline…</button>`}` : ""}
+			</div>
+		</form>
+		${s.rejecting === r.id ? html`<form id="reject-${r.id}" data-form="reject" data-id="${r.id}" hidden></form>` : ""}`;
+	}
+
+	function requestsView() {
+		if (!s.requests) return html`<p class="adm-hint">Reading the requests…</p>`;
+		const list = s.requests.requests;
+		const done = s.reqFilter === "done";
+		const shown = list.filter((r) => (done ? r.status !== "open" : r.status === "open"));
+		const open = requestShown();
+		const waitingN = list.filter((r) => r.status === "open").length;
+		return html`<div class="adm-split">
+			<aside class="adm-split-list" aria-label="Requests">
+				<div class="adm-seg" role="tablist">
+					<button role="tab" data-adm="req-filter" data-filter="open" aria-selected="${String(!done)}">Waiting${waitingN ? html` <span>${waitingN}</span>` : ""}</button>
+					<button role="tab" data-adm="req-filter" data-filter="done" aria-selected="${String(done)}">Decided</button>
+				</div>
+				${shown.length ? html`<ul class="adm-rows">${shown.map((r) => html`<li><button data-adm="req-open" data-id="${r.id}" aria-current="${String(open?.id === r.id)}"><span class="adm-thumb">${icon("album")}</span><span class="adm-row-text"><b>${r.album}</b><small>@${r.login ?? r.owner}${r.songs ? ` · ${plural(r.songs.length, "song")}` : ""} · ${ago(r.created)}</small></span></button></li>`)}</ul>`
+					: html`<p class="adm-hint">${done ? "Nothing decided yet." : "No requests waiting."}</p>`}
+				<p><button class="link-btn" data-adm="requests-reload">Check again</button></p>
+			</aside>
+			<div class="adm-split-main">${open ? requestPane(open) : html`<p class="adm-lead">Members ask to publish an album of their own uploads. Pick one to listen to it and decide.</p>`}</div>
+		</div>`;
+	}
+
+	function checksView() {
+		s.health ??= healthChecks(s.data);
+		return html`<p class="adm-lead">Checks of the source data on ${BASE}. Open an item to edit it; some checks add all their fixes to the draft at once.</p>
+			${s.health.map((c) => html`<details class="adm-check" ${s.openChecks.has(c.id) ? "open" : ""} data-check="${c.id}">
+				<summary><span class="adm-row-text"><b>${c.title}</b><small>${c.help}</small></span><span class="adm-count" data-zero="${String(!c.total)}">${c.total.toLocaleString()}</span></summary>
+				${c.fixes ? html`<p><button class="btn" data-adm="fix" data-check="${c.id}">Add all ${c.fixes.length.toLocaleString()} fixes to the draft</button></p>` : ""}
+				${c.total ? html`<ul class="adm-check-items">${c.items.map((it) => html`<li><button class="link-btn" data-adm="open" data-kind="${it.open.kind}" data-id="${it.open.id}">${it.label}</button></li>`)}</ul>${c.total > c.items.length ? html`<p class="adm-hint">and ${(c.total - c.items.length).toLocaleString()} more</p>` : ""}` : html`<p class="adm-hint">Nothing to look at.</p>`}
+			</details>`)}`;
+	}
+
+	function draftView() {
 		const n = s.draft.changes.length;
 		const pr = s.draft.pr;
 		if (pr) {
@@ -829,44 +1094,34 @@ export function mount(root, ctx) {
 			const checks = st?.checks ?? [];
 			const done = checks.length && checks.every((c) => c.status === "completed");
 			const green = done && checks.every((c) => ["success", "skipped", "neutral"].includes(c.conclusion));
+			const checkList = html`<ul class="adm-checks">${checks.length ? checks.map((c) => html`<li data-state="${c.status === "completed" ? c.conclusion : "running"}"><a href="${c.url}" target="_blank" rel="noopener">${c.name}</a>: ${c.status === "completed" ? c.conclusion : "running…"}</li>`) : html`<li data-state="running">Waiting for the checks to start…</li>`}</ul>`;
 			if (pr.suggestion) {
-				return html`<div class="panel">
-					<h3>Suggestion #${pr.number}</h3>
+				return html`<div class="adm-panel">
+					<h2 class="adm-h">Suggestion #${pr.number}</h2>
 					<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a></p>
-					<p class="muted">${st?.state === "closed" ? "Closed without merging. Read the comments on GitHub; the draft is kept." : "Waiting for an editor to review it. You can follow and discuss it on GitHub."}</p>
-					<ul class="adm-checks">${checks.map((c) => html`<li data-state="${c.status === "completed" ? c.conclusion : "running"}"><a href="${c.url}" target="_blank" rel="noopener">${c.name}</a>: ${c.status === "completed" ? c.conclusion : "running…"}</li>`)}</ul>
-					<div class="adm-actions"><button class="btn" data-adm="refresh">Check again</button><button class="btn danger" data-adm="forget-pr">Forget this suggestion</button></div>
+					<p class="adm-hint">${st?.state === "closed" ? "Closed without merging. Read the comments on GitHub; the draft is kept." : "Waiting for an editor to review it. You can follow and discuss it on GitHub."}</p>
+					${checkList}
+					<div class="adm-actions"><button class="btn" data-adm="refresh">Check again</button><button class="link-btn danger" data-adm="forget-pr">Forget this suggestion</button></div>
 				</div>`;
 			}
-			return html`<div class="panel">
-				<h3>Pull request #${pr.number}</h3>
-				<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a> · will release v${pr.version}</p>
-				<ul class="adm-checks">${checks.length ? checks.map((c) => html`<li data-state="${c.status === "completed" ? c.conclusion : "running"}"><a href="${c.url}" target="_blank" rel="noopener">${c.name}</a>: ${c.status === "completed" ? c.conclusion : "running…"}</li>`) : html`<li data-state="running">Waiting for the checks to start…</li>`}</ul>
+			return html`<div class="adm-panel">
+				<h2 class="adm-h">Pull request #${pr.number}</h2>
+				<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a> · releases v${pr.version}</p>
+				${checkList}
 				${done && !green ? html`<p class="adm-error">A check failed: open it on GitHub, then fix the draft there or close the pull request.</p>` : ""}
-				<div class="adm-actions"><button class="btn primary" data-adm="merge" ${green ? "" : "disabled"}>Merge and release v${pr.version}</button><button class="btn" data-adm="refresh">Check again</button><button class="btn danger" data-adm="forget-pr">Forget this pull request</button></div>
+				<div class="adm-actions"><button class="btn primary" data-adm="merge" ${green ? "" : "disabled"}>Merge and release v${pr.version}</button><button class="btn" data-adm="refresh">Check again</button><button class="link-btn danger" data-adm="forget-pr">Forget this pull request</button></div>
 			</div>`;
 		}
-		const index = s.data.index;
-		return html`
-			${n ? html`<ol class="adm-draft">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, index, names())}</span><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>` : html`<p class="muted">No changes yet. Find an album or an artist on the Edit tab.</p>`}
-			${n && s.canWrite ? html`<form class="adm-publish" data-form="publish">
-				<label>Note for the changelog and the release<input name="note" required maxlength="120" placeholder="Corrected titles and credits"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button><button class="btn danger" type="button" data-adm="discard">Discard the draft</button></div>
-			</form>` : ""}
-			${n && !s.canWrite ? html`<form class="adm-publish" data-form="suggest">
-				<p class="muted">As a ${LEVELS[s.level].name.toLowerCase()}, your changes go to the editors as a suggestion: a pull request in your name that they review before it is released.</p>
-				<label>What does it correct?<input name="note" required maxlength="120" placeholder="Corrected titles and credits"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button><button class="btn danger" type="button" data-adm="discard">Discard the draft</button></div>
-			</form>` : ""}`;
-	}
-
-	function editTab() {
-		const r = results();
-		const open = s.open && (s.open.kind === "album" ? s.data.index.album.get(s.open.id) : s.data.index.artist.get(s.open.id));
-		return html`
-			${open ? (s.open.kind === "album" ? albumEditor(open) : artistEditor(open)) : html`
-				${r.albums.length ? html`<h3>Albums</h3><ul class="adm-results">${r.albums.map((a) => html`<li><button data-adm="open" data-kind="album" data-id="${a.ui}">${a.ab}<small>${a.yr?.[0] ?? ""} · ${a.tk.length} songs</small></button></li>`)}</ul>` : ""}
-				${r.artists.length ? html`<h3>Artists</h3><ul class="adm-results">${r.artists.map((a) => html`<li><button data-adm="open" data-kind="artist" data-id="${a.id}">${a.name}<small>${a.aka ?? ""}</small></button></li>`)}</ul>` : ""}`}`;
+		if (!n) return html`<p class="adm-hint">No changes yet. <button class="link-btn" data-adm="find">Find an album or an artist</button> to start.</p>`;
+		return html`<ol class="adm-changes adm-changes-full">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, s.data.index, names())}</span><button class="link-btn" data-adm="open" data-kind="${c.kind === "artist" ? "artist" : "album"}" data-id="${c.kind === "track" ? s.data.index.track.get(c.id)?.album.ui : c.id}">Open</button><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>
+			${s.canWrite ? html`<form class="adm-publish" data-form="publish">
+				<label class="adm-field"><span>Note for the changelog and the release</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
+				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button><span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+			</form>` : html`<form class="adm-publish" data-form="suggest">
+				<p class="adm-hint">As a ${LEVELS[s.level].name.toLowerCase()}, your changes go to the editors as a suggestion: a pull request in your name that they review before it is released.</p>
+				<label class="adm-field"><span>What does it correct?</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
+				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button><span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+			</form>`}`;
 	}
 
 	/** The sign-in card, centred on the page: the only thing shown before connecting. */
@@ -895,64 +1150,142 @@ export function mount(root, ctx) {
 		</div></div>`;
 	}
 
-	/** The floating header: who is connected, where the data comes from, and the sections. */
 	/** GitHub's avatar address at twice the shown size, for sharp photos. */
 	const sized = (url) => {
 		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
 	};
 
-	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", requests: "Requests", lyrics: "Lyrics", members: "Members", tools: "Tools", stats: "Statistics" };
+	/*
+	 * The sections, as icons with hints in the header, like the lyrics
+	 * studio's modes. The draft and suggestions have no icon of their own:
+	 * the Draft button and the Overview's cards open them.
+	 */
+	const SECTIONS = {
+		overview: ["Overview", "grid", "Overview: what needs you"],
+		catalog: ["Catalog", "album", "Catalog: albums and artists (Ctrl+K)"],
+		requests: ["Requests", "inbox", "Requests to publish"],
+		lyrics: ["Lyrics", "lyrics", "Lyrics: reports and edits"],
+		members: ["Members", "people", "Members and rights"],
+		checks: ["Checks", "shield", "Checks of the catalog data"],
+		stats: ["Statistics", "chart", "Statistics: counted plays"],
+		draft: ["Your draft", "draft", ""],
+		suggestions: ["Suggestions", "github", ""],
+	};
+
+	function sectionShown(id) {
+		if (id === "requests") return may("review");
+		if (id === "lyrics") return may("lyrics");
+		if (id === "members") return s.rights.size > 0;
+		if (id === "suggestions") return s.canWrite;
+		return true;
+	}
+
+	/** Something waiting in a section: a dot on its icon. */
+	function sectionCount(id) {
+		if (id === "requests") return s.requests?.requests.filter((r) => r.status === "open").length ?? 0;
+		if (id === "lyrics") return s.lyrics?.reports.length ?? 0;
+		return 0;
+	}
 
 	/** One line about the person: their level and what they have had released. */
 	function status() {
 		// The repository's owner is Zaideih's owner (docs/library.md).
 		const level = s.isOwner ? "Owner" : LEVELS[s.level]?.name ?? "";
 		const d = s.done;
-		const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-		if (!d) return html`<strong>${level}</strong>`;
+		if (!d) return level;
 		if (s.canWrite) {
 			const n = d.edits + d.suggestions;
-			return html`<strong>${level}</strong> · ${n ? `${plural(n, "catalog edit", "catalog edits")} released` : "ready for a first edit"}`;
+			return `${level} · ${n ? `${plural(n, "catalog edit")} released` : "ready for a first edit"}`;
 		}
-		return html`<strong>${level}</strong> · ${d.suggestions ? `${plural(d.suggestions, "suggestion", "suggestions")} accepted, thank you` : "every correction helps"}`;
+		return `${level} · ${d.suggestions ? `${plural(d.suggestions, "suggestion")} accepted, thank you` : "every correction helps"}`;
 	}
 
+	function subtitle() {
+		if (s.busy) return s.busy;
+		if (s.tab === "catalog" && s.open) return s.open.kind === "album" ? "Album" : "Artist";
+		if (s.tab === "draft") {
+			const n = s.draft.changes.length;
+			return s.draft.pr ? `${s.draft.pr.suggestion ? "Suggestion" : "Pull request"} #${s.draft.pr.number}` : n ? plural(n, "change") : "Empty";
+		}
+		return status();
+	}
+
+	const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 	/**
-	 * The header: the person (photo, name, status), the search on Edit, and
-	 * the sections as text tabs. The photo opens the person's menu.
+	 * The header, the lyrics studio's: the section and a line under it, the
+	 * find field, the sections as icons, the draft, and the person's photo,
+	 * which opens their menu.
 	 */
 	function header() {
 		const n = s.draft.changes.length;
-		const sugg = s.suggestions?.length ?? 0;
-		const tab = (id, count = "") => html`<button role="tab" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}">${TABS[id]}${count ? html`<span class="n">${count}</span>` : ""}</button>`;
 		const initials = (s.name || s.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-		return html`<header class="adm-head">
+		const level = s.isOwner ? "Owner" : LEVELS[s.level]?.name ?? "";
+		const draftLabel = s.draft.pr ? `Your draft: ${s.draft.pr.suggestion ? "suggestion" : "pull request"} #${s.draft.pr.number}` : `Your draft: ${plural(n, "change")}`;
+		return html`<header class="st-head adm-head">
+			<a class="st-icon" href="#/" aria-label="Back to the app" title="Back to the app">${icon("back")}</a>
+			<div class="st-title"><b>${SECTIONS[s.tab][0]}</b><span>${subtitle()}</span></div>
+			<button class="adm-find" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<span>Find an album or artist</span><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></button>
+			<div class="st-modes adm-modes" role="tablist" aria-label="Admin">
+				${Object.entries(SECTIONS).filter(([id, [, , hint]]) => hint && sectionShown(id)).map(([id, [, ic, hint]]) => {
+					const count = sectionCount(id);
+					return html`<button role="tab" class="st-mode" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}" aria-label="${hint}${count ? `, ${count} waiting` : ""}" title="${hint}${count ? ` · ${count} waiting` : ""}">${icon(ic)}${count ? html`<span class="adm-mode-dot"></span>` : ""}</button>`;
+				})}
+			</div>
+			<button class="adm-draft-btn${s.tab === "draft" ? " on" : ""}" data-adm="tab" data-tab="draft" aria-label="${draftLabel}" title="${draftLabel}" data-empty="${String(!n && !s.draft.pr)}">${icon("draft")}<span class="lbl">Draft</span><span class="n">${s.draft.pr ? `#${s.draft.pr.number}` : n}</span></button>
 			<div class="adm-me">
-				<button class="adm-me-btn" data-adm="menu" aria-expanded="${String(s.menu)}" aria-label="Account and catalog">
-					${s.avatar ? html`<img class="adm-photo" src="${sized(s.avatar)}" alt="" width="48" height="48">` : html`<span class="adm-photo blank">${initials}</span>`}
+				<button class="adm-me-btn" data-adm="menu" aria-expanded="${String(s.menu)}" aria-label="${s.name || s.user}, ${level}: account and catalog" title="${s.name || s.user} · ${level}">
+					${s.avatar ? html`<img class="adm-photo" src="${sized(s.avatar)}" alt="" width="44" height="44" referrerpolicy="no-referrer">` : html`<span class="adm-photo blank">${initials}</span>`}
 				</button>
-				<div class="adm-name"><b>${s.name || s.user}</b><span class="adm-status">${status()}</span></div>
 				${s.menu ? html`<div class="adm-menu" role="dialog" aria-label="Account and catalog">
-					<p><b style="color:var(--ink)">@${s.user}</b><br>${s.via === "github" ? "Signed in with GitHub" : "Connected with a token"} on this device.</p>
-					<p>Catalog from ${BASE}${s.data ? html` at <code>${s.data.head.slice(0, 7)}</code>` : ""}, ${REPO}.</p>
+					<div class="adm-menu-who">${s.avatar ? html`<img class="adm-photo" src="${sized(s.avatar)}" alt="" width="44" height="44" referrerpolicy="no-referrer">` : html`<span class="adm-photo blank">${initials}</span>`}<span><b>${s.name || s.user}</b><br>@${s.user} · ${status()}</span></div>
+					<p>${s.via === "github" ? "Signed in with GitHub" : "Connected with a token"} on this device. Catalog from ${BASE}${s.data ? html` at <code>${s.data.head.slice(0, 7)}</code>` : ""}, ${REPO}.</p>
 					<div class="adm-actions">
-						<button class="btn" data-adm="reload">Load the newest</button>
-						<button class="btn danger" data-adm="logout">${s.via === "github" ? "Sign out" : "Disconnect"}</button>
+						<button class="btn" data-adm="reload">${icon("reload")}Load the newest</button>
+						<button class="btn danger" data-adm="logout">${icon("logout")}${s.via === "github" ? "Sign out" : "Disconnect"}</button>
 					</div>
 				</div>` : ""}
 			</div>
-			${s.tab === "edit" ? html`<input class="adm-search" type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)">` : ""}
-			<nav class="adm-tabs" role="tablist" aria-label="Admin sections">
-				${tab("edit")}
-				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
-				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
-				${may("review") ? tab("requests", s.requests ? String(s.requests.requests.filter((r) => r.status === "open").length || "") : "") : ""}
-				${may("lyrics") ? tab("lyrics", s.lyrics?.reports.length ? String(s.lyrics.reports.length) : "") : ""}
-				${s.rights.size ? tab("members", s.members ? String(s.members.length) : "") : ""}
-				${tab("tools")}
-				${tab("stats")}
-			</nav>
 		</header>`;
+	}
+
+	/** Above the player while editing: the draft in a line, with the way to publish it. */
+	function tray() {
+		const n = s.draft.changes.length;
+		if (!n || s.draft.pr || s.tab === "draft" || s.tab === "overview") return html`<div class="adm-tray" hidden></div>`;
+		const last = s.draft.changes[n - 1];
+		return html`<div class="adm-tray" role="status">
+			<span class="adm-dot" aria-hidden="true"></span>
+			<span class="adm-tray-text"><b>${plural(n, "change")} in your draft</b><span> · last: ${describe(last, s.data.index, names())}</span></span>
+			<button class="link-btn" data-adm="undo" data-i="${n - 1}">Undo last</button>
+			<button class="btn primary" data-adm="tab" data-tab="draft">${s.canWrite ? "Review and publish" : "Review and send"}</button>
+		</div>`;
+	}
+
+	function messages() {
+		return html`<div class="adm-msgs">${s.error ? html`<div class="st-banner st-bad" role="alert"><p>${s.error}</p><button class="link-btn" data-adm="dismiss">Dismiss</button></div>` : ""}</div>`;
+	}
+
+	function body() {
+		switch (s.tab) {
+			case "overview": return overview();
+			case "catalog": return catalogView();
+			case "draft": return draftView();
+			case "suggestions": return suggestionsView();
+			case "requests": return requestsView();
+			case "lyrics": return lyricsView();
+			case "members": return membersView();
+			case "checks": return checksView();
+			default: return statistics();
+		}
+	}
+
+	/** The header, the messages and the tray again, leaving the page (and what is typed in it) alone. */
+	function refreshChrome() {
+		if (!root.isConnected || !root.querySelector(".adm-head")) return;
+		root.querySelector(".adm-head").outerHTML = String(header());
+		root.querySelector(".adm-msgs").outerHTML = String(messages());
+		root.querySelector(".adm-tray").outerHTML = String(tray());
 	}
 
 	function render() {
@@ -961,6 +1294,7 @@ export function mount(root, ctx) {
 		const active = document.activeElement?.closest?.(".admin") ? document.activeElement : null;
 		const focusName = active?.dataset.adm ?? null;
 		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
+		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Admin` : "Admin";
 		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
 		if (ctx.analyticsOn()) {
 			root.innerHTML = signIn(html`<p><b>Turn off usage statistics first.</b></p><p class="muted">The GitHub token is kept on this device, and Google's statistics script on the page could read it. Turn statistics off on the <a class="text-link" href="#/about">About</a> page, then come back.</p>`);
@@ -968,9 +1302,8 @@ export function mount(root, ctx) {
 		}
 		if (!s.gh || !s.data) { root.innerHTML = signIn(); return; }
 		root.innerHTML = html`${header()}
-			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
-			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "requests" ? requestsTab() : s.tab === "lyrics" ? lyricsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
+			<div class="adm-page" data-section="${s.tab}">${messages()}${body()}</div>
+			${tray()}`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -981,15 +1314,37 @@ export function mount(root, ctx) {
 		}
 	}
 
+	/** Opens a section, reading what it shows. */
+	async function openSection(id) {
+		s.tab = id;
+		s.error = "";
+		s.menu = false;
+		if (id === "draft" && s.draft.pr) watch();
+		render();
+		scrollTo(0, 0);
+		if (id === "suggestions") await loadSuggestions();
+		if (id === "members") await loadMembers();
+		if (id === "requests") await loadRequests();
+		if (id === "lyrics") await loadLyrics();
+		if (id === "stats" && !s.totals) await loadTotals();
+	}
+
+	function find() {
+		s.open = null;
+		openSection("catalog").catch(fail);
+		root.querySelector("[data-adm=search]")?.focus();
+	}
+
 	/* ------------------------------------------------------------ events ---- */
 
-	// Escape closes the person's menu wherever the focus is; the listener ends with the page.
+	// Escape closes the person's menu; Ctrl+K (⌘K) finds. The listener ends with the page.
 	const onKey = (e) => {
 		if (!root.isConnected) { removeEventListener("keydown", onKey); return; }
-		if (e.key === "Escape" && s.menu) { s.menu = false; render(); root.querySelector("[data-adm=menu]")?.focus(); }
+		if (e.key === "Escape" && s.menu) { s.menu = false; refreshChrome(); root.querySelector("[data-adm=menu]")?.focus(); }
+		else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && s.gh && s.data) { e.preventDefault(); find(); }
 	};
 	addEventListener("keydown", onKey);
-	// Keep the Tools checks open or closed across renders (toggle does not bubble).
+	// Keep the checks open or closed across renders (toggle does not bubble).
 	root.addEventListener("toggle", (e) => {
 		const id = e.target.dataset?.check;
 		if (id) e.target.open ? s.openChecks.add(id) : s.openChecks.delete(id);
@@ -998,19 +1353,47 @@ export function mount(root, ctx) {
 	root.addEventListener("input", (e) => {
 		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; render(); }
 	});
+	// The album and artist pages keep each field as it changes.
+	root.addEventListener("change", (e) => {
+		const el = e.target;
+		// A request's genres: a chip each, carrying the value for the approval form.
+		if (el.matches("[data-adm-genre-add]")) {
+			const opt = el.selectedOptions[0];
+			if (el.value) {
+				el.closest(".adm-genre-add").insertAdjacentHTML("beforebegin", String(html`<button type="button" class="adm-genre" data-adm="req-genre-drop" aria-label="Remove the genre ${opt.text}" title="Remove the genre">${opt.text}${icon("close")}<input type="hidden" name="gr" value="${el.value}"></button>`));
+				opt.hidden = true;
+			}
+			el.value = "";
+			return;
+		}
+		if (!el.closest("[data-form=album], [data-form=artist]") || !el.name) return;
+		try {
+			if (keepField(el)) { s.error = ""; render(); }
+			else { s.error = ""; markKept(el); }
+		} catch (err) {
+			el.setAttribute("aria-invalid", "true");
+			if (el.tagName === "SELECT" && el.name === "gr-add") el.value = "";
+			fail(err, { keepPage: true });
+		}
+	});
+	// Enter in a typed field keeps it, as leaving it does.
+	root.addEventListener("keydown", (e) => {
+		if (e.key === "Enter" && e.target.matches?.("[data-form=album] input, [data-form=artist] input")) { e.preventDefault(); e.target.blur(); }
+	});
 	root.addEventListener("submit", async (e) => {
 		e.preventDefault();
 		const form = e.target;
 		try {
 			if (form.dataset.form === "token") await connect("token", new FormData(form).get("token").trim());
-			else if (form.dataset.form === "album" || form.dataset.form === "artist") { keepForm(form); s.error = ""; render(); }
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
 			else if (form.dataset.form === "folder") await setMember(Number(form.dataset.id), { folder: String(new FormData(form).get("folder")).trim() }, "Storage folder saved");
 			else if (form.dataset.form === "approve") await publishRequest(Number(form.dataset.id), form);
 			else if (form.dataset.form === "reject") {
 				await libraryCall("POST", `/requests/${form.dataset.id}/reject`, { reason: new FormData(form).get("reason") });
-				ctx.notify("Rejected; the member sees your reason");
+				ctx.notify("Declined; the member sees your reason");
+				s.rejecting = null;
+				s.reviewing = null;
 				await loadRequests();
 			}
 			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
@@ -1026,22 +1409,27 @@ export function mount(root, ctx) {
 		}
 		const b = e.target.closest("[data-adm]");
 		// Any click outside the person's menu closes it.
-		if (s.menu && !e.target.closest(".adm-menu") && b?.dataset.adm !== "menu") { s.menu = false; render(); }
+		if (s.menu && !e.target.closest(".adm-menu") && b?.dataset.adm !== "menu") { s.menu = false; refreshChrome(); }
 		if (!b || b.dataset.adm === "search") return;
 		try {
 			switch (b.dataset.adm) {
-				case "tab":
-					s.tab = b.dataset.tab; s.error = "";
-					if (s.tab === "draft" && s.draft.pr) watch();
-					render();
-					if (s.tab === "suggestions") await loadSuggestions();
-					if (s.tab === "members") await loadMembers();
-					if (s.tab === "requests") await loadRequests();
-					if (s.tab === "lyrics") await loadLyrics();
+				case "tab": await openSection(b.dataset.tab); break;
+				case "find": find(); break;
+				case "play": await playSong(Number(b.dataset.id)); break;
+				case "preview": await previewToggle(b.dataset.url); break;
+				case "req-genre-drop": {
+					const v = b.querySelector("[name=gr]").value;
+					const opt = b.parentElement.querySelector(`[data-adm-genre-add] option[value="${v}"]`);
+					if (opt) opt.hidden = false;
+					b.remove();
 					break;
+				}
+				case "genre-drop": removeGenre(b.closest("[data-form]").dataset.id, Number(b.dataset.genre)); render(); break;
 				case "requests-reload": s.requests = null; render(); await loadRequests(); break;
-				case "req-review": s.reviewing = Number(b.dataset.id); render(); root.querySelector("[data-form=approve]")?.scrollIntoView({ block: "start" }); break;
-				case "req-close": s.reviewing = null; render(); break;
+				case "req-filter": s.reqFilter = b.dataset.filter; s.reviewing = null; s.rejecting = null; render(); break;
+				case "req-open": s.reviewing = Number(b.dataset.id); s.rejecting = null; previewStop(); render(); break;
+				case "reject-open": s.rejecting = Number(b.dataset.id); render(); root.querySelector("[name=reason]")?.focus(); break;
+				case "reject-cancel": s.rejecting = null; render(); break;
 				case "req-merge": await mergePublished(b.dataset.url); break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
@@ -1055,18 +1443,18 @@ export function mount(root, ctx) {
 					break;
 				}
 				case "upload-delete": await deleteMemberUpload(Number(b.dataset.id), b.dataset.title); break;
-				case "menu": s.menu = !s.menu; render(); break;
-				case "open": s.tab = "edit"; s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; render(); scrollTo(0, 0); break;
+				case "menu": s.menu = !s.menu; refreshChrome(); break;
+				case "open": s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; await openSection("catalog"); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
 				case "reload": s.menu = false; s.health = null; await load(); break;
-				case "close": s.open = null; render(); break;
+				case "close": s.open = null; render(); root.querySelector("[data-adm=search]")?.focus(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
 				case "discard": s.draft.changes = []; saveDraft(); render(); break;
 				case "merge": await mergeAndRelease(); break;
 				case "refresh": watch(); break;
 				case "forget-pr": s.draft.pr = null; s.pr = null; saveDraft(); render(); break;
 				case "totals": await loadTotals(); break;
-				case "dismiss": s.error = ""; render(); break;
+				case "dismiss": s.error = ""; refreshChrome(); break;
 				case "logout": await disconnect(); break;
 				case "github": await signInWithGitHub(); break;
 				default: break;
@@ -1075,6 +1463,7 @@ export function mount(root, ctx) {
 			fail(err);
 		}
 	});
+
 
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
 	if (query.has("album")) s.jump = { kind: "album", id: query.get("album"), track: Number(query.get("track")) || null };
