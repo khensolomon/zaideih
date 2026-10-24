@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.20
+
+- Account: your name and photo from your sign-ins
+
 ## v26.10.24.19
 
 - Lyrics: translations, search by lyrics, lyrics in Now playing

@@ -20,6 +20,7 @@
  * Bindings: GOOGLE_CLIENT_ID (var), GOOGLE_CLIENT_SECRET (secret). Without
  * them these routes answer 503 naming what is missing.
  */
+import { safePicture } from "./accounts.js";
 import { MemberError } from "./members.js";
 
 const AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -69,6 +70,8 @@ export function googleIdentity(idToken, clientId, nowSeconds) {
 		subject: claims.sub,
 		login: null,
 		name: (typeof claims.name === "string" && claims.name.trim()) || email?.split("@")[0] || "Google user",
+		fullName: typeof claims.name === "string" && claims.name.trim() ? claims.name.trim() : null,
+		picture: safePicture(claims.picture),
 		email,
 		emailVerified: Boolean(email) && claims.email_verified === true,
 	};

@@ -71,7 +71,22 @@ export async function githubIdentity(token, fetchImpl) {
 	else if (mails.status !== 403 && mails.status !== 404) throw new MemberError(`GitHub GET /user/emails: HTTP ${mails.status}`, 502);
 	const verified = list.filter((e) => e.verified && typeof e.email === "string" && !/@users\.noreply\.github\.com$/i.test(e.email)).map((e) => e.email.toLowerCase());
 	const primary = list.find((e) => e.primary && e.verified)?.email?.toLowerCase() ?? verified[0] ?? null;
-	return { provider: "github", subject: String(user.id), login: user.login, name: user.login, email: primary, emailVerified: Boolean(primary), verifiedEmails: verified };
+	return {
+		provider: "github", subject: String(user.id), login: user.login, name: user.login,
+		fullName: typeof user.name === "string" && user.name.trim() ? user.name.trim() : null,
+		picture: safePicture(user.avatar_url),
+		email: primary, emailVerified: Boolean(primary), verifiedEmails: verified,
+	};
+}
+
+/** A photo address kept only when it is https at Google or GitHub (the app's image policy allows only those). */
+export function safePicture(url) {
+	try {
+		const u = new URL(url);
+		return u.protocol === "https:" && /(^|\.)(googleusercontent\.com|githubusercontent\.com)$/.test(u.hostname) ? u.href : null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -108,10 +123,10 @@ export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(
 		}
 	}
 	await env.DB.prepare(
-		`INSERT INTO member_logins (provider, subject, member_id, login, email, email_verified, created_at, last_used)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
-		ON CONFLICT (provider, subject) DO UPDATE SET login = ?4, email = ?5, email_verified = ?6, last_used = ?7`,
-	).bind(who.provider, who.subject, memberId, who.login ?? null, who.email ?? null, who.emailVerified ? 1 : 0, nowSeconds).run();
+		`INSERT INTO member_logins (provider, subject, member_id, login, email, email_verified, created_at, last_used, full_name, picture)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9)
+		ON CONFLICT (provider, subject) DO UPDATE SET login = ?4, email = ?5, email_verified = ?6, last_used = ?7, full_name = ?8, picture = ?9`,
+	).bind(who.provider, who.subject, memberId, who.login ?? null, who.email ?? null, who.emailVerified ? 1 : 0, nowSeconds, who.fullName ?? null, who.picture ?? null).run();
 	// A GitHub login is the name moderators know; other sign-ins name a member only when it is new.
 	if (who.provider === "github") await env.DB.prepare("UPDATE members SET name = ?1, last_seen = ?2 WHERE id = ?3").bind(who.login, nowSeconds, memberId).run();
 	else await env.DB.prepare("UPDATE members SET last_seen = ?1 WHERE id = ?2").bind(nowSeconds, memberId).run();
@@ -210,10 +225,12 @@ export async function issueSession(env, who, body, nowSeconds) {
 /** The signed-in member and their sign-ins, for "Your account". */
 export async function me(env, memberId) {
 	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
-	const rows = (await env.DB.prepare("SELECT provider, subject, login, email, email_verified, created_at, last_used FROM member_logins WHERE member_id = ?1 ORDER BY created_at").bind(memberId).all()).results ?? [];
+	const rows = (await env.DB.prepare("SELECT provider, subject, login, email, email_verified, created_at, last_used, full_name, picture FROM member_logins WHERE member_id = ?1 ORDER BY created_at").bind(memberId).all()).results ?? [];
+	// The person's own name and photo: from the sign-in used last that gives them (passkeys give neither).
+	const recent = [...rows].sort((a, b) => b.last_used - a.last_used);
 	return {
-		member: { id: m.id, name: m.name },
-		logins: rows.map((r) => ({ provider: r.provider, subject: r.subject, login: r.login, email: r.email, emailVerified: r.email_verified === 1, added: r.created_at, used: r.last_used })),
+		member: { id: m.id, name: m.name, fullName: recent.find((r) => r.full_name)?.full_name ?? null, picture: recent.find((r) => r.picture)?.picture ?? null },
+		logins: rows.map((r) => ({ provider: r.provider, subject: r.subject, login: r.login, email: r.email, emailVerified: r.email_verified === 1, added: r.created_at, used: r.last_used, fullName: r.full_name, picture: r.picture })),
 	};
 }
 

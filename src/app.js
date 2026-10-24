@@ -171,7 +171,7 @@ function syncAccess() {
 		a.hidden = !AUTH_URL;
 		a.dataset.hint = name || "Sign in";
 		$(".lbl", a).textContent = name || "Sign in";
-		a.title = name ? "Your account" : "";
+		a.title = name ? "Account" : "";
 	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Admin" : "Suggest edits") : "";
 	for (const a of $$(".rail-admin, .am-admin")) {

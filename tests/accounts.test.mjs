@@ -12,13 +12,13 @@ const ORIGIN = "https://zaideih.com";
 const mails = (...list) => list.map(([email, verified, primary = false]) => ({ email, verified, primary }));
 const PEOPLE = {
 	"gh-owner": { user: { id: 1753766, login: "khensolomon" }, emails: mails(["khen@example.com", true, true]) },
-	"gh-ann": { user: { id: 42, login: "ann" }, emails: mails(["ann@work.example", true, true], ["ann@home.example", true]) },
+	"gh-ann": { user: { id: 42, login: "ann", name: "Ann Lal", avatar_url: "https://avatars.githubusercontent.com/u/42?v=4" }, emails: mails(["ann@work.example", true, true], ["ann@home.example", true]) },
 	"gh-noperm": { user: { id: 43, login: "bo" } },
 	"gh-unverified": { user: { id: 44, login: "cy" }, emails: mails(["khen@example.com", false, true]) },
 };
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const GOOGLE = {
-	"code-khen": { sub: "g-111", email: "Khen@Example.com", email_verified: true, name: "Khen Solomon" },
+	"code-khen": { sub: "g-111", email: "Khen@Example.com", email_verified: true, name: "Khen Solomon", picture: "https://lh3.googleusercontent.com/a/khen=s96-c" },
 	"code-new": { sub: "g-222", email: "new@example.com", email_verified: true, name: "" },
 	"code-unverified": { sub: "g-333", email: "ann@work.example", email_verified: false, name: "Not Ann" },
 	"code-otherapp": { sub: "g-444", email: "x@example.com", email_verified: true, aud: "someone-else" },
@@ -251,4 +251,25 @@ test("from an app on the home screen: the code waits at the Worker for the app t
 	env.DB.raw.prepare("UPDATE signin_waiting SET created_at = created_at - 601").run();
 	assert.deepEqual(await (await wait()).json(), { error: "the sign-in took too long; try again" });
 	void tick;
+});
+
+test("Account: the person's own name and photo, from the sign-in used last that gives them", { skip }, async () => {
+	const { post, google, tick } = setup();
+	const ann = await (await post("/auth/session", "gh-ann")).json();
+	const me = await (await post("/auth/me", ann.token)).json();
+	assert.deepEqual([me.member.name, me.member.fullName, me.member.picture], ["ann", "Ann Lal", "https://avatars.githubusercontent.com/u/42?v=4"]);
+	// The owner signs in with GitHub (no name or photo there), then Google: Google's are shown.
+	const owner = await (await post("/auth/session", "gh-owner")).json();
+	assert.deepEqual([(await (await post("/auth/me", owner.token)).json()).member.fullName], [null]);
+	tick(1);
+	await google("code-khen");
+	const both = await (await post("/auth/me", owner.token)).json();
+	assert.deepEqual([both.member.name, both.member.fullName, both.member.picture], ["khensolomon", "Khen Solomon", "https://lh3.googleusercontent.com/a/khen=s96-c"]);
+});
+
+test("photo addresses are kept only at Google or GitHub, over https", async () => {
+	const { safePicture } = await import("../worker/media/accounts.js");
+	assert.equal(safePicture("https://avatars.githubusercontent.com/u/1?v=4"), "https://avatars.githubusercontent.com/u/1?v=4");
+	assert.equal(safePicture("https://lh3.googleusercontent.com/a/x"), "https://lh3.googleusercontent.com/a/x");
+	for (const bad of ["http://lh3.googleusercontent.com/a/x", "https://evil.example/x.png", "https://googleusercontent.com.evil.example/x", "javascript:alert(1)", null, 5]) assert.equal(safePicture(bad), null, String(bad));
 });

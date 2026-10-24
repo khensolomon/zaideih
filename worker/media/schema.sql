@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS member_logins (
     email_verified  INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL,
     last_used       INTEGER NOT NULL,
+    full_name       TEXT,                        -- as the sign-in gives it, shown to the person (Account)
+    picture         TEXT,                        -- the photo's address at Google or GitHub, shown to the person
     PRIMARY KEY (provider, subject)
 );
 CREATE INDEX IF NOT EXISTS idx_member_logins_member ON member_logins (member_id);
@@ -358,11 +360,11 @@ CREATE INDEX IF NOT EXISTS idx_lyrics_versions_at ON lyrics_versions (at);
 CREATE TABLE IF NOT EXISTS lyrics_reports (
     id           INTEGER PRIMARY KEY,
     track        INTEGER NOT NULL,
-    lang         TEXT    NOT NULL DEFAULT '',
     member_id    INTEGER NOT NULL,
     reason       TEXT    NOT NULL,
     at           INTEGER NOT NULL,
     resolved_at  INTEGER,
-    resolved_by  TEXT
+    resolved_by  TEXT,
+    lang         TEXT    NOT NULL DEFAULT ''   -- last, as migration 0002 adds it
 );
 CREATE INDEX IF NOT EXISTS idx_lyrics_reports_open ON lyrics_reports (resolved_at, track);
