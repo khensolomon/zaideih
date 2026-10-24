@@ -8,6 +8,10 @@
  * and credits, notes, chords (when this device shows them, transposable)
  * and, for timed lyrics, the line being sung while this song plays. The
  * text size is this device's choice.
+ *
+ * A song with translations offers them (Original, English, Myanmar); a
+ * translation can be read alone or side by side with the original, part
+ * beside part (kept as this device's choice).
  */
 import { AUTH_URL } from "../config.js";
 import { creditOf } from "../core/catalog.js";
@@ -19,7 +23,8 @@ import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
 import { icon } from "./icons.js";
-import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords } from "./lyrics-render.js";
+import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
+import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { scriptClass } from "./parts.js";
 
 const SIZE_KEY = "zaideih.lyrics.size";
@@ -33,6 +38,9 @@ const sizeIndex = () => {
 	}
 };
 const setSize = (n) => { try { localStorage.setItem(SIZE_KEY, String(n)); } catch { /* this visit only */ } };
+const SIDE_KEY = "zaideih.lyrics.side";
+const sideShown = () => { try { return localStorage.getItem(SIDE_KEY) !== "off"; } catch { return true; } };
+const setSide = (on) => { try { localStorage.setItem(SIDE_KEY, on ? "on" : "off"); } catch { /* this visit only */ } };
 
 let st = null;
 const when = (seconds) => new Date(seconds * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -42,12 +50,13 @@ const when = (seconds) => new Date(seconds * 1000).toLocaleDateString(undefined,
  * @param {number} id  the song
  * @param {object} ctx { notify, promptText, redrawn }
  */
-export function lyricsView(catalog, id, ctx) {
+export function lyricsView(catalog, id, ctx, lang = "") {
 	const track = catalog.track(id);
+	if (!(lang in LYRICS_LANGS)) lang = "";
 	if (!track || track.upload) return { title: "Lyrics", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
-	st = { id, track, lyrics: undefined, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
+	st = { id, track, lang, lyrics: undefined, original: null, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
 	return {
-		title: `Lyrics: ${track.title}`,
+		title: `Lyrics: ${track.title}${lang ? ` (${LYRICS_LANGS[lang]})` : ""}`,
 		body: html`<div class="ly-root">${content()}</div>`,
 		mount: (view) => mount(view.querySelector(".ly-root"), ctx),
 	};
@@ -56,6 +65,19 @@ export function lyricsView(catalog, id, ctx) {
 function parsed() {
 	if (st.parsedOf !== st.lyrics.text) Object.assign(st, { parsed: parseLyrics(st.lyrics.text), parsedOf: st.lyrics.text });
 	return st.parsed;
+}
+
+/** The languages to choose from: the original, and the translations the index knows of. */
+function langSwitch() {
+	const langs = new Set(["", ...lyricsIndex.langs(st.id), st.lang]);
+	if (langs.size < 2) return "";
+	const list = Object.keys(LYRICS_LANGS).filter((l) => langs.has(l));
+	return html`<div class="ly-langs">
+		<div class="segmented" role="group" aria-label="Lyrics in">
+			${list.map((l) => html`<button data-ly="lang" data-lang="${l}" aria-pressed="${String(l === st.lang)}">${LYRICS_LANGS[l]}</button>`)}
+		</div>
+		${st.lang ? html`<button class="btn ly-small" data-ly="side" aria-pressed="${String(sideShown())}">${sideShown() ? "Translation only" : "Beside the original"}</button>` : ""}
+	</div>`;
 }
 
 function header() {
@@ -73,9 +95,9 @@ function content() {
 	if (st.lyrics === undefined && !st.error) return html`${header()}<p class="muted" aria-busy="true">Reading the lyrics…</p>`;
 	const signedIn = AUTH_URL && account().signedIn;
 	const l = st.lyrics;
-	const studio = href(`lyrics/${st.id}/studio`);
+	const studio = href(`lyrics/${st.id}/studio`, st.lang ? { lang: st.lang } : undefined);
 	if (!l) {
-		return html`${header()}
+		return html`${header()}${langSwitch()}
 			${st.error ? html`<p class="error" role="alert">${st.error}</p>` : html`<div class="empty ly-empty"><h2>No lyrics yet</h2><p>${signedIn ? "Know the words? Add them for everyone." : "Nobody has added the lyrics of this song yet."}</p></div>`}
 			${signedIn ? html`<p><a class="btn primary" href="${studio}">${icon("edit")} Add lyrics</a></p>` : AUTH_URL ? html`<p class="acct-small"><a class="text-link" href="#/account">Sign in</a> to add the lyrics.</p>` : ""}`;
 	}
@@ -86,6 +108,7 @@ function content() {
 	const following = p.timed && player.current()?.id === st.id;
 	return html`${header()}
 		${st.error ? html`<p class="error" role="alert">${st.error}</p>` : ""}
+		${langSwitch()}
 		<div class="ly-bar">
 			${detailChips(p, { transpose: chords ? st.transpose : 0, flats })}
 			<span class="ly-bar-end">
@@ -101,7 +124,7 @@ function content() {
 			</span>
 		</div>
 		${p.timed ? html`<p class="acct-small ly-follow">${following ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : ""}
-		<div style="--ly-size:${SIZES[size]}px">${lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
+		<div style="--ly-size:${SIZES[size]}px">${st.lang && sideShown() && st.original ? sideBySideHtml(st.original, p, { chords, transpose: st.transpose, flats }) : lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
 		<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}${signedIn && !st.offline ? html` · <button class="link-btn" data-ly="report">Report a problem</button>` : ""}.${!signedIn && AUTH_URL ? html` <a class="text-link" href="#/account">Sign in</a> to correct them.` : ""}</p>`;
 }
 
@@ -115,8 +138,12 @@ function mount(root, ctx) {
 	};
 	(async () => {
 		try {
-			const { lyrics, offline } = await readLyrics(st.id);
-			Object.assign(st, { lyrics, offline, error: "" });
+			const [{ lyrics, offline }, original] = await Promise.all([
+				readLyrics(st.id, st.lang),
+				// A translation is shown beside the song's own words.
+				st.lang ? readLyrics(st.id).catch(() => ({ lyrics: null })) : null,
+			]);
+			Object.assign(st, { lyrics, offline, error: "", original: original?.lyrics ? parseLyrics(original.lyrics.text) : null });
 		} catch (err) {
 			Object.assign(st, { lyrics: null, error: err.message });
 		}
@@ -139,6 +166,11 @@ function mount(root, ctx) {
 		} else if (what === "up" || what === "down") {
 			st.transpose = (((st.transpose + (what === "up" ? 1 : -1) + 17) % 12) - 5);
 			draw();
+		} else if (what === "lang") {
+			location.hash = href(`lyrics/${st.id}`, b.dataset.lang ? { lang: b.dataset.lang } : undefined);
+		} else if (what === "side") {
+			setSide(!sideShown());
+			draw();
 		} else if (what === "smaller" || what === "larger") {
 			setSize(Math.min(SIZES.length - 1, Math.max(0, sizeIndex() + (what === "larger" ? 1 : -1))));
 			draw();
@@ -146,7 +178,7 @@ function mount(root, ctx) {
 			const reason = await ctx.promptText("What is wrong with these lyrics? Those who look after lyrics will see it.", "", "Report");
 			if (!reason) return;
 			try {
-				await reportLyrics(st.id, reason);
+				await reportLyrics(st.id, reason, st.lang);
 				ctx.notify("Thank you. Those who look after lyrics will have a look.");
 			} catch (err) {
 				ctx.notify(`The report could not be sent: ${err.message}`, { kind: "error" });
@@ -173,6 +205,11 @@ function mount(root, ctx) {
 		line.classList.add("ly-now");
 		// Not while the listener is scrolling by hand.
 		if (Date.now() - touched > 4000) line.scrollIntoView({ block: "center", behavior: "smooth" });
+	});
+	// The translations offered come with the lyrics index, often after the page is drawn.
+	const offIndex = on("lyrics-index", () => {
+		if (st !== mine || !root.isConnected) { offIndex(); return; }
+		if (st.lyrics !== undefined) draw();
 	});
 	// The page's words for the timed lyrics change when this song starts or stops.
 	const offPlayer = on("player", () => {

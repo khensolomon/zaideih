@@ -48,12 +48,34 @@ function lineHtml(line, n, { chords, transpose, flats }) {
  * (data-n) for following timed lyrics; repeated choruses are marked.
  */
 export function lyricsHtml(parsed, opts = {}) {
-	const o = { chords: false, transpose: 0, flats: false, ...opts };
-	let n = 0;
+	const o = { chords: false, transpose: 0, flats: false, start: 0, ...opts };
+	let n = o.start;
 	return html`<div class="ly-body${parsed.timed ? " ly-timed" : ""}">${parsed.blocks.map((b) => html`<section class="ly-block ly-${b.kind}${b.recall ? " ly-recall" : ""}">
 		${b.label ? html`<h3 class="ly-part">${b.label}${b.repeat ? html` <span class="ly-repeat">×${b.repeat}</span>` : ""}</h3>` : ""}
 		${b.lines.map((l) => lineHtml(l, n++, o))}
 	</section>`)}</div>`;
+}
+
+/**
+ * Original and translation side by side (docs/lyrics.md, "Translations"):
+ * part beside part when both have the same parts, else the two in columns
+ * of their own. Line numbers (data-n) follow the original's, for timed
+ * lyrics; the translation's are set far apart so they never match.
+ */
+export function sideBySideHtml(original, translation, opts = {}) {
+	const a = original.blocks;
+	const b = translation.blocks;
+	if (a.length !== b.length) {
+		return html`<div class="ly-side">${lyricsHtml(original, opts)}${lyricsHtml(translation, { ...opts, chords: false, start: 100_000 })}</div>`;
+	}
+	let n = 0;
+	let m = 100_000;
+	return html`<div class="ly-side ly-paired${original.timed ? " ly-timed" : ""}">${a.map((blk, i) => {
+		const row = html`<div class="ly-pair">${lyricsHtml({ ...original, blocks: [blk] }, { ...opts, start: n })}${lyricsHtml({ ...translation, blocks: [b[i]] }, { ...opts, chords: false, start: m })}</div>`;
+		n += blk.lines.length;
+		m += b[i].lines.length;
+		return row;
+	})}</div>`;
 }
 
 /** What the editor shows under the text: what was recognised in it. */

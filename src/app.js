@@ -15,6 +15,8 @@ import { account } from "./core/signin.js";
 import { accountView } from "./ui/account-view.js";
 import { lyricsView } from "./ui/lyrics-view.js";
 import { lyricsStudio } from "./ui/lyrics-studio.js";
+import { lyricsIndex } from "./core/lyrics-index.js";
+import { npLyrics, npLyricsButton, npLyricsMounted, npLyricsPanel } from "./ui/np-lyrics.js";
 import { LYRICS_URL } from "./core/lyrics.js";
 import { probeOn, startProbe, toggleProbe } from "./ui/viewport-probe.js";
 import { go, href, parse, route } from "./core/router.js";
@@ -51,15 +53,15 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
-route("lyrics/:id", (c, { id }) => lyricsView(c, Number(id), { notify, promptText, redrawn: watchLargeTitle }));
-route("lyrics/:id/studio", (c, { id }) => lyricsStudio(c, Number(id), {
+route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), { notify, promptText, redrawn: watchLargeTitle }, query.get("lang") ?? ""));
+route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 	notify, promptText, confirmAction,
 	// After the click that asks for it, which would otherwise close it at once (the page's click handler).
 	openMenu: (anchor, items) => setTimeout(() => openMenu(anchor, items)),
 	canModerate: () => uploads.canLyrics,
 	// From this song on, in its album, as a tap on the song in the album would.
 	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
-}));
+}, query.get("lang") ?? ""));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -417,6 +419,7 @@ function renderSheet() {
 	const key = registerList(s.queue, s.context);
 	const focusedCtl = sheet.contains(document.activeElement) ? document.activeElement.dataset.ctl : null;
 	sheet.classList.toggle("paused", !s.playing);
+	sheet.classList.toggle("lyrics-on", npLyrics.on && !t.upload);
 	sheet.innerHTML = html`
 		<div class="top">
 			<button class="icon-btn" data-act="close-sheet" aria-label="Close now playing">${icon("down")}</button>
@@ -425,7 +428,7 @@ function renderSheet() {
 				<button class="icon-btn" data-act="sound" aria-label="Sound: skip silence, clean up, volume, equaliser" aria-haspopup="dialog">${icon("sliders")}</button>
 				<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
 				<button class="icon-btn" data-act="watch" aria-label="Watch the background" hidden>${icon("watch")}</button>
-				${LYRICS_URL && !t.upload ? html`<a class="icon-btn" href="${href(`lyrics/${t.id}`)}" data-act="close-sheet" aria-label="Lyrics">${icon("lyrics")}</a>` : ""}
+				${t.upload ? "" : npLyricsButton()}
 				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
 			</span>
 		</div>
@@ -454,6 +457,7 @@ function renderSheet() {
 				</div>
 				${s.error ? html`<p class="error" role="alert">${s.error} <a class="text-link" href="#/help" data-act="close-sheet">Help</a>${s.errorCode ? html`<small class="diag">Code <code>${s.errorCode}</code> <button class="link-btn" data-act="copy-code" data-code="${s.errorCode}">Copy</button></small>` : ""}</p>` : ""}
 			</div>
+			${t.upload ? "" : npLyricsPanel(t)}
 			<section class="queue" aria-label="Queue">
 				<h2>Up next <span>${upcoming.length ? html`<button class="btn" data-act="clear-queue">Clear</button>` : ""}</span></h2>
 				${upcoming.length
@@ -469,6 +473,7 @@ function renderSheet() {
 	viz.refresh();
 	updateScene();
 	if (focusedCtl) $(`[data-ctl=${focusedCtl}]`, sheet)?.focus();
+	npLyricsMounted(sheet, t, () => { if (!$("#sheet").hidden) renderSheet(); });
 }
 
 /* ---- background scenes ---- */
@@ -1045,6 +1050,7 @@ const actions = {
 	},
 	"clear-queue": () => player.clearUpcoming(),
 	"close-sheet": () => closeSheet(),
+	"np-lyrics": () => { npLyrics.toggle(); renderSheet(); },
 	"scene-menu": (el) => openSceneMenu(el),
 	sound: (el) => { openSoundPanel(el, closeMenu); menuReturnFocus = el; },
 	watch: () => enterWatch(),
@@ -1472,6 +1478,21 @@ addEventListener("offline", () => { setOnline(); notify("You're offline. Downloa
  */
 const SYNC_EVERY_MS = 5 * 60_000;
 let syncer = null;
+/*
+ * The lyrics index (core/lyrics-index.js): kept on the device for searching
+ * by a line of lyrics and for the mark on songs that have lyrics; refreshed
+ * at start and when the app comes back into view (at most every 30 minutes).
+ * Pages with song lists are drawn again when it changes, for the mark.
+ */
+function startLyricsIndex() {
+	const refresh = () => lyricsIndex.refresh().catch((err) => console.warn("the lyrics index could not be read; searching lyrics uses what is kept", err));
+	refresh();
+	document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
+	on("lyrics-index", () => {
+		if (/^(album|artist|playlist|search|library|top|genre|lang)/.test(currentRoute?.path ?? "") && !document.body.classList.contains("search-open")) rerender();
+	});
+}
+
 function startSync() {
 	if (!LIBRARY_URL || !AUTH_URL) return;
 	syncer = createSync({
@@ -1557,6 +1578,7 @@ export async function boot(platform) {
 		return;
 	}
 	startSync();
+	startLyricsIndex();
 	// Your uploads: read once someone is signed in (syncAccess), shown where they appear.
 	uploads.catalog = catalog;
 	syncAccess();

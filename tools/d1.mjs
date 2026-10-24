@@ -179,8 +179,8 @@ try {
 		}
 	} else if (command === "lyrics") {
 		if (!tables().includes("lyrics")) fail(`${place} has no lyrics table yet (node tools/d1.mjs schema --apply)`);
-		const lyrics = query("SELECT track, version, updated_at, updated_by, hidden_at, hidden_by, hidden_reason FROM lyrics ORDER BY track");
-		const versions = query("SELECT track, version, text, member_id, at, note FROM lyrics_versions ORDER BY track, version");
+		const lyrics = query("SELECT track, lang, version, updated_at, updated_by, hidden_at, hidden_by, hidden_reason FROM lyrics ORDER BY track, lang");
+		const versions = query("SELECT track, lang, version, text, member_id, at, note FROM lyrics_versions ORDER BY track, lang, version");
 		const backup = lyricsBackup(lyrics, versions, new Date().toISOString());
 		const out = values.out ?? join(BUILD, `lyrics-${backup.exported.slice(0, 10)}.json`);
 		console.log(`lyrics     ${backup.lyrics.length} songs (${backup.lyrics.filter((l) => l.hidden).length} hidden), ${backup.versions.length} versions, from ${place}`);

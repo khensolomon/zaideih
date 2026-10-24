@@ -24,6 +24,8 @@ import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
+import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
+import { forgetNpLyrics } from "./np-lyrics.js";
 import { icon } from "./icons.js";
 import { creditsHtml, detailChips, formatHint, guideHtml, lyricsHtml } from "./lyrics-render.js";
 import { scriptClass } from "./parts.js";
@@ -45,17 +47,18 @@ function partNames(track) {
  * @param {number} id  the song
  * @param {object} ctx { notify, promptText, confirmAction, openMenu, canModerate: () => boolean, playSong(track) }
  */
-export function lyricsStudio(catalog, id, ctx) {
+export function lyricsStudio(catalog, id, ctx, lang = "") {
 	const track = catalog.track(id);
+	if (!(lang in LYRICS_LANGS)) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such language</h2><p>Lyrics are kept in the song's own words, and in ${Object.values(LYRICS_LANGS).slice(1).join(" and ")} translations.</p></div>` };
 	if (!track || track.upload) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
 	st = {
-		id, track, names: partNames(track), mode: "write", loading: true,
+		id, track, lang, original: null, names: lang ? { verse: "Verse", chorus: "Chorus" } : partNames(track), mode: "write", loading: true,
 		server: null, text: "", head: "", base: 0, parsed: parseLyrics(""), draft: null,
 		saving: false, error: "", conflict: undefined, keepSyllables: false, guide: false,
 		history: null, next: 0,
 	};
 	return {
-		title: `Studio: ${track.title}`,
+		title: `Studio: ${track.title}${lang ? ` (${LYRICS_LANGS[lang]})` : ""}`,
 		body: html`<div class="st-root">${frame(ctx)}</div>`,
 		mount: (view) => mount(view.querySelector(".st-root"), ctx),
 	};
@@ -99,11 +102,12 @@ function head(ctx) {
 	if (ctx.canModerate()) modes.push(["history", "History, reports and hiding", "history"]);
 	const blocked = !dirty() || st.saving || looksZawgyi(st.text) || !st.text.trim();
 	return html`<header class="st-head">
-		<a class="st-icon" href="${href(`lyrics/${st.id}`)}" aria-label="Back to the lyrics" title="Back to the lyrics">${icon("back")}</a>
+		<a class="st-icon" href="${href(`lyrics/${st.id}`, st.lang ? { lang: st.lang } : undefined)}" aria-label="Back to the lyrics (Esc)" title="Back to the lyrics (Esc)">${icon("back")}</a>
 		<div class="st-title">
 			<b class="${scriptClass(t.title)}">${t.title}</b>
 			<span>${t.album.title}${state ? html` · ${state}` : ""}</span>
 		</div>
+		${signed && !st.loading ? html`<button class="st-lang" data-st="lang" aria-haspopup="menu" title="Which lyrics: the song's own words, or a translation">${LYRICS_LANGS[st.lang]} ${icon("down")}</button>` : ""}
 		${signed && !st.loading ? html`<div class="st-modes" role="tablist" aria-label="Studio">
 			${modes.map(([m, hint, ic]) => html`<button role="tab" class="st-mode" data-st="mode" data-mode="${m}" aria-selected="${String(st.mode === m)}" aria-label="${hint}" title="${hint}">${icon(ic)}</button>`)}
 		</div>
@@ -145,6 +149,7 @@ function write() {
 	const lines = words().split("\n");
 	const offset = headLines();
 	return html`
+		${st.lang ? html`<details class="st-ref"${st.refOpen ? " open" : ""}><summary>The song's own words${st.original ? "" : " (none yet)"}</summary>${st.original ? lyricsHtml(st.original) : html`<p class="muted">Translations can be written before the original; the original is added in Original.</p>`}</details>` : ""}
 		${chips()}
 		<div class="st-editor">
 			<div class="st-margin" aria-hidden="true"></div>
@@ -286,8 +291,8 @@ function mount(root, ctx) {
 		clearTimeout(draftTimer);
 		draftTimer = 0;
 		if (st !== mine || st.loading) return;
-		if (dirty()) keepDraft(st.id, { text: st.text, base: st.base });
-		else dropDraft(st.id);
+		if (dirty()) keepDraft(st.id, { text: st.text, base: st.base }, st.lang);
+		else dropDraft(st.id, st.lang);
 	};
 	const soonDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, DRAFT_MS); };
 	// Leaving the page (another page, or closing the tab): the draft is written at once.
@@ -432,7 +437,7 @@ function mount(root, ctx) {
 	const loadHistory = async () => {
 		if (!ctx.canModerate()) return;
 		try {
-			st.history = await lyricsVersions(st.id);
+			st.history = await lyricsVersions(st.id, st.lang);
 		} catch (err) {
 			st.history = { version: 0, hidden: null, versions: [], reports: [] };
 			st.error = `The versions could not be read: ${err.message}`;
@@ -454,7 +459,7 @@ function mount(root, ctx) {
 	};
 	/** After a decision of the Lyrics right: the saved lyrics and the versions again. */
 	const refresh = async (done) => {
-		const { lyrics } = await readLyrics(st.id);
+		const { lyrics } = await readLyrics(st.id, st.lang);
 		st.server = lyrics;
 		await loadHistory();
 		if (!dirty() && lyrics) { st.base = lyrics.version; setText(lyrics.text); }
@@ -507,12 +512,14 @@ function mount(root, ctx) {
 		} else if (what === "save") {
 			await guarded(async () => {
 				try {
-					const saved = await saveLyrics(st.id, st.text, st.base);
+					const saved = await saveLyrics(st.id, st.text, st.base, st.lang);
 					Object.assign(st, { server: saved, base: saved.version, draft: null, conflict: undefined });
 					setText(saved.text);
 					reparse();
-					await dropDraft(st.id);
+					await dropDraft(st.id, st.lang);
 					ctx.notify(`Saved as version ${saved.version}`);
+					lyricsIndex.refresh({ force: true }).catch(() => {});
+					forgetNpLyrics(st.id);
 					if (st.history) await loadHistory();
 				} catch (err) {
 					if (err.status !== 409) throw err;
@@ -521,7 +528,7 @@ function mount(root, ctx) {
 			});
 		} else if (what === "discard") {
 			if (!(await ctx.confirmAction(st.server ? `Discard your changes and go back to version ${st.server.version}?` : "Discard what you have written?", "Discard"))) return;
-			await dropDraft(st.id);
+			await dropDraft(st.id, st.lang);
 			Object.assign(st, { draft: null, base: st.server?.version ?? 0, conflict: undefined });
 			setText(st.server?.text ?? "");
 			reparse();
@@ -548,6 +555,11 @@ function mount(root, ctx) {
 				"-",
 				...moreItems(),
 			]);
+		} else if (what === "lang") {
+			ctx.openMenu(b, Object.entries(LYRICS_LANGS).map(([code, name]) => ({
+				label: `${name}${code === st.lang ? " ✓" : lyricsIndex.langs(st.id).includes(code) ? "" : " (none yet)"}`,
+				run: () => { location.hash = href(`lyrics/${st.id}/studio`, code ? { lang: code } : undefined); },
+			})));
 		} else if (what === "part") {
 			insertPart(b.dataset.part);
 		} else if (what === "answer") {
@@ -577,18 +589,20 @@ function mount(root, ctx) {
 			draw();
 		} else if (what === "hide") {
 			const reason = await ctx.promptText("Why hide these lyrics? Shown to anyone who tries to edit them.", "", "Hide");
-			if (reason) await guarded(async () => { await hideLyrics(st.id, reason); await refresh("Lyrics hidden"); });
+			if (reason) await guarded(async () => { await hideLyrics(st.id, reason, st.lang); await refresh("Lyrics hidden"); });
 		} else if (what === "show") {
-			await guarded(async () => { await showLyrics(st.id); await refresh("Lyrics shown again"); });
+			await guarded(async () => { await showLyrics(st.id, st.lang); await refresh("Lyrics shown again"); });
 		} else if (what === "resolve") {
-			await guarded(async () => { await resolveReports(st.id); await refresh("Reports dealt with"); });
+			await guarded(async () => { await resolveReports(st.id, st.lang); await refresh("Reports dealt with"); });
 		} else if (what === "restore") {
 			const v = Number(b.dataset.version);
 			if (!(await ctx.confirmAction(`Make version ${v} the lyrics shown? Every version stays in the list.`, "Restore"))) return;
-			await guarded(async () => { await restoreLyrics(st.id, v, st.history.version); await refresh(`Version ${v} restored`); });
+			await guarded(async () => { await restoreLyrics(st.id, v, st.history.version, st.lang); await refresh(`Version ${v} restored`); });
 		}
 	});
 
+	// The original, beside a translation: open or closed as the writer left it.
+	root.addEventListener("toggle", (e) => { if (e.target.classList?.contains("st-ref")) st.refOpen = e.target.open; }, true);
 	root.addEventListener("input", (e) => { if (e.target.id === "st-text") changed(st.head + e.target.value); });
 	root.addEventListener("keyup", (e) => { if (e.target.id === "st-text") caretPlus(); });
 	root.addEventListener("pointerup", (e) => { if (e.target.id === "st-text") caretPlus(); });
@@ -599,8 +613,13 @@ function mount(root, ctx) {
 		// The + stays while it is being reached for.
 		setTimeout(() => { if (!root.querySelector(".st-insert:focus, .st-insert:hover")) caretPlus(); }, 150);
 	});
-	// Ctrl or Cmd + S saves.
+	// Ctrl or Cmd + S saves; Esc goes back to the lyrics (the draft is kept).
 	root.addEventListener("keydown", (e) => {
+		if (e.key === "Escape" && !document.querySelector("dialog[open], .menu")) {
+			e.preventDefault();
+			location.hash = href(`lyrics/${st.id}`, st.lang ? { lang: st.lang } : undefined);
+			return;
+		}
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
 			e.preventDefault();
 			root.querySelector("[data-st=save]:not([disabled])")?.click();
@@ -614,7 +633,13 @@ function mount(root, ctx) {
 	});
 
 	(async () => {
-		const [server, draft] = await Promise.all([readLyrics(st.id).catch((err) => ({ error: err })), readDraft(st.id)]);
+		const [server, draft, original] = await Promise.all([
+			readLyrics(st.id, st.lang).catch((err) => ({ error: err })),
+			readDraft(st.id, st.lang),
+			// Translating: the song's own words beside, for reference.
+			st.lang ? readLyrics(st.id).catch(() => ({ lyrics: null })) : null,
+		]);
+		if (original?.lyrics) st.original = parseLyrics(original.lyrics.text);
 		if (!alive()) return;
 		if (server.error) st.error = server.error.message;
 		st.server = server.lyrics ?? null;

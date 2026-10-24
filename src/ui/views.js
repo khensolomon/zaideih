@@ -20,7 +20,8 @@ import { icon } from "./icons.js";
 import { logoMark } from "./logo.js";
 import { careerOf, shadeOf } from "./art.js";
 import { getScope, setScope } from "./suggest.js";
-import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass } from "./parts.js";
+import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass, trackRow } from "./parts.js";
+import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 
 const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam", uploads: "your uploads" };
 export const langLabel = (lang) => LANG_LABEL[lang.name] ?? lang.name[0].toUpperCase() + lang.name.slice(1);
@@ -364,6 +365,8 @@ export function searchResults(c, q, scope = getScope()) {
 
 	// Counts describe title matches; for an answered question they would mislead.
 	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total });
+	const lyrics = scope === "all" || scope === "tracks" ? lyricHits(c, q) : "";
+	if (!total && !answered && !byArtist && lyrics) return html`${tabs}${lyrics}`;
 	if (!total && !answered && !byArtist) {
 		const near = closest(c, q, scope === "all" ? undefined : { artists: 8, albums: 12, tracks: 20, ...SCOPE_LIMITS[scope] });
 		const fix = didYouMean(c, q, near);
@@ -378,7 +381,17 @@ export function searchResults(c, q, scope = getScope()) {
 		${answered}
 		${total && answered ? html`<h2 class="near-title">Other matches for “${q}”</h2>` : ""}
 		${resultSections(exact, q, r)}
+		${lyrics}
 		${byArtist}`;
+}
+
+/** Songs with a line of lyrics matching the query (core/lyrics-index.js), with that line. */
+function lyricHits(c, q) {
+	const hits = lyricsIndex.search(q).map((h) => ({ ...h, t: c.track(h.track) })).filter((h) => h.t);
+	if (!hits.length) return "";
+	const key = registerList(hits.map((h) => h.t.id), `Lyrics: ${q}`);
+	return html`<section class="section lyric-hits"><header><h2>In the lyrics</h2><span class="muted">${hits.length}</span></header>
+		<ol class="tracks">${hits.map((h, i) => trackRow(h.t, key, i, { showAlbum: true, sub: html`<span class="lyric-line">“${h.line}”</span>${h.lang ? html` <span class="muted">(${LYRICS_LANGS[h.lang]})</span>` : ""}` }))}</ol></section>`;
 }
 
 function answerSection(intent, ans) {
@@ -593,7 +606,7 @@ export function terms() {
 				<h2>Your uploads</h2>
 				<p>Signed in, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your account, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good. You can also ask for an album of yours to be published in the catalog for everyone: a reviewer listens first, and once it is released it is part of the public catalog, credited to you.</p>
 				<h2>Lyrics</h2>
-				<p>Signed in, you can add and correct the lyrics of songs in the catalog. Lyrics appear for everyone at once, and every version is kept with the account that saved it, so a mistake can always be undone. Add only lyrics you may share: public-domain hymns, your own songs, or songs whose writers agree. Myanmar text must be in Unicode; text in Zawgyi is not accepted. People given the Lyrics right can hide lyrics, restore an earlier version and block accounts that misuse it. Anyone signed in can report lyrics that are wrong or should not be here.</p>
+				<p>Signed in, you can add and correct the lyrics of songs in the catalog, and their English and Myanmar translations. Lyrics appear for everyone at once, and every version is kept with the account that saved it, so a mistake can always be undone. Add only lyrics you may share: public-domain hymns, your own songs, or songs whose writers agree. Myanmar text must be in Unicode; text in Zawgyi is not accepted. People given the Lyrics right can hide lyrics, restore an earlier version and block accounts that misuse it. Anyone signed in can report lyrics that are wrong or should not be here.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
 				<h2>Rights holders</h2>

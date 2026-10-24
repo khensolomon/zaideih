@@ -24,40 +24,45 @@ export class LyricsError extends Error {
 	}
 }
 
-const keptKey = (id) => `lyrics.${id}`;
+/*
+ * Every call is for one language of a song's lyrics: "" the song's own
+ * words, "en" or "my" a translation (worker/media/lyrics.js ?lang=).
+ */
+const keptKey = (id, lang = "") => `lyrics.${id}${lang ? `.${lang}` : ""}`;
+const q = (lang) => (lang ? `?lang=${lang}` : "");
 
-async function keep(id, lyrics) {
+async function keep(id, lyrics, lang = "") {
 	try {
-		if (lyrics) await db.put("kv", { ...lyrics, kept: Date.now() }, keptKey(id));
-		else await db.delete("kv", keptKey(id));
+		if (lyrics) await db.put("kv", { ...lyrics, kept: Date.now() }, keptKey(id, lang));
+		else await db.delete("kv", keptKey(id, lang));
 	} catch (err) {
 		console.warn("lyrics could not be kept on this device", err);
 	}
 }
 
 /**
- * The lyrics of song `id`: { lyrics: {version, text, updated} | null, offline }.
+ * The lyrics of song `id` in `lang`: { lyrics: {version, text, updated} | null, offline }.
  * Offline, the copy kept on the device (offline: true); throws LyricsError
  * when there is none and the Worker cannot be reached.
  */
-export async function readLyrics(id) {
+export async function readLyrics(id, lang = "") {
 	if (!LYRICS_URL) throw new LyricsError("lyrics are not available in this version of the app");
 	let res;
 	try {
-		res = await fetch(`${LYRICS_URL}/${id}`, { cache: "no-cache" });
+		res = await fetch(`${LYRICS_URL}/${id}${q(lang)}`, { cache: "no-cache" });
 	} catch {
-		const kept = await db.get("kv", keptKey(id)).catch(() => null);
+		const kept = await db.get("kv", keptKey(id, lang)).catch(() => null);
 		if (kept) return { lyrics: kept, offline: true };
 		throw new LyricsError("the lyrics cannot be read while offline");
 	}
 	if (res.status === 404) {
-		await keep(id, null);
+		await keep(id, null, lang);
 		return { lyrics: null, offline: false };
 	}
 	const body = await res.json().catch(() => null);
 	if (!res.ok || !body) throw new LyricsError(body?.error ?? `the lyrics could not be read (HTTP ${res.status})`, res.status);
 	const lyrics = { version: body.version, text: body.text, updated: body.updated };
-	await keep(id, lyrics);
+	await keep(id, lyrics, lang);
 	return { lyrics, offline: false };
 }
 
@@ -81,23 +86,23 @@ async function call(method, path, body) {
 	return answer;
 }
 
-/** Saves `text` as the next version of song `id`, started from version `base`; answers the new lyrics. */
-export async function saveLyrics(id, text, base) {
-	const saved = await call("POST", `/${id}`, { text, base });
+/** Saves `text` as the next version of song `id` in `lang`, started from version `base`; answers the new lyrics. */
+export async function saveLyrics(id, text, base, lang = "") {
+	const saved = await call("POST", `/${id}${q(lang)}`, { text, base });
 	const lyrics = { version: saved.version, text: saved.text, updated: saved.updated };
-	await keep(id, lyrics);
+	await keep(id, lyrics, lang);
 	return lyrics;
 }
 
 /** The Lyrics right: { version, hidden, versions: [{version, text, at, note, by: {id, name}}] }. */
-export const lyricsVersions = (id) => call("GET", `/${id}/versions`);
-export const hideLyrics = (id, reason) => call("POST", `/${id}/hide`, { reason });
-export const showLyrics = (id) => call("POST", `/${id}/show`, {});
-export const restoreLyrics = (id, version, base) => call("POST", `/${id}/restore`, { version, base });
+export const lyricsVersions = (id, lang = "") => call("GET", `/${id}/versions${q(lang)}`);
+export const hideLyrics = (id, reason, lang = "") => call("POST", `/${id}/hide${q(lang)}`, { reason });
+export const showLyrics = (id, lang = "") => call("POST", `/${id}/show${q(lang)}`, {});
+export const restoreLyrics = (id, version, base, lang = "") => call("POST", `/${id}/restore${q(lang)}`, { version, base });
 /** Anyone signed in: tells the Lyrics right something is wrong with song `id`'s lyrics. */
-export const reportLyrics = (id, reason) => call("POST", `/${id}/report`, { reason });
+export const reportLyrics = (id, reason, lang = "") => call("POST", `/${id}/report${q(lang)}`, { reason });
 /** The Lyrics right: song `id`'s open reports are dealt with, nothing changed. */
-export const resolveReports = (id) => call("POST", `/${id}/resolve`, {});
+export const resolveReports = (id, lang = "") => call("POST", `/${id}/resolve${q(lang)}`, {});
 /** The Lyrics right: { edits: [{track, version, at, note, hidden, by}], reports: [{track, latest, reasons: [{reason, at, by}]}] }. */
 export const recentLyrics = () => call("GET", "/recent");
 
@@ -106,23 +111,23 @@ export const recentLyrics = () => call("GET", "/recent");
  * the device as it is typed, per song, with the version it started from, so
  * a closed tab or a dead battery loses nothing. Saving clears it.
  */
-const draftKey = (id) => `lyrics.draft.${id}`;
-export async function readDraft(id) {
+const draftKey = (id, lang = "") => `lyrics.draft.${id}${lang ? `.${lang}` : ""}`;
+export async function readDraft(id, lang = "") {
 	try {
-		return (await db.get("kv", draftKey(id))) ?? null;
+		return (await db.get("kv", draftKey(id, lang))) ?? null;
 	} catch {
 		return null;
 	}
 }
-export async function keepDraft(id, draft) {
+export async function keepDraft(id, draft, lang = "") {
 	try {
-		await db.put("kv", { ...draft, at: Date.now() }, draftKey(id));
+		await db.put("kv", { ...draft, at: Date.now() }, draftKey(id, lang));
 	} catch (err) {
 		console.warn("the draft could not be kept on this device", err);
 	}
 }
-export async function dropDraft(id) {
+export async function dropDraft(id, lang = "") {
 	try {
-		await db.delete("kv", draftKey(id));
+		await db.delete("kv", draftKey(id, lang));
 	} catch { /* nothing kept */ }
 }

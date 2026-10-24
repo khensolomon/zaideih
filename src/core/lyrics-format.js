@@ -562,3 +562,22 @@ export function setDetail(text, name, value) {
 	if (!head.length) return body.join("\n");
 	return body.length ? `${head.join("\n")}\n\n${body.join("\n")}` : head.join("\n");
 }
+
+/**
+ * What is sung, for searching (worker/media/lyrics.js keeps it with the
+ * lyrics): each line of words once, without times, chords, details or notes,
+ * and the original title first when there is one.
+ */
+export function lyricsWords(text) {
+	const p = parseLyrics(text);
+	const lines = p.meta.original ? [p.meta.original] : [];
+	for (const b of p.blocks) {
+		if (b.recall) continue;
+		for (const l of b.lines) {
+			if (l.kind !== "words" || l.of) continue;
+			const t = l.parts.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
+			if (t) lines.push(t);
+		}
+	}
+	return [...new Set(lines)].join("\n");
+}

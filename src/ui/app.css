@@ -1499,3 +1499,44 @@ body[data-studio] main { max-width: none; padding-top: 0; }
 .admin .adm-lyrics .adm-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .admin .adm-lyrics .adm-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .admin .adm-lyrics .adm-note { color: var(--ink-2); font-size: 0.92em; }
+/* Songs with lyrics: a small mark after the title (ui/parts.js trackRow). */
+.track .title .has-lyrics { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--ink-3); }
+.track .title .has-lyrics svg.i { width: 15px; height: 15px; stroke-width: 2; }
+.lyric-hits .lyric-line { font-style: italic; }
+
+/* Lyrics in Now playing (ui/np-lyrics.js): in place of the cover on phones, of the queue on wide screens. */
+.np-lyrics { position: relative; width: min(560px, 100%); max-height: 52vh; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px 4px 2px; scrollbar-width: thin; }
+.np-lyrics .ly-body { --ly-size: 20px; margin: 0; }
+.np-lyrics .ly-block { margin-bottom: 18px; }
+.np-lyrics.np-timed .ly-line { color: var(--ink-3); }
+.np-lyrics.np-timed .ly-line.ly-now { color: var(--ink); background: none; box-shadow: none; font-weight: 700; }
+.np-lyrics-foot { margin: 8px 0 0; font-size: 14px; }
+.sheet .top-end [data-act="np-lyrics"][aria-pressed="true"] { background: rgb(255 255 255 / 0.16); }
+@media (max-width: 899px) {
+	.sheet.lyrics-on .body { display: flex; flex-direction: column; }
+	.sheet.lyrics-on .np-lyrics { order: -1; margin: 0 auto; width: min(440px, 92vw); max-height: 46vh; }
+	.sheet.lyrics-on .stage .cover, .sheet.lyrics-on .viz-large { display: none; }
+}
+@media (min-width: 900px) {
+	.sheet.lyrics-on .queue { display: none; }
+	.sheet.lyrics-on .np-lyrics { position: sticky; top: 8px; max-height: calc(100vh - 140px); }
+}
+.st-lang { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 10px 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; }
+.st-lang svg.i { width: 16px; height: 16px; }
+.st-ref { margin: 0 0 18px 118px; padding: 10px 14px; border-radius: var(--radius-m); background: var(--surface); max-width: 40em; }
+.st-ref summary { cursor: pointer; font-weight: 600; }
+.st-ref .ly-body { --ly-size: 15px; margin: 10px 0 0; max-height: 40vh; overflow-y: auto; }
+@media (max-width: 899px) { .st-ref { margin-left: 0; } .st-lang { padding: 0 8px 0 10px; } }
+.ly-langs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; }
+/* Original and translation side by side: part beside part (ui/lyrics-render.js sideBySideHtml). */
+.ly-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; max-width: 64em; }
+.ly-side.ly-paired { display: block; }
+.ly-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; }
+.ly-pair .ly-body, .ly-side > .ly-body { margin: 0; }
+.ly-pair > .ly-body + .ly-body, .ly-side > .ly-body + .ly-body { color: var(--ink-2); }
+@media (max-width: 599px) {
+	/* Phones: the translation under each part, smaller. */
+	.ly-pair, .ly-side { display: block; }
+	.ly-pair > .ly-body + .ly-body { --ly-size: 15px; margin: -10px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); }
+	.ly-pair > .ly-body + .ly-body .ly-part { display: none; }
+}

@@ -314,39 +314,51 @@ CREATE TABLE IF NOT EXISTS library_sync (
 -- =============================================================================
 -- lyrics, lyrics_versions: lyrics of catalog songs (lyrics.js, docs/lyrics.md)
 -- =============================================================================
--- lyrics holds what is shown (the latest version); lyrics_versions every
--- version ever saved, with who and when, so a bad edit is undone by
+-- lyrics holds what is shown (the latest version) per song and language
+-- (lang "" the song's own words, "en", "my" translations); lyrics_versions
+-- every version ever saved, with who and when, so a bad edit is undone by
 -- restoring an earlier one. Hidden lyrics (hidden_at set, by the Lyrics
--- right) are not shown to listeners. Not rebuildable from git: kept by
+-- right) are not shown to listeners. `words` is what is sung, for the app's
+-- search (GET /lyrics/index); `changed_at` the last save, hide or show, for
+-- the index's "changed since". Not rebuildable from git: kept by
 -- `tools/d1.mjs reset`; `tools/d1.mjs lyrics` writes them to a file.
+-- Shaped by migrations/0002-lyrics-languages.sql on databases from before.
 --
---   Latest edits:  SELECT v.track, v.version, m.name, v.at FROM lyrics_versions v JOIN members m ON m.id = v.member_id ORDER BY v.at DESC LIMIT 50;
+--   Latest edits:  SELECT v.track, v.lang, v.version, m.name, v.at FROM lyrics_versions v JOIN members m ON m.id = v.member_id ORDER BY v.at DESC LIMIT 50;
 CREATE TABLE IF NOT EXISTS lyrics (
-    track          INTEGER PRIMARY KEY,     -- catalog song id (tracks.id)
+    track          INTEGER NOT NULL,        -- catalog song id (tracks.id)
+    lang           TEXT    NOT NULL DEFAULT '',
     version        INTEGER NOT NULL,
     text           TEXT    NOT NULL,
+    words          TEXT,                    -- what is sung, for searching (lyricsWords)
     updated_at     INTEGER NOT NULL,        -- unix seconds
     updated_by     INTEGER NOT NULL,        -- member id
     hidden_at      INTEGER,
     hidden_by      TEXT,
-    hidden_reason  TEXT
+    hidden_reason  TEXT,
+    changed_at     INTEGER NOT NULL,
+    PRIMARY KEY (track, lang)
 );
+CREATE INDEX IF NOT EXISTS idx_lyrics_changed ON lyrics (changed_at);
 CREATE TABLE IF NOT EXISTS lyrics_versions (
     track      INTEGER NOT NULL,
+    lang       TEXT    NOT NULL DEFAULT '',
     version    INTEGER NOT NULL,
     text       TEXT    NOT NULL,
     member_id  INTEGER NOT NULL,
     at         INTEGER NOT NULL,
     note       TEXT    NOT NULL DEFAULT '',  -- e.g. "restored version 2"
-    PRIMARY KEY (track, version)
+    PRIMARY KEY (track, lang, version)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_lyrics_versions_member ON lyrics_versions (member_id);
+CREATE INDEX IF NOT EXISTS idx_lyrics_versions_at ON lyrics_versions (at);
 -- lyrics_reports: listeners telling the Lyrics right something is wrong with a
--- song's lyrics. One open report per member and song; hiding, showing,
--- restoring or resolving a song deals with its open reports.
+-- song's lyrics (in one language). One open report per member, song and
+-- language; hiding, showing, restoring or resolving deals with its open reports.
 CREATE TABLE IF NOT EXISTS lyrics_reports (
     id           INTEGER PRIMARY KEY,
     track        INTEGER NOT NULL,
+    lang         TEXT    NOT NULL DEFAULT '',
     member_id    INTEGER NOT NULL,
     reason       TEXT    NOT NULL,
     at           INTEGER NOT NULL,
@@ -354,4 +366,3 @@ CREATE TABLE IF NOT EXISTS lyrics_reports (
     resolved_by  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_lyrics_reports_open ON lyrics_reports (resolved_at, track);
-CREATE INDEX IF NOT EXISTS idx_lyrics_versions_at ON lyrics_versions (at);
