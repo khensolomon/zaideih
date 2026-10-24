@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.24
+
+- the "+" (catalog, 1 change)
+
 ## v26.10.24.23
 
 - Published Myanmar Zomi Artists (15 songs, from @khensolomon's library)
