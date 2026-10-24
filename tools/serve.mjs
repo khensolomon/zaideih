@@ -5,7 +5,7 @@
  * Mirrors production closely enough to catch problems early:
  *   - applies the rules in <dir>/_headers (CSP, caching) the way Cloudflare does
  *   - answers Range requests with 206
- *   - serves index.html for "/"
+ *   - serves index.html for "/", and <name>.html for "/<name>" (as Cloudflare does)
  *
  *   node tools/serve.mjs                      serve dist/web on http://localhost:8080
  *   node tools/serve.mjs --port 9000 --host 0.0.0.0
@@ -106,7 +106,11 @@ export async function serve({ dir = "dist/web", port = 8080, host = "127.0.0.1",
 			res.writeHead(400).end("Bad Request");
 			return;
 		}
-		const file = resolve(root, `.${rel.endsWith("/") ? `${rel}index.html` : rel}`);
+		// Like Cloudflare's static assets: "/" is index.html, and "/privacy" is privacy.html when there is no file named "privacy".
+		let file = resolve(root, `.${rel.endsWith("/") ? `${rel}index.html` : rel}`);
+		if (!extname(file)) {
+			try { await stat(file); } catch { file = `${file}.html`; }
+		}
 		if (file !== root && !file.startsWith(root + sep)) {
 			res.writeHead(404).end("Not Found");
 			return;

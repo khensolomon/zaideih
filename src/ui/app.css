@@ -310,7 +310,7 @@ main {
 .rail .logo-link { display: inline-flex; align-items: center; gap: 12px; padding: 0 12px; font-weight: 750; font-size: 18px; }
 .rail .logo-link:hover { text-decoration: none; }
 .rail .logo-tile { width: 44px; height: 44px; }
-.rail-foot { margin: auto 12px 0; display: flex; gap: 18px; font-size: 14px; }
+.rail-foot { margin: auto 12px 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
 .rail-foot a { color: var(--ink-3); }
 .rail-foot a[aria-current="page"] { color: var(--ink); font-weight: 600; }
 .brand { display: flex; align-items: baseline; gap: 8px; padding: 0 12px; font-weight: 800; font-size: 26px; letter-spacing: -0.03em; }
@@ -1278,3 +1278,9 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .acct-logins small { display: block; color: var(--ink-3); overflow-wrap: anywhere; }
 .acct-g { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font-weight: 800; font-size: 13px; }
 .acct-links { margin: 0 0 16px; }
+
+/* What index.html says before the app starts (replaced by the first page). */
+.intro { max-width: 640px; padding-top: 8vh; }
+.intro h1 { font-size: clamp(28px, 5vw, 40px); margin: 0 0 12px; }
+.intro p, .intro li { color: var(--ink-2); line-height: 1.5; }
+.intro a { color: var(--ink); text-decoration: underline; }

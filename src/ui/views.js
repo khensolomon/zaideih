@@ -419,7 +419,7 @@ const LIB_SECTIONS = {
 	...(LIBRARY_URL ? { uploads: "Your uploads" } : {}),
 };
 
-const libFoot = html`<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="#/help">Help</a></p>`;
+const libFoot = html`<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="/privacy">Privacy</a><a href="#/help">Help</a></p>`;
 
 function playlistCards(lists) {
 	return html`<div class="playlists">${lists.map((p) => html`<a href="${href(`playlist/${p.id}`)}"><span class="pl-icon" aria-hidden="true">${icon("queue")}</span><b>${p.name}</b><span>${plural(p.tracks.length, "song")}</span></a>`)}</div>`;
@@ -574,9 +574,9 @@ export function terms() {
 		title: "Terms",
 		body: html`<div class="about terms">
 				<h1 class="page-title">Terms</h1>
-				<p class="lead">Using Zaideih means accepting these terms. They are short because the service is simple: free listening, nothing sold.</p>
+				<p class="lead">Using Zaideih means accepting these terms. They are short because the service is simple: free listening, nothing sold. What is kept about you is set out in the <a class="text-link" href="/privacy">privacy policy</a>.</p>
 				<h2>Listening</h2>
-				<p>Zaideih is free for personal, non-commercial listening. There is no account, subscription or payment.</p>
+				<p>Zaideih is free for personal, non-commercial listening. Listening needs no account, subscription or payment; an account (Google or GitHub) is only for keeping music of your own.</p>
 				<h2>Ownership</h2>
 				<p>The songs, recordings and album titles belong to their artists and rights holders. Zaideih does not claim ownership of them, does not sell them and earns nothing from them.</p>
 				<h2>Downloads</h2>
