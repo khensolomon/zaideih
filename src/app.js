@@ -354,6 +354,9 @@ function renderBar() {
 	for (const btn of $$("[data-ctl=next]")) btn.disabled = !t || (s.index >= s.queue.length - 1 && s.repeat !== "all");
 	const likeBtn = $("#bar-like");
 	likeBtn.hidden = !t;
+	$("#bar-more").hidden = !t;
+	// The playing row's bars move only while the music plays.
+	document.body.classList.toggle("is-playing", !!t && s.playing);
 	if (t) setLikeState(likeBtn, library.isLiked(t.id));
 	viz.setPlaying(s.playing);
 	bar.classList.toggle("paused", !!t && !s.playing);
@@ -876,6 +879,26 @@ async function addToPlaylistMenu(anchor, ids) {
 			},
 		});
 	}
+	openMenu(anchor, items);
+}
+
+/**
+ * The player's "More": where the playing song comes from (its album and
+ * artists), its lyrics, Now playing and the queue, and adding it to a playlist.
+ */
+function barMenu(anchor, track) {
+	const items = [
+		{ label: "Now playing", run: () => openSheet() },
+		...(LYRICS_URL && !track.upload ? [{ label: lyricsIndex.has(track.id) ? "Lyrics" : "Lyrics (none yet)", run: () => { closeSheet(); go(`lyrics/${track.id}`); } }] : []),
+		"-",
+		{ label: `Go to album: ${track.album.title}`, run: () => { closeSheet(); go(`album/${track.album.id}`); } },
+		...(track.upload ? [] : track.artists.filter((a) => a.id > 1).slice(0, 3).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } }))),
+		"-",
+		{ label: "Add to playlist…", run: () => addToPlaylistMenu(anchor, [track.id]) },
+		{ label: "Show queue", run: () => openSheet() },
+	];
+	const who = ADMIN_URL && !track.upload ? readWho(localStorage) : null;
+	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
 	openMenu(anchor, items);
 }
 
@@ -1606,6 +1629,7 @@ export async function boot(platform) {
 	// A sign-in or sign-out in another tab.
 	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.admin.") || e.key === "zaideih.account") syncAccess(); });
 	$("#bar-now").addEventListener("click", openSheet);
+	$("#bar-more").addEventListener("click", (e) => { e.stopPropagation(); const t = player.current(); if (t) barMenu(e.currentTarget, t); });
 	$("#bar-like").addEventListener("click", async (e) => {
 		const t = player.current();
 		if (t) setLikeState(e.currentTarget, await library.toggleLike(t.id), { animate: true });
