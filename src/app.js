@@ -53,7 +53,11 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
-route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), { notify, promptText, confirmAction, redrawn: watchLargeTitle }, query.get("lang") ?? ""));
+route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), {
+	notify, promptText, confirmAction, redrawn: watchLargeTitle,
+	// From this song on, in its album, as a tap on the song in the album would.
+	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
+}, query.get("lang") ?? ""));
 route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 	notify, promptText, confirmAction,
 	// After the click that asks for it, which would otherwise close it at once (the page's click handler).

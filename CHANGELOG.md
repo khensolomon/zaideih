@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.28
+
+- Lyrics: play this song
+
 ## v26.10.24.27
 
 - Shared lyrics across recordings
