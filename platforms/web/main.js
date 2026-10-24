@@ -5,8 +5,15 @@ import { boot } from "../../src/app.js";
 import { IS_DEV } from "../../src/config.js";
 import { notify } from "../../src/core/store.js";
 
+// Waiting for the first view keeps the first visit's bandwidth for the catalog;
+// a start that never gets there must still be able to update itself, so the
+// service worker is registered after REGISTER_LATEST_MS whatever happens.
+const REGISTER_LATEST_MS = 5000;
+let registered = false;
+
 function registerServiceWorker() {
-	if (!("serviceWorker" in navigator) || IS_DEV) return;
+	if (registered || !("serviceWorker" in navigator) || IS_DEV) return;
+	registered = true;
 	// Reload only after the user accepts an update. The first install also fires
 	// controllerchange (clients.claim), and reloading then would interrupt the first visit.
 	let updateAccepted = false;
@@ -36,4 +43,5 @@ function registerServiceWorker() {
 	});
 }
 
+setTimeout(registerServiceWorker, REGISTER_LATEST_MS);
 boot({ name: "web", catalogBase: "catalog/", onReady: registerServiceWorker });

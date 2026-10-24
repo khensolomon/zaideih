@@ -108,6 +108,21 @@ html { -webkit-tap-highlight-color: transparent; touch-action: manipulation; -we
 button, .btn, nav, .navbar, .rail, .bar, .sheet .ctl, .menu, .app-menu, .segmented, .tile, .track, .chip, .scopes, .tabs, .icon-btn, label.btn, .lang-tabs, .playlists a, .artist-card, .tile-play {
 	-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+/*
+ * iOS 26, app on the home screen (viewport-fit=cover, black-translucent
+ * status bar): while the page is shorter than the screen, WebKit lays out
+ * fixed elements against a viewport shorter than the screen by the status
+ * bar's height (WebKit bug 301108), so the player and its fade float that
+ * far above the bottom edge, over a strip of page; the menu (which pins the
+ * page) and short pages such as Sign in showed it. A page at least as tall
+ * as the screen gets the full viewport, so the document is never shorter.
+ * min() caps it where the status bar is opaque (inset 0, 100lvh the full
+ * screen), so no page scrolls by the status bar's height.
+ */
+@media (display-mode: standalone) {
+	html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
+}
+
 /* Phones and installed apps: the page and the menus scroll as before, without a scroll bar. */
 @media (pointer: coarse), (display-mode: standalone) {
 	html, .app-menu, .menu, .sg-panel { scrollbar-width: none; }

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.9
+
+- Home screen app on iOS 26: the player sits on the bottom edge again on short pages and with the menu open; a stuck start can update itself and offers a reload
+
 ## v26.10.24.8
 
 - Installed app: no endless loading screen (Safari's storage nudged and given a time limit, a slow network no longer holds up the start), menu links close onto the new page, and a hidden viewport readout (#/viewport) for device-only layout faults
