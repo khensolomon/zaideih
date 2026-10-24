@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.19
+
+- Lyrics: translations, search by lyrics, lyrics in Now playing
+
 ## v26.10.24.18
 
 - Lyrics studio: write, preview, time and review lyrics

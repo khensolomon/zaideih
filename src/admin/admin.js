@@ -547,21 +547,24 @@ export function mount(root, ctx) {
 	function lyricsTab() {
 		const l = s.lyrics;
 		if (!l) return html`<p class="adm-note">Reading the latest lyrics…</p>`;
-		const song = (id) => {
+		const LANGS = { en: "English", my: "Myanmar" };
+		const song = (id, lang = "") => {
 			const t = ctx.catalog.track(id);
-			return t ? html`<a href="#/lyrics/${id}/studio">${t.title}</a> <span class="adm-note">${t.album.title}</span>` : html`<a href="#/lyrics/${id}/studio">Song ${id}</a>`;
+			const link = `#/lyrics/${id}/studio${lang ? `?lang=${lang}` : ""}`;
+			const tag = lang ? html` <span class="adm-tag">${LANGS[lang] ?? lang} translation</span>` : "";
+			return t ? html`<a href="${link}">${t.title}</a>${tag} <span class="adm-note">${t.album.title}</span>` : html`<a href="${link}">Song ${id}</a>${tag}`;
 		};
 		const when = (sec) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 		return html`<div class="adm-lyrics">
 			<div class="adm-actions"><button class="btn" data-adm="lyrics-reload">Read again</button></div>
 			<h2>Reported${l.reports.length ? ` (${l.reports.length})` : ""}</h2>
 			${l.reports.length ? html`<ul class="adm-list">${l.reports.map((r) => html`<li>
-				<div>${song(r.track)}</div>
+				<div>${song(r.track, r.lang)}</div>
 				${r.reasons.map((x) => html`<div class="adm-note">“${x.reason}”, ${x.by}, ${when(x.at)}</div>`)}
 			</li>`)}</ul>` : html`<p class="adm-note">Nothing reported.</p>`}
 			<h2>Latest edits</h2>
 			${l.edits.length ? html`<ul class="adm-list">${l.edits.map((e) => html`<li>
-				<div>${song(e.track)}${e.hidden ? html` <span class="adm-tag danger">hidden</span>` : ""}</div>
+				<div>${song(e.track, e.lang)}${e.hidden ? html` <span class="adm-tag danger">hidden</span>` : ""}</div>
 				<div class="adm-note">Version ${e.version} by ${e.by.name}, ${when(e.at)}${e.note ? `, ${e.note}` : ""}</div>
 			</li>`)}</ul>` : html`<p class="adm-note">No lyrics yet.</p>`}
 		</div>`;

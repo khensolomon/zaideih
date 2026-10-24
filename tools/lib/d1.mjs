@@ -115,18 +115,20 @@ export function wranglerRows(stdout) {
 
 /**
  * The lyrics backup (`tools/d1.mjs lyrics`, docs/lyrics.md): what is shown,
- * and every version, as read from D1. Member ids only, no names or emails.
+ * and every version, per song and language (lang "" the original), as read
+ * from D1. Member ids only, no names or emails.
  * Throws when a shown version has no row in the versions (a broken read).
  */
 export function lyricsBackup(lyrics, versions, exportedAt) {
-	const kept = new Set(versions.map((v) => `${v.track}:${v.version}`));
-	const lost = lyrics.filter((l) => !kept.has(`${l.track}:${l.version}`));
+	const key = (r) => `${r.track}/${r.lang ?? ""}:${r.version}`;
+	const kept = new Set(versions.map(key));
+	const lost = lyrics.filter((l) => !kept.has(key(l)));
 	if (lost.length) throw new D1Error(`the versions read do not include the shown lyrics of song(s) ${lost.slice(0, 10).map((l) => l.track).join(", ")}; nothing was written`);
 	return {
-		format: "zaideih-lyrics/1",
+		format: "zaideih-lyrics/2",
 		exported: exportedAt,
-		lyrics: lyrics.map((l) => ({ track: l.track, version: l.version, updated: l.updated_at, by: l.updated_by, hidden: l.hidden_at ? { at: l.hidden_at, by: l.hidden_by, reason: l.hidden_reason } : null })),
-		versions: versions.map((v) => ({ track: v.track, version: v.version, text: v.text, by: v.member_id, at: v.at, note: v.note })),
+		lyrics: lyrics.map((l) => ({ track: l.track, lang: l.lang ?? "", version: l.version, updated: l.updated_at, by: l.updated_by, hidden: l.hidden_at ? { at: l.hidden_at, by: l.hidden_by, reason: l.hidden_reason } : null })),
+		versions: versions.map((v) => ({ track: v.track, lang: v.lang ?? "", version: v.version, text: v.text, by: v.member_id, at: v.at, note: v.note })),
 	};
 }
 

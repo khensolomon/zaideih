@@ -1,6 +1,7 @@
 /**
  * Shared render helpers: covers, album tiles, track rows and list registry.
  */
+import { lyricsIndex } from "../core/lyrics-index.js";
 import { creditOf } from "../core/catalog.js";
 import { escape, html, raw } from "../core/html.js";
 import { library } from "../core/library.js";
@@ -92,16 +93,19 @@ export function resetLists() { lists.clear(); }
 
 /**
  * Track row. `opts.showAlbum` replaces the position number with an album
- * credit line; `opts.extra` adds menu entries (e.g. remove from playlist).
+ * credit line; `opts.extra` adds menu entries (e.g. remove from playlist);
+ * `opts.sub` replaces the second line (a matching line of lyrics). Songs with
+ * lyrics carry a small mark after the title (core/lyrics-index.js).
  */
 export function trackRow(t, listKey, index, opts = {}) {
 	const now = player.current()?.id === t.id;
 	const liked = library.isLiked(t.id);
-	const sub = opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists);
+	const sub = opts.sub ?? (opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists));
+	const lyric = lyricsIndex.has(t.id) ? html`<span class="has-lyrics" title="Has lyrics">${icon("lyrics", "Has lyrics")}</span>` : "";
 	return html`<li class="track${now ? " now" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
 		<span class="no"><span>${opts.number ?? index + 1}</span></span>
 		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}" aria-label="Play ${t.title}">
-			<span class="title ${scriptClass(t.title)}">${t.title}</span>
+			<span class="title ${scriptClass(t.title)}">${t.title}${lyric}</span>
 			<span class="sub ${scriptClass(String(sub))}">${sub}</span>
 		</button>
 		<span class="saved" title="${offline.has(t.id) ? "Downloaded" : ""}">${offline.has(t.id) ? icon("saved", "Downloaded") : ""}</span>

@@ -177,3 +177,76 @@ test("reports: members report, the Lyrics right sees them with recent edits, and
 	assert.equal((await call("gh-mod", "POST", "/lyrics/101/resolve", {})).status, 200);
 	assert.deepEqual((await call("gh-mod", "GET", "/lyrics/recent")).body.reports, []);
 });
+
+test("translations are kept apart from the song's own words", { skip }, async () => {
+	const { env, call, read } = setup();
+	await seed(env);
+	await call("gh-ann", "POST", "/lyrics/101", { text: "1. Topa ngak ta un", base: 0 });
+	const en = await call("gh-ann", "POST", "/lyrics/101?lang=en", { text: "1. Wait on the Lord", base: 0 });
+	assert.deepEqual([en.status, en.body.lang, en.body.version], [200, "en", 1]);
+	assert.equal((await read(101)).body.text, "1. Topa ngak ta un");
+	const pub = await handleLyrics(new Request(`${W}/lyrics/101?lang=en`), env, null);
+	assert.equal((await pub.json()).text, "1. Wait on the Lord");
+	assert.equal((await handleLyrics(new Request(`${W}/lyrics/101?lang=my`), env, null)).status, 404);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/101?lang=fr", { text: "x", base: 0 })).status, 400, "only the languages kept");
+	// Versions, reports and hiding are per language.
+	await call("gh-bo", "POST", "/lyrics/101/report?lang=en", { reason: "bad translation" });
+	const mod = await setupRight(env, call);
+	const recent = (await call(mod, "GET", "/lyrics/recent")).body;
+	assert.deepEqual(recent.reports.map((r) => [r.track, r.lang]), [[101, "en"]]);
+	assert.deepEqual(recent.edits.map((e) => e.lang).sort(), ["", "en"]);
+	assert.deepEqual((await call(mod, "GET", "/lyrics/101/versions?lang=en")).body.versions.map((v) => v.text), ["1. Wait on the Lord"]);
+	await call(mod, "POST", "/lyrics/101/hide?lang=en", { reason: "checking" });
+	assert.equal((await read(101)).status, 200, "hiding the translation leaves the original");
+});
+
+test("the index: every shown text's words, then what changed since", { skip }, async () => {
+	const { env, call, tick } = setup();
+	await seed(env);
+	const idx = async (since = 0) => (await (await handleLyrics(new Request(`${W}/lyrics/index?since=${since}`), env, null, { now: () => Date.now() })).json());
+	assert.deepEqual((await idx()).songs, []);
+	await call("gh-ann", "POST", "/lyrics/101", { text: "Original title: Waiting on the Lord\nKey: Eb\n\n1. [00:05.00]Topa [G]ngak ta un\n\nSakkik:\nVang-liat-na!\n\n2. Jesu tung", base: 0 });
+	await call("gh-ann", "POST", "/lyrics/102?lang=en", { text: "Wait on the Lord", base: 0 });
+	const all = await idx();
+	assert.deepEqual(all.songs, [[101, "", 1, "Waiting on the Lord\nTopa ngak ta un\nVang-liat-na!\nJesu tung"], [102, "en", 1, "Wait on the Lord"]]);
+	assert.deepEqual(all.gone, []);
+	// Changed since: a new save, and a hidden text as gone.
+	tick(10);
+	await call("gh-ann", "POST", "/lyrics/102?lang=en", { text: "Wait upon the Lord", base: 1 });
+	const mod = (await setupRight(env, call));
+	await call(mod, "POST", "/lyrics/101/hide", { reason: "check" });
+	const since = await idx(all.at + 1);
+	assert.deepEqual(since.songs.map((s) => [s[0], s[3]]), [[102, "Wait upon the Lord"]]);
+	assert.deepEqual(since.gone, [[101, ""]]);
+	assert.ok(since.at > all.at);
+	assert.deepEqual((await idx()).songs.map((s) => s[0]), [102], "hidden lyrics leave the full index");
+});
+
+/** Gives gh-mod the Lyrics right; answers its sign-in name for call(). */
+async function setupRight(env, call) {
+	await call("gh-mod", "GET", "/lyrics/recent");
+	const row = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = 'github' AND subject = '44'").first();
+	await env.DB.prepare("INSERT OR IGNORE INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(row.member_id).run();
+	return "gh-mod";
+}
+
+test("migration 0002 keeps the lyrics there were, as the originals", { skip }, async () => {
+	const { readFileSync } = await import("node:fs");
+	const db = new sqlite(":memory:");
+	db.exec(`CREATE TABLE lyrics (track INTEGER PRIMARY KEY, version INTEGER NOT NULL, text TEXT NOT NULL, updated_at INTEGER NOT NULL, updated_by INTEGER NOT NULL, hidden_at INTEGER, hidden_by TEXT, hidden_reason TEXT);
+		CREATE TABLE lyrics_versions (track INTEGER NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, member_id INTEGER NOT NULL, at INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '', PRIMARY KEY (track, version)) WITHOUT ROWID;
+		CREATE TABLE lyrics_reports (id INTEGER PRIMARY KEY, track INTEGER NOT NULL, member_id INTEGER NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, resolved_at INTEGER, resolved_by TEXT);
+		INSERT INTO lyrics VALUES (5, 2, 'two', 100, 7, 150, 'mod', 'x');
+		INSERT INTO lyrics_versions VALUES (5, 1, 'one', 7, 90, ''), (5, 2, 'two', 7, 100, '');
+		INSERT INTO lyrics_reports (track, member_id, reason, at) VALUES (5, 8, 'bad', 120);`);
+	db.exec(readFileSync(new URL("../worker/media/migrations/0002-lyrics-languages.sql", import.meta.url), "utf8"));
+	assert.deepEqual({ ...db.prepare("SELECT track, lang, version, text, words, hidden_by, changed_at FROM lyrics").get() }, { track: 5, lang: "", version: 2, text: "two", words: null, hidden_by: "mod", changed_at: 150 });
+	assert.deepEqual(db.prepare("SELECT lang, version FROM lyrics_versions ORDER BY version").all().map((r) => [r.lang, r.version]), [["", 1], ["", 2]]);
+	assert.equal(db.prepare("SELECT lang FROM lyrics_reports").get().lang, "");
+	// The schema then finds what it wants already there.
+	const schema = readFileSync(new URL("../worker/media/schema.sql", import.meta.url), "utf8").split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
+	assert.doesNotThrow(() => db.exec(schema.slice(schema.indexOf("CREATE TABLE IF NOT EXISTS lyrics "))));
+	// And a database from before lyrics existed migrates too.
+	const empty = new sqlite(":memory:");
+	assert.doesNotThrow(() => empty.exec(readFileSync(new URL("../worker/media/migrations/0002-lyrics-languages.sql", import.meta.url), "utf8")));
+});

@@ -2,7 +2,7 @@
 
 Lyrics of catalog songs, added and corrected by listeners who sign in, read by everyone.
 
-Status: agreed 2026-10-22; built in v26.10.24.14; formats v26.10.24.16; the studio, credits, reports and the Zawgyi check v26.10.24.18.
+Status: agreed 2026-10-22; built in v26.10.24.14; formats v26.10.24.16; the studio, credits, reports and the Zawgyi check v26.10.24.18; translations, search by lyrics, the mark on songs with lyrics and lyrics in Now playing v26.10.24.19.
 
 ## Rules
 
@@ -16,6 +16,27 @@ Status: agreed 2026-10-22; built in v26.10.24.14; formats v26.10.24.16; the stud
 - Uploads (members' own songs) have no lyrics for now.
 
 Text is kept as typed, tidied: NFC, `\n` line ends, no spaces at line ends, no blank lines at either end, at most one blank line in a row. At most 20,000 characters.
+
+## Translations
+
+A song has its own words (lang `""`, "Original") and may have translations: English (`en`) and Myanmar (`my`). Each is kept on its own, with its own versions, reports and hiding; every route takes `?lang=` (none: the original). A translation may be written before the original.
+
+- Reading (`#/lyrics/<song>?lang=en`): when a song has translations, a switch (Original, English, Myanmar) shows the ones it has. A translation is shown beside the original, part beside part when both have the same parts (else in two columns); on phones the translation is under each part, smaller. "Translation only" turns that off (kept on the device, `zaideih.lyrics.side`).
+- The studio (`#/lyrics/<song>/studio?lang=en`): a language picker in the header (the languages without lyrics yet are marked "none yet"); translating, the song's own words are there for reference (open or closed). Drafts are kept per language. Parts are inserted with English names (Verse, Chorus).
+- The admin page's Lyrics list marks translations.
+
+## Search
+
+`src/core/lyrics-index.js` keeps every shown text's words on the device (IndexedDB `kv`, `lyrics.index`), from `GET /lyrics/index`: in full once, then only what changed since (`?since=`), at start and when the app comes back into view (at most every 30 minutes), and at once after saving in the studio. Searching is then offline and instant:
+
+- The search page lists **In the lyrics**: songs with a line holding every word of the query (normalised as the app's search does: case, accents, spacing), the line shown, best first (the words together as typed, then a line starting with them). One line per song, the original before a translation (marked "(English)"). Under three letters, nothing. Shown also when no title matches.
+- Songs with lyrics carry a small mark after their title in song lists.
+
+The words are what is sung (`lyricsWords`): each line once, without times, chords, details or notes, the original title first. The Worker keeps them with the lyrics (`lyrics.words`) and fills them for texts saved before. The index's size grows with the lyrics: about 250 KB per 1,000 songs; past several thousand songs, searching moves to the Worker (D1 full-text search).
+
+## In Now playing
+
+The player sheet's top bar has a lyrics button (kept on the device, `zaideih.np.lyrics`). On, the lyrics take the cover's place on phones (above the title and controls) and the queue's on wide screens (`src/ui/np-lyrics.js`). Timed lyrics light the line being sung and keep it in the middle of the panel (not while the listener scrolled it in the last 4 seconds); tapping a timed line goes there. Lyrics read once are kept while the app is open; saving in the studio reads them again.
 
 ## Formats
 
@@ -94,6 +115,7 @@ Lyrics once read are kept on the device (IndexedDB `kv`, `lyrics.<song id>`), so
 | `POST /lyrics/:song/restore {version, base}` | Lyrics right | That version's text becomes the newest version (note "restored version N") |
 | `POST /lyrics/:song/report {reason}` | signed in | A report (1 to 300 characters); a second one by the same member replaces the first |
 | `POST /lyrics/:song/resolve` | Lyrics right | Its open reports dealt with, nothing changed |
+| `GET /lyrics/index?since=<seconds>` | anyone | `{at, songs: [[track, lang, version, words]], gone: [[track, lang]]}`: with since 0, every shown text (edge cached until the next change); later, what changed since (hidden texts as gone). `at` is the next `since` |
 | `GET /lyrics/recent` | Lyrics right | `{edits: [the 50 latest versions, with song, member and whether hidden], reports: [songs with open reports, with each reason]}` |
 
 `GET /lyrics/:song/versions` also lists the song's open reports. Hiding, showing and restoring deal with them.
@@ -102,9 +124,11 @@ D1:
 
 | Table | Holds |
 |---|---|
-| `lyrics` | per song: the shown `version` and `text`, `updated_at`, `updated_by` (member id), and `hidden_at`, `hidden_by`, `hidden_reason` |
-| `lyrics_versions` | every version: `(track, version)`, `text`, `member_id`, `at`, `note` |
-| `lyrics_reports` | reports: `track`, `member_id`, `reason`, `at`, `resolved_at`, `resolved_by` |
+| `lyrics` | per song and language `(track, lang)`: the shown `version` and `text`, `words` (for searching), `updated_at`, `updated_by` (member id), `hidden_at`, `hidden_by`, `hidden_reason`, `changed_at` (the last save, hide or show) |
+| `lyrics_versions` | every version: `(track, lang, version)`, `text`, `member_id`, `at`, `note` |
+| `lyrics_reports` | reports: `track`, `lang`, `member_id`, `reason`, `at`, `resolved_at`, `resolved_by` |
+
+`migrations/0002-lyrics-languages.sql` brings a database from before translations to this shape (the lyrics there become originals); `node tools/d1.mjs schema --apply` runs it once. The backup (`tools/d1.mjs lyrics`, format `zaideih-lyrics/2`) carries the language.
 
 A save is one D1 batch (the version row and the shown lyrics), each written only when the latest version is still `base`. Every change removes the song from the edge cache. Joining two accounts moves their versions to the kept member.
 
