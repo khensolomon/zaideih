@@ -1,9 +1,5 @@
 # Version
 
-## v26.10.24.29
-
-- lyrics (catalog, 1 change)
-
 ## v26.10.24.28
 
 - Lyrics: play this song
