@@ -78,6 +78,40 @@ function optionRow(opt, i) {
 	return html`<li class="sg sg-plain" ${base}><span class="sg-glyph" aria-hidden="true">${icon}</span><span class="sg-text"><span class="sg-title ${scriptClass(opt.label)}">${opt.label}</span></span></li>`;
 }
 
+/*
+ * While the suggestions are open on a touch screen, the page behind them
+ * stays still. With the keyboard up, iPhone otherwise pans the whole page
+ * under it, and the fixed search field is put back (--vvt, app.js) only
+ * once Safari reports the pan, often late: the field slid away. The list
+ * itself still scrolls, and stops at its ends instead of moving the page.
+ */
+let holding = false;
+let lastY = 0;
+const onTouchStart = (e) => { lastY = e.touches[0]?.clientY ?? 0; };
+function onTouchMove(e) {
+	const y = e.touches[0]?.clientY ?? lastY;
+	const pull = y - lastY; // > 0: the finger moves down, the list towards its top
+	lastY = y;
+	const list = e.target instanceof Element ? e.target.closest(".suggest") : null;
+	if (list && list.scrollHeight > list.clientHeight + 1) {
+		const atTop = list.scrollTop <= 0;
+		const atEnd = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+		if (!((pull > 0 && atTop) || (pull < 0 && atEnd))) return;
+	}
+	if (e.cancelable) e.preventDefault();
+}
+function holdPage(on) {
+	if (on === holding) return;
+	holding = on;
+	if (on) {
+		document.addEventListener("touchstart", onTouchStart, { passive: true });
+		document.addEventListener("touchmove", onTouchMove, { passive: false });
+	} else {
+		document.removeEventListener("touchstart", onTouchStart);
+		document.removeEventListener("touchmove", onTouchMove);
+	}
+}
+
 function paint(input) {
 	const ul = listEl();
 	if (!ul) return;
@@ -91,6 +125,7 @@ function paint(input) {
 	input.setAttribute("aria-expanded", String(visible));
 	input.closest(".searchbox")?.classList.toggle("open", visible);
 	document.body.classList.toggle("search-open", visible);
+	holdPage(visible);
 	ul.innerHTML = html`${options.map(optionRow)}`;
 	if (active >= 0) input.setAttribute("aria-activedescendant", `sg-${active}`);
 	else input.removeAttribute("aria-activedescendant");
@@ -148,6 +183,7 @@ export function closeSuggestions(input) {
 	input?.setAttribute("aria-expanded", "false");
 	input?.closest(".searchbox")?.classList.remove("open");
 	document.body.classList.remove("search-open");
+	holdPage(false);
 	input?.removeAttribute("aria-activedescendant");
 }
 

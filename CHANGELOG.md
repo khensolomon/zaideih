@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.15
+
+- Search on phones: the field stays sharp and in place with the keyboard up
+
 ## v26.10.24.14
 
 - Lyrics: add, edit and read song lyrics; every version kept; the Lyrics right hides, shows and restores
