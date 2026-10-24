@@ -213,7 +213,7 @@ function closeAppMenu({ restoreFocus = false, restoreScroll = true } = {}) {
 
 async function render({ keepScroll = false } = {}) {
 	// A page change can remove the search box while its suggestions are open.
-	document.body.classList.remove("search-open");
+	closeSuggestions();
 	const r = parse();
 	const view = $("#view");
 	if (!r) { go("", undefined, { replace: true }); return; }

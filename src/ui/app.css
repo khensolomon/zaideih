@@ -569,11 +569,12 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 	.searchbox.open input { border-radius: 20px 20px 0 0; }
 	.sg-panel { border-radius: 0 0 20px 20px; }
 	body[data-page="search"] .navbar { display: none; }
-	/* The search field takes the bar's place, fixed like it (see .navbar); its room is kept free below it. */
+	/* The search field takes the bar's place, fixed like it (see .navbar); its room is kept free below it.
+	   Above the blurred backdrop of open suggestions (body.search-open::before, 25), like .searchbox everywhere. */
 	body[data-page="search"] .shell { padding-top: 0; }
 	body[data-page="search"] main { padding-top: calc(env(safe-area-inset-top) + 74px); }
 	body[data-page="search"] .searchbox {
-		position: fixed; z-index: 21; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 6px);
+		position: fixed; z-index: 30; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 6px);
 		transform: translateY(var(--vvt, 0px));
 		display: flex; align-items: center; gap: 8px; margin: 0;
 	}
@@ -611,7 +612,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .scopes button { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .scopes button:hover { border-color: var(--ink-3); }
 .scopes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.suggest { margin: 0; padding: 0 6px 6px; list-style: none; max-height: min(440px, 58vh); overflow-y: auto; }
+.suggest { margin: 0; padding: 0 6px 6px; list-style: none; max-height: min(440px, 58vh); overflow-y: auto; overscroll-behavior: contain; }
 .sg-answer .sg-glyph { color: var(--accent); }
 .sg-answer .sg-title { white-space: normal; }
 body.search-open::before {
