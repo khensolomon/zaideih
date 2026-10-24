@@ -55,6 +55,7 @@ route("about", V.about);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
 route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), {
 	notify, promptText, confirmAction, redrawn: watchLargeTitle,
+	canModerate: () => uploads.canLyrics,
 	// From this song on, in its album, as a tap on the song in the album would.
 	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
 }, query.get("lang") ?? ""));
@@ -65,6 +66,9 @@ route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 	canModerate: () => uploads.canLyrics,
 	// From this song on, in its album, as a tap on the song in the album would.
 	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
+	// From the admin's Waiting list or the lyrics page: comparing with another song, to merge (and the proposal it answers).
+	merge: Number(query.get("merge")) || null,
+	proposal: Number(query.get("proposal")) || null,
 }, query.get("lang") ?? ""));
 route("terms", V.terms);
 route("help", V.help);
@@ -86,7 +90,7 @@ route("admin", () => ({
 		try {
 			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
 			mod.mount(root, {
-				catalog, notify, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
+				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
 				// The app's own player, lyrics index and covers: the admin bundle has no copies of its own.
 				player, onPlayer: (fn) => on("player", fn),
 				lyrics: { has: (id) => lyricsIndex.has(id), get size() { return lyricsIndex.size; } },

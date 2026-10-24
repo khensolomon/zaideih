@@ -677,19 +677,29 @@ export function mount(root, ctx) {
 	 * latest edits, each opening the song in the lyrics studio, where its
 	 * versions, hiding and restoring are.
 	 */
-	async function loadLyrics() {
-		const url = ctx.libraryUrl ? ctx.libraryUrl.replace(/\/library$/, "/lyrics/recent") : "";
-		if (!url) throw new Error("lyrics are not built into this version");
+	/** The lyrics routes of the audio Worker (worker/media/lyrics.js), with this sign-in. */
+	async function lyricsCall(method, path, body) {
+		const base = ctx.libraryUrl ? ctx.libraryUrl.replace(/\/library$/, "/lyrics") : "";
+		if (!base) throw new Error("lyrics are not built into this version");
 		let res;
 		try {
-			res = await account.send((token) => fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }));
+			res = await account.send((token) => fetch(`${base}${path}`, {
+				method,
+				headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+				body: body ? JSON.stringify(body) : undefined,
+				cache: "no-store",
+			}));
 		} catch (err) {
 			if (err instanceof AccountError) throw new SignInError(err.message);
 			throw new SignInError(`the lyrics could not be reached (${err.message})`);
 		}
 		const answer = await res.json().catch(() => null);
 		if (!res.ok) throw new SignInError(answer?.error ?? `the lyrics answered HTTP ${res.status}`);
-		s.lyrics = answer;
+		return answer;
+	}
+
+	async function loadLyrics() {
+		s.lyrics = await lyricsCall("GET", "/recent");
 		render();
 	}
 
@@ -874,8 +884,10 @@ export function mount(root, ctx) {
 		}
 		if (may("lyrics")) {
 			const r = s.lyrics?.reports ?? null;
+			const p = s.lyrics?.proposals ?? [];
 			const first = r?.[0];
-			out.push(["lyrics", "Lyrics reported", r?.length, first ? `“${first.reasons[0]?.reason ?? "reported"}” on ${ctx.catalog.track(first.track)?.title ?? `song ${first.track}`}` : "Nothing reported"]);
+			const line = p.length ? `${p.length} proposal${p.length === 1 ? "" : "s"}: the same song` : first ? `“${first.reasons[0]?.reason ?? "reported"}” on ${ctx.catalog.track(first.track)?.title ?? `song ${first.track}`}` : "Nothing to look at";
+			out.push(["lyrics", "Lyrics to look at", r ? r.length + p.length : r?.length, line]);
 		}
 		if (s.canWrite) {
 			const n = s.suggestions?.length;
@@ -961,7 +973,18 @@ export function mount(root, ctx) {
 			const link = `#/lyrics/${id}/studio${lang ? `?lang=${lang}` : ""}`;
 			return html`<li><a href="${link}"><span class="adm-thumb">${t ? coverOf(t.album.id) : icon("lyrics")}</span><span class="adm-row-text"><b>${t ? t.title : `Song ${id}`}${lang ? html` <span class="adm-tag">${LANG_NAMES[lang] ?? lang}</span>` : ""}</b>${sub}</span></a></li>`;
 		};
-		return html`<p class="adm-lead">Each song opens in the lyrics studio, where its versions, hiding and restoring are.</p>
+		const label = (id) => {
+			const t = ctx.catalog.track(id);
+			return t ? html`<b>${t.title}</b> <small>${t.album.title} · ${t.artists.map((a) => a.name).slice(0, 2).join(", ")}</small>` : html`<b>Song ${id}</b>`;
+		};
+		const proposals = l.proposals ?? [];
+		return html`${proposals.length ? html`<h2 class="adm-h">Waiting: the same song? · ${proposals.length}</h2>
+			<p class="adm-lead">Members say these songs are the same. Compare opens the studio with both side by side, the text to keep suggested; merging makes one text for both.</p>
+			<ul class="adm-proposals">${proposals.map((p) => html`<li>
+				<span class="adm-row-text"><span>${label(p.track)}</span><span>same as ${label(p.target)}</span><small>by ${p.by}, ${when(p.at)}${p.note ? ` · “${p.note}”` : ""}</small></span>
+				<span class="adm-actions"><a class="btn primary" href="#/lyrics/${p.track}/studio?merge=${p.target}&proposal=${p.id}">Compare</a><button class="link-btn" data-adm="proposal-decline" data-id="${p.id}" data-track="${p.track}">Decline…</button></span>
+			</li>`)}</ul>` : ""}
+			<p class="adm-lead">Each song opens in the lyrics studio, where its versions, hiding and restoring are.</p>
 			<h2 class="adm-h">Reported${l.reports.length ? ` · ${l.reports.length}` : ""}</h2>
 			${l.reports.length ? html`<ul class="adm-rows">${l.reports.map((r) => song(r.track, r.lang, r.reasons.map((x) => html`<small>“${x.reason}”, ${x.by}, ${when(x.at)}</small>`)))}</ul>` : html`<p class="adm-hint">Nothing reported.</p>`}
 			<h2 class="adm-h">Latest edits</h2>
@@ -1183,7 +1206,7 @@ export function mount(root, ctx) {
 	/** Something waiting in a section: a dot on its icon. */
 	function sectionCount(id) {
 		if (id === "requests") return s.requests?.requests.filter((r) => r.status === "open").length ?? 0;
-		if (id === "lyrics") return s.lyrics?.reports.length ?? 0;
+		if (id === "lyrics") return (s.lyrics?.reports.length ?? 0) + (s.lyrics?.proposals?.length ?? 0);
 		return 0;
 	}
 
@@ -1434,6 +1457,14 @@ export function mount(root, ctx) {
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
 				case "lyrics-reload": s.lyrics = null; render(); await loadLyrics(); break;
+				case "proposal-decline": {
+					const reason = await ctx.promptText("Why are these not the same song? The member sees it.", "", "Decline");
+					if (!reason) break;
+					await lyricsCall("POST", `/${b.dataset.track}/decline`, { proposal: Number(b.dataset.id), reason });
+					ctx.notify("Declined");
+					await loadLyrics();
+					break;
+				}
 				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
 				case "member-unblock": await setMember(Number(b.dataset.id), { blocked: false }, "Unblocked"); break;
 				case "member-right": {
