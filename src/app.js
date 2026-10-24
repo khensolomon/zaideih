@@ -1394,6 +1394,45 @@ function trackVisibleHeight() {
 }
 trackVisibleHeight();
 
+/*
+ * Home on phones: once a scroll has come to rest by itself, a section's title
+ * within SETTLE_PX of the bar glides the rest of the way to sit just under
+ * it. The scroll itself is never touched while it moves (CSS scroll
+ * snapping did, and dragged on iPhone), and a rest anywhere else stays.
+ */
+const SETTLE_PX = 48;
+const SETTLE_WAIT_MS = 160;
+function settleOnSections() {
+	const phone = matchMedia("(max-width: 899px)");
+	let touching = false;
+	let timer = 0;
+	let settling = false;
+	const check = () => {
+		timer = 0;
+		if (touching || settling || !phone.matches || document.body.dataset.page !== "home" || lockedAt !== null) return;
+		const edge = $(".navbar").getBoundingClientRect().bottom + 8;
+		for (const header of $$("#view .section > header")) {
+			const d = header.getBoundingClientRect().top - edge;
+			if (Math.abs(d) <= SETTLE_PX && Math.abs(d) >= 2) {
+				settling = true;
+				scrollBy({ top: d, behavior: "smooth" });
+				// Its own glide is not a rest to settle again from.
+				setTimeout(() => { settling = false; }, 600);
+				return;
+			}
+		}
+	};
+	const later = () => {
+		clearTimeout(timer);
+		timer = setTimeout(check, SETTLE_WAIT_MS);
+	};
+	addEventListener("scroll", () => { if (!settling) later(); }, { passive: true });
+	addEventListener("touchstart", () => { touching = true; clearTimeout(timer); }, { passive: true });
+	addEventListener("touchend", () => { touching = false; later(); }, { passive: true });
+	addEventListener("touchcancel", () => { touching = false; later(); }, { passive: true });
+}
+settleOnSections();
+
 function setOnline() {
 	document.body.classList.toggle("is-offline", !navigator.onLine);
 	for (const el of $$("[data-offline]")) el.hidden = navigator.onLine;

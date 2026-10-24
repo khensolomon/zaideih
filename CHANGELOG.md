@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.11
+
+- Home on phones scrolls freely again, and settles on a section's title only after a scroll has come to rest near it
+
 ## v26.10.24.10
 
 - Installed app: leaving for the privacy page and coming back starts again (the database connection is closed on leaving, and no storage request can wait for ever); Sign in's title moves into the bar like Library's; Home settles on a section's title when a scroll ends near it

@@ -1308,13 +1308,3 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .acct-logins.acct-skeleton li { display: block; height: 64px; padding-top: 25px; box-sizing: border-box; }
 .acct-skeleton li::after { content: ""; display: block; width: 60%; height: 14px; border-radius: 7px; background: var(--raised); opacity: 0.6; }
 
-/*
- * Home on phones: a scroll that ends near a section's title settles with the
- * title just under the bar; one that ends inside a section stays where it is
- * (proximity). The top of the page is a resting place too.
- */
-@media (max-width: 899px) {
-	html:has(body[data-page="home"]:not(.search-open)) { scroll-snap-type: y proximity; }
-	body[data-page="home"] .shell { scroll-snap-align: start; }
-	body[data-page="home"] .section > header { scroll-snap-align: start; scroll-margin-top: calc(env(safe-area-inset-top) + 62px); }
-}
