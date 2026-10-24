@@ -68,7 +68,10 @@ const nonceOf = (provider) => {
 	try { return JSON.parse(sessionStorage.getItem(provider === "google" ? GOOGLE_PENDING_KEY : PENDING_KEY) ?? "null")?.nonce ?? null; } catch { return null; }
 };
 
-/** @param {{ onChange: () => void, notify: (text: string, o?: object) => void, desktop: boolean }} ctx  onChange: someone signed in or out */
+/**
+ * @param {{ onChange: () => void, notify: (text: string, o?: object) => void, desktop: boolean, redrawn?: () => void }} ctx
+ *   onChange: someone signed in or out; redrawn: the page drew itself again (its heading is a new element)
+ */
 export function accountView(ctx) {
 	st.cancel?.();
 	st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
@@ -135,7 +138,10 @@ function content(ctx) {
 }
 
 function draw(root, ctx) {
-	if (root.isConnected) root.innerHTML = content(ctx);
+	if (!root.isConnected) return;
+	root.innerHTML = content(ctx);
+	// The heading was drawn anew: the large title follows the new one.
+	ctx.redrawn?.();
 }
 
 /** Back from GitHub on this page: the GitHub sign-in, who it is, then a Zaideih session (added to the account with Add GitHub). */

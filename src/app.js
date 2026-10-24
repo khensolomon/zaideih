@@ -1,5 +1,6 @@
 import { analytics } from "./core/analytics.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
+import { StorageError } from "./core/db.js";
 import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
@@ -45,7 +46,7 @@ route("library", V.libraryView);
 route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
-route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop" }));
+route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -105,9 +106,11 @@ function watchLargeTitle() {
 	const heading = $("#view h1:not(.sr)");
 	bar.classList.toggle("titled", !heading);
 	if (!heading || typeof IntersectionObserver !== "function") return;
+	// Under the bar: above its bottom edge, measured (it sits lower under a notch).
+	const edge = Math.round(bar.getBoundingClientRect().bottom) || 72;
 	titleObserver = new IntersectionObserver(([entry]) => {
-		bar.classList.toggle("titled", !entry.isIntersecting && entry.boundingClientRect.top < 80);
-	}, { rootMargin: "-72px 0px 0px 0px" });
+		bar.classList.toggle("titled", !entry.isIntersecting && entry.boundingClientRect.top < edge + 8);
+	}, { rootMargin: `-${edge}px 0px 0px 0px` });
 	titleObserver.observe(heading);
 }
 
@@ -1399,9 +1402,21 @@ addEventListener("online", () => { setOnline(); notify("Back online"); });
 addEventListener("offline", () => { setOnline(); notify("You're offline. Downloaded songs still play."); });
 
 /* =================================================================== boot */
+const START_LIMIT_MS = 20_000;
+
+/** The parts the app starts with, all of them; an error naming those not ready after START_LIMIT_MS. */
+function startParts(parts) {
+	const pending = new Set(parts.map(([name]) => name));
+	const all = Promise.all(parts.map(([name, p]) => p.then((v) => { pending.delete(name); return v; })));
+	let timer = 0;
+	const late = new Promise((_, reject) => {
+		timer = setTimeout(() => reject(new StorageError(`Zaideih did not finish starting: still waiting for ${[...pending].join(" and ")}. Close Zaideih completely and open it again.`)), START_LIMIT_MS);
+	});
+	return Promise.race([all, late]).finally(() => clearTimeout(timer));
+}
 function fatal(err) {
 	console.error(err);
-	const known = err instanceof CatalogLoadError;
+	const known = err instanceof CatalogLoadError || err instanceof StorageError;
 	document.body.innerHTML = html`<div class="fatal" role="alert">
 		<h1>Zaideih couldn't start</h1>
 		<p>${known ? err.message : `Unexpected error: ${err.message}`}</p>
@@ -1426,9 +1441,14 @@ export async function boot(platform) {
 	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
 	setOnline();
 	if (probeOn()) startProbe();
-	// A start that never finishes: the loading screen offers a reload by itself (index.html, .splash-late).
+	// A start that never finishes: the loading screen offers a reload by itself (index.html, .splash-late),
+	// and a part still not ready after START_LIMIT_MS is named in the error.
 	try {
-		const [model] = await Promise.all([loadCatalog(platform.catalogBase), library.init(), offline.init()]);
+		const [model] = await startParts([
+			["the music catalog", loadCatalog(platform.catalogBase)],
+			["the library on this device", library.init()],
+			["the downloads on this device", offline.init()],
+		]);
 		catalog = model;
 	} catch (err) {
 		fatal(err);
