@@ -11,11 +11,11 @@ D1 `member_logins` holds one row per way a member signs in: the provider (`githu
 A sign-in finds its member (`worker/media/accounts.js`):
 
 1. A sign-in seen before belongs to its member.
-2. Adding a sign-in while signed in (`link`) joins the signed-in member, unless the sign-in already belongs to another account (409).
+2. Adding a sign-in while signed in (`link`) joins the signed-in member. When that sign-in already belongs to another member, the two members become one: completing both sign-ins shows one person holds both. The older member stays (its id, so its R2 files keep their place) and takes the other's sign-ins, sessions, uploads, publish requests, rights and storage folder, in one D1 batch; refused while either is blocked.
 3. A sign-in whose provider vouches for an email that exactly one member already has verified joins that member. Every verified address counts (GitHub lists all of a person's addresses; `@users.noreply.github.com` ones are skipped). Two members with that email: neither is guessed; a new member is made.
 4. Otherwise a new member is made.
 
-Only verified emails join members: an unverified address could be anyone's. Signing in with GitHub and Google with the same verified address is one person; with different addresses, the second is added from the first while signed in.
+Only verified emails join members: an unverified address could be anyone's. Signing in with GitHub and Google with the same verified address is one person; with different addresses, the second is added from the first while signed in. A GitHub sign-in's emails are read only when it is exchanged for a session, so a device still holding a session from before the Email addresses permission has none recorded; a Google sign-in then makes a second account, which Add GitHub (or Add Google) joins to the first.
 
 GitHub gives the addresses only when the GitHub App has the Email addresses permission ([setup.md](setup.md#github-app-zaideih-sign-in-suggestions)); without it, or with a fine-grained token without that permission, a GitHub sign-in never joins by email.
 

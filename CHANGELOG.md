@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.5
+
+- Adding a sign-in that already has its own account joins the two accounts into one
+
 ## v26.10.24.4
 
 - Privacy policy: a Google user data section (access, use, sharing, protection, retention and deletion); the home page says what Google sign-in uses
