@@ -120,7 +120,7 @@ export function top(c) {
 		title: "Most played",
 		body: html`<h1 class="page-title">Most played</h1>
 			<p class="lede">The 100 tracks with the most plays across every language.</p>
-			<div class="actions"><button class="btn primary" data-act="play-all" data-list="${registerList(c.topTracks.map((t) => t.id), "Most played")}">${icon("play")} Play all</button></div>
+			<div class="actions"><button class="btn primary" data-page-play="Most played" data-act="play-all" data-list="${registerList(c.topTracks.map((t) => t.id), "Most played")}">${icon("play")} Play all</button></div>
 			${chunkedTracks(c.topTracks, "Most played", { showAlbum: true })}`,
 	};
 }
@@ -194,13 +194,13 @@ export function album(c, { id }) {
 				</div>
 			</div>
 			<div class="actions">
-				<button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
+				<button class="btn primary" data-page-play="${a.title}" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle</button>
 				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}">
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
 				</button>
 				${a.upload ? "" : editLink({ album: a.id })}
-				<button class="icon-btn" data-act="list-menu" data-list="${key}" aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
+				<button class="icon-btn" data-act="list-menu" data-list="${key}" ${a.upload ? "" : html`data-share="album/${a.id}" data-share-title="${a.title}"`} aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
 			${a.upload && a.named ? publishRow(c, a) : ""}
 			${chunkedTracks(a.tracks, a.title)}`,
@@ -263,8 +263,9 @@ export function artist(c, { id }) {
 				</div>
 			</div>
 			<div class="actions">
-				<button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play popular</button>
+				<button class="btn primary" data-page-play="${a.name}" data-act="play-all" data-list="${key}">${icon("play")} Play popular</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle all</button>
+				<button class="icon-btn" data-act="share" data-share="artist/${a.id}" data-share-title="${a.name}" aria-label="Share" title="Share">${icon("share")}</button>
 				${editLink({ artist: a.id })}
 			</div>
 			<section class="section" style="margin-top:12px">
@@ -391,7 +392,7 @@ function lyricHits(c, q) {
 	if (!hits.length) return "";
 	const key = registerList(hits.map((h) => h.t.id), `Lyrics: ${q}`);
 	return html`<section class="section lyric-hits"><header><h2>In the lyrics</h2><span class="muted">${hits.length}</span></header>
-		<ol class="tracks">${hits.map((h, i) => trackRow(h.t, key, i, { showAlbum: true, sub: html`<span class="lyric-line">“${h.line}”</span>${h.lang ? html` <span class="muted">(${LYRICS_LANGS[h.lang]})</span>` : ""}` }))}</ol></section>`;
+		<ol class="tracks">${hits.map((h, i) => trackRow(h.t, key, i, { showAlbum: true, thumb: true, sub: html`<span class="lyric-line">“${h.line}”</span>${h.lang ? html` <span class="muted">(${LYRICS_LANGS[h.lang]})</span>` : ""}` }))}</ol></section>`;
 }
 
 function answerSection(intent, ans) {
@@ -404,7 +405,7 @@ function answerSection(intent, ans) {
 	const key = registerList(ans.items.map((t) => t.id), title);
 	return html`<section class="section answer">${head}
 		<div class="actions"><button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play all</button></div>
-		${chunkedTracks(ans.items, title, { step: 20, showAlbum: true })}</section>`;
+		${chunkedTracks(ans.items, title, { step: 20, showAlbum: true, thumb: true })}</section>`;
 }
 
 /** Artists, songs and albums sections; `r` supplies the totals for the counts. */
@@ -415,7 +416,7 @@ function resultSections(list, q, r = null) {
 			<div class="artist-grid">${list.artists.slice(0, ARTIST_CARDS).map((a) => artistCard({ artist: a, plays: a.plays }))}</div>
 			${list.artists.length > ARTIST_CARDS ? html`<div class="people" style="margin-top:16px">${list.artists.slice(ARTIST_CARDS).map((a) => html`<a class="${scriptClass(a.name)}" href="${href(`artist/${a.id}`)}">${a.name}</a>`)}</div>` : ""}</section>` : ""}
 		${list.tracks.length ? html`<section class="section"><header><h2>Songs</h2><span class="muted">${count("tracks") > list.tracks.length ? `Top ${list.tracks.length} of ${count("tracks").toLocaleString()}` : count("tracks")}</span></header>
-			${chunkedTracks(list.tracks, `Search: ${q}`, { step: 20, showAlbum: true })}</section>` : ""}
+			${chunkedTracks(list.tracks, `Search: ${q}`, { step: 20, showAlbum: true, thumb: true })}</section>` : ""}
 		${list.albums.length ? html`<section class="section"><header><h2>Albums</h2><span class="muted">${count("albums")}</span></header>
 			${chunkedAlbums(list.albums, { step: 24 })}</section>` : ""}`;
 }
@@ -494,7 +495,7 @@ export async function libraryView(c, { tab }) {
 		const key = registerList(tracks.map((t) => t.id), "Liked songs");
 		body = tracks.length
 			? html`<div class="actions">
-					<button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
+					<button class="btn primary" data-page-play="Liked songs" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
 					<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle</button>
 					<button class="btn" data-act="download" data-list="${key}">${icon("download")} Download all</button>
 				</div>${chunkedTracks(tracks, "Liked songs", { showAlbum: true })}`
@@ -518,7 +519,7 @@ export async function libraryView(c, { tab }) {
 				${offline.state.persisted ? "" : html`<p class="muted">The browser may clear downloads when the device is low on space. Installing the app to the home screen makes this less likely.</p>`}
 			</div>
 			${tracks.length ? html`<div class="actions" style="margin-top:18px">
-					<button class="btn primary" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
+					<button class="btn primary" data-page-play="Downloads" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
 					<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle</button>
 					<button class="btn danger" data-act="remove-download" data-list="${key}" data-confirm="Remove all ${tracks.length} downloaded songs from this device?">${icon("trash")} Remove all</button>
 				</div>${chunkedTracks(tracks, "Downloads", { showAlbum: true })}`
@@ -708,7 +709,7 @@ export function playlist(c, { id }) {
 			</div></div>
 			${missing ? html`<p class="muted">${plural(missing, "song")} in this playlist ${missing === 1 ? "is" : "are"} no longer in the catalog.</p>` : ""}
 			<div class="actions">
-				<button class="btn primary" data-act="play-all" data-list="${key}" ${tracks.length ? "" : "disabled"}>${icon("play")} Play</button>
+				<button class="btn primary" data-page-play="${p.name}" data-act="play-all" data-list="${key}" ${tracks.length ? "" : "disabled"}>${icon("play")} Play</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}" ${tracks.length ? "" : "disabled"}>${icon("shuffle")} Shuffle</button>
 				<button class="btn" data-act="download" data-list="${key}" ${tracks.length ? "" : "disabled"}>${icon("download")} Download</button>
 				<button class="btn" data-act="rename-playlist" data-id="${p.id}">Rename</button>

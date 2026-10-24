@@ -43,6 +43,8 @@ export const lyricsIndex = {
 	/** The languages song `id` has lyrics in, the original first. */
 	langs: (id) => Object.keys(LYRICS_LANGS).filter((l) => songs.get(id)?.has(l)),
 	get size() { return songs.size; },
+	/** The songs with lyrics in their own words (lang ""), as ids. */
+	*originals() { for (const [id, langs] of songs) if (langs.has("")) yield id; },
 	/** The first sung line of song `id`'s own words, as kept for searching, or "". */
 	firstLine: (id) => texts.get(`${id}/`)?.words.split("\n").find((l) => l.trim()) ?? "",
 
