@@ -275,3 +275,38 @@ CREATE TABLE IF NOT EXISTS passkey_challenges (
     rp_id       TEXT    NOT NULL,
     created_at  INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- library_likes, library_playlists, library_sync: Library on every device (sync.js)
+-- =============================================================================
+-- A member's liked songs and playlists, as the devices have sent them. Every
+-- row written in one sync takes the member's new counter (library_sync.seq),
+-- so a device asks for "changed since" the counter it last saw. Song ids are
+-- text: catalog ids, or u<id> for uploads. A deleted playlist stays as a mark
+-- (deleted = 1) so every device removes it. `at` is the device's clock (ms).
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+CREATE TABLE IF NOT EXISTS library_likes (
+    member_id  INTEGER NOT NULL,
+    track      TEXT    NOT NULL,
+    liked      INTEGER NOT NULL,
+    at         INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,
+    PRIMARY KEY (member_id, track)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_library_likes_seq ON library_likes (member_id, seq);
+CREATE TABLE IF NOT EXISTS library_playlists (
+    member_id  INTEGER NOT NULL,
+    uid        TEXT    NOT NULL,            -- 16 hex, made by the device
+    name       TEXT    NOT NULL,
+    tracks     TEXT    NOT NULL,            -- JSON list of song ids
+    deleted    INTEGER NOT NULL DEFAULT 0,
+    at         INTEGER NOT NULL,
+    version    INTEGER NOT NULL,
+    seq        INTEGER NOT NULL,
+    PRIMARY KEY (member_id, uid)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_library_playlists_seq ON library_playlists (member_id, seq);
+CREATE TABLE IF NOT EXISTS library_sync (
+    member_id  INTEGER PRIMARY KEY,
+    seq        INTEGER NOT NULL
+);
