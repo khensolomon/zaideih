@@ -181,9 +181,13 @@ try {
 		if (!tables().includes("lyrics")) fail(`${place} has no lyrics table yet (node tools/d1.mjs schema --apply)`);
 		const lyrics = query("SELECT track, lang, version, updated_at, updated_by, hidden_at, hidden_by, hidden_reason FROM lyrics ORDER BY track, lang");
 		const versions = query("SELECT track, lang, version, text, member_id, at, note FROM lyrics_versions ORDER BY track, lang, version");
-		const backup = lyricsBackup(lyrics, versions, new Date().toISOString());
+		// Shared lyrics came later (migration 0004): a database without the tables has none.
+		const have = tables();
+		const links = have.includes("lyrics_links") ? query("SELECT track, source, member_id, at, unlinked_at, unlinked_by FROM lyrics_links ORDER BY track") : [];
+		const times = have.includes("lyrics_times") ? query("SELECT track, lang, times, member_id, at FROM lyrics_times ORDER BY track, lang") : [];
+		const backup = lyricsBackup(lyrics, versions, new Date().toISOString(), { links, times });
 		const out = values.out ?? join(BUILD, `lyrics-${backup.exported.slice(0, 10)}.json`);
-		console.log(`lyrics     ${backup.lyrics.length} songs (${backup.lyrics.filter((l) => l.hidden).length} hidden), ${backup.versions.length} versions, from ${place}`);
+		console.log(`lyrics     ${backup.lyrics.length} songs (${backup.lyrics.filter((l) => l.hidden).length} hidden), ${backup.versions.length} versions, ${backup.links.filter((k) => !k.unlinked).length} shared, from ${place}`);
 		console.log(`file       ${out}`);
 		if (!values.apply) dryRun("write the file");
 		else {

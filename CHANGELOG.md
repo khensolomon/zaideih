@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.27
+
+- Shared lyrics across recordings
+
 ## v26.10.24.26
 
 - Playing bars, player More, quieter part names

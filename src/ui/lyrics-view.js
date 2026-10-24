@@ -12,11 +12,15 @@
  * A song with translations offers them (Original, English, Myanmar); a
  * translation can be read alone or side by side with the original, part
  * beside part (kept as this device's choice).
+ *
+ * Shared lyrics (ui/lyrics-share.js): a song without lyrics offers the same
+ * song on other albums, to read and, signed in, to use; a shared text names
+ * the other recordings it is shown on.
  */
 import { AUTH_URL } from "../config.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
-import { LYRICS_URL, readLyrics, reportLyrics } from "../core/lyrics.js";
+import { linkLyrics, LYRICS_URL, readLyrics, reportLyrics } from "../core/lyrics.js";
 import { lineAt, parseLyrics, prefersFlats } from "../core/lyrics-format.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
@@ -26,6 +30,7 @@ import { icon } from "./icons.js";
 import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { scriptClass } from "./parts.js";
+import { sharedWithHtml, suggestionsHtml } from "./lyrics-share.js";
 
 const SIZE_KEY = "zaideih.lyrics.size";
 const SIZES = [16, 18, 21, 25];
@@ -54,7 +59,7 @@ export function lyricsView(catalog, id, ctx, lang = "") {
 	const track = catalog.track(id);
 	if (!(lang in LYRICS_LANGS)) lang = "";
 	if (!track || track.upload) return { title: "Lyrics", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
-	st = { id, track, lang, lyrics: undefined, original: null, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
+	st = { catalog, id, track, lang, lyrics: undefined, original: null, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
 	return {
 		title: `Lyrics: ${track.title}${lang ? ` (${LYRICS_LANGS[lang]})` : ""}`,
 		body: html`<div class="ly-root">${content()}</div>`,
@@ -99,7 +104,8 @@ function content() {
 	if (!l) {
 		return html`${header()}${langSwitch()}
 			${st.error ? html`<p class="error" role="alert">${st.error}</p>` : html`<div class="empty ly-empty"><h2>No lyrics yet</h2><p>${signedIn ? "Know the words? Add them for everyone." : "Nobody has added the lyrics of this song yet."}</p></div>`}
-			${signedIn ? html`<p><a class="btn primary" href="${studio}">${icon("edit")} Add lyrics</a></p>` : AUTH_URL ? html`<p class="acct-small"><a class="text-link" href="#/account">Sign in</a> to add the lyrics.</p>` : ""}`;
+			${signedIn ? html`<p><a class="btn primary" href="${studio}">${icon("edit")} Add lyrics</a></p>` : AUTH_URL ? html`<p class="acct-small"><a class="text-link" href="#/account">Sign in</a> to add the lyrics.</p>` : ""}
+			${st.lang || st.error ? "" : suggestionsHtml(st.catalog, st.track, { canLink: signedIn, attr: "data-ly" })}`;
 	}
 	const p = parsed();
 	const chords = p.chords && chordsShown();
@@ -125,6 +131,7 @@ function content() {
 		</div>
 		${p.timed ? html`<p class="acct-small ly-follow">${following ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : ""}
 		<div style="--ly-size:${SIZES[size]}px">${st.lang && sideShown() && st.original ? sideBySideHtml(st.original, p, { chords, transpose: st.transpose, flats }) : lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
+		${l.shared ? html`<p class="acct-small">${sharedWithHtml(st.catalog, l.shared)}.</p>` : ""}
 		<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}${signedIn && !st.offline ? html` · <button class="link-btn" data-ly="report">Report a problem</button>` : ""}.${!signedIn && AUTH_URL ? html` <a class="text-link" href="#/account">Sign in</a> to correct them.` : ""}</p>`;
 }
 
@@ -173,6 +180,19 @@ function mount(root, ctx) {
 			draw();
 		} else if (what === "smaller" || what === "larger") {
 			setSize(Math.min(SIZES.length - 1, Math.max(0, sizeIndex() + (what === "larger" ? 1 : -1))));
+			draw();
+		} else if (what === "link") {
+			const from = st.catalog.track(Number(b.dataset.to));
+			if (!from) return;
+			if (!(await ctx.confirmAction(`Show the lyrics of “${from.title}” from ${from.album.title} on this song too? Both will show one text; only those who look after lyrics can undo it.`, "Use these lyrics"))) return;
+			try {
+				st.lyrics = await linkLyrics(st.id, from.id);
+				st.parsedOf = null;
+				ctx.notify("Linked: this song now shows those lyrics");
+				lyricsIndex.refresh({ force: true }).catch(() => {});
+			} catch (err) {
+				ctx.notify(`They could not be linked: ${err.message}`, { kind: "error" });
+			}
 			draw();
 		} else if (what === "report") {
 			const reason = await ctx.promptText("What is wrong with these lyrics? Those who look after lyrics will see it.", "", "Report");

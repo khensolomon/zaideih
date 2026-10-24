@@ -115,25 +115,28 @@ export function wranglerRows(stdout) {
 
 /**
  * The lyrics backup (`tools/d1.mjs lyrics`, docs/lyrics.md): what is shown,
- * and every version, per song and language (lang "" the original), as read
- * from D1. Member ids only, no names or emails.
+ * and every version, per song and language (lang "" the original), which
+ * recordings share another's lyrics, and each recording's own timing of a
+ * shared text, as read from D1. Member ids only, no names or emails.
  * Throws when a shown version has no row in the versions (a broken read).
  */
-export function lyricsBackup(lyrics, versions, exportedAt) {
+export function lyricsBackup(lyrics, versions, exportedAt, { links = [], times = [] } = {}) {
 	const key = (r) => `${r.track}/${r.lang ?? ""}:${r.version}`;
 	const kept = new Set(versions.map(key));
 	const lost = lyrics.filter((l) => !kept.has(key(l)));
 	if (lost.length) throw new D1Error(`the versions read do not include the shown lyrics of song(s) ${lost.slice(0, 10).map((l) => l.track).join(", ")}; nothing was written`);
 	return {
-		format: "zaideih-lyrics/2",
+		format: "zaideih-lyrics/3",
 		exported: exportedAt,
 		lyrics: lyrics.map((l) => ({ track: l.track, lang: l.lang ?? "", version: l.version, updated: l.updated_at, by: l.updated_by, hidden: l.hidden_at ? { at: l.hidden_at, by: l.hidden_by, reason: l.hidden_reason } : null })),
 		versions: versions.map((v) => ({ track: v.track, lang: v.lang ?? "", version: v.version, text: v.text, by: v.member_id, at: v.at, note: v.note })),
+		links: links.map((k) => ({ track: k.track, source: k.source, by: k.member_id, at: k.at, unlinked: k.unlinked_at ? { at: k.unlinked_at, by: k.unlinked_by } : null })),
+		times: times.map((t) => ({ track: t.track, lang: t.lang ?? "", times: JSON.parse(t.times), by: t.member_id, at: t.at })),
 	};
 }
 
 /** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
-export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports"]);
+export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times"]);
 
 /**
  * Why a reset must not go ahead, or null: it would lose personal libraries

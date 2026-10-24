@@ -493,6 +493,45 @@ export function clearTimes(text) {
 	return String(text).split("\n").filter((l) => !/^\[offset\s*:/i.test(l.trim())).map((l) => l.replace(/\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]/g, "")).join("\n");
 }
 
+/*
+ * Timing of one recording, apart from the words (docs/lyrics.md, "Shared
+ * lyrics"): recordings sharing one text each keep their own times. Times are
+ * kept per sung line, in the order the lines are written (repeats written
+ * out by a recall are not lines of their own), each a list of seconds.
+ */
+
+/** The text's sung lines, in order, where their times are written. */
+function timedLines(text) {
+	const seen = new Set();
+	const out = [];
+	for (const b of parseLyrics(text).blocks) {
+		if (b.recall) continue;
+		for (const l of b.lines) {
+			if (l.kind !== "words" || l.of || !Number.isInteger(l.src) || seen.has(l.src)) continue;
+			seen.add(l.src);
+			out.push(l);
+		}
+	}
+	return out;
+}
+
+/** The times written in the text, one list per sung line (seconds, to the hundredth); [] when none is timed. */
+export function extractTimes(text) {
+	const times = timedLines(text).map((l) => (l.times ?? []).map((t) => Math.round(t * 100) / 100));
+	return times.some((t) => t.length) ? times : [];
+}
+
+/** The text with these times (from extractTimes) written on its sung lines, in order; other times are taken out. */
+export function applyTimes(text, times) {
+	let out = clearTimes(text);
+	if (!Array.isArray(times) || !times.length) return out;
+	timedLines(out).forEach((l, i) => {
+		const t = times[i];
+		if (Array.isArray(t) && t.length) out = setLineTimes(out, l.src, l.col ?? 0, t);
+	});
+	return out;
+}
+
 /** The detail a line at the top gives ("Key: Eb", "{key: G}"), as its `meta` name, or null. */
 function isDetail(line) {
 	const t = line.trim();

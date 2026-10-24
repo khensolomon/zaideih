@@ -368,3 +368,28 @@ CREATE TABLE IF NOT EXISTS lyrics_reports (
     lang         TEXT    NOT NULL DEFAULT ''   -- last, as migration 0002 adds it
 );
 CREATE INDEX IF NOT EXISTS idx_lyrics_reports_open ON lyrics_reports (resolved_at, track);
+-- lyrics_links: shared lyrics (docs/lyrics.md, "Shared lyrics"). A recording
+-- (track) shows the lyrics of another recording of the same song (source),
+-- in every language; edits on either change the one text. A source is never
+-- itself linked, and a recording with lyrics of its own is never linked.
+-- Unlinking keeps the row (unlinked_at), so the app's index learns of it.
+-- lyrics_times: the timing of one recording of a shared text, apart from the
+-- words: JSON, one list of seconds per sung line (extractTimes).
+-- Added by migrations/0004-lyrics-links.sql on databases from before.
+CREATE TABLE IF NOT EXISTS lyrics_links (
+    track        INTEGER PRIMARY KEY,     -- the recording that shows the lyrics
+    source       INTEGER NOT NULL,        -- the recording that has them
+    member_id    INTEGER NOT NULL,        -- who linked
+    at           INTEGER NOT NULL,
+    unlinked_at  INTEGER,
+    unlinked_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lyrics_links_source ON lyrics_links (source);
+CREATE TABLE IF NOT EXISTS lyrics_times (
+    track      INTEGER NOT NULL,
+    lang       TEXT    NOT NULL DEFAULT '',
+    times      TEXT    NOT NULL,
+    member_id  INTEGER NOT NULL,
+    at         INTEGER NOT NULL,
+    PRIMARY KEY (track, lang)
+) WITHOUT ROWID;
