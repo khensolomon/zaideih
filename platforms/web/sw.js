@@ -75,19 +75,24 @@ async function catalogFile(request) {
 	return res;
 }
 
+/*
+ * Safari refuses a page visit answered with a response that went through a
+ * redirect ("Response served by service worker has redirections"), which a
+ * cached copy can be (privacy.html is redirected to /privacy by Cloudflare):
+ * such a response is answered as a plain copy of itself.
+ */
+const plain = async (res) => (res.redirected ? new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers }) : res);
+
 async function shell(request) {
 	const cache = await caches.open(SHELL);
-	const hit = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
-	if (hit) return hit;
-	if (request.mode === "navigate") {
-		// A page with a file of its own (privacy → privacy.html) is that file; every other address is the app.
-		const rel = new URL(request.url).pathname.slice(scope.pathname.length).replace(/\/$/, "");
-		if (rel && rel !== "index.html") {
-			const page = await cache.match(new URL(rel.endsWith(".html") ? rel : `${rel}.html`, scope).href);
-			if (page) return page;
-		}
+	const navigate = request.mode === "navigate";
+	// A page with an address of its own (privacy, precached under it) is that page; every other address is the app.
+	const hit = await cache.match(request, { ignoreSearch: navigate });
+	if (hit) return navigate ? plain(hit) : hit;
+	if (navigate) {
 		const index = await cache.match(new URL("./", scope).href);
-		if (index) return index;
+		if (index) return plain(index);
+		return plain(await fetch(request));
 	}
 	return fetch(request);
 }

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.7
+
+- Installed app: the privacy page opens (no stored redirect), the sign-in page appears at its full size at once, and the menus have no scroll bar
+
 ## v26.10.24.6
 
 - Signing in from the app on the home screen: the sign-in opens in its own sheet and the app finishes it, instead of a second copy of the app hanging on the loading screen; Add Google and Add GitHub add to the account again
