@@ -95,16 +95,23 @@ export async function saveLyrics(id, text, base, lang = "") {
 }
 
 /**
- * Shared lyrics (docs/lyrics.md): song `id`, without lyrics of its own,
- * shows those of song `to` (another recording of the same song). Answers its
- * lyrics, with `shared`.
+ * Shared lyrics (docs/lyrics.md), for the Lyrics right: song `id` shows the
+ * lyrics of song `to`. A song with lyrics of its own is merged:
+ * `{ merge: true, keep: "track" | "to" }` names the text kept; `proposal`,
+ * the member's proposal this answers. Answers its lyrics, with `shared`.
  */
-export async function linkLyrics(id, to) {
-	const linked = await call("POST", `/${id}/link`, { to });
+export async function linkLyrics(id, to, { merge = false, keep: kept, proposal } = {}) {
+	const linked = await call("POST", `/${id}/link`, { to, ...(merge ? { merge: true, keep: kept } : {}), ...(proposal ? { proposal } : {}) });
 	const lyrics = { version: linked.version, text: linked.text, updated: linked.updated, shared: linked.shared ?? null };
 	await keep(id, lyrics);
 	return lyrics;
 }
+/** Anyone signed in: proposes that song `id` is the same song as `to`; the Lyrics right decides. */
+export const proposeSameSong = (id, to, note = "") => call("POST", `/${id}/propose`, { to, note });
+/** The Lyrics right: both copies, `{ a, b }` with text, versions, people, updated, langs, reports. */
+export const compareLyrics = (id, other) => call("GET", `/${id}/compare?with=${other}`);
+/** The Lyrics right: a proposal declined, with the reason the member sees. */
+export const declineProposal = (id, proposal, reason) => call("POST", `/${id}/decline`, { proposal, reason });
 /** The Lyrics right: song `id` no longer shows another's lyrics; with `copy`, it keeps a copy as its own. */
 export const unlinkLyrics = (id, copy) => call("POST", `/${id}/unlink`, { copy: Boolean(copy) });
 

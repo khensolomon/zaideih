@@ -18,7 +18,7 @@
  */
 import { AUTH_URL } from "../config.js";
 import { html } from "../core/html.js";
-import { dropDraft, hideLyrics, keepDraft, linkLyrics, LYRICS_URL, lyricsVersions, readDraft, readLyrics, resolveReports, restoreLyrics, saveLyrics, showLyrics, unlinkLyrics } from "../core/lyrics.js";
+import { compareLyrics, dropDraft, hideLyrics, keepDraft, linkLyrics, proposeSameSong, LYRICS_URL, lyricsVersions, readDraft, readLyrics, resolveReports, restoreLyrics, saveLyrics, showLyrics, unlinkLyrics } from "../core/lyrics.js";
 import { clearTimes, DETAILS, hasSheetSyllables, joinSyllables, looksZawgyi, lrcTime, parseLyrics, setDetail, setLineTimes, splitDetails } from "../core/lyrics-format.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
@@ -30,6 +30,8 @@ import { icon } from "./icons.js";
 import { creditsHtml, detailChips, formatHint, guideHtml, lyricsHtml } from "./lyrics-render.js";
 import { scriptClass } from "./parts.js";
 import { sharedWithHtml, suggestionsHtml, wireFind } from "./lyrics-share.js";
+import { compareWords, suggestKeep } from "../core/lyrics-merge.js";
+import { creditOf } from "../core/catalog.js";
 
 const MAX = 20_000;
 const DRAFT_MS = 300;
@@ -126,9 +128,10 @@ function banners(ctx) {
 			${linked && ctx.canModerate() ? html`<button class="btn" data-st="unlink-copy">Give it a copy of its own</button><button class="link-btn" data-st="unlink">Unlink</button>` : ""}</div>`);
 	}
 	if (!st.server && !st.lang && !st.text.trim()) {
-		const offer = suggestionsHtml(st.catalog, st.track, { canLink: true, attr: "data-st" });
+		const offer = suggestionsHtml(st.catalog, st.track, sameOpts(ctx));
 		if (offer) out.push(offer);
 	}
+	if (st.compare) out.push(mergePanel());
 	if (st.draft) {
 		out.push(html`<div class="st-banner"><p>Continuing your draft from ${clock(st.draft.at)}.${st.draft.newer ? html` Someone saved version ${st.server.version} since: saving will show you theirs to compare.` : ""}</p><button class="link-btn" data-st="discard">Discard draft</button></div>`);
 	}
@@ -257,7 +260,59 @@ function timing() {
 		</div>`;
 }
 
-function history() {
+/**
+ * The same song elsewhere (ui/lyrics-share.js), by who is looking and what
+ * this song has: without lyrics, the Lyrics right uses another's and a
+ * member proposes; with its own, the Lyrics right compares to merge.
+ */
+function sameOpts(ctx) {
+	const mod = ctx.canModerate();
+	const shared = st.server?.shared;
+	const own = Boolean(st.server) && (!shared || shared.source === st.id);
+	return {
+		act: own ? (mod ? "compare" : null) : mod ? "link" : "propose",
+		attr: "data-st",
+		canFind: true,
+		exclude: shared ? [shared.source, ...shared.with] : [],
+		title: own ? "Same song as another?" : undefined,
+	};
+}
+
+/** One copy in the merge panel: its song, what it has, and the choice to keep it. */
+function mergeCopy(c, value, worth, suggested) {
+	const t = st.catalog.track(c.track);
+	const checked = st.compare.keep === value;
+	return html`<label class="st-merge-copy${checked ? " on" : ""}">
+		<input type="radio" name="keep" value="${value}" ${checked ? "checked" : ""} data-st="merge-keep">
+		<span class="st-merge-head"><b>${value === "track" ? "Keep this song's text" : "Keep the other text"}</b>${suggested ? html` <span class="st-suggested">Suggested</span>` : ""}</span>
+		<span class="st-merge-song ${scriptClass(t?.title ?? "")}">${t ? html`${t.title} · ${t.album.title} · ${creditOf(t.artists, 2)}` : `Song ${c.track}`}${c.source !== c.track ? ` (shows song ${c.source}'s text)` : ""}</span>
+		<span class="st-merge-worth">${worth.reasons.join(" · ")}</span>
+	</label>`;
+}
+
+/** Comparing this song's lyrics with another song's, to merge them into one text. */
+function mergePanel() {
+	const c = st.compare;
+	if (c.loading) return html`<section class="st-merge" aria-busy="true"><p>Comparing the two…</p></section>`;
+	const other = st.catalog.track(c.b.track);
+	const d = c.diff;
+	return html`<section class="st-merge" aria-label="Merge">
+		<h2>Merge with “${other?.title ?? `song ${c.b.track}`}”</h2>
+		<p>${d.same ? "The same words, line by line: nothing is lost by merging." : html`The words differ: <b>${d.onlyA.length}</b> line${d.onlyA.length === 1 ? "" : "s"} only in this song, <b>${d.onlyB.length}</b> only in the other.`} Chords, times, repeat marks and spacing are not counted.</p>
+		${d.same ? "" : html`<details class="st-merge-diff" open><summary>What differs</summary><div class="st-merge-cols">
+			<div><h3>Only in this song</h3>${d.onlyA.length ? html`<ul>${d.onlyA.map((l) => html`<li class="${scriptClass(l)}">${l}</li>`)}</ul>` : html`<p class="muted">Nothing</p>`}</div>
+			<div><h3>Only in the other</h3>${d.onlyB.length ? html`<ul>${d.onlyB.map((l) => html`<li class="${scriptClass(l)}">${l}</li>`)}</ul>` : html`<p class="muted">Nothing</p>`}</div>
+		</div></details>`}
+		<div class="st-merge-pick" role="radiogroup" aria-label="Which text stays">
+			${mergeCopy(c.a, "track", c.worth.a, c.suggest === "track")}
+			${mergeCopy(c.b, "to", c.worth.b, c.suggest === "to")}
+		</div>
+		<p class="acct-small">One text for both from then on. The other text and its history stay with its song, hidden, and “Give it a copy of its own” brings them back. Each recording keeps its own timing.</p>
+		<div class="actions"><button class="btn primary" data-st="merge-do">Merge</button><button class="link-btn" data-st="merge-cancel">Cancel</button></div>
+	</section>`;
+}
+
+function history(ctx) {
 	const h = st.history;
 	if (!h) return html`<p class="muted" aria-busy="true">Reading the versions…</p>`;
 	return html`<div class="st-history">
@@ -272,6 +327,11 @@ function history() {
 			<pre class="ly-text ${scriptClass(v.text)}">${v.text}</pre>
 			${v.version !== h.version ? html`<button class="btn" data-st="restore" data-version="${v.version}">Restore version ${v.version}</button>` : ""}
 		</details></li>`)}</ol>` : html`<p class="muted">No versions yet.</p>`}
+		${h.own?.length ? html`<h2>This song's own text, before it was merged</h2><ol class="ly-versions">${h.own.map((v) => html`<li><details>
+			<summary><b>Version ${v.version}</b> by ${v.by.name}, ${day(v.at)}${v.note ? html` <span class="muted">(${v.note})</span>` : ""}</summary>
+			<pre class="ly-text ${scriptClass(v.text)}">${v.text}</pre>
+		</details></li>`)}</ol>` : ""}
+		${st.lang || st.compare ? "" : suggestionsHtml(st.catalog, st.track, sameOpts(ctx))}
 	</div>`;
 }
 
@@ -469,6 +529,25 @@ function mount(root, ctx) {
 			draw();
 		}
 	};
+	/** Compares this song's lyrics with song `other`'s, for merging (the Lyrics right). */
+	const openCompare = async (other) => {
+		st.compare = { loading: true };
+		draw();
+		root.querySelector(".st-merge")?.scrollIntoView({ block: "start", behavior: "smooth" });
+		await guarded(async () => {
+			try {
+				const { a, b } = await compareLyrics(st.id, other);
+				if (!a || !b) throw new Error(!a ? "this song has no lyrics to merge" : `song ${other} has no lyrics to merge with`);
+				const worth = suggestKeep(a, b, Math.floor(Date.now() / 1000));
+				const suggest = worth.keep === "a" ? "track" : "to";
+				st.compare = { a, b, diff: compareWords(a.text, b.text), worth, suggest, keep: suggest };
+			} catch (err) {
+				st.compare = null;
+				throw err;
+			}
+		});
+	};
+
 	/** After a decision of the Lyrics right: the saved lyrics and the versions again. */
 	const refresh = async (done) => {
 		const { lyrics } = await readLyrics(st.id, st.lang);
@@ -550,6 +629,33 @@ function mount(root, ctx) {
 				reparse();
 				await dropDraft(st.id, st.lang);
 				ctx.notify("Linked: this song now shows those lyrics");
+				lyricsIndex.refresh({ force: true }).catch(() => {});
+				forgetNpLyrics(st.id);
+			});
+		} else if (what === "propose") {
+			const other = st.catalog.track(Number(b.dataset.to));
+			if (!other || !(await ctx.confirmAction(`“${st.track.title}” is the same song as “${other.title}” (${other.album.title})? Those who look after lyrics will check and link them.`, "Send"))) return;
+			await guarded(async () => {
+				await proposeSameSong(st.id, other.id);
+				ctx.notify("Thank you: sent to those who look after lyrics");
+			});
+		} else if (what === "compare") {
+			await openCompare(Number(b.dataset.to));
+		} else if (what === "merge-cancel") {
+			st.compare = null;
+			draw();
+		} else if (what === "merge-do") {
+			const c = st.compare;
+			const other = st.catalog.track(c.b.track);
+			if (!(await ctx.confirmAction(`Merge with “${other?.title ?? c.b.track}”, keeping ${c.keep === "track" ? "this song's" : "the other"} text?`, "Merge"))) return;
+			await guarded(async () => {
+				await linkLyrics(st.id, c.b.track, { merge: true, keep: c.keep, proposal: st.proposal });
+				const { lyrics } = await readLyrics(st.id, st.lang);
+				Object.assign(st, { server: lyrics, base: lyrics?.version ?? 0, draft: null, compare: null, history: null, proposal: null });
+				setText(lyrics?.text ?? "");
+				reparse();
+				if (st.mode === "history") await loadHistory();
+				ctx.notify("Merged: one text for both");
 				lyricsIndex.refresh({ force: true }).catch(() => {});
 				forgetNpLyrics(st.id);
 			});
@@ -646,8 +752,11 @@ function mount(root, ctx) {
 	// The original, beside a translation: open or closed as the writer left it.
 	root.addEventListener("toggle", (e) => { if (e.target.classList?.contains("st-ref")) st.refOpen = e.target.open; }, true);
 	root.addEventListener("input", (e) => { if (e.target.id === "st-text") changed(st.head + e.target.value); });
-	// Finding the same song to use its lyrics (an empty song): results as the person types.
-	wireFind(root, st.catalog, st.track, { canLink: true, attr: "data-st" });
+	// Finding the same song: results as the person types, offering what fits who is looking.
+	wireFind(root, st.catalog, st.track, () => sameOpts(ctx));
+	root.addEventListener("change", (e) => {
+		if (e.target.dataset?.st === "merge-keep" && st.compare) { st.compare.keep = e.target.value; draw(); }
+	});
 	root.addEventListener("keyup", (e) => { if (e.target.id === "st-text") caretPlus(); });
 	root.addEventListener("pointerup", (e) => { if (e.target.id === "st-text") caretPlus(); });
 	root.addEventListener("focusin", (e) => { if (e.target.id === "st-text") { document.body.classList.add("st-typing"); caretPlus(); } });
@@ -703,6 +812,9 @@ function mount(root, ctx) {
 		st.loading = false;
 		reparse();
 		draw();
-		root.querySelector("#st-text")?.focus({ preventScroll: true });
+		// Opened to compare with another song (the admin's Waiting list, the lyrics page).
+		st.proposal = ctx.proposal ?? null;
+		if (ctx.merge && ctx.canModerate() && st.server) await openCompare(ctx.merge);
+		else root.querySelector("#st-text")?.focus({ preventScroll: true });
 	})();
 }

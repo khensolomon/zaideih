@@ -21,7 +21,7 @@
 import { AUTH_URL } from "../config.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
-import { linkLyrics, LYRICS_URL, readLyrics, reportLyrics } from "../core/lyrics.js";
+import { linkLyrics, LYRICS_URL, proposeSameSong, readLyrics, reportLyrics } from "../core/lyrics.js";
 import { lineAt, parseLyrics, prefersFlats } from "../core/lyrics-format.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
@@ -125,6 +125,25 @@ function nextNotice() {
 	return html`<div class="ly-next" role="status"><span>Now playing <b class="${scriptClass(t.title)}">${t.title}</b></span><a class="btn ly-small" href="${href(`lyrics/${t.id}`)}">${has ? "Its lyrics" : "Its page"}</a></div>`;
 }
 
+/**
+ * The same song elsewhere (ui/lyrics-share.js), by who is looking: the
+ * Lyrics right uses lyrics (or, when this song has its own, compares in the
+ * studio); a member proposes; a listener only reads.
+ */
+function sameOpts(ctx) {
+	const signedIn = Boolean(AUTH_URL && account().signedIn);
+	const mod = signedIn && ctx.canModerate?.();
+	const own = Boolean(st.lyrics);
+	const group = st.lyrics?.shared ? [st.lyrics.shared.source, ...st.lyrics.shared.with] : [];
+	return {
+		act: mod ? (own ? "compare" : "link") : signedIn ? "propose" : null,
+		attr: "data-ly",
+		canFind: signedIn,
+		exclude: group,
+		title: own ? "Same song as another?" : undefined,
+	};
+}
+
 function content() {
 	if (!LYRICS_URL) return html`${header()}<p class="muted">Lyrics are not available in this version of the app.</p>`;
 	if (st.lyrics === undefined && !st.error) return html`${header()}<p class="muted" aria-busy="true">Reading the lyrics…</p>`;
@@ -135,7 +154,7 @@ function content() {
 		return html`${header()}${nextNotice()}${langSwitch()}
 			${st.error ? html`<p class="error" role="alert">${st.error}</p>` : html`<div class="empty ly-empty"><h2>No lyrics yet</h2><p>${signedIn ? "Know the words? Add them for everyone." : "Nobody has added the lyrics of this song yet."}</p></div>`}
 			${signedIn ? html`<p><a class="btn primary" href="${studio}">${icon("edit")} Add lyrics</a></p>` : AUTH_URL ? html`<p class="acct-small"><a class="text-link" href="#/account">Sign in</a> to add the lyrics.</p>` : ""}
-			${st.lang || st.error ? "" : suggestionsHtml(st.catalog, st.track, { canLink: signedIn, attr: "data-ly" })}`;
+			${st.lang || st.error ? "" : suggestionsHtml(st.catalog, st.track, sameOpts(st.ctx))}`;
 	}
 	const p = parsed();
 	const chords = p.chords && chordsShown();
@@ -163,13 +182,15 @@ function content() {
 		${p.timed ? html`<p class="acct-small ly-follow">${following ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : ""}
 		<div style="--ly-size:${SIZES[size]}px">${st.lang && sideShown() && st.original ? sideBySideHtml(st.original, p, { chords, transpose: st.transpose, flats }) : lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
 		${l.shared ? html`<p class="acct-small">${sharedWithHtml(st.catalog, l.shared)}.</p>` : ""}
-		<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}${signedIn && !st.offline ? html` · <button class="link-btn" data-ly="report">Report a problem</button>` : ""}.${!signedIn && AUTH_URL ? html` <a class="text-link" href="#/account">Sign in</a> to correct them.` : ""}</p>`;
+		<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}${signedIn && !st.offline ? html` · <button class="link-btn" data-ly="report">Report a problem</button>` : ""}${signedIn && !st.offline && !st.lang ? html` · <button class="link-btn" data-ly="same" aria-expanded="${String(Boolean(st.findOpen))}">Same song as another?</button>` : ""}.${!signedIn && AUTH_URL ? html` <a class="text-link" href="#/account">Sign in</a> to correct them.` : ""}</p>
+		${st.findOpen && !st.lang ? suggestionsHtml(st.catalog, st.track, sameOpts(st.ctx)) : ""}`;
 }
 
 function mount(root, ctx) {
 	const mine = st;
 	// Finding the same song to use its lyrics (a song without lyrics): results as the person types.
-	wireFind(root, st.catalog, st.track, { canLink: true, attr: "data-ly" });
+	st.ctx = ctx;
+	wireFind(root, st.catalog, st.track, () => sameOpts(ctx));
 	const draw = () => {
 		if (st !== mine || !root.isConnected) return;
 		root.innerHTML = content();
@@ -217,6 +238,22 @@ function mount(root, ctx) {
 		} else if (what === "smaller" || what === "larger") {
 			setSize(Math.min(SIZES.length - 1, Math.max(0, sizeIndex() + (what === "larger" ? 1 : -1))));
 			draw();
+		} else if (what === "same") {
+			st.findOpen = !st.findOpen;
+			draw();
+			if (st.findOpen) root.querySelector(".ly-same")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+		} else if (what === "propose") {
+			const other = st.catalog.track(Number(b.dataset.to));
+			if (!other) return;
+			if (!(await ctx.confirmAction(`“${st.track.title}” is the same song as “${other.title}” (${other.album.title})? Those who look after lyrics will check and link them.`, "Send"))) return;
+			try {
+				await proposeSameSong(st.id, other.id);
+				ctx.notify("Thank you: sent to those who look after lyrics");
+			} catch (err) {
+				ctx.notify(`It could not be sent: ${err.message}`, { kind: "error" });
+			}
+		} else if (what === "compare") {
+			location.hash = href(`lyrics/${st.id}/studio`, { merge: b.dataset.to });
 		} else if (what === "link") {
 			const from = st.catalog.track(Number(b.dataset.to));
 			if (!from) return;

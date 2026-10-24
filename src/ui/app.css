@@ -1790,3 +1790,26 @@ img.acct-avatar { object-fit: cover; }
 @keyframes track-flash { from { background: rgb(255 255 255 / 0.22); } }
 /* Now playing: the sleep timer's moon, lit while it runs. */
 .sheet .sleep-btn[aria-pressed="true"] { color: var(--accent); background: rgb(255 255 255 / 0.1); }
+
+/* Merging two songs' lyrics (studio, the Lyrics right): what differs, and which text stays. */
+.st-merge { display: grid; gap: 12px; margin: 0 0 18px; padding: 18px; border-radius: var(--radius-m); background: var(--surface); }
+.st-merge h2 { margin: 0; font-size: 18px; }
+.st-merge p { margin: 0; }
+.st-merge-diff summary { cursor: pointer; font-weight: 600; }
+.st-merge-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; margin-top: 10px; }
+.st-merge-cols h3 { margin: 0 0 6px; font-size: 13px; color: var(--ink-3); font-weight: 600; }
+.st-merge-cols ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.st-merge-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.st-merge-copy { position: relative; display: grid; gap: 4px; padding: 12px 14px 12px 40px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; }
+.st-merge-copy.on { border-color: var(--ink); background: rgb(255 255 255 / 0.05); }
+.st-merge-copy input { position: absolute; left: 14px; top: 15px; accent-color: var(--accent); }
+.st-merge-song { font-size: 14px; color: var(--ink-2); }
+.st-merge-worth { font-size: 13px; color: var(--ink-3); }
+.st-suggested { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11.5px; font-weight: 700; }
+.st-merge .actions { display: flex; align-items: center; gap: 14px; }
+
+/* Admin, Lyrics: proposals that two songs are the same, waiting. */
+.adm-proposals { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 8px; }
+.adm-proposals li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; border-radius: 12px; background: var(--surface); }
+.adm-proposals .adm-row-text > span small { margin-left: 6px; color: var(--ink-3); }
+.adm-proposals .adm-actions { margin: 0; }

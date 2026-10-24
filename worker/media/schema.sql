@@ -393,3 +393,20 @@ CREATE TABLE IF NOT EXISTS lyrics_times (
     at         INTEGER NOT NULL,
     PRIMARY KEY (track, lang)
 ) WITHOUT ROWID;
+-- lyrics_proposals: a member's proposal that `track` is the same song as
+-- `target` (shared lyrics). The Lyrics right links or merges them (status
+-- done) or declines with a reason (declined). One open proposal per member
+-- and song. Added by migrations/0005-lyrics-proposals.sql.
+CREATE TABLE IF NOT EXISTS lyrics_proposals (
+    id           INTEGER PRIMARY KEY,
+    track        INTEGER NOT NULL,
+    target       INTEGER NOT NULL,
+    member_id    INTEGER NOT NULL,
+    note         TEXT    NOT NULL DEFAULT '',
+    at           INTEGER NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'open',   -- open, done, declined
+    decided_by   TEXT,
+    decided_at   INTEGER,
+    reason       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lyrics_proposals_open ON lyrics_proposals (status, at);

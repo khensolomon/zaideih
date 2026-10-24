@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.32
+
+- Lyrics: same-song proposals, compare and merge
+
 ## v26.10.24.31
 
 - Lyrics: part names clearly smaller and dimmer
