@@ -48,10 +48,12 @@ Optional Actions variables: `SITE_URL` (the address whose version is checked aft
 - **Why**: sign in with GitHub on the admin page, and pull requests opened for people without write access.
 - **Get it**: github.com/settings/apps/new, owned by the repository's owner.
   - Callback URL `https://media.zaideih.com/auth/callback`; Expire user authorization tokens on; OAuth during installation off; Device Flow off; Webhook off.
-  - Repository permissions: Contents **read and write**, Pull requests **read and write**, Checks **read** (Metadata read is added). Nothing else.
+  - Repository permissions: Contents **read and write**, Pull requests **read and write**, Checks **read** (Metadata read is added).
+  - Account permissions: Email addresses **read-only**, so a GitHub sign-in and a Google sign-in with the same verified email are one account ([accounts.md](accounts.md)). Nothing else.
   - Where it can be installed: **Any account** (otherwise only its owner can sign in).
   - After creating it: Install App, on the owner's account, only the `zaideih` repository.
-- **Public values**, in `worker/media/wrangler.toml`: `GITHUB_CLIENT_ID` (the App's Client ID) and `GITHUB_REPO`.
+- **Public values**, in `worker/media/wrangler.toml`: `GITHUB_CLIENT_ID` (the App's Client ID), `GITHUB_REPO`, and `OWNER_GITHUB_ID`, the owner's numeric GitHub id (`gh api repos/khensolomon/zaideih --jq .owner.id`), whose account holds every right.
+- **Adding a permission later** (as Email addresses was, 2026-10-24): the App's page, Permissions & events, Account permissions, Email addresses: Read-only, Save changes. Each person accepts it at their next GitHub sign-in (the owner also under Settings, Applications, Installed GitHub Apps, Zaideih, Review request). Until then their GitHub sign-in works, without the email.
 - **Secrets**, on the Worker (from the repository root):
 
   ```bash

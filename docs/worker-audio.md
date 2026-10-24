@@ -50,12 +50,12 @@ To also delete rows for tracks that are no longer in `media.json`, add `--prune`
 
 ### 4. The D1 schema
 
-The whole schema is one file, `worker/media/schema.sql`, with no migration history. Every statement is idempotent, and `tools/d1.mjs` (from the repository root, using worker/media's wrangler: `npm --prefix worker/media install`) does the rest. Commands other than `status` are dry runs until `--apply`:
+The whole schema is one file, `worker/media/schema.sql`, as it is now; changes it cannot make (renames) are migrations in `worker/media/migrations/`, run once each ([accounts.md](accounts.md#members-from-before-accounts)). Every schema statement is idempotent, and `tools/d1.mjs` (from the repository root, using worker/media's wrangler: `npm --prefix worker/media install`) does the rest. Commands other than `status` are dry runs until `--apply`:
 
 | Command | What it does |
 |---|---|
 | `node tools/d1.mjs status` | Tables and row counts, marking tables that are not in the schema (leftovers to clean up) |
-| `node tools/d1.mjs schema --apply` | Creates what is missing; keeps all data. `release: audio` runs it before deploying |
+| `node tools/d1.mjs schema --apply` | Runs the pending migrations, then creates what is missing; keeps all data. `release: audio` runs it before deploying |
 | `node tools/d1.mjs tracks --apply` | Loads every track path from `assets/data/media.json` (`--prune` also deletes rows not in it). `release: d1` runs it |
 | `node tools/d1.mjs reset --keep-plays --apply` | Drops every table (Cloudflare's own `_cf_*` excepted, old Django tables included), creates the schema and loads the track paths, as one D1 import that either completes or leaves the database as it was |
 
@@ -172,7 +172,7 @@ Answers: 200 `{"accepted": n, "rejected": [[index, reason], ...]}` (reasons `inv
 
 ## Sign in with GitHub
 
-The admin page (`#/admin`) signs people in with the GitHub App "Zaideih" (App ID 5427707, owned by khensolomon, installed on `khensolomon/zaideih` only). GitHub's token endpoint needs the App's client secret, which cannot live in a public page, so the Worker finishes the sign-in (`auth.js`). It keeps no sessions and stores nothing.
+The admin page (`#/admin`) signs people in with the GitHub App "Zaideih" (App ID 5427707, owned by khensolomon, installed on `khensolomon/zaideih` only). GitHub's token endpoint needs the App's client secret, which cannot live in a public page, so the Worker finishes the sign-in (`auth.js`). The GitHub tokens stay on the device; for its own routes (personal libraries) the Worker gives a Zaideih session instead (`POST /auth/session`, [accounts.md](accounts.md#sessions)).
 
 1. The page keeps a PKCE verifier and a nonce for its tab and opens `/auth/login?return=<page>&nonce=<n>&challenge=<S256>`; the Worker sends the browser on to GitHub.
 2. GitHub returns to `/auth/callback`; the Worker returns to `<page>#/admin?signin=<code>&nonce=<n>` (or `signin-error=<reason>`). The page checks the nonce and removes the code from the address.
@@ -184,10 +184,10 @@ Setup, once:
 
 | Where | Setting |
 |-------|---------|
-| GitHub App | Callback URL `https://media.zaideih.com/auth/callback`; user tokens expire; webhook off; installable on any account (otherwise only the owner can sign in); installed on `zaideih` only |
+| GitHub App | Callback URL `https://media.zaideih.com/auth/callback`; user tokens expire; webhook off; installable on any account (otherwise only the owner can sign in); installed on `zaideih` only; account permission Email addresses read-only (joins sign-ins by email, [accounts.md](accounts.md)) |
 | `wrangler.toml` | `GITHUB_CLIENT_ID` (public) and `AUTH_ORIGINS` |
 | Worker secret | `npx wrangler secret put GITHUB_CLIENT_SECRET --config worker/media/wrangler.toml` |
-| `wrangler.toml` | `GITHUB_REPO` and the `SUGGEST_LIMIT` rate limiter |
+| `wrangler.toml` | `GITHUB_REPO`, `OWNER_GITHUB_ID` and the `SUGGEST_LIMIT` rate limiter |
 | Worker secret | `GITHUB_APP_KEY`: the App's private key in PKCS#8 form (`openssl pkcs8 -topk8 -nocrypt -in <key>.pem`), for suggestions |
 
 ### Suggestions
@@ -227,7 +227,7 @@ node tools/d1.mjs schema --apply
 ```bash
 # Members by space used
 npx wrangler d1 execute audio --remote --command \
-  "SELECT m.login, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.github_id GROUP BY m.github_id ORDER BY mb DESC"
+  "SELECT m.name, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.id GROUP BY m.id ORDER BY mb DESC"
 ```
 
 `tools/d1.mjs reset` refuses while the library tables (`members`, `uploads`, `member_rights`, `member_folders`, `publish_requests`, `published_tracks`) hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).

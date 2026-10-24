@@ -2,7 +2,9 @@
  * Sign in with GitHub for the admin page (src/admin), through the GitHub App
  * "Zaideih" (client id GITHUB_CLIENT_ID). GitHub's token endpoint needs the
  * App's client secret, which cannot live in a public page, so these routes
- * finish the sign-in; the Worker keeps no sessions and stores nothing.
+ * finish the sign-in. The GitHub tokens stay on the device; a GitHub token
+ * is exchanged for a Zaideih session (accounts.js) for everything that is
+ * Zaideih's own (personal libraries).
  *
  * Routes (under /auth):
  *   GET  /auth/login     ?return=<page URL>&nonce=<n>&challenge=<PKCE S256>
@@ -14,6 +16,8 @@
  *   POST /auth/refresh   {"refresh_token"}     -> tokens
  *   POST /auth/signout   {"access_token"}      -> 204; revokes the token at GitHub
  *   POST /auth/suggest   a suggestion from someone without write access (suggest.js)
+ *   POST /auth/session   a GitHub token for a Zaideih session (accounts.js)
+ *   POST /auth/session/end  signs a Zaideih session out (accounts.js)
  *   OPTIONS              CORS preflight for AUTH_ORIGINS.
  *
  * Security:
@@ -33,6 +37,8 @@
  */
 
 import { suggest, SuggestError } from "./suggest.js";
+import { handleSession } from "./accounts.js";
+import { MemberError } from "./members.js";
 
 const GITHUB = "https://github.com";
 const API = "https://api.github.com";
@@ -172,13 +178,17 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			return redirect(`${back}#/admin?${answer}`);
 		}
 
-		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest"].includes(route)) {
+		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
 		// Tokens are answered to the admin page's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
 		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
+		if (route === "/auth/session" || route === "/auth/session/end") {
+			const [status, answer] = await handleSession(request, env, route, body, { fetchImpl, nowSeconds: Math.floor(now() / 1000) });
+			return json(status, answer, cors);
+		}
 
 		if (route === "/auth/token") {
 			if (typeof body.code !== "string" || !body.code || !TOKENISH.test(body.verifier ?? "")) throw new AuthError("expected {code, verifier}");
@@ -218,7 +228,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 		if (!res.ok && res.status !== 404) throw new AuthError(`GitHub could not revoke the token: HTTP ${res.status}`, 502);
 		return json(204, null, cors);
 	} catch (err) {
-		if (err instanceof SuggestError) return json(err.status, { error: err.message }, cors);
+		if (err instanceof SuggestError || err instanceof MemberError) return json(err.status, { error: err.message }, cors);
 		if (!(err instanceof AuthError)) {
 			console.error("auth failed", { route, err });
 			return json(500, { error: "sign-in failed on the Worker" }, cors);

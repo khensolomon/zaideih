@@ -14,7 +14,8 @@
  */
 import { AUTH_URL, LIBRARY_URL } from "../config.js";
 import { createSession } from "../admin/session.js";
-import { readWho, TOKEN_KEY } from "./access.js";
+import { readWho } from "./access.js";
+import { AccountError, createAccount } from "./account.js";
 import { emit } from "./store.js";
 import { checkFile, detailsFromName, formatOf, FORMATS, UploadRuleError } from "./upload-rules.js";
 import { readTags, TAG_BYTES } from "./tags.js";
@@ -27,27 +28,22 @@ export class UploadError extends Error {}
 let session = null;
 const signIn = () => (session ??= createSession({ authUrl: AUTH_URL, local: localStorage, tab: sessionStorage }));
 
-/** The sign-in token for the Worker: the GitHub sign-in, or the fine-grained token. */
-async function accountToken() {
-	const who = readWho(localStorage);
-	if (!who) throw new UploadError("sign in with GitHub on the admin page first");
-	if (who.via === "github") return signIn().token();
-	const token = JSON.parse(localStorage.getItem(TOKEN_KEY) ?? "null");
-	if (!token) throw new UploadError("sign in with GitHub on the admin page first");
-	return token;
-}
+/** The Zaideih session (core/account.js), got from this device's GitHub sign-in. */
+let account = null;
+const accountOf = () => (account ??= createAccount({ authUrl: AUTH_URL, local: localStorage, githubToken: () => signIn().token() }));
 
 async function call(method, path, body) {
 	let res;
 	try {
-		res = await fetch(`${LIBRARY_URL}${path}`, {
+		res = await accountOf().send((token) => fetch(`${LIBRARY_URL}${path}`, {
 			method,
-			headers: { Authorization: `Bearer ${await accountToken()}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+			headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
 			body: body ? JSON.stringify(body) : undefined,
 			cache: "no-store",
-		});
+		}));
 	} catch (err) {
 		if (err instanceof UploadError) throw err;
+		if (err instanceof AccountError) throw new UploadError(err.message);
 		throw new UploadError(`the library could not be reached (${err.message})`);
 	}
 	if (res.status === 204) return null;
@@ -225,7 +221,7 @@ export const uploads = {
 			fileName: item.file.name, size: item.file.size, format: item.format, duration: item.duration,
 			title: item.title, artist: item.artist, album: item.album, year: item.year, track: item.track,
 		});
-		const token = await accountToken();
+		const token = await accountOf().token();
 		const base = new URL(LIBRARY_URL).origin;
 		return new Promise((resolve, reject) => {
 			// XMLHttpRequest, because fetch() reports no upload progress.

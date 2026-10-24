@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fakeD1, fakeLimiter, fakeR2, sqlite } from "./helpers/fakes.mjs";
 
 const { checkNewUpload, handleLibrary, handleSignedAudio, looksLike, signedUrl, verifySigned } = await import("../worker/media/library.js");
-const { forgetMembers, roleOf } = await import("../worker/media/members.js");
+const { handleAuth } = await import("../worker/media/auth.js");
 const { default: worker } = await import("../worker/media/script.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
@@ -20,24 +20,50 @@ const github = async (url, init) => {
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response(JSON.stringify({ message: "Bad credentials" }), { status: 401 });
 	if (url.endsWith("/user")) return new Response(JSON.stringify(p.user));
+	if (url.endsWith("/user/emails")) return p.emails ? new Response(JSON.stringify(p.emails)) : new Response("{}", { status: 403 });
 	return new Response(JSON.stringify({ permissions: p.permissions }));
 };
-function setup(extra = {}) {
-	forgetMembers();
+/**
+ * A database as migration 0001 leaves it: everyone in PEOPLE is a member
+ * whose id is their GitHub id, with their GitHub sign-in. `call(token, …)`
+ * signs in with that GitHub token first (POST /auth/session), as the app does.
+ */
+function setup(extra = {}, { seed = true } = {}) {
 	const env = {
 		DB: fakeD1(), BUCKET: fakeR2(), UPLOAD_LIMIT: fakeLimiter(),
-		GITHUB_REPO: "khensolomon/zaideih", AUTH_ORIGINS: ORIGIN,
+		GITHUB_REPO: "khensolomon/zaideih", AUTH_ORIGINS: ORIGIN, OWNER_GITHUB_ID: "1",
+		GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "secret",
 		UPLOAD_MAX_BYTES: "1000", UPLOAD_QUOTA_BYTES: "2500", AUDIO_SIGNING_KEY: "test-signing-key",
 		...extra,
 	};
+	if (seed) {
+		for (const { user } of Object.values(PEOPLE)) {
+			env.DB.raw.prepare("INSERT INTO members (id, name, first_seen, last_seen) VALUES (?, ?, 1, 1)").run(user.id, user.login);
+			env.DB.raw.prepare("INSERT INTO member_logins (provider, subject, member_id, login, created_at, last_used) VALUES ('github', ?, ?, ?, 1, 1)").run(String(user.id), user.id, user.login);
+		}
+	}
 	let clock = 1_800_000_000_000;
-	const call = (token, method, path, body, headers = {}) => {
-		const init = { method, headers: { Origin: ORIGIN, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers } };
+	const sessions = new Map();
+	const signIn = async (token, body = {}) => handleAuth(new Request(`${W}/auth/session`, {
+		method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+	}), env, { fetchImpl: github, now: () => clock });
+	const sessionOf = async (token) => {
+		if (!token || !PEOPLE[token]) return token;
+		if (!sessions.has(token)) {
+			const res = await signIn(token);
+			assert.equal(res.status, 200, await res.clone().text());
+			sessions.set(token, (await res.json()).token);
+		}
+		return sessions.get(token);
+	};
+	const call = async (token, method, path, body, headers = {}) => {
+		const session = await sessionOf(token);
+		const init = { method, headers: { Origin: ORIGIN, ...(session ? { Authorization: `Bearer ${session}` } : {}), ...headers } };
 		if (body !== undefined) init.body = body instanceof Uint8Array ? body : JSON.stringify(body);
 		if (body instanceof Uint8Array) init.headers["Content-Length"] = String(body.length);
-		return handleLibrary(new Request(`${W}${path}`, init), env, { fetchImpl: github, now: () => clock });
+		return handleLibrary(new Request(`${W}${path}`, init), env, { now: () => clock });
 	};
-	return { env, call, tick: (ms) => { clock += ms; } };
+	return { env, call, signIn, sessionOf, tick: (ms) => { clock += ms; } };
 }
 const mp3 = (n) => { const b = new Uint8Array(n); b.set([0x49, 0x44, 0x33]); return b; };
 const song = (extra = {}) => ({ fileName: "Song.mp3", size: 600, format: "mp3", duration: 181.4, title: "Song", artist: "Ann", album: "Tape 1990", year: 1990, track: 1, ...extra });
@@ -49,12 +75,6 @@ async function upload(call, token, details, bytes) {
 	return { id, res: await call(token, "PUT", path, bytes) };
 }
 
-test("roles come from the repository owner and permission", () => {
-	assert.equal(roleOf("KhenSolomon", { pull: true }, "khensolomon/zaideih"), "owner");
-	assert.equal(roleOf("x", { maintain: true }, "khensolomon/zaideih"), "admin");
-	assert.equal(roleOf("x", { push: true }, "khensolomon/zaideih"), "editor");
-	assert.equal(roleOf("x", { pull: true }, "khensolomon/zaideih"), "member");
-});
 
 test("files are recognised by their first bytes", () => {
 	const b = (s, at = 0) => { const a = new Uint8Array(16); a.set([...s].map((c) => c.charCodeAt(0)), at); return a; };
@@ -222,7 +242,7 @@ test("rights: the owner and co-owners give and take them; each right allows its 
 	assert.equal((await call("tok-mod", "POST", "/library/members/5", { blocked: true, reason: "x" })).status, 403);
 
 	// The flag from before rights existed still counts, until Moderate members is taken.
-	env.DB.raw.prepare("UPDATE members SET moderator = 1 WHERE github_id = 99").run();
+	env.DB.raw.prepare("UPDATE members SET moderator = 1 WHERE id = 99").run();
 	assert.equal((await call("tok-spam", "GET", "/library/members")).status, 200);
 	await call("tok-owner", "POST", "/library/members/99", { rights: { moderate: false } });
 	assert.equal((await call("tok-spam", "GET", "/library/members")).status, 403);
@@ -306,7 +326,8 @@ test("library requests need a sign-in, an allowed origin and the setup", { skip 
 	const { call } = setup();
 	assert.equal((await call(null, "GET", "/library")).status, 401);
 	assert.equal((await call("tok-bad", "GET", "/library")).status, 401);
-	const elsewhere = await handleLibrary(new Request(`${W}/library`, { headers: { Origin: "https://evil.example", Authorization: "Bearer tok-ann" } }), setup().env, { fetchImpl: github });
+	const other = setup();
+	const elsewhere = await handleLibrary(new Request(`${W}/library`, { headers: { Origin: "https://evil.example", Authorization: `Bearer ${await other.sessionOf("tok-ann")}` } }), other.env);
 	assert.equal(elsewhere.status, 403);
 	const { call: unset } = setup({ AUDIO_SIGNING_KEY: undefined, UPLOAD_LIMIT: undefined });
 	const res = await unset("tok-ann", "GET", "/library");

@@ -33,7 +33,7 @@ const shapeRequest = (r, extra = {}) => ({
 });
 
 async function requestRow(env, id) {
-	const r = await env.DB.prepare("SELECT p.*, m.login FROM publish_requests p LEFT JOIN members m ON m.github_id = p.owner_id WHERE p.id = ?1").bind(id).first();
+	const r = await env.DB.prepare("SELECT p.*, m.name AS login FROM publish_requests p LEFT JOIN members m ON m.id = p.owner_id WHERE p.id = ?1").bind(id).first();
 	if (!r) throw new LibraryError("no such request", 404);
 	return r;
 }
@@ -82,10 +82,10 @@ async function list(env, me, origin, nowSeconds) {
 	const reviewer = can(me, "review");
 	const rows = (await env.DB.prepare(
 		reviewer
-			? `SELECT p.*, m.login FROM publish_requests p LEFT JOIN members m ON m.github_id = p.owner_id
+			? `SELECT p.*, m.name AS login FROM publish_requests p LEFT JOIN members m ON m.id = p.owner_id
 				WHERE p.status = 'open' OR p.owner_id = ?1 OR p.id IN (SELECT id FROM publish_requests ORDER BY COALESCE(decided_at, created_at) DESC LIMIT ${RECENT})
 				ORDER BY p.status = 'open' DESC, COALESCE(p.decided_at, p.created_at) DESC, p.id DESC`
-			: "SELECT p.*, m.login FROM publish_requests p LEFT JOIN members m ON m.github_id = p.owner_id WHERE p.owner_id = ?1 ORDER BY p.created_at DESC, p.id DESC",
+			: "SELECT p.*, m.name AS login FROM publish_requests p LEFT JOIN members m ON m.id = p.owner_id WHERE p.owner_id = ?1 ORDER BY p.created_at DESC, p.id DESC",
 	).bind(me.id).all()).results ?? [];
 	const out = [];
 	for (const r of rows) {

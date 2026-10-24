@@ -21,6 +21,9 @@ platforms/desktop/out/
 # Database dumps contain user data and must never be committed
 *.sql.gz
 *.sql
+# Schema migrations and the test fixture of an older schema are code, not dumps.
+!worker/media/migrations/*.sql
+!tests/fixtures/schema-*.sql
 !worker/media/schema.sql
 
 # Environment and editors

@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
  * The audio Worker's D1 database ("audio"): schema, track paths and reset.
- * The schema lives in one file, worker/media/schema.sql (no migrations).
+ * The schema lives in one file, worker/media/schema.sql, as it is now;
+ * changes CREATE cannot make (renames) are migrations in
+ * worker/media/migrations/, run once each by `schema`.
  *
  * Commands:
  *   status   Tables and their row counts. Reads only.
- *   schema   Create what the schema has and the database lacks. Keeps all
- *            data. Run by every `release: audio`.
+ *   schema   Run the migrations the database has not had (each as one
+ *            import, recorded in schema_migrations), then create what the
+ *            schema has and the database lacks. Keeps all data. A database
+ *            without a members table gets the schema as it is now, with the
+ *            migrations recorded as run. Run by every `release: audio`.
  *   tracks   Load every track path from assets/data/media.json (upserts).
  *            --prune also deletes rows for tracks not in media.json.
  *   reset    Drop every table (Cloudflare's own _cf_* tables excepted),
@@ -14,9 +19,9 @@
  *            that either completes or leaves the database as it was. When
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
- *            Refuses while personal libraries (members, uploads, member_rights,
- *            member_folders, publish_requests, published_tracks) hold rows,
- *            unless --drop-library: they cannot be rebuilt from git.
+ *            Refuses while personal libraries (members and their sign-ins,
+ *            uploads, rights, folders, publish requests) hold rows, unless
+ *            --drop-library: they cannot be rebuilt from git.
  *
  * Every command except status is a dry run unless --apply is given.
  *
@@ -34,15 +39,16 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { D1Error, LIBRARY_TABLES, isSystemTable, libraryGuard, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
+import { D1Error, LIBRARY_TABLES, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
 import { MediaError, d1Sql, validateMedia } from "./lib/media.mjs";
 
 const DATABASE = "audio";
 const CONFIG = "worker/media/wrangler.toml";
 const SCHEMA = "worker/media/schema.sql";
+const MIGRATIONS = "worker/media/migrations";
 const BUILD = "build/d1";
 
 function fail(message) {
@@ -112,6 +118,14 @@ async function writeBuild(name, sql) {
 	return path;
 }
 
+/** The migration files, in order: [{ name, text }]. */
+async function readMigrations() {
+	const names = (await readdir(MIGRATIONS)).filter((n) => n.endsWith(".sql")).sort();
+	return Promise.all(names.map(async (name) => ({ name, text: await readFile(join(MIGRATIONS, name), "utf8") })));
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
 const dryRun = (what) => console.log(`\ndry run: nothing changed. Re-run with --apply to ${what}.`);
 
 try {
@@ -127,12 +141,23 @@ try {
 		if (missing.length) console.log(`missing from the schema: ${missing.join(", ")} (node tools/d1.mjs schema --apply)`);
 	} else if (command === "schema") {
 		const sql = schemaSql(schemaText);
-		const missing = wanted.filter((t) => !tables().includes(t));
+		const list = tables();
+		const migrations = await readMigrations();
+		const applied = list.includes("schema_migrations") ? query("SELECT name FROM schema_migrations").map((r) => r.name) : [];
+		const plan = migrationPlan({ tables: list, applied, migrations: migrations.map((m) => m.name) });
+		const missing = wanted.filter((t) => !list.includes(t));
+		console.log(`migrations ${plan.run.length ? `run ${plan.run.join(", ")}` : plan.record.length ? `record ${plan.record.join(", ")} as run (a new database gets the schema as it is now)` : "none pending"}`);
 		console.log(`schema     ${SCHEMA}: ${wanted.join(", ")}`);
 		console.log(`missing    ${missing.length ? missing.join(", ") : "no tables (missing indexes are created too)"}`);
-		if (!values.apply) dryRun(`create what is missing in ${place}`);
+		if (!values.apply) dryRun(`migrate ${place} and create what is missing`);
 		else {
+			for (const name of plan.run) {
+				const file = await writeBuild(`migration-${name}`, migrationSql(name, migrations.find((m) => m.name === name).text, nowSeconds()));
+				console.log(`migrating  ${name}`);
+				wrangler(["--yes", "--file", file]);
+			}
 			wrangler(["--yes", "--command", sql]);
+			if (plan.record.length) wrangler(["--yes", "--command", recordMigrationsSql(plan.record, nowSeconds())]);
 			const still = wanted.filter((t) => !tables().includes(t));
 			if (still.length) fail(`after applying the schema these tables are still missing: ${still.join(", ")}`);
 			console.log(`\nschema applied to ${place}`);
@@ -168,7 +193,8 @@ try {
 		else {
 			const saved = values["keep-plays"] && plays > 0 ? query("SELECT track_id, day, n FROM plays ORDER BY track_id, day") : null;
 			if (saved && saved.length !== plays) fail(`read ${saved.length} plays rows, expected ${plays}; nothing was changed`);
-			const file = await writeBuild("reset.sql", resetSql({ tables: list, schema: schemaText, tracks, plays: saved }));
+			const migrations = (await readMigrations()).map((m) => m.name);
+			const file = await writeBuild("reset.sql", resetSql({ tables: list, schema: schemaText, tracks, plays: saved, migrations, nowSeconds: nowSeconds() }));
 			console.log(`\nwrote ${file}; running it as one import`);
 			wrangler(["--yes", "--file", file]);
 			const after = tables();

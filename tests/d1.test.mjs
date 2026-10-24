@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { D1Error, isSystemTable, resetSql, schemaSql, schemaTables, wranglerRows } from "../tools/lib/d1.mjs";
+import { D1Error, isSystemTable, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "../tools/lib/d1.mjs";
+import { sqlite } from "./helpers/fakes.mjs";
 
 const schema = await readFile(new URL("../worker/media/schema.sql", import.meta.url), "utf8");
 
 test("the schema is one idempotent file with the Worker's tables", () => {
-	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "members", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks"]);
+	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "schema_migrations", "members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks"]);
 	const sql = schemaSql(schema);
 	assert.doesNotMatch(sql, /--/);
 	for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) assert.match(stmt, /^CREATE (TABLE|INDEX) IF NOT EXISTS/);
@@ -41,4 +42,48 @@ test("reset refuses to lose personal libraries unless asked", async () => {
 	assert.equal(libraryGuard({ members: 0, uploads: 0 }, false), null);
 	assert.match(libraryGuard({ members: 3, uploads: 12 }, false), /^members holds 3 rows and uploads holds 12 rows\. Personal libraries cannot be rebuilt from git.*--drop-library/);
 	assert.equal(libraryGuard({ members: 3, uploads: 12 }, true), null);
+});
+
+const migration = (name) => readFile(new URL(`../worker/media/migrations/${name}`, import.meta.url), "utf8");
+
+test("migrations run once each, and a new database records them without running them", () => {
+	const names = ["0001-accounts.sql", "0002-later.sql"];
+	assert.deepEqual(migrationPlan({ tables: ["members"], applied: [], migrations: names }), { run: names, record: [] });
+	assert.deepEqual(migrationPlan({ tables: ["members", "schema_migrations"], applied: ["0001-accounts.sql"], migrations: names }), { run: ["0002-later.sql"], record: [] });
+	assert.deepEqual(migrationPlan({ tables: [], applied: [], migrations: names }), { run: [], record: names });
+	assert.throws(() => migrationPlan({ tables: ["members"], applied: ["0003-newer.sql"], migrations: names }), /does not have \(0003-newer.sql\); update the checkout/);
+	assert.throws(() => migrationPlan({ tables: [], applied: [], migrations: ["accounts.sql"] }), /must look like 0001-/);
+	const reset = resetSql({ tables: [], schema, tracks: "", migrations: names, nowSeconds: 5 });
+	assert.match(reset, /INSERT INTO schema_migrations \(name, applied_at\) VALUES \('0002-later.sql', 5\);/);
+});
+
+test("0001-accounts: members keep their ids as accounts, with their GitHub sign-in, and match the schema", { skip: !sqlite && "node:sqlite needs Node 22.13 or later" }, async () => {
+	const strip = (t) => t.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
+	const old = new sqlite(":memory:");
+	old.exec(strip(await readFile(new URL("./fixtures/schema-26.10.23.sql", import.meta.url), "utf8")));
+	old.exec(`INSERT INTO members (github_id, login, moderator, first_seen, last_seen) VALUES (1753766, 'khensolomon', 0, 10, 20), (42, 'ann', 1, 11, 21);
+		INSERT INTO member_rights (github_id, kind, granted_by, granted_at) VALUES (42, 'review', 'khensolomon', 12);
+		INSERT INTO member_folders (github_id, prefix, set_by, set_at) VALUES (42, 'shared/ann/', 'khensolomon', 13);
+		INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (42, 'users/42/1.mp3', 1, 'mp3', 1, 'One', '1.mp3', 'private', 1, 1);`);
+	old.exec(migrationSql("0001-accounts.sql", await migration("0001-accounts.sql"), 99));
+	old.exec(schemaSql(schema));
+	assert.deepEqual(old.prepare("SELECT id, name, moderator FROM members ORDER BY id").all().map((r) => ({ ...r })), [{ id: 42, name: "ann", moderator: 1 }, { id: 1753766, name: "khensolomon", moderator: 0 }]);
+	assert.deepEqual(old.prepare("SELECT provider, subject, member_id, login, created_at FROM member_logins ORDER BY member_id").all().map((r) => ({ ...r })), [
+		{ provider: "github", subject: "42", member_id: 42, login: "ann", created_at: 11 },
+		{ provider: "github", subject: "1753766", member_id: 1753766, login: "khensolomon", created_at: 10 },
+	]);
+	assert.equal(old.prepare("SELECT member_id FROM member_rights").get().member_id, 42);
+	assert.equal(old.prepare("SELECT prefix FROM member_folders WHERE member_id = 42").get().prefix, "shared/ann/");
+	assert.equal(old.prepare("SELECT name FROM schema_migrations").get().name, "0001-accounts.sql");
+	// A new member is numbered after the highest id.
+	old.exec("INSERT INTO members (name, first_seen, last_seen) VALUES ('new', 1, 1)");
+	assert.equal(old.prepare("SELECT id FROM members WHERE name = 'new'").get().id, 1753767);
+
+	// The migrated database has the same tables and columns as one made from the schema now.
+	const fresh = new sqlite(":memory:");
+	fresh.exec(schemaSql(schema));
+	fresh.exec(recordMigrationsSql(["0001-accounts.sql"], 1));
+	const shape = (db) => Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
+		.map(({ name }) => [name, db.prepare(`PRAGMA table_info("${name}")`).all().map((c) => `${c.name} ${c.type} ${c.notnull} ${c.pk}`)]));
+	assert.deepEqual(shape(old), shape(fresh));
 });
