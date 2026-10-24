@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.16
+
+- Lyrics: sections, chords with transpose, timed lyrics
+
 ## v26.10.24.15
 
 - Search on phones: the field stays sharp and in place with the keyboard up

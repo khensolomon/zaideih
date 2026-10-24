@@ -3,6 +3,11 @@
  * editing them signed in, and for the Lyrics right, every version, hiding,
  * showing and restoring.
  *
+ * The lyrics are kept as typed and shown with their structure
+ * (core/lyrics-format.js, ui/lyrics-render.js): sections, the chorus,
+ * details, notes, chords (when this device shows them, transposable) and,
+ * for timed lyrics, the line being sung while this song plays.
+ *
  * Saving starts from the version the editor opened; when someone else saved
  * first, the editor keeps their text and is shown the newer lyrics beside
  * it, and saving again replaces them knowingly.
@@ -14,6 +19,9 @@ import { hideLyrics, LYRICS_URL, lyricsVersions, readLyrics, restoreLyrics, save
 import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
+import { lineAt, parseLyrics, prefersFlats } from "../core/lyrics-format.js";
+import { player } from "../core/player.js";
+import { chordsShown, detailChips, formatHint, lyricsHtml, showChords } from "./lyrics-render.js";
 import { icon } from "./icons.js";
 import { scriptClass } from "./parts.js";
 
@@ -30,7 +38,7 @@ const when = (seconds) => new Date(seconds * 1000).toLocaleDateString(undefined,
 export function lyricsView(catalog, id, ctx) {
 	const track = catalog.track(id);
 	if (!track || track.upload) return { title: "Lyrics", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
-	st = { id, track, lyrics: undefined, offline: false, error: "", editing: false, draft: "", base: 0, conflict: undefined, history: null, busy: false };
+	st = { id, track, lyrics: undefined, offline: false, error: "", editing: false, draft: "", base: 0, conflict: undefined, history: null, busy: false, preview: false, transpose: 0, parsed: null, parsedOf: null };
 	return {
 		title: `Lyrics: ${track.title}`,
 		body: html`<div class="ly-root">${content(ctx)}</div>`,
@@ -54,8 +62,24 @@ function editor() {
 			<p><b>Someone else saved ${c ? "these lyrics" : "a change"} while you were editing.</b> Your text is below, unchanged. ${c ? "Theirs is here; saving now replaces it with yours." : "The lyrics are no longer there; saving adds yours."}</p>
 			${c ? html`<pre class="ly-text ${scriptClass(c.text)}">${c.text}</pre>` : ""}
 		</div>` : ""}
-		<label class="ly-label" for="ly-draft">${st.base ? "Edit the lyrics" : "Add the lyrics"}</label>
-		<textarea id="ly-draft" name="text" class="${scriptClass(st.draft || st.track.title)}" rows="18" maxlength="20000" required spellcheck="false" placeholder="One line per sung line; a blank line between verses.">${st.draft}</textarea>
+		<div class="ly-edit-head">
+			<span class="ly-label">${st.base ? "Edit the lyrics" : "Add the lyrics"}</span>
+			<div class="segmented" role="group" aria-label="Editor view">
+				<button type="button" data-ly="write" aria-pressed="${String(!st.preview)}">Write</button>
+				<button type="button" data-ly="preview" aria-pressed="${String(st.preview)}">Preview</button>
+			</div>
+		</div>
+		<div class="ly-insert" role="group" aria-label="Insert a section" ${st.preview ? "hidden" : ""}>
+			${["Verse", "Chorus", "Bridge", "Pre-chorus", "Intro", "Outro"].map((name) => html`<button type="button" class="btn" data-ly="insert" data-name="${name}">[${name}]</button>`)}
+		</div>
+		<textarea id="ly-draft" name="text" aria-label="Lyrics" class="${scriptClass(st.draft || st.track.title)}${/\n[ \t]*[A-G][#b]?m?\d?[ \t]{2,}[A-G]/.test(`\n${st.draft}`) ? " ly-mono" : ""}" rows="18" maxlength="20000" required spellcheck="false" placeholder="[Verse 1]
+One line per sung line
+
+[Chorus]
+A blank line between parts" ${st.preview ? "hidden" : ""}>${st.draft}</textarea>
+		${st.preview ? html`<div class="ly-preview">${preview()}</div>` : ""}
+		<p class="acct-small" data-ly-hint>${formatHint(parseLyrics(st.draft))}</p>
+		<details class="ly-guide"><summary>How to write lyrics</summary>${guide()}</details>
 		<p class="acct-small">Lyrics appear for everyone at once. Every version is kept, so a mistake can always be undone.</p>
 		${st.error ? html`<p class="error" role="alert">${st.error}</p>` : ""}
 		<div class="actions">
@@ -75,11 +99,69 @@ function reading(ctx) {
 	return html`
 		${st.error ? html`<p class="error" role="alert">${st.error}</p>` : ""}
 		${l
-			? html`<pre class="ly-text ${scriptClass(l.text)}">${l.text}</pre>
+			? html`${shown()}
 				<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}.</p>`
 			: st.error ? "" : html`<div class="empty ly-empty"><h2>No lyrics yet</h2><p>${signedIn ? "Know the words? Add them for everyone." : "Nobody has added the lyrics of this song yet."}</p></div>`}
 		${actions}
 		${ctx.canModerate() ? moderation() : ""}`;
+}
+
+/** The parsed lyrics shown, worked out once per text. */
+function parsed() {
+	if (st.parsedOf !== st.lyrics.text) Object.assign(st, { parsed: parseLyrics(st.lyrics.text), parsedOf: st.lyrics.text });
+	return st.parsed;
+}
+
+function shown() {
+	const p = parsed();
+	const chords = p.chords && chordsShown();
+	const flats = prefersFlats(p);
+	const tools = p.chords ? html`<div class="ly-tools">
+		<button class="btn" data-ly="chords" aria-pressed="${String(chords)}">${chords ? "Hide chords" : "Show chords"}</button>
+		${chords ? html`<span class="ly-transpose" role="group" aria-label="Transpose">
+			<button class="icon-btn" data-ly="down" aria-label="Down a semitone">−</button>
+			<span aria-live="polite">${st.transpose ? `${st.transpose > 0 ? "+" : ""}${st.transpose}` : "Key"}</span>
+			<button class="icon-btn" data-ly="up" aria-label="Up a semitone">+</button>
+			${st.transpose ? html`<button class="link-btn" data-ly="reset">Original key</button>` : ""}
+		</span>` : ""}
+	</div>` : "";
+	const follow = p.timed ? html`<p class="acct-small ly-follow">${player.current()?.id === st.id ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : "";
+	return html`${detailChips(p, { transpose: chords ? st.transpose : 0, flats })}${tools}${follow}${lyricsHtml(p, { chords, transpose: st.transpose, flats })}`;
+}
+
+function preview() {
+	const p = parseLyrics(st.draft);
+	if (!p.blocks.length) return html`<p class="muted">Nothing to preview yet.</p>`;
+	return html`${detailChips(p)}${lyricsHtml(p, { chords: true })}`;
+}
+
+function guide() {
+	return html`<div class="ly-guide-body">
+		<p>Write the words as they are sung, one line per line, with a blank line between parts. Anything the app does not recognise is shown as written.</p>
+		<h4>Parts</h4>
+		<pre>[Verse 1]
+First line
+
+[Chorus]
+The chorus
+
+[Chorus]          ← on its own: the chorus again
+[Bridge x2]</pre>
+		<p>Hymnbook style works too: <code>1.</code> at the start of a verse, <code>Chorus:</code> or <code>Refrain:</code> on its own line.</p>
+		<h4>Details and notes</h4>
+		<pre>Key: G
+Capo: 2
+Tempo: 72
+
+(softly)          ← a note</pre>
+		<h4>Chords</h4>
+		<pre>A[G]mazing [C]grace how [G]sweet</pre>
+		<p>or a line of chords above the words, lined up with them. ChordPro (<code>{key: G}</code>, <code>{soc}</code> … <code>{eoc}</code>, <code>{c: note}</code>) is understood.</p>
+		<h4>Timed lyrics</h4>
+		<pre>[00:12.50] First line
+[00:17.20] Second line</pre>
+		<p>The LRC format: while the song plays, the line being sung is lit.</p>
+	</div>`;
 }
 
 function moderation() {
@@ -111,6 +193,7 @@ function mount(root, ctx) {
 		const area = root.querySelector("#ly-draft");
 		if (area) st.draft = area.value;
 		root.innerHTML = content(ctx);
+		st.lit = -2; // drawn again: the line being sung is lit again at the next tick
 		ctx.redrawn?.();
 	};
 	const load = async () => {
@@ -151,10 +234,39 @@ function mount(root, ctx) {
 	};
 
 	root.addEventListener("click", async (e) => {
+		// Timed lyrics: tapping a line of the song playing goes there.
+		const timedLine = e.target.closest(".ly-timed .ly-line[data-time]");
+		if (timedLine && timedLine.dataset.time !== "" && player.current()?.id === st.id) {
+			player.seek(Number(timedLine.dataset.time) - (parsed().meta.offset ?? 0));
+			return;
+		}
 		const b = e.target.closest("[data-ly]");
 		if (!b || !root.contains(b)) return;
 		const what = b.dataset.ly;
-		if (what === "edit") {
+		if (what === "write" || what === "preview") {
+			const area = root.querySelector("#ly-draft");
+			if (area) st.draft = area.value;
+			st.preview = what === "preview";
+			draw();
+			if (!st.preview) root.querySelector("#ly-draft")?.focus();
+		} else if (what === "insert") {
+			const area = root.querySelector("#ly-draft");
+			if (!area) return;
+			// On a line of its own, with a blank line before it unless at the top.
+			const at = area.selectionStart ?? area.value.length;
+			const before = area.value.slice(0, at);
+			const lead = !before.trim() ? "" : before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+			const insert = `${lead}[${b.dataset.name}]\n`;
+			area.setRangeText(insert, at, area.selectionEnd ?? at, "end");
+			area.focus();
+			area.dispatchEvent(new Event("input", { bubbles: true }));
+		} else if (what === "chords") {
+			showChords(!chordsShown());
+			draw();
+		} else if (what === "up" || what === "down" || what === "reset") {
+			st.transpose = what === "reset" ? 0 : (((st.transpose + (what === "up" ? 1 : -1) + 17) % 12) - 5);
+			draw();
+		} else if (what === "edit") {
 			Object.assign(st, { editing: true, draft: st.lyrics?.text ?? "", base: st.lyrics?.version ?? 0, conflict: undefined, error: "" });
 			draw();
 			root.querySelector("#ly-draft")?.focus();
@@ -187,6 +299,32 @@ function mount(root, ctx) {
 				Object.assign(st, { conflict: err.current ?? null, base: err.current?.version ?? 0, error: "" });
 			}
 		});
+	});
+	// What the editor recognises, as it is typed.
+	root.addEventListener("input", (e) => {
+		if (e.target.id !== "ly-draft") return;
+		const hint = root.querySelector("[data-ly-hint]");
+		if (hint) hint.textContent = formatHint(parseLyrics(e.target.value));
+	});
+	// Timed lyrics: the line being sung, lit and kept in view, while this song plays.
+	let touched = 0;
+	const held = () => { touched = Date.now(); };
+	addEventListener("touchstart", held, { passive: true });
+	addEventListener("wheel", held, { passive: true });
+	const offTime = on("time", ({ position }) => {
+		if (st !== mine || !root.isConnected) { offTime(); removeEventListener("touchstart", held); removeEventListener("wheel", held); return; }
+		if (st.editing || !st.lyrics || player.current()?.id !== st.id) return;
+		const p = parsed();
+		if (!p.timed) return;
+		const n = lineAt(p, position);
+		if (n === st.lit) return;
+		st.lit = n;
+		root.querySelector(".ly-line.ly-now")?.classList.remove("ly-now");
+		const line = root.querySelector(`.ly-line[data-n="${n}"]`);
+		if (!line) return;
+		line.classList.add("ly-now");
+		// Not while the listener is scrolling by hand.
+		if (Date.now() - touched > 4000) line.scrollIntoView({ block: "center", behavior: "smooth" });
 	});
 	load();
 	loadHistory();
