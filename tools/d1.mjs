@@ -14,6 +14,9 @@
  *            migrations recorded as run. Run by every `release: audio`.
  *   tracks   Load every track path from assets/data/media.json (upserts).
  *            --prune also deletes rows for tracks not in media.json.
+ *   lyrics   Back up the lyrics: what is shown and every version, to
+ *            --out (default build/d1/lyrics-<date>.json). Reads only;
+ *            --apply writes the file.
  *   reset    Drop every table (Cloudflare's own _cf_* tables excepted),
  *            create the schema and load the track paths, in one D1 import
  *            that either completes or leaves the database as it was. When
@@ -42,7 +45,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { D1Error, LIBRARY_TABLES, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
+import { D1Error, LIBRARY_TABLES, lyricsBackup, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
 import { MediaError, d1Sql, validateMedia } from "./lib/media.mjs";
 
 const DATABASE = "audio";
@@ -66,6 +69,7 @@ const { values, positionals } = parseArgs({
 		"keep-plays": { type: "boolean", default: false },
 		"drop-plays": { type: "boolean", default: false },
 		"drop-library": { type: "boolean", default: false },
+		out: { type: "string" },
 	},
 	strict: true,
 });
@@ -173,6 +177,20 @@ try {
 			console.log(`\nloaded: ${place} has ${now} track paths`);
 			if (now < n) fail(`expected at least ${n} track paths, found ${now}`);
 		}
+	} else if (command === "lyrics") {
+		if (!tables().includes("lyrics")) fail(`${place} has no lyrics table yet (node tools/d1.mjs schema --apply)`);
+		const lyrics = query("SELECT track, version, updated_at, updated_by, hidden_at, hidden_by, hidden_reason FROM lyrics ORDER BY track");
+		const versions = query("SELECT track, version, text, member_id, at, note FROM lyrics_versions ORDER BY track, version");
+		const backup = lyricsBackup(lyrics, versions, new Date().toISOString());
+		const out = values.out ?? join(BUILD, `lyrics-${backup.exported.slice(0, 10)}.json`);
+		console.log(`lyrics     ${backup.lyrics.length} songs (${backup.lyrics.filter((l) => l.hidden).length} hidden), ${backup.versions.length} versions, from ${place}`);
+		console.log(`file       ${out}`);
+		if (!values.apply) dryRun("write the file");
+		else {
+			await mkdir(resolve(out, ".."), { recursive: true });
+			await writeFile(out, `${JSON.stringify(backup, null, "\t")}\n`);
+			console.log(`\nwrote ${out}`);
+		}
 	} else if (command === "reset") {
 		if (values["keep-plays"] && values["drop-plays"]) fail("choose one of --keep-plays and --drop-plays");
 		const list = tables();
@@ -207,7 +225,7 @@ try {
 			console.log(`reset done: ${after.filter((t) => !isSystemTable(t)).join(", ")}; ${loaded} track paths; ${kept} plays rows`);
 		}
 	} else {
-		fail(`unknown command ${JSON.stringify(command ?? "")}; expected status, schema, tracks or reset`);
+		fail(`unknown command ${JSON.stringify(command ?? "")}; expected status, schema, tracks, lyrics or reset`);
 	}
 } catch (err) {
 	if (err instanceof D1Error || err instanceof MediaError) fail(err.message);

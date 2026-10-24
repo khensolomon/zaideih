@@ -100,7 +100,7 @@ function signInCard(ctx) {
 	const caught = inAppBrowser(navigator.userAgent);
 	return html`<section class="acct-card">
 		<h1 class="page-title">Sign in</h1>
-		<p class="acct-lead">Keep music of your own, and later your liked songs and playlists on every device.</p>
+		<p class="acct-lead">Keep music of your own, your liked songs and playlists on every device, and add lyrics.</p>
 		${caught ? html`<p class="acct-warn" role="note">This page is open inside another app. Google does not allow signing in here: open <b>${location.host}</b> in Chrome or Safari first.</p>` : ""}
 		${st.waiting ? waitingPanel() : html`<div class="acct-buttons">
 			${startButton("google", { label: "Continue with Google", cls: "btn primary acct-google" })}

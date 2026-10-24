@@ -310,3 +310,34 @@ CREATE TABLE IF NOT EXISTS library_sync (
     member_id  INTEGER PRIMARY KEY,
     seq        INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- lyrics, lyrics_versions: lyrics of catalog songs (lyrics.js, docs/lyrics.md)
+-- =============================================================================
+-- lyrics holds what is shown (the latest version); lyrics_versions every
+-- version ever saved, with who and when, so a bad edit is undone by
+-- restoring an earlier one. Hidden lyrics (hidden_at set, by the Lyrics
+-- right) are not shown to listeners. Not rebuildable from git: kept by
+-- `tools/d1.mjs reset`; `tools/d1.mjs lyrics` writes them to a file.
+--
+--   Latest edits:  SELECT v.track, v.version, m.name, v.at FROM lyrics_versions v JOIN members m ON m.id = v.member_id ORDER BY v.at DESC LIMIT 50;
+CREATE TABLE IF NOT EXISTS lyrics (
+    track          INTEGER PRIMARY KEY,     -- catalog song id (tracks.id)
+    version        INTEGER NOT NULL,
+    text           TEXT    NOT NULL,
+    updated_at     INTEGER NOT NULL,        -- unix seconds
+    updated_by     INTEGER NOT NULL,        -- member id
+    hidden_at      INTEGER,
+    hidden_by      TEXT,
+    hidden_reason  TEXT
+);
+CREATE TABLE IF NOT EXISTS lyrics_versions (
+    track      INTEGER NOT NULL,
+    version    INTEGER NOT NULL,
+    text       TEXT    NOT NULL,
+    member_id  INTEGER NOT NULL,
+    at         INTEGER NOT NULL,
+    note       TEXT    NOT NULL DEFAULT '',  -- e.g. "restored version 2"
+    PRIMARY KEY (track, version)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_lyrics_versions_member ON lyrics_versions (member_id);
