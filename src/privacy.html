@@ -38,11 +38,12 @@
 	<p>Usage statistics (Google Analytics) are off unless you allow them on the About page. When allowed, they count page visits within Zaideih and song plays, and Google sets its own cookies for that. Searches and your library are never sent. The choice is kept on your device and can be changed at any time.</p>
 
 	<h2>Signing in</h2>
-	<p>An account is only for keeping music of your own, and for catalog editors. You can sign in with Google or with GitHub; signing in with both, with the same verified email address, is one account.</p>
+	<p>An account is only for keeping music of your own, and for catalog editors. You can sign in with Google or with GitHub; signing in with both, with the same verified email address, is one account. Once signed in, you can add a passkey, which signs you in with your device's face, fingerprint or code.</p>
 	<table>
 		<tr><th>Signing in with</th><th>Zaideih receives and keeps</th><th>Used for</th></tr>
 		<tr><td>Google</td><td>Your Google account id, your name, your email address and whether Google has verified it (the <code>openid</code>, <code>email</code> and <code>profile</code> permissions)</td><td>Recognising you when you sign in again, and recognising that a Google and a GitHub sign-in with the same verified email are the same person. Your name is shown to you, and to the moderators of uploads.</td></tr>
 		<tr><td>GitHub</td><td>Your GitHub account id, your username and your verified email addresses</td><td>The same; and for catalog editors, editing the catalog through GitHub with their own GitHub permissions.</td></tr>
+		<tr><td>A passkey</td><td>The passkey's public key and its id, and when it was added and last used. Your face, fingerprint or device code never leave your device: it only answers with a signature.</td><td>Checking that it is your device signing in.</td></tr>
 	</table>
 	<p>Your profile photo, contacts and anything else in your Google or GitHub account are not kept. Nothing is posted to Google or GitHub on your behalf, except catalog corrections an editor or contributor chooses to send, which become public changes on GitHub in their name.</p>
 	<p>After signing in, your device keeps a sign-in token. The server keeps only a one-way fingerprint (hash) of it. It ends 90 days after you last use it, or when you sign out.</p>

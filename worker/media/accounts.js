@@ -136,6 +136,7 @@ export async function mergeMembers(env, a, b, nowSeconds) {
 	await env.DB.batch([
 		q("UPDATE member_logins SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE member_sessions SET member_id = ?1 WHERE member_id = ?2"),
+		q("UPDATE passkeys SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE uploads SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE publish_requests SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE published_tracks SET owner_id = ?1 WHERE owner_id = ?2"),
@@ -197,7 +198,7 @@ export async function issueSession(env, who, body, nowSeconds) {
 }
 
 /** The signed-in member and their sign-ins, for "Your account". */
-async function me(env, memberId) {
+export async function me(env, memberId) {
 	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
 	const rows = (await env.DB.prepare("SELECT provider, subject, login, email, email_verified, created_at, last_used FROM member_logins WHERE member_id = ?1 ORDER BY created_at").bind(memberId).all()).results ?? [];
 	return {
@@ -216,6 +217,8 @@ async function removeLogin(env, memberId, body) {
 	if (n <= 1) throw new MemberError("this is the only way you sign in; add another before removing it", 409);
 	if (provider === "github" && subject === env.OWNER_GITHUB_ID) throw new MemberError("the owner's GitHub sign-in is what makes the owner; it stays", 409);
 	await env.DB.prepare("DELETE FROM member_logins WHERE provider = ?1 AND subject = ?2").bind(provider, subject).run();
+	// A passkey's key goes with its sign-in.
+	if (provider === "passkey") await env.DB.prepare("DELETE FROM passkeys WHERE credential_id = ?1").bind(subject).run();
 	return me(env, memberId);
 }
 

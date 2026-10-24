@@ -18,17 +18,30 @@ import { saveWho, TOKEN_KEY } from "../core/access.js";
 import { account, githubSession } from "../core/signin.js";
 import { GOOGLE_PENDING_KEY, homeScreenApp, waitForSignIn } from "../core/account.js";
 import { PENDING_KEY } from "../admin/session.js";
+import { makePasskey, passkeysAvailable, usePasskey } from "../core/passkey.js";
 import { createGitHub } from "../admin/github.js";
 import { icon } from "./icons.js";
 
 const GITHUB_LINK_KEY = "zaideih.account.github-link";
-const PROVIDERS = { google: "Google", github: "GitHub" };
+const PROVIDERS = { google: "Google", github: "GitHub", passkey: "Passkey" };
 
 // Browsers inside other apps (Facebook, Messenger, Instagram, LINE, WeChat, Android web views): Google refuses to sign in there.
 export const inAppBrowser = (ua) => /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|; wv\)/.test(ua);
 
 // State that survives re-renders of the page.
-let st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
+let st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null, passkey: null };
+
+/**
+ * The Worker's options for the passkey button on the page ("create" signed
+ * in, "get" signed out), fetched before the tap: Safari lets a page ask for
+ * a passkey only in direct answer to a tap. Fetched again after each use.
+ */
+async function preparePasskey() {
+	st.passkey = null;
+	if (!passkeysAvailable() || !AUTH_URL) return;
+	const kind = account().signedIn ? "create" : "get";
+	st.passkey = { kind, options: await account().passkeyOptions(kind) };
+}
 
 /**
  * A sign-in button: in an app on the home screen, a link prepared in advance
@@ -92,6 +105,7 @@ function signInCard(ctx) {
 		${st.waiting ? waitingPanel() : html`<div class="acct-buttons">
 			${startButton("google", { label: "Continue with Google", cls: "btn primary acct-google" })}
 			${startButton("github", { label: " Continue with GitHub", cls: "btn acct-github" })}
+			${passkeysAvailable() ? html`<button class="btn acct-passkey" data-acct="passkey-signin" ${st.passkey?.kind === "get" ? "" : "disabled"}>${icon("key")} Sign in with a passkey</button>` : ""}
 		</div>`}
 		<p class="acct-small">GitHub is for catalog editors and people who already use it. Signing in with both, with the same email, is one account.</p>
 		<p class="acct-small">Zaideih keeps your name, the email Google or GitHub confirms, and their id for you, only to know it is you. <a class="text-link" href="#/about">About</a></p>
@@ -116,15 +130,18 @@ function accountCard() {
 		<p class="acct-name"><span class="acct-avatar" aria-hidden="true">${icon("person")}</span><b>${me.member.name}</b></p>
 		<h2>You sign in with</h2>
 		<ul class="acct-logins">${me.logins.map((l) => html`<li>
-			${l.provider === "github" ? icon("github") : html`<span class="acct-g" aria-hidden="true">G</span>`}
-			<span><b>${PROVIDERS[l.provider] ?? l.provider}</b><small>${[l.login ? `@${l.login}` : "", l.email ?? ""].filter(Boolean).join(" · ") || "no email shared"}</small></span>
+			${l.provider === "github" ? icon("github") : l.provider === "passkey" ? icon("key") : html`<span class="acct-g" aria-hidden="true">G</span>`}
+			<span><b>${PROVIDERS[l.provider] ?? l.provider}</b><small>${l.provider === "passkey"
+				? `added ${new Date(l.added * 1000).toLocaleDateString()}${l.used > l.added ? `, last used ${new Date(l.used * 1000).toLocaleDateString()}` : ""}`
+				: [l.login ? `@${l.login}` : "", l.email ?? ""].filter(Boolean).join(" · ") || "no email shared"}</small></span>
 			${many ? html`<button class="link-btn" data-acct="remove" data-provider="${l.provider}" data-subject="${l.subject}">Remove</button>` : ""}
 		</li>`)}</ul>
 		${st.waiting ? waitingPanel() : html`<div class="acct-buttons">
 			${has.has("google") ? "" : startButton("google", { label: "Add Google", link: true })}
 			${has.has("github") ? "" : startButton("github", { label: " Add GitHub", link: true })}
+			${passkeysAvailable() ? html`<button class="btn" data-acct="passkey-add" ${st.passkey?.kind === "create" ? "" : "disabled"}>${icon("key")} Add a passkey on this device</button>` : ""}
 		</div>`}
-		<p class="acct-small">Signing in with Google and GitHub with the same verified email is one account; with different emails, add the second here.</p>
+		<p class="acct-small">Signing in with Google and GitHub with the same verified email is one account; with different emails, add the second here. A passkey signs you in with this device's face, fingerprint or code.</p>
 		<p class="acct-links"><a class="text-link" href="#/library/uploads">Your uploads</a></p>
 		<p><button class="btn" data-acct="signout">Sign out on this device</button></p>
 	</section>`;
@@ -206,6 +223,34 @@ async function mount(root, ctx) {
 		const b = e.target.closest("[data-acct]");
 		if (!b) return;
 		if (b.dataset.acct === "cancel") { st.cancel?.(); return; }
+		if (b.dataset.acct === "passkey-add" || b.dataset.acct === "passkey-signin") {
+			// Straight to the browser's passkey prompt, with the options fetched before the tap.
+			const prepared = st.passkey;
+			st.passkey = null;
+			st.error = "";
+			try {
+				if (b.dataset.acct === "passkey-add") {
+					const made = await makePasskey(prepared.options);
+					st.busy = "Adding the passkey…"; draw(root, ctx);
+					st.me = await account().addPasskey(made);
+					ctx.notify("Passkey added: next time, sign in with this device's face, fingerprint or code");
+				} else {
+					const used = await usePasskey(prepared.options);
+					st.busy = "Signing in…"; draw(root, ctx);
+					const s = await account().signInWithPasskey(used);
+					ctx.notify(`Signed in as ${s.member.name}`);
+					ctx.onChange();
+					st.me = await account().me();
+				}
+			} catch (err) {
+				if (err.message !== "cancelled") st.error = err.message;
+			}
+			st.busy = "";
+			await preparePasskey().catch((err) => { st.error = err.message; });
+			await prepareLinks().catch((err) => { st.error = err.message; });
+			draw(root, ctx);
+			return;
+		}
 		st.error = "";
 		try {
 			const link = b.dataset.link === "1";
@@ -232,6 +277,7 @@ async function mount(root, ctx) {
 				ctx.notify("Signed out on this device");
 				ctx.onChange();
 				await prepareLinks();
+				await preparePasskey().catch(() => {});
 				draw(root, ctx);
 			}
 		} catch (err) {
@@ -255,6 +301,7 @@ async function mount(root, ctx) {
 		}
 		st.busy = "";
 		await prepareLinks();
+		await preparePasskey().catch((err) => console.warn("passkey options", err));
 		draw(root, ctx);
 		if (account().signedIn && !ctx.desktop) {
 			st.me = await account().me();

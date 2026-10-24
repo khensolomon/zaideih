@@ -213,6 +213,21 @@ export function createAccount({ authUrl, local, tab = null, githubToken, fetchIm
 			},
 		},
 
+		/** What the browser needs to make ("create", signed in) or use ("get") a passkey; fetched before the tap (core/passkey.js). */
+		async passkeyOptions(kind) {
+			return post("passkey/options", kind === "create" ? await account.token() : null, { kind });
+		},
+
+		/** Adds a passkey made on this device to the account: answers { member, logins }. */
+		async addPasskey(made) {
+			return post("passkey/register", await account.token(), made);
+		},
+
+		/** Signs in with a passkey: the account's session is kept for this device. */
+		async signInWithPasskey(used) {
+			return keep(await post("passkey/signin", null, used), "passkey");
+		},
+
 		/** The signed-in member and their sign-ins: { member, logins }. */
 		async me() {
 			const res = await account.send((t) => fetchImpl(`${authUrl}/me`, { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}", cache: "no-store" }));
