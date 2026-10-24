@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.26
+
+- Playing bars, player More, quieter part names
+
 ## v26.10.24.25
 
 - merging artists name (catalog, 6 changes)

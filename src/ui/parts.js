@@ -103,7 +103,7 @@ export function trackRow(t, listKey, index, opts = {}) {
 	const sub = opts.sub ?? (opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists));
 	const lyric = lyricsIndex.has(t.id) ? html`<span class="has-lyrics" title="Has lyrics">${icon("lyrics", "Has lyrics")}</span>` : "";
 	return html`<li class="track${now ? " now" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
-		<span class="no"><span>${opts.number ?? index + 1}</span></span>
+		<span class="no"><span>${opts.number ?? index + 1}</span><i class="eq" aria-hidden="true"><i></i><i></i><i></i></i></span>
 		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}" aria-label="Play ${t.title}">
 			<span class="title ${scriptClass(t.title)}">${t.title}${lyric}</span>
 			<span class="sub ${scriptClass(String(sub))}">${sub}</span>
