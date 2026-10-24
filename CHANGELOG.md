@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.4
+
+- Privacy policy: a Google user data section (access, use, sharing, protection, retention and deletion); the home page says what Google sign-in uses
+
 ## v26.10.24.3
 
 - Google sign-in review: a privacy policy page of its own (/privacy), and the home page describing Zaideih before the app starts; the Google client id
