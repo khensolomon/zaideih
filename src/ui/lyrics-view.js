@@ -7,7 +7,8 @@
  * (core/lyrics-format.js, ui/lyrics-render.js): parts, the chorus, details
  * and credits, notes, chords (when this device shows them, transposable)
  * and, for timed lyrics, the line being sung while this song plays. The
- * text size is this device's choice.
+ * text size is this device's choice. Play starts this song (in its album),
+ * so the lyrics can be followed without finding the song first.
  *
  * A song with translations offers them (Original, English, Myanmar); a
  * translation can be read alone or side by side with the original, part
@@ -85,6 +86,14 @@ function langSwitch() {
 	</div>`;
 }
 
+/** Play this song (from it on, in its album), or pause and go on when it is the one playing. */
+function playButton() {
+	const now = player.current()?.id === st.id;
+	const playing = now && player.state.playing;
+	const label = playing ? "Pause" : now ? "Resume" : "Play this song";
+	return html`<button class="btn primary ly-play" data-ly="play" aria-label="${label}">${icon(playing ? "pause" : "play")}${label}</button>`;
+}
+
 function header() {
 	const t = st.track;
 	return html`<div class="hero ly-hero" style="grid-template-columns:1fr"><div>
@@ -92,6 +101,7 @@ function header() {
 		<h1 class="page-title ${scriptClass(t.title)}">${t.title}</h1>
 		<div class="facts"><span>${creditOf(t.artists, 3)}</span><span><a class="text-link" href="${href(`album/${t.album.id}`)}">${t.album.title}</a></span></div>
 		${st.lyrics ? creditsHtml(parsed()) : ""}
+		<div class="ly-play-row">${playButton()}</div>
 	</div></div>`;
 }
 
@@ -167,7 +177,10 @@ function mount(root, ctx) {
 		const b = e.target.closest("[data-ly]");
 		if (!b || !root.contains(b)) return;
 		const what = b.dataset.ly;
-		if (what === "chords") {
+		if (what === "play") {
+			if (player.current()?.id === st.id) player.toggle();
+			else await ctx.playSong(st.track);
+		} else if (what === "chords") {
 			showChords(!chordsShown());
 			draw();
 		} else if (what === "up" || what === "down") {
@@ -234,6 +247,8 @@ function mount(root, ctx) {
 	// The page's words for the timed lyrics change when this song starts or stops.
 	const offPlayer = on("player", () => {
 		if (st !== mine || !root.isConnected) { offPlayer(); return; }
+		const play = root.querySelector("[data-ly=play]");
+		if (play) play.outerHTML = String(playButton());
 		const follow = root.querySelector(".ly-follow");
 		const want = player.current()?.id === st.id ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along.";
 		if (follow && follow.textContent !== want) follow.textContent = want;

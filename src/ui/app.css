@@ -1500,6 +1500,9 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 /* Part names stay out of the way of the words: small and dimmer. */
 .ly-part { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #d2d2d2; opacity: 0.85; }
 /* Shared lyrics (ui/lyrics-share.js): the same song on other albums, and the recordings a text is shared with. */
+.ly-play-row { margin: 16px 0 0; }
+.ly-play { gap: 8px; }
+.ly-play svg.i { width: 18px; height: 18px; }
 .ly-same { margin: 24px 0; max-width: 720px; }
 .ly-same h2 { margin: 0 0 4px; font-size: 18px; }
 .ly-same ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
