@@ -70,9 +70,12 @@ const nonceOf = (provider) => {
 
 /** @param {{ onChange: () => void, notify: (text: string, o?: object) => void, desktop: boolean }} ctx  onChange: someone signed in or out */
 export function accountView(ctx) {
+	st.cancel?.();
+	st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
+	// Drawn whole with the page, as every other page is, so its height does not jump while the account and links arrive.
 	return {
 		title: account().signedIn ? "Your account" : "Sign in",
-		body: html`<div class="acct-root"></div>`,
+		body: html`<div class="acct-root">${content(ctx)}</div>`,
 		mount: (view) => mount(view.querySelector(".acct-root"), ctx),
 	};
 }
@@ -94,7 +97,15 @@ function signInCard(ctx) {
 
 function accountCard() {
 	const me = st.me;
-	if (!me) return html`<section class="acct-card"><h1 class="page-title">Your account</h1><p class="muted">Reading your account…</p></section>`;
+	if (!me) {
+		// The shape of the card to come, so nothing moves when it arrives.
+		return html`<section class="acct-card" aria-busy="true">
+			<h1 class="page-title">Your account</h1>
+			<p class="acct-name"><span class="acct-avatar" aria-hidden="true">${icon("person")}</span><b class="muted">Reading your account…</b></p>
+			<h2>You sign in with</h2>
+			<ul class="acct-logins acct-skeleton" aria-hidden="true"><li></li><li></li></ul>
+		</section>`;
+	}
 	const has = new Set(me.logins.map((l) => l.provider));
 	const many = me.logins.length > 1;
 	return html`<section class="acct-card">
@@ -116,15 +127,15 @@ function accountCard() {
 	</section>`;
 }
 
-function draw(root, ctx) {
-	if (!root.isConnected) return;
-	if (ctx.desktop) {
-		root.innerHTML = html`<section class="acct-card"><h1 class="page-title">Sign in</h1><p>Signing in works in the web app for now: open <a class="text-link" href="https://zaideih.com/#/account">zaideih.com</a>.</p></section>`;
-		return;
-	}
-	root.innerHTML = html`${account().signedIn ? accountCard() : signInCard(ctx)}
+function content(ctx) {
+	if (ctx.desktop) return html`<section class="acct-card"><h1 class="page-title">Sign in</h1><p>Signing in works in the web app for now: open <a class="text-link" href="https://zaideih.com/#/account">zaideih.com</a>.</p></section>`;
+	return html`${account().signedIn ? accountCard() : signInCard(ctx)}
 		${st.busy ? html`<p class="muted acct-busy" role="status">${st.busy}</p>` : ""}
 		${st.error ? html`<p class="error" role="alert">${st.error}</p>` : ""}`;
+}
+
+function draw(root, ctx) {
+	if (root.isConnected) root.innerHTML = content(ctx);
 }
 
 /** Back from GitHub on this page: the GitHub sign-in, who it is, then a Zaideih session (added to the account with Add GitHub). */
@@ -170,8 +181,6 @@ async function waitFor(provider, root, ctx) {
 }
 
 async function mount(root, ctx) {
-	st.cancel?.();
-	st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
 	const back = ["google", "google-error", "signin", "signin-error"].some((k) => query.has(k));
 	// A code is single-use: out of the address and the history at once.

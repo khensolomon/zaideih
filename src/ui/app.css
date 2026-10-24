@@ -108,10 +108,10 @@ html { -webkit-tap-highlight-color: transparent; touch-action: manipulation; -we
 button, .btn, nav, .navbar, .rail, .bar, .sheet .ctl, .menu, .app-menu, .segmented, .tile, .track, .chip, .scopes, .tabs, .icon-btn, label.btn, .lang-tabs, .playlists a, .artist-card, .tile-play {
 	-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
-/* Phones and installed apps: the page scrolls as before, without a scroll bar. */
+/* Phones and installed apps: the page and the menus scroll as before, without a scroll bar. */
 @media (pointer: coarse), (display-mode: standalone) {
-	html { scrollbar-width: none; }
-	html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+	html, .app-menu, .menu, .sg-panel { scrollbar-width: none; }
+	html::-webkit-scrollbar, body::-webkit-scrollbar, .app-menu::-webkit-scrollbar, .menu::-webkit-scrollbar, .sg-panel::-webkit-scrollbar { display: none; }
 }
 /* A little larger text on phones: 17 px, as iOS uses for body text. Inputs stay at 16 px or more so iOS does not zoom into them. */
 @media (max-width: 899px) {
@@ -1287,3 +1287,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .acct-waiting { max-width: 420px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-2); }
 .acct-waiting p { margin: 0 0 10px; }
 .acct-waiting p:last-child { margin: 0; }
+/* Your account: the page keeps one height while its parts arrive. */
+.acct-root { min-height: 30rem; }
+.acct-logins.acct-skeleton li { display: block; height: 64px; padding-top: 25px; box-sizing: border-box; }
+.acct-skeleton li::after { content: ""; display: block; width: 60%; height: 14px; border-radius: 7px; background: var(--raised); opacity: 0.6; }

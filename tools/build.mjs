@@ -248,8 +248,10 @@ const buildId = h.digest("hex").slice(0, 12);
 if (values.platform === "web") {
 	const precache = [
 		"./",
+		// The privacy policy under the address it is visited at (Cloudflare serves privacy.html there and redirects privacy.html to it).
+		"privacy",
 		...files.filter((f) =>
-			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" || f === "privacy.html" ||
+			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" ||
 			f === "catalog/meta.json" || f === `catalog/${catalogMeta.catalog}`),
 	];
 	await esbuild.build({
