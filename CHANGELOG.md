@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.6
+
+- Signing in from the app on the home screen: the sign-in opens in its own sheet and the app finishes it, instead of a second copy of the app hanging on the loading screen; Add Google and Add GitHub add to the account again
+
 ## v26.10.24.5
 
 - Adding a sign-in that already has its own account joins the two accounts into one

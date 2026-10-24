@@ -96,3 +96,32 @@ test("adding Google to a GitHub sign-in links it, and the session stays the GitH
 	assert.equal(JSON.parse(w.calls.at(-1)[2]).link, "zs_1");
 	assert.equal(account.key, "github:ann");
 });
+
+test("waiting for a sign-in from the home screen: the Worker's code, an error, or giving up", async () => {
+	const { waitForSignIn } = await import("../src/core/account.js");
+	let n = 0;
+	const answers = [204, 204, { code: "abc" }];
+	const fetchImpl = async (url, init) => {
+		assert.equal(url, "https://w/auth/wait");
+		assert.deepEqual(JSON.parse(init.body), { nonce: "N" });
+		const a = answers[Math.min(n++, answers.length - 1)];
+		return a === 204 ? new Response(null, { status: 204 }) : new Response(JSON.stringify(a));
+	};
+	const listeners = {};
+	const doc = { visibilityState: "visible", addEventListener: (t, f) => { listeners[t] = f; }, removeEventListener: (t) => { delete listeners[t]; } };
+	const w = waitForSignIn({ authUrl: "https://w/auth", nonce: "N", fetchImpl, everyMs: 5, doc });
+	assert.equal(await w.promise, "abc");
+	assert.equal(n, 3);
+	assert.equal(listeners.visibilitychange, undefined, "stops listening once done");
+
+	const refused = waitForSignIn({ authUrl: "https://w/auth", nonce: "N", fetchImpl: async () => new Response(JSON.stringify({ error: "access_denied" })), everyMs: 1, doc });
+	await assert.rejects(refused.promise, /not signed in: access_denied/);
+
+	let t = 0;
+	const slow = waitForSignIn({ authUrl: "https://w/auth", nonce: "N", fetchImpl: async () => new Response(null, { status: 204 }), everyMs: 1, timeoutMs: 10, now: () => (t += 6), doc });
+	await assert.rejects(slow.promise, /not finished in time/);
+
+	const c = waitForSignIn({ authUrl: "https://w/auth", nonce: "N", fetchImpl: async () => new Response(null, { status: 204 }), everyMs: 50, doc });
+	c.cancel();
+	await assert.rejects(c.promise, /cancelled/);
+});

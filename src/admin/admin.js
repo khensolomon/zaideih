@@ -39,9 +39,9 @@ import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
 import { buildPublish } from "./publish.js";
 import { stringifyMedia } from "../../tools/lib/media.mjs";
-import { createSession, SESSION_KEY, SignInError } from "./session.js";
+import { createSession, PENDING_KEY, SESSION_KEY, SignInError } from "./session.js";
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
-import { AccountError, createAccount } from "../core/account.js";
+import { AccountError, createAccount, homeScreenApp, waitForSignIn } from "../core/account.js";
 
 const DRAFT_KEY = "zaideih.admin.draft";
 const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json", media: "assets/data/media.json" };
@@ -155,6 +155,34 @@ export function mount(root, ctx) {
 		}
 	}
 
+	/**
+	 * In an app added to the home screen, GitHub opens in a browser sheet that
+	 * cannot come back: the sign-in button is a link prepared in advance, and
+	 * the page takes the code from the Worker (core/account.js waitForSignIn).
+	 */
+	async function prepareSignInLink() {
+		if (!homeScreenApp() || !ctx.authUrl) { s.signInLink = null; return; }
+		s.signInLink = await session.start(`${location.origin}${location.pathname}`, { wait: true });
+	}
+
+	async function waitForGitHub() {
+		let nonce = null;
+		try { nonce = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? "null")?.nonce ?? null; } catch { /* below */ }
+		if (!nonce) throw new SignInError("the sign-in was not prepared on this page; try again");
+		s.busy = "Finish signing in with GitHub in the window that opened, then come back here.";
+		s.error = "";
+		render();
+		try {
+			const code = await waitForSignIn({ authUrl: ctx.authUrl, nonce }).promise;
+			await finishSignIn(new URLSearchParams({ signin: code, nonce }));
+		} catch (err) {
+			if (err instanceof AccountError) throw new SignInError(err.message);
+			throw err;
+		} finally {
+			if (!s.gh) await prepareSignInLink();
+		}
+	}
+
 	/** Goes to GitHub to sign in; GitHub comes back to #/admin?signin=… through the Worker. */
 	async function signInWithGitHub() {
 		s.busy = "Opening GitHub…";
@@ -201,6 +229,8 @@ export function mount(root, ctx) {
 		render();
 		await account.signOut().catch((err) => console.warn("the Zaideih session could not be signed out", err));
 		if (via === "github") await session.signOut();
+		await prepareSignInLink().catch(fail);
+		render();
 	}
 
 	async function load() {
@@ -797,7 +827,9 @@ export function mount(root, ctx) {
 				<p class="muted">Edit the catalog through GitHub: every change becomes a pull request on <b>${REPO}</b>, released when merged.</p>
 				${s.busy ? html`<p class="adm-busy">${s.busy}</p>` : ""}
 				${s.error ? html`<p class="adm-error" role="alert">${s.error}</p>` : ""}
-				${ctx.authUrl ? html`<button class="btn primary adm-github" data-adm="github" ${s.busy ? "disabled" : ""}>${icon("github")}Sign in with GitHub</button>
+				${ctx.authUrl ? html`${s.signInLink
+					? html`<a class="btn primary adm-github" href="${s.signInLink}" target="_blank" rel="noopener" data-adm-open="github">${icon("github")}Sign in with GitHub</a>`
+					: html`<button class="btn primary adm-github" data-adm="github" ${s.busy || homeScreenApp() ? "disabled" : ""}>${icon("github")}Sign in with GitHub</button>`}
 				<p class="muted adm-small">Editing needs write access to ${REPO}. The sign-in stays on this device.</p>` : ""}
 				<details class="adm-howto" data-keep="token" ${s.tokenOpen || !ctx.authUrl ? "open" : ""}><summary>${ctx.authUrl ? "Use a token instead" : "Connect with a token"}</summary>
 					<form class="adm-token" data-form="token">
@@ -935,6 +967,11 @@ export function mount(root, ctx) {
 		}
 	});
 	root.addEventListener("click", async (e) => {
+		if (e.target.closest("[data-adm-open]")) {
+			// The link opens GitHub in its sheet; the page waits for the sign-in, after the tap has done its work.
+			setTimeout(() => waitForGitHub().catch(fail), 0);
+			return;
+		}
 		const b = e.target.closest("[data-adm]");
 		// Any click outside the person's menu closes it.
 		if (s.menu && !e.target.closest(".adm-menu") && b?.dataset.adm !== "menu") { s.menu = false; render(); }
@@ -996,5 +1033,5 @@ export function mount(root, ctx) {
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);
 	else if (session.signedIn) connect("github");
 	else if (saved) connect("token", saved);
-	else render();
+	else prepareSignInLink().catch(fail).finally(render);
 }

@@ -70,7 +70,7 @@ function storagePanel() {
 		${b.error ? html`<p class="up-why">${b.error}</p>` : ""}
 		${b.folders?.length ? html`<ul class="up-folders">${b.folders.map((f) => html`<li><button data-up="open" data-prefix="${f.prefix}">${icon("album")}<span>${f.name}</span>${icon("chevron")}</button></li>`)}</ul>` : ""}
 		${b.files?.length ? html`<ul class="up-stored">${b.files.map((f) => html`<li>
-				<label ${f.added ? 'data-added="true"' : ""}><input type="checkbox" data-up="pick-stored" data-key="${f.key}" ${f.added ? "disabled" : ""} ${b.selected.has(f.key) ? "checked" : ""}>
+				<label data-added="${f.added ? "true" : "false"}"><input type="checkbox" data-up="pick-stored" data-key="${f.key}" ${f.added ? "disabled" : ""} ${b.selected.has(f.key) ? "checked" : ""}>
 				<span>${f.name}</span><small>${f.added ? "in a library" : `${f.format.toUpperCase()} · ${megabytes(f.size)}`}</small></label>
 			</li>`)}</ul>` : ""}
 		${!b.loading && !b.error && !b.folders?.length && !b.files?.length ? html`<p class="muted">This folder has no folders or audio files.${root ? ` Your storage is ${root}; files put there (with rclone, wrangler or the Cloudflare dashboard) appear here.` : ""}</p>` : ""}
