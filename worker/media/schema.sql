@@ -247,3 +247,31 @@ CREATE TABLE IF NOT EXISTS signin_waiting (
     error       TEXT,
     created_at  INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- passkeys: signing in with the device's own lock (passkeys.js)
+-- =============================================================================
+-- One row per passkey: its credential id (base64url), the member, its public
+-- key (a JWK WebCrypto imports) and algorithm (-7 ES256, -257 RS256), and the
+-- signature counter (0 for devices that keep none). Each is also a sign-in
+-- in member_logins (provider "passkey"); removing that removes this.
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+CREATE TABLE IF NOT EXISTS passkeys (
+    credential_id  TEXT    PRIMARY KEY,
+    member_id      INTEGER NOT NULL,
+    jwk            TEXT    NOT NULL,
+    alg            INTEGER NOT NULL,
+    sign_count     INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    last_used      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_passkeys_member ON passkeys (member_id);
+
+-- passkey_challenges: one-time challenges for making or using a passkey (5 minutes).
+CREATE TABLE IF NOT EXISTS passkey_challenges (
+    challenge   TEXT    PRIMARY KEY,
+    kind        TEXT    NOT NULL,          -- create, get
+    member_id   INTEGER,                   -- create: the member adding it
+    rp_id       TEXT    NOT NULL,
+    created_at  INTEGER NOT NULL
+);

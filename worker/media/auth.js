@@ -20,6 +20,7 @@
  *   POST /auth/session   a GitHub token for a Zaideih session (accounts.js)
  *   POST /auth/session/end  signs a Zaideih session out (accounts.js)
  *   POST /auth/me, /auth/logins/remove  the signed-in member's sign-ins (accounts.js)
+ *   POST /auth/passkey/options, /register, /signin  passkeys (passkeys.js)
  *   POST /auth/wait      {nonce} -> {code} | {error} | 204: the end of a sign-in
  *                        started with wait=1 (see waitPage)
  *   GET  /auth/google/login, /auth/google/callback, POST /auth/google/token
@@ -43,8 +44,9 @@
  */
 
 import { suggest, SuggestError } from "./suggest.js";
-import { handleSession, issueSession } from "./accounts.js";
+import { handleSession, issueSession, sessionMember } from "./accounts.js";
 import { googleAuthorizeUrl, googleConfig, googleExchange } from "./google.js";
+import { handlePasskey } from "./passkeys.js";
 import { MemberError } from "./members.js";
 
 const GITHUB = "https://github.com";
@@ -237,13 +239,18 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			return redirect(`${back}#/${page}?${answer}`);
 		}
 
-		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token", "/auth/wait"].includes(route)) {
+		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token", "/auth/wait", "/auth/passkey/options", "/auth/passkey/register", "/auth/passkey/signin"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
 		// Tokens are answered to the admin page's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
 		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
+		if (route.startsWith("/auth/passkey/")) {
+			const nowSeconds = Math.floor(now() / 1000);
+			const [status, answer] = await handlePasskey(env, route, body, { origin: cors, memberOf: () => sessionMember(env, request, nowSeconds), nowSeconds });
+			return json(status, answer, cors);
+		}
 		if (route === "/auth/wait") {
 			if (!TOKENISH.test(body.nonce ?? "")) throw new AuthError("expected {nonce}");
 			const got = await takeWaiting(env, body.nonce, Math.floor(now() / 1000));

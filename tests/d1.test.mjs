@@ -7,7 +7,7 @@ import { sqlite } from "./helpers/fakes.mjs";
 const schema = await readFile(new URL("../worker/media/schema.sql", import.meta.url), "utf8");
 
 test("the schema is one idempotent file with the Worker's tables", () => {
-	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "schema_migrations", "members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "signin_waiting"]);
+	assert.deepEqual(schemaTables(schema), ["tracks", "tracks_status", "plays", "schema_migrations", "members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "signin_waiting", "passkeys", "passkey_challenges"]);
 	const sql = schemaSql(schema);
 	assert.doesNotMatch(sql, /--/);
 	for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) assert.match(stmt, /^CREATE (TABLE|INDEX) IF NOT EXISTS/);

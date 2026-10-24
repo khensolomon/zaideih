@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.12
+
+- Passkeys: add one on Your account, then sign in with the device's face, fingerprint or code
+
 ## v26.10.24.11
 
 - Home on phones scrolls freely again, and settles on a section's title only after a scroll has come to rest near it

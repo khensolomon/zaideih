@@ -89,7 +89,7 @@ A hidden page, `#/admin` (linked nowhere), edits the catalog through GitHub: `as
 
 ## Accounts
 
-A Zaideih account is one person, however they sign in (Google or GitHub, on Your account, `#/account`; passkeys next): D1 `members`, with `member_logins` for their sign-ins (joined by verified email, or added while signed in) and `member_sessions` for Zaideih's own session tokens, which the Worker's own routes accept instead of GitHub tokens (`worker/media/accounts.js`, `src/core/account.js`). Catalog editing still runs on the person's GitHub sign-in. Design: [accounts.md](accounts.md).
+A Zaideih account is one person, however they sign in (Google, GitHub or a passkey, on Your account, `#/account`): D1 `members`, with `member_logins` for their sign-ins (joined by verified email, or added while signed in) and `member_sessions` for Zaideih's own session tokens, which the Worker's own routes accept instead of GitHub tokens (`worker/media/accounts.js`, `src/core/account.js`). Catalog editing still runs on the person's GitHub sign-in. Design: [accounts.md](accounts.md).
 
 ## Personal libraries
 

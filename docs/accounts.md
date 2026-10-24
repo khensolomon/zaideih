@@ -2,7 +2,7 @@
 
 A Zaideih account is one person, however they sign in. Personal libraries, rights, blocks and, later, synced likes and playlists and lyrics belong to the account, not to a GitHub account. GitHub stays what catalog editing runs on: the admin page edits the catalog with the person's GitHub sign-in, and GitHub decides what it may do.
 
-Status: agreed 2026-10-24. Built: accounts, GitHub as their first sign-in, Zaideih sessions (v26.10.24.1); Google sign-in and Your account (this release). Next: passkeys; then likes and playlists synced across devices; then lyrics.
+Status: agreed 2026-10-24. Built: accounts, GitHub as their first sign-in, Zaideih sessions (v26.10.24.1); Google sign-in and Your account (this release). Passkeys (this release). Next: likes and playlists synced across devices; then lyrics.
 
 ## Sign-ins
 
@@ -49,6 +49,24 @@ OpenID Connect with PKCE, finished by the Worker (`worker/media/google.js`), whi
 3. The page posts the code and its verifier to `POST /auth/google/token` (with `{"link": "<session>"}` for Add Google) and gets a Zaideih session.
 
 Google's tokens are read once and never kept or given to the page. The ID token comes straight from Google's token endpoint over TLS, which OpenID Connect Core 3.1.3.7 accepts in place of checking its signature; its issuer, audience and expiry are still checked. Only Google's id for the person (`sub`), the name, and the email with Google's word on whether it is verified are used. Setup: [setup.md](setup.md#google-sign-in).
+
+## Passkeys
+
+A passkey signs in with the device's own lock: face, fingerprint or the device's code. It is added on Your account while signed in ("Add a passkey on this device") and then signs in to that account alone ("Sign in with a passkey"), with no name or email typed; the device's password manager (iCloud Keychain, Google Password Manager) can carry it to the person's other devices.
+
+WebAuthn, checked by the Worker (`worker/media/passkeys.js`), with no library: a small CBOR decoder reads the authenticator's data and its COSE key, and WebCrypto checks ES256 (P-256) or RS256 signatures.
+
+| Route (POST, under `/auth`) | Does |
+|---|---|
+| `passkey/options` `{kind: "create"}` with the session, or `{kind: "get"}` | A one-time challenge (5 minutes, D1 `passkey_challenges`) and what the browser needs |
+| `passkey/register` `{id, clientDataJSON, attestationObject}` with the session | Checks and keeps the new passkey (D1 `passkeys`, and a `member_logins` row, provider `passkey`); answers the sign-ins |
+| `passkey/signin` `{id, clientDataJSON, authenticatorData, signature}` | Checks the signature with the kept public key; answers a session |
+
+Checked every time: the challenge is this Worker's, of that kind, unused and recent; the browser reports the page's own origin, which is in `AUTH_ORIGINS`; the relying party is the page's site (`zaideih.com` for it and its subdomains, the host itself otherwise, so `localhost` in development), and the authenticator data is for it; the person was present and verified with the device's lock; signing in, the signature is the kept key's, and the signature counter went up (devices that keep none send 0). Attestation is not asked for: which device made a passkey is not Zaideih's concern. The user handle given to the device is the member's id, not their name or email.
+
+Safari lets a page ask for a passkey only in direct answer to a tap, so the page fetches the challenge when it opens (and again after each use), and the tap goes straight to the device's prompt (`src/core/passkey.js`).
+
+Removing a passkey on Your account deletes its key; joining two accounts moves their passkeys with them. Nothing of the person's face, fingerprint or code ever reaches Zaideih: the device keeps the private key and only answers with signatures.
 
 ## Sessions
 
