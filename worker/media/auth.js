@@ -20,6 +20,8 @@
  *   POST /auth/session   a GitHub token for a Zaideih session (accounts.js)
  *   POST /auth/session/end  signs a Zaideih session out (accounts.js)
  *   POST /auth/me, /auth/logins/remove  the signed-in member's sign-ins (accounts.js)
+ *   POST /auth/wait      {nonce} -> {code} | {error} | 204: the end of a sign-in
+ *                        started with wait=1 (see waitPage)
  *   GET  /auth/google/login, /auth/google/callback, POST /auth/google/token
  *                        Sign in with Google (google.js)
  *   OPTIONS              CORS preflight for AUTH_ORIGINS.
@@ -129,6 +131,43 @@ async function githubToken(fetchImpl, params) {
 	return res.json();
 }
 
+/* ------------------------------------------------- signing in from an app ---- */
+
+// How long a code waits for the app that asked for it.
+const WAIT_S = 600;
+
+const sha256 = async (text) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))));
+
+/**
+ * The end of a sign-in started with wait=1: keeps the code (or the error)
+ * for the app, under a hash of the sign-in's nonce, and tells the person to
+ * go back to the app. Only the app that started the sign-in knows the nonce
+ * to fetch the code, and only it holds the PKCE verifier the code needs.
+ */
+async function waitPage(env, { nonce, code, error, nowSeconds }) {
+	if (!env.DB) throw new AuthError("signing in from the app is not set up on this Worker: missing the D1 binding DB", 503);
+	await env.DB.prepare("DELETE FROM signin_waiting WHERE created_at < ?1").bind(nowSeconds - WAIT_S).run();
+	await env.DB.prepare("INSERT OR REPLACE INTO signin_waiting (nonce_hash, code, error, created_at) VALUES (?1, ?2, ?3, ?4)").bind(await sha256(nonce), code, error, nowSeconds).run();
+	const say = error ? `Not signed in: ${error}` : "Signed in.";
+	const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+	return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Zaideih</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-content:center;gap:8px;padding:24px;text-align:center;background:#5a5a5a;color:#fff;font:18px/1.5 system-ui,-apple-system,sans-serif}h1{font-size:24px;margin:0}p{margin:0;color:#e6e6e6}</style></head>
+<body><h1>${esc(say)}</h1><p>Close this window and go back to Zaideih${error ? " to try again" : "; it finishes there"}.</p></body></html>`, {
+		status: error ? 400 : 200,
+		headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+	});
+}
+
+/** The code (or error) kept for this nonce, once: { code } | { error } | null while the sign-in has not come back. */
+async function takeWaiting(env, nonce, nowSeconds) {
+	const hash = await sha256(nonce);
+	const row = await env.DB.prepare("SELECT code, error, created_at FROM signin_waiting WHERE nonce_hash = ?1").bind(hash).first();
+	if (!row) return null;
+	await env.DB.prepare("DELETE FROM signin_waiting WHERE nonce_hash = ?1").bind(hash).run();
+	if (row.created_at < nowSeconds - WAIT_S) return { error: "the sign-in took too long; try again" };
+	return row.error ? { error: row.error } : { code: row.code };
+}
+
 /**
  * Handles /auth/*. `fetchImpl` is for tests.
  * @param {Request} request
@@ -162,7 +201,9 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			if (!TOKENISH.test(nonce) || !TOKENISH.test(challenge)) throw new AuthError("nonce and challenge must be base64url, 43 to 128 characters");
 			const page = google ? "account" : url.searchParams.get("to") ?? "admin";
 			if (!RETURN_ROUTES.has(page)) throw new AuthError(`to must be one of ${[...RETURN_ROUTES].join(", ")}`);
-			const state = b64url.encode(JSON.stringify({ r: back, n: nonce, t: page }));
+			// wait=1: the app cannot be returned to (an app added to the home screen, whose sign-in opens in a browser sheet); the callback keeps the code for it (waitPage).
+			const wait = url.searchParams.get("wait") === "1";
+			const state = b64url.encode(JSON.stringify({ r: back, n: nonce, t: page, ...(wait ? { w: 1 } : {}) }));
 			if (google) {
 				let g;
 				try { g = googleConfig(env); } catch (err) { throw new AuthError(err.message, err.status); }
@@ -190,19 +231,24 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			const page = RETURN_ROUTES.has(state.t) ? state.t : "admin";
 			const key = google ? "google" : "signin";
 			const code = url.searchParams.get("code");
-			const answer = code && TOKENISH.test(state.n ?? "")
-				? new URLSearchParams({ [key]: code, nonce: state.n })
-				: new URLSearchParams({ [`${key}-error`]: url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? `${google ? "Google" : "GitHub"} returned no code` });
+			const failed = code && TOKENISH.test(state.n ?? "") ? null : url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? `${google ? "Google" : "GitHub"} returned no code`;
+			if (state.w === 1 && TOKENISH.test(state.n ?? "")) return waitPage(env, { nonce: state.n, code: failed ? null : code, error: failed, nowSeconds: Math.floor(now() / 1000) });
+			const answer = failed ? new URLSearchParams({ [`${key}-error`]: failed }) : new URLSearchParams({ [key]: code, nonce: state.n });
 			return redirect(`${back}#/${page}?${answer}`);
 		}
 
-		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token"].includes(route)) {
+		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token", "/auth/wait"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
 		// Tokens are answered to the admin page's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
 		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
+		if (route === "/auth/wait") {
+			if (!TOKENISH.test(body.nonce ?? "")) throw new AuthError("expected {nonce}");
+			const got = await takeWaiting(env, body.nonce, Math.floor(now() / 1000));
+			return got ? json(200, got, cors) : json(204, null, cors);
+		}
 		if (route === "/auth/google/token") {
 			if (typeof body.code !== "string" || !body.code || !TOKENISH.test(body.verifier ?? "")) throw new AuthError("expected {code, verifier}");
 			const nowSeconds = Math.floor(now() / 1000);

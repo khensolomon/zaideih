@@ -25,6 +25,57 @@ const challengeOf = async (verifier) => b64url(new Uint8Array(await crypto.subtl
 export class AccountError extends Error {}
 
 /**
+ * True in an app added to the home screen. Its sign-in opens in a browser
+ * sheet that cannot hand the result back to the app, so the app takes the
+ * code from the Worker instead (waitForSignIn).
+ */
+export const homeScreenApp = () => globalThis.matchMedia?.("(display-mode: standalone)").matches === true || globalThis.navigator?.standalone === true;
+
+/**
+ * Waits for a sign-in started with `wait` to come back: asks the Worker
+ * (POST <auth>/wait) every `everyMs`, and at once when the app is shown
+ * again, until it answers the code or an error, or `timeoutMs` passes.
+ * Answers { promise (the code), cancel() }.
+ */
+export function waitForSignIn({ authUrl, nonce, fetchImpl = (...a) => fetch(...a), everyMs = 2000, timeoutMs = 600_000, doc = globalThis.document, now = () => Date.now() }) {
+	let cancel;
+	const promise = new Promise((resolve, reject) => {
+		let timer = 0;
+		let done = false;
+		const deadline = now() + timeoutMs;
+		const end = (fn, value) => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			doc?.removeEventListener?.("visibilitychange", onShow);
+			fn(value);
+		};
+		const check = async () => {
+			clearTimeout(timer);
+			if (done) return;
+			try {
+				const res = await fetchImpl(`${authUrl}/wait`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nonce }), cache: "no-store" });
+				if (res.status === 200) {
+					const a = await res.json();
+					return a.code ? end(resolve, a.code) : end(reject, new AccountError(`not signed in: ${a.error}`));
+				}
+				if (res.status !== 204) {
+					const a = await res.json().catch(() => null);
+					return end(reject, new AccountError(a?.error ?? `the sign-in service answered HTTP ${res.status}`));
+				}
+			} catch { /* offline for a moment: asked again below */ }
+			if (now() > deadline) return end(reject, new AccountError("the sign-in was not finished in time; try again"));
+			if (!done) timer = setTimeout(check, everyMs);
+		};
+		function onShow() { if (doc.visibilityState === "visible") check(); }
+		doc?.addEventListener?.("visibilitychange", onShow);
+		cancel = () => end(reject, new AccountError("cancelled"));
+		timer = setTimeout(check, everyMs);
+	});
+	return { promise, cancel: () => cancel() };
+}
+
+/**
  * @param {{ authUrl: string, local: Storage, tab?: Storage, githubToken: () => Promise<string>, fetchImpl?: typeof fetch, now?: () => number }} options
  *   githubToken answers the GitHub sign-in's current token (src/admin/session.js);
  *   tab (sessionStorage) keeps a Google sign-in's verifier while Google is open
@@ -136,14 +187,17 @@ export function createAccount({ authUrl, local, tab = null, githubToken, fetchIm
 		},
 
 		google: {
-			/** The address to go to for signing in with Google; `link` adds Google to the signed-in account. */
-			async start(returnTo, { link = false } = {}) {
+			/**
+			 * The address to go to for signing in with Google; `link` adds Google
+			 * to the signed-in account; `wait` leaves the code at the Worker (waitForSignIn).
+			 */
+			async start(returnTo, { link = false, wait = false } = {}) {
 				if (!authUrl) throw new AccountError("sign-in is not built into this version");
 				if (!tab) throw new AccountError("Google sign-in needs a browser tab");
 				const verifier = random();
 				const nonce = random();
 				tab.setItem(GOOGLE_PENDING_KEY, JSON.stringify({ verifier, nonce, link }));
-				return `${authUrl}/google/login?${new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier) })}`;
+				return `${authUrl}/google/login?${new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier), ...(wait ? { wait: "1" } : {}) })}`;
 			},
 			/** Back from Google: the code for a session; refuses a code this tab did not ask for. */
 			async finish({ code, nonce }) {

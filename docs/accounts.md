@@ -28,6 +28,18 @@ GitHub gives the addresses only when the GitHub App has the Email addresses perm
 
 Both sign-ins return to this page, which finishes them and takes the code out of the address at once. A GitHub sign-in made here also signs in the admin page, so editors get the Admin link.
 
+## From an app on the home screen
+
+An app added to the home screen cannot leave its own site: Google's and GitHub's sign-in open in a browser sheet over it, and when the sign-in returns to zaideih.com it does so inside that sheet, which starts a second copy of the app without the first one's verifier. The app itself never hears of it.
+
+So in such an app (`display-mode: standalone`, or `navigator.standalone` on iOS):
+
+1. The sign-in buttons are links prepared when the page opens (the verifier and nonce are kept, the address built), so a tap opens the sheet at once, with no script in between for the browser to block.
+2. The sign-in starts with `wait=1`. Its callback does not return to the app: it keeps the code (or the error) in D1 `signin_waiting` under a SHA-256 hash of the nonce, for 10 minutes, and shows "Signed in. Close this window and go back to Zaideih".
+3. The app asks `POST /auth/wait {nonce}` every 2 seconds, and at once when it is shown again; the Worker answers the code once (`{code}`, `{error}`, or 204 while waiting). The app then finishes as usual, with its verifier.
+
+The code alone signs nobody in: it needs the PKCE verifier, which never leaves the app. The admin page's GitHub sign-in works the same way from the home screen.
+
 ## Sign in with Google
 
 OpenID Connect with PKCE, finished by the Worker (`worker/media/google.js`), which holds the client secret, like the GitHub sign-in:
@@ -46,6 +58,7 @@ After a sign-in the Worker gives a session token (`zs_` and 43 base64url charact
 |---|---|
 | `POST /auth/session` with `Authorization: Bearer <GitHub token>`, body `{}` or `{"link": "<session>"}` | Checks the token with GitHub (`GET /user`, `GET /user/emails`), finds or makes the member, answers `{token, expires_at, member: {id, name}, joined, email}`; `joined` is `known`, `link`, `email` or `new` |
 | `POST /auth/session/end` with `Authorization: Bearer <session>` | Signs that session out |
+| `POST /auth/wait` `{nonce}` | The code of a sign-in started with `wait=1`, once; 204 while it has not come back |
 | `POST /auth/google/token` `{code, verifier, link?}` | A Google sign-in for a session, answered like `/auth/session` |
 | `POST /auth/me` with the session | `{member, logins: [{provider, subject, login, email, emailVerified, added, used}]}` |
 | `POST /auth/logins/remove` `{provider, subject}` with the session | Removes one of the member's sign-ins; never the last one, nor the owner's GitHub (409) |

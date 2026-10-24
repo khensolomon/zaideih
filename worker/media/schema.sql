@@ -232,3 +232,18 @@ CREATE TABLE IF NOT EXISTS published_tracks (
     track_id    INTEGER NOT NULL UNIQUE,
     r2_key      TEXT    NOT NULL UNIQUE      -- music/<folder>/<file>
 );
+
+-- =============================================================================
+-- signin_waiting: sign-ins finishing in a browser sheet (auth.js, waitPage)
+-- =============================================================================
+-- An app added to the home screen opens Google's or GitHub's sign-in in a
+-- browser sheet that cannot hand the result back. The callback keeps the
+-- code here under a hash of the sign-in's nonce, for 10 minutes, and the app
+-- takes it once (POST /auth/wait). The code is useless without the PKCE
+-- verifier, which never left the app.
+CREATE TABLE IF NOT EXISTS signin_waiting (
+    nonce_hash  TEXT    PRIMARY KEY,
+    code        TEXT,
+    error       TEXT,
+    created_at  INTEGER NOT NULL
+);

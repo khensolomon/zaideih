@@ -222,3 +222,33 @@ test("a blocked account is not joined to another", { skip }, async () => {
 	assert.equal(tried.status, 403);
 	assert.match(await tried.text(), /blocked; the owner can join them/);
 });
+
+test("from an app on the home screen: the code waits at the Worker for the app that asked", { skip }, async () => {
+	const { env, get, tick } = setup();
+	const nonce = "w".repeat(43);
+	const wait = (n = nonce) => handleAuth(new Request(`${W}/auth/wait`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ nonce: n }) }), env, { now: () => 1_800_000_000_000 + 0 });
+	const q = new URLSearchParams({ return: `${ORIGIN}/`, nonce, challenge: "c".repeat(43), wait: "1" });
+	const state = new URL((await get(`/auth/google/login?${q}`)).headers.get("location")).searchParams.get("state");
+	assert.equal((await wait()).status, 204, "not back yet");
+	const page = await get(`/auth/google/callback?code=the-code&state=${state}`);
+	assert.equal(page.status, 200);
+	assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
+	assert.match(await page.text(), /Signed in\.<\/h1><p>Close this window and go back to Zaideih/);
+	assert.doesNotMatch(JSON.stringify(env.DB.raw.prepare("SELECT * FROM signin_waiting").all()), new RegExp(nonce), "only a hash of the nonce is kept");
+	assert.equal((await wait("x".repeat(43))).status, 204, "another nonce gets nothing");
+	const got = await wait();
+	assert.deepEqual(await got.json(), { code: "the-code" });
+	assert.equal((await wait()).status, 204, "once");
+	// GitHub too, and an error is passed on.
+	const gq = new URLSearchParams({ return: `${ORIGIN}/`, nonce, challenge: "c".repeat(43), wait: "1", to: "account" });
+	const gstate = new URL((await get(`/auth/login?${gq}`)).headers.get("location")).searchParams.get("state");
+	const denied = await get(`/auth/callback?error=access_denied&state=${gstate}`);
+	assert.equal(denied.status, 400);
+	assert.match(await denied.text(), /Not signed in: access_denied/);
+	assert.deepEqual(await (await wait()).json(), { error: "access_denied" });
+	// A code left too long is refused.
+	await get(`/auth/google/callback?code=late&state=${state}`);
+	env.DB.raw.prepare("UPDATE signin_waiting SET created_at = created_at - 601").run();
+	assert.deepEqual(await (await wait()).json(), { error: "the sign-in took too long; try again" });
+	void tick;
+});

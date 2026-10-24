@@ -1284,3 +1284,6 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .intro h1 { font-size: clamp(28px, 5vw, 40px); margin: 0 0 12px; }
 .intro p, .intro li { color: var(--ink-2); line-height: 1.5; }
 .intro a { color: var(--ink); text-decoration: underline; }
+.acct-waiting { max-width: 420px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-2); }
+.acct-waiting p { margin: 0 0 10px; }
+.acct-waiting p:last-child { margin: 0; }

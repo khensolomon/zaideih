@@ -6,11 +6,18 @@
  * never heard of GitHub, which is for catalog editors. Both sign-ins come
  * back here (#/account?google=… or ?signin=…), where they are finished and
  * the code is taken out of the address at once.
+ *
+ * In an app added to the home screen the sign-in cannot come back: it opens
+ * in a browser sheet over the app. There the buttons are links prepared in
+ * advance (so the sheet opens straight from the tap), the sign-in leaves its
+ * code at the Worker, and this page takes it (core/account.js waitForSignIn).
  */
 import { AUTH_URL } from "../config.js";
 import { html } from "../core/html.js";
 import { saveWho, TOKEN_KEY } from "../core/access.js";
 import { account, githubSession } from "../core/signin.js";
+import { GOOGLE_PENDING_KEY, homeScreenApp, waitForSignIn } from "../core/account.js";
+import { PENDING_KEY } from "../admin/session.js";
 import { createGitHub } from "../admin/github.js";
 import { icon } from "./icons.js";
 
@@ -21,7 +28,45 @@ const PROVIDERS = { google: "Google", github: "GitHub" };
 export const inAppBrowser = (ua) => /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|; wv\)/.test(ua);
 
 // State that survives re-renders of the page.
-let st = { me: null, busy: "", error: "" };
+let st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
+
+/**
+ * A sign-in button: in an app on the home screen, a link prepared in advance
+ * that opens the sign-in in a browser sheet; otherwise a button.
+ */
+function startButton(provider, { label, cls = "btn", link = false }) {
+	const prepared = st.links?.[provider];
+	const inner = html`${provider === "github" ? icon("github") : ""}${label}`;
+	if (homeScreenApp()) {
+		return prepared
+			? html`<a class="${cls}" href="${prepared.href}" target="_blank" rel="noopener" data-acct-open="${provider}">${inner}</a>`
+			: html`<button class="${cls}" disabled>${inner}</button>`;
+	}
+	return html`<button class="${cls}" data-acct="${provider}" data-link="${link ? "1" : ""}" ${st.busy ? "disabled" : ""}>${inner}</button>`;
+}
+
+/** While the sign-in is open in its sheet. */
+function waitingPanel() {
+	return html`<div class="acct-waiting" role="status">
+		<p><b>Finish signing in with ${PROVIDERS[st.waiting]} in the window that opened,</b> then come back here; this page carries on by itself.</p>
+		<p><button class="btn" data-acct="cancel">Cancel</button></p>
+	</div>`;
+}
+
+/** The sign-in links for an app on the home screen, each with its own verifier and nonce kept for this page. */
+async function prepareLinks() {
+	if (!homeScreenApp() || !AUTH_URL) { st.links = null; return; }
+	const here = `${location.origin}${location.pathname}`;
+	const link = account().signedIn;
+	st.links = {
+		google: { href: await account().google.start(here, { link, wait: true }), link },
+		github: { href: await githubSession().start(here, { to: "account", wait: true }), link },
+	};
+}
+
+const nonceOf = (provider) => {
+	try { return JSON.parse(sessionStorage.getItem(provider === "google" ? GOOGLE_PENDING_KEY : PENDING_KEY) ?? "null")?.nonce ?? null; } catch { return null; }
+};
 
 /** @param {{ onChange: () => void, notify: (text: string, o?: object) => void, desktop: boolean }} ctx  onChange: someone signed in or out */
 export function accountView(ctx) {
@@ -38,10 +83,10 @@ function signInCard(ctx) {
 		<h1 class="page-title">Sign in</h1>
 		<p class="acct-lead">Keep music of your own, and later your liked songs and playlists on every device.</p>
 		${caught ? html`<p class="acct-warn" role="note">This page is open inside another app. Google does not allow signing in here: open <b>${location.host}</b> in Chrome or Safari first.</p>` : ""}
-		<div class="acct-buttons">
-			<button class="btn primary acct-google" data-acct="google" ${st.busy ? "disabled" : ""}>Continue with Google</button>
-			<button class="btn acct-github" data-acct="github" ${st.busy ? "disabled" : ""}>${icon("github")} Continue with GitHub</button>
-		</div>
+		${st.waiting ? waitingPanel() : html`<div class="acct-buttons">
+			${startButton("google", { label: "Continue with Google", cls: "btn primary acct-google" })}
+			${startButton("github", { label: " Continue with GitHub", cls: "btn acct-github" })}
+		</div>`}
 		<p class="acct-small">GitHub is for catalog editors and people who already use it. Signing in with both, with the same email, is one account.</p>
 		<p class="acct-small">Zaideih keeps your name, the email Google or GitHub confirms, and their id for you, only to know it is you. <a class="text-link" href="#/about">About</a></p>
 	</section>`;
@@ -61,10 +106,10 @@ function accountCard() {
 			<span><b>${PROVIDERS[l.provider] ?? l.provider}</b><small>${[l.login ? `@${l.login}` : "", l.email ?? ""].filter(Boolean).join(" · ") || "no email shared"}</small></span>
 			${many ? html`<button class="link-btn" data-acct="remove" data-provider="${l.provider}" data-subject="${l.subject}">Remove</button>` : ""}
 		</li>`)}</ul>
-		<div class="acct-buttons">
-			${has.has("google") ? "" : html`<button class="btn" data-acct="google" data-link="1">Add Google</button>`}
-			${has.has("github") ? "" : html`<button class="btn" data-acct="github" data-link="1">${icon("github")} Add GitHub</button>`}
-		</div>
+		${st.waiting ? waitingPanel() : html`<div class="acct-buttons">
+			${has.has("google") ? "" : startButton("google", { label: "Add Google", link: true })}
+			${has.has("github") ? "" : startButton("github", { label: " Add GitHub", link: true })}
+		</div>`}
 		<p class="acct-small">Signing in with Google and GitHub with the same verified email is one account; with different emails, add the second here.</p>
 		<p class="acct-links"><a class="text-link" href="#/library/uploads">Your uploads</a></p>
 		<p><button class="btn" data-acct="signout">Sign out on this device</button></p>
@@ -93,15 +138,59 @@ async function finishGitHub(query) {
 	return account().fromGitHub({ link });
 }
 
+/** In an app on the home screen: the sign-in opened in its sheet; take its code from the Worker and finish here. */
+async function waitFor(provider, root, ctx) {
+	const nonce = nonceOf(provider);
+	if (!nonce) throw new Error("the sign-in was not prepared on this page; try again");
+	st.waiting = provider;
+	st.error = "";
+	draw(root, ctx);
+	const w = waitForSignIn({ authUrl: AUTH_URL, nonce });
+	st.cancel = w.cancel;
+	try {
+		const code = await w.promise;
+		st.busy = `Finishing the ${PROVIDERS[provider]} sign-in…`;
+		st.waiting = null;
+		draw(root, ctx);
+		const s = provider === "google"
+			? await account().google.finish({ code, nonce })
+			: await finishGitHub(new URLSearchParams({ signin: code, nonce }));
+		ctx.notify(s.joined === "merged" ? "Your two accounts are now one" : s.joined === "link" ? `${PROVIDERS[provider]} added to your account` : s.joined === "email" ? "Signed in: joined to your account by your email" : `Signed in as ${s.member.name}`);
+		ctx.onChange();
+		st.me = await account().me();
+	} catch (err) {
+		if (err.message !== "cancelled") st.error = err.message;
+	} finally {
+		st.waiting = null;
+		st.cancel = null;
+		st.busy = "";
+		await prepareLinks().catch((err) => { st.error = err.message; });
+		draw(root, ctx);
+	}
+}
+
 async function mount(root, ctx) {
-	st = { me: null, busy: "", error: "" };
+	st.cancel?.();
+	st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");
 	const back = ["google", "google-error", "signin", "signin-error"].some((k) => query.has(k));
 	// A code is single-use: out of the address and the history at once.
 	if (back) history.replaceState(history.state, "", "#/account");
 	root.addEventListener("click", async (e) => {
+		const open = e.target.closest("[data-acct-open]");
+		if (open) {
+			// The link opens the sign-in in its sheet; the page waits for it, after the tap has done its work.
+			const provider = open.dataset.acctOpen;
+			if (provider === "github") {
+				if (st.links?.github.link) sessionStorage.setItem(GITHUB_LINK_KEY, "1");
+				else sessionStorage.removeItem(GITHUB_LINK_KEY);
+			}
+			setTimeout(() => waitFor(provider, root, ctx), 0);
+			return;
+		}
 		const b = e.target.closest("[data-acct]");
 		if (!b) return;
+		if (b.dataset.acct === "cancel") { st.cancel?.(); return; }
 		st.error = "";
 		try {
 			const link = b.dataset.link === "1";
@@ -127,6 +216,7 @@ async function mount(root, ctx) {
 				st = { me: null, busy: "", error: "" };
 				ctx.notify("Signed out on this device");
 				ctx.onChange();
+				await prepareLinks();
 				draw(root, ctx);
 			}
 		} catch (err) {
@@ -149,6 +239,7 @@ async function mount(root, ctx) {
 			ctx.onChange();
 		}
 		st.busy = "";
+		await prepareLinks();
 		draw(root, ctx);
 		if (account().signedIn && !ctx.desktop) {
 			st.me = await account().me();
