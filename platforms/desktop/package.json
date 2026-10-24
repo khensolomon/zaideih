@@ -1,7 +1,7 @@
 {
 	"name": "zaideih-desktop",
 	"productName": "Zaideih",
-	"version": "26.10.24.22",
+	"version": "26.10.24.23",
 	"private": true,
 	"description": "Zaideih Music Station desktop app (Electron shell around the shared web app).",
 	"type": "module",

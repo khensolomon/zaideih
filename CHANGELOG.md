@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.23
+
+- Published Myanmar Zomi Artists (15 songs, from @khensolomon's library)
+
 ## v26.10.24.22
 
 - "အလင်းသက်သေ": year (catalog, 1 change)
