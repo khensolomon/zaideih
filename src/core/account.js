@@ -146,7 +146,7 @@ export function createAccount({ authUrl, local, tab = null, githubToken, fetchIm
 			const kept = current();
 			if (kept) return kept.token;
 			const gh = github();
-			if (!gh) { write(null); throw new AccountError("sign in first (Your account)"); }
+			if (!gh) { write(null); throw new AccountError("sign in first (Account)"); }
 			// One exchange at a time: parallel calls share it.
 			getting ??= gh.token()
 				.then((t) => post("session", t))

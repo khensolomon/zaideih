@@ -1,5 +1,5 @@
 /**
- * Your account (#/account, docs/accounts.md): signing in, the ways the
+ * Account (#/account, docs/accounts.md): signing in, the ways the
  * person signs in, adding or removing one, and signing out of this device.
  *
  * Google is offered first: most listeners have a Google account and have
@@ -90,7 +90,7 @@ export function accountView(ctx) {
 	st = { me: null, busy: "", error: "", links: null, waiting: null, cancel: null };
 	// Drawn whole with the page, as every other page is, so its height does not jump while the account and links arrive.
 	return {
-		title: account().signedIn ? "Your account" : "Sign in",
+		title: account().signedIn ? "Account" : "Sign in",
 		body: html`<div class="acct-root">${content(ctx)}</div>`,
 		mount: (view) => mount(view.querySelector(".acct-root"), ctx),
 	};
@@ -117,7 +117,7 @@ function accountCard() {
 	if (!me) {
 		// The shape of the card to come, so nothing moves when it arrives.
 		return html`<section class="acct-card" aria-busy="true">
-			<h1 class="page-title">Your account</h1>
+			<h1 class="page-title">Account</h1>
 			<p class="acct-name"><span class="acct-avatar" aria-hidden="true">${icon("person")}</span><b class="muted">Reading your account…</b></p>
 			<h2>You sign in with</h2>
 			<ul class="acct-logins acct-skeleton" aria-hidden="true"><li></li><li></li></ul>
@@ -126,8 +126,13 @@ function accountCard() {
 	const has = new Set(me.logins.map((l) => l.provider));
 	const many = me.logins.length > 1;
 	return html`<section class="acct-card">
-		<h1 class="page-title">Your account</h1>
-		<p class="acct-name"><span class="acct-avatar" aria-hidden="true">${icon("person")}</span><b>${me.member.name}</b></p>
+		<h1 class="page-title">Account</h1>
+		<p class="acct-name">
+			${me.member.picture
+				? html`<img class="acct-avatar" src="${me.member.picture}" alt="" width="48" height="48" referrerpolicy="no-referrer" loading="lazy">`
+				: html`<span class="acct-avatar" aria-hidden="true">${icon("person")}</span>`}
+			<span class="acct-who"><b>${me.member.fullName ?? me.member.name}</b>${me.member.fullName && me.member.fullName !== me.member.name ? html`<small>${me.member.name}</small>` : ""}</span>
+		</p>
 		<h2>You sign in with</h2>
 		<ul class="acct-logins">${me.logins.map((l) => html`<li>
 			${l.provider === "github" ? icon("github") : l.provider === "passkey" ? icon("key") : html`<span class="acct-g" aria-hidden="true">G</span>`}

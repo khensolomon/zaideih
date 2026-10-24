@@ -19,7 +19,9 @@ Only verified emails join members: an unverified address could be anyone's. Sign
 
 GitHub gives the addresses only when the GitHub App has the Email addresses permission ([setup.md](setup.md#github-app-zaideih-sign-in-suggestions)); without it, or with a fine-grained token without that permission, a GitHub sign-in never joins by email.
 
-## Your account
+## Account
+
+The page (`#/account`) shows the person's own name and photo as their sign-ins give them: GitHub's profile name and avatar, Google's name and picture (`member_logins.full_name`, `member_logins.picture`, migration 0003), from the sign-in used last that has them; passkeys give neither. Only the photo's address at Google or GitHub is kept (https, those hosts only: `safePicture`), never a copy. Moderators keep seeing the member's name (a GitHub username, or the name given at the first sign-in).
 
 `#/account` (`src/ui/account-view.js`), linked from the sidebar and the logo menu as "Sign in", or the person's name once signed in:
 
@@ -52,7 +54,7 @@ Google's tokens are read once and never kept or given to the page. The ID token 
 
 ## Passkeys
 
-A passkey signs in with the device's own lock: face, fingerprint or the device's code. It is added on Your account while signed in ("Add a passkey on this device") and then signs in to that account alone ("Sign in with a passkey"), with no name or email typed; the device's password manager (iCloud Keychain, Google Password Manager) can carry it to the person's other devices.
+A passkey signs in with the device's own lock: face, fingerprint or the device's code. It is added on Account while signed in ("Add a passkey on this device") and then signs in to that account alone ("Sign in with a passkey"), with no name or email typed; the device's password manager (iCloud Keychain, Google Password Manager) can carry it to the person's other devices.
 
 WebAuthn, checked by the Worker (`worker/media/passkeys.js`), with no library: a small CBOR decoder reads the authenticator's data and its COSE key, and WebCrypto checks ES256 (P-256) or RS256 signatures.
 

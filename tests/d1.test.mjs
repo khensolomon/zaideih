@@ -57,7 +57,7 @@ test("migrations run once each, and a new database records them without running 
 	assert.match(reset, /INSERT INTO schema_migrations \(name, applied_at\) VALUES \('0002-later.sql', 5\);/);
 });
 
-test("0001-accounts: members keep their ids as accounts, with their GitHub sign-in, and match the schema", { skip: !sqlite && "node:sqlite needs Node 22.13 or later" }, async () => {
+test("migrations from 26.10.23: members keep their ids as accounts, with their GitHub sign-in, and the database matches the schema", { skip: !sqlite && "node:sqlite needs Node 22.13 or later" }, async () => {
 	const strip = (t) => t.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
 	const old = new sqlite(":memory:");
 	old.exec(strip(await readFile(new URL("./fixtures/schema-26.10.23.sql", import.meta.url), "utf8")));
@@ -65,7 +65,10 @@ test("0001-accounts: members keep their ids as accounts, with their GitHub sign-
 		INSERT INTO member_rights (github_id, kind, granted_by, granted_at) VALUES (42, 'review', 'khensolomon', 12);
 		INSERT INTO member_folders (github_id, prefix, set_by, set_at) VALUES (42, 'shared/ann/', 'khensolomon', 13);
 		INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (42, 'users/42/1.mp3', 1, 'mp3', 1, 'One', '1.mp3', 'private', 1, 1);`);
-	old.exec(migrationSql("0001-accounts.sql", await migration("0001-accounts.sql"), 99));
+	// Every migration in order, then the schema: as `tools/d1.mjs schema` does.
+	const { readdir } = await import("node:fs/promises");
+	const names = (await readdir(new URL("../worker/media/migrations/", import.meta.url))).filter((n) => n.endsWith(".sql")).sort();
+	for (const name of names) old.exec(migrationSql(name, await migration(name), 99));
 	old.exec(schemaSql(schema));
 	assert.deepEqual(old.prepare("SELECT id, name, moderator FROM members ORDER BY id").all().map((r) => ({ ...r })), [{ id: 42, name: "ann", moderator: 1 }, { id: 1753766, name: "khensolomon", moderator: 0 }]);
 	assert.deepEqual(old.prepare("SELECT provider, subject, member_id, login, created_at FROM member_logins ORDER BY member_id").all().map((r) => ({ ...r })), [
@@ -74,7 +77,7 @@ test("0001-accounts: members keep their ids as accounts, with their GitHub sign-
 	]);
 	assert.equal(old.prepare("SELECT member_id FROM member_rights").get().member_id, 42);
 	assert.equal(old.prepare("SELECT prefix FROM member_folders WHERE member_id = 42").get().prefix, "shared/ann/");
-	assert.equal(old.prepare("SELECT name FROM schema_migrations").get().name, "0001-accounts.sql");
+	assert.deepEqual(old.prepare("SELECT name FROM schema_migrations ORDER BY name").all().map((r) => r.name), names);
 	// A new member is numbered after the highest id.
 	old.exec("INSERT INTO members (name, first_seen, last_seen) VALUES ('new', 1, 1)");
 	assert.equal(old.prepare("SELECT id FROM members WHERE name = 'new'").get().id, 1753767);

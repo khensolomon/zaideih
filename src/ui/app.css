@@ -1540,3 +1540,6 @@ body[data-studio] main { max-width: none; padding-top: 0; }
 	.ly-pair > .ly-body + .ly-body { --ly-size: 15px; margin: -10px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); }
 	.ly-pair > .ly-body + .ly-body .ly-part { display: none; }
 }
+img.acct-avatar { object-fit: cover; }
+.acct-who { display: flex; flex-direction: column; min-width: 0; }
+.acct-who small { font-size: 14px; color: var(--ink-3); font-weight: 400; }
