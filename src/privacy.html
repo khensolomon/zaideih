@@ -44,9 +44,19 @@
 		<tr><td>Google</td><td>Your Google account id, your name, your email address and whether Google has verified it (the <code>openid</code>, <code>email</code> and <code>profile</code> permissions)</td><td>Recognising you when you sign in again, and recognising that a Google and a GitHub sign-in with the same verified email are the same person. Your name is shown to you, and to the moderators of uploads.</td></tr>
 		<tr><td>GitHub</td><td>Your GitHub account id, your username and your verified email addresses</td><td>The same; and for catalog editors, editing the catalog through GitHub with their own GitHub permissions.</td></tr>
 	</table>
-	<p>Your profile photo, contacts and anything else in your Google or GitHub account are not kept. Google's own sign-in tokens are used once to read the details above and are never stored. Nothing is posted to Google or GitHub on your behalf, except catalog corrections an editor or contributor chooses to send, which become public changes on GitHub in their name.</p>
-	<p>Zaideih's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements: it is used only to sign you in, never for advertising, never sold, and never shared except with the hosting provider below to run the service.</p>
+	<p>Your profile photo, contacts and anything else in your Google or GitHub account are not kept. Nothing is posted to Google or GitHub on your behalf, except catalog corrections an editor or contributor chooses to send, which become public changes on GitHub in their name.</p>
 	<p>After signing in, your device keeps a sign-in token. The server keeps only a one-way fingerprint (hash) of it. It ends 90 days after you last use it, or when you sign out.</p>
+
+	<h2>Google user data</h2>
+	<p>Zaideih uses Google only for "Sign in with Google". In detail:</p>
+	<ul>
+		<li><b>Access.</b> When you sign in with Google, Zaideih asks for the basic sign-in permissions <code>openid</code>, <code>email</code> and <code>profile</code>, and receives your Google account id, your name, your email address and whether Google has verified it. It does not access your Gmail, Drive, contacts, calendar, photos or any other Google data, and it does not keep your profile photo.</li>
+		<li><b>Use.</b> This data is used only to sign you in: to recognise you when you come back, to show your name on your account page and to the moderators of uploads, and to recognise that a Google and a GitHub sign-in with the same verified email address belong to the same person. It is not used for advertising of any kind, not used to build profiles, and not used to develop, improve or train artificial intelligence or machine learning models.</li>
+		<li><b>Sharing.</b> Google user data is not sold, rented or shared with anyone. It is not transferred to third parties, except that it is stored with Cloudflare, the hosting provider that runs Zaideih, solely to provide the service. It is not disclosed to other users, apart from your name being visible to the moderators of uploads.</li>
+		<li><b>Protection.</b> Data is sent only over encrypted connections (HTTPS) and stored in Cloudflare's database, which encrypts data at rest. Google's own sign-in tokens are used once, on the server, to read the details above, and are never stored or given to the app. Sign-in tokens issued by Zaideih are kept on the server only as one-way hashes. Stored email addresses and Google account ids are not shown in the app; only Zaideih's owner can read them, in the database.</li>
+		<li><b>Retention and deletion.</b> Your Google account id, name and email are kept while your account exists, and deleted with it. You can remove the Google sign-in from your account at any time on <a href="/#/account">Your account</a>, which deletes your Google account id and email at once (a name taken from Google stays as your account's name until the account is deleted); you can also revoke Zaideih's access at <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>. To have your whole account deleted, see "Your choices" below.</li>
+	</ul>
+	<p>Zaideih's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
 
 	<h2>Your own music</h2>
 	<p>Signed in, you can upload music to a private library that only you can play, or add files already kept in Zaideih's storage if the owner has given you that right. Zaideih keeps the files and the details you give (title, artist, album, year). Upload only recordings you are entitled to keep, such as music you bought or recorded.</p>
@@ -64,7 +74,7 @@
 	</ul>
 
 	<h2>Changes and contact</h2>
-	<p>This policy may change with new releases of the app; the date above shows the last change. Questions about it, and requests about your data: <a href="https://github.com/khensolomon/zaideih/issues">github.com/khensolomon/zaideih/issues</a>.</p>
+	<p>This policy may change with new releases of the app; the date above shows the last change, and a change to how Google user data is used is announced in the app before it takes effect. Questions about it, and requests about your data: <a href="https://github.com/khensolomon/zaideih/issues">github.com/khensolomon/zaideih/issues</a>.</p>
 	<p><a href="/#/terms">Terms</a> · <a href="/#/about">About</a> · <a href="/">Zaideih</a></p>
 </main>
 </body>
