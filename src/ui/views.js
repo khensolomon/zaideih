@@ -454,7 +454,7 @@ async function libraryHome(c) {
 			<section class="section lib-rows">
 				${libRow("downloads", "download", "Downloads", usage.count ? `${plural(usage.count, "song")} on this device, ${formatBytes(usage.bytes)}` : "Nothing downloaded yet")}
 				${libRow("history", "clock", "Recently played", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
-				${LIBRARY_URL ? libRow("uploads", "upload", "Your uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in with GitHub to keep music of your own") : ""}
+				${LIBRARY_URL ? libRow("uploads", "upload", "Your uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in to keep music of your own") : ""}
 			</section>
 			<section class="section lib-backup">
 				<header><h2>Keep your library</h2></header>
@@ -563,7 +563,7 @@ export function about(c) {
 						: html`<button class="btn" data-act="consent" data-value="granted">Turn on</button>`}</div>
 				</div>` : ""}
 				<p>Artists and rights holders who want a recording credited differently or removed can <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a>.</p>
-				${ADMIN_URL && !readWho(localStorage) ? html`<p>Spotted a wrong title, year or credit? <a class="text-link" href="#/admin">Sign in with GitHub</a> to suggest a correction; an editor reviews it before it is released.</p>` : ""}
+				${ADMIN_URL && !readWho(localStorage) ? html`<p>Spotted a wrong title, year or credit? <a class="text-link" href="#/admin">Sign in with GitHub</a> to suggest a correction; an editor reviews it before it is released. To keep music of your own, <a class="text-link" href="#/account">sign in</a> with Google or GitHub.</p>` : ""}
 				<p class="about-foot"><span>Version ${APP_VERSION}</span><span>Catalog ${c.version}</span><a class="text-link" href="#/terms">Terms</a></p>
 			</div>`,
 	};
@@ -585,8 +585,10 @@ export function terms() {
 				<p>Likes, playlists, play history and downloads are stored on your device and are not sent anywhere. Library backups are files you keep. Playing a song requests it from the Zaideih audio server, like loading any web page.</p>
 				<p>Play counts: after a song has played for 10 seconds, the app tells the Zaideih audio server which song was played and when, so the site can show how often songs are listened to. Nothing else is sent with it: no account, cookie or device identifier, and nothing from your library. Your network address is used only to stop the same sender from inflating counts, and is not stored. Plays while offline are sent once you are online again.</p>
 				<p>Usage statistics are off unless you allow them. When allowed, Google Analytics counts page visits (the page's address within Zaideih and its title) and song plays (which song, album and language), and sets its own cookies for that; Google processes this data under its own terms. Searches and your library are never sent. The choice is kept per device and can be changed at any time on the <a class="text-link" href="#/about">About</a> page.</p>
+				<h2>Your account</h2>
+				<p>You can sign in with Google or GitHub. Zaideih then keeps, on Cloudflare: a name (the one Google gives, or your GitHub username), the id Google or GitHub has for you, and the email they confirm is yours, used only to recognise that a Google and a GitHub sign-in are the same person. Nothing is posted to Google or GitHub, and no other data from them is kept. Your device keeps a sign-in token; signing out removes it there and on the server. Emails are not shown to anyone in the app.</p>
 				<h2>Your uploads</h2>
-				<p>Signed in with GitHub, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your GitHub account's id, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good. You can also ask for an album of yours to be published in the catalog for everyone: a reviewer listens first, and once it is released it is part of the public catalog, credited to you.</p>
+				<p>Signed in, you can upload music to your own library, which only you can play. Upload only recordings you are entitled to keep, such as music you bought or recorded. Uploads are stored by Zaideih on Cloudflare, with your account, the file and the details you gave. Moderators may block an account and delete uploads that are spam, abusive or reported by rights holders. You can delete your uploads at any time; a deleted file is removed for good. You can also ask for an album of yours to be published in the catalog for everyone: a reviewer listens first, and once it is released it is part of the public catalog, credited to you.</p>
 				<h2>Availability</h2>
 				<p>The service is provided as it is. Songs may be added, corrected or removed, and the service may change or pause without notice.</p>
 				<h2>Rights holders</h2>

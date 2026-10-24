@@ -118,7 +118,7 @@ function reviewList() {
 export function uploadsPanel() {
 	const st = uploads.state;
 	if (!uploads.available) {
-		return { body: html`<div class="empty"><h2>Your own music</h2><p>Sign in with GitHub to keep music of your own here. Only you can play it.</p><p><a class="btn primary" href="#/admin">${icon("github")} Sign in with GitHub</a></p></div>` };
+		return { body: html`<div class="empty"><h2>Your own music</h2><p>Sign in with Google or GitHub to keep music of your own here. Only you can play it.</p><p><a class="btn primary" href="#/account">Sign in</a></p></div>` };
 	}
 	if (st.error && !st.space) {
 		return { body: html`<div class="up-root"><div class="empty"><h2>Your uploads could not be read</h2><p>${st.error}</p><p><button class="btn" data-up="retry">Try again</button></p></div></div>`, mount };

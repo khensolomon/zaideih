@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ACCOUNT_KEY, createAccount } from "../src/core/account.js";
+import { ACCOUNT_KEY, createAccount, GOOGLE_PENDING_KEY } from "../src/core/account.js";
 import { SESSION_KEY, TOKEN_KEY, WHO_KEY } from "../src/core/access.js";
 
 const memory = (init = {}) => {
@@ -19,6 +19,7 @@ function worker() {
 		calls.push([url, init.headers.Authorization, init.body]);
 		if (url.endsWith("/session")) return new Response(JSON.stringify({ token: `zs_${++n}`, expires_at: Date.now() + 90 * 86400e3, member: { id: 7, name: "ann" } }));
 		if (url.endsWith("/session/end")) return new Response(null, { status: 204 });
+		if (url.endsWith("/google/token")) return new Response(JSON.stringify({ token: `zs_g${++n}`, expires_at: Date.now() + 90 * 86400e3, member: { id: 7, name: "Ann A" } }));
 		return new Response("{}", { status: 404 });
 	};
 	return { calls, fetchImpl };
@@ -58,5 +59,40 @@ test("a fine-grained token works too; signing out ends the session at the Worker
 	await account.signOut();
 	assert.deepEqual(w.calls[1].slice(0, 2), ["https://w/auth/session/end", "Bearer zs_1"]);
 	assert.equal(local.getItem(ACCOUNT_KEY), null);
-	await assert.rejects(createAccount({ authUrl: "x", local: memory(), githubToken: async () => "" }).token(), /sign in with GitHub on the admin page first/);
+	await assert.rejects(createAccount({ authUrl: "x", local: memory(), githubToken: async () => "" }).token(), /sign in first/);
+});
+
+test("Google: the tab keeps the verifier; only that tab's code becomes a session", async () => {
+	const local = memory();
+	const tab = memory();
+	const w = worker();
+	const account = createAccount({ authUrl: "https://w/auth", local, tab, githubToken: async () => "", fetchImpl: w.fetchImpl });
+	assert.equal(account.signedIn, false);
+	const go = new URL(await account.google.start("https://zaideih.com/"));
+	assert.equal(go.origin + go.pathname, "https://w/auth/google/login");
+	assert.equal(go.searchParams.get("return"), "https://zaideih.com/");
+	const pending = JSON.parse(tab.getItem(GOOGLE_PENDING_KEY));
+	await assert.rejects(account.google.finish({ code: "c", nonce: "other" }), /not started from this tab/);
+	assert.equal(tab.getItem(GOOGLE_PENDING_KEY), null, "a pending sign-in is used once");
+	tab.setItem(GOOGLE_PENDING_KEY, JSON.stringify(pending));
+	await account.google.finish({ code: "c", nonce: pending.nonce });
+	assert.deepEqual(JSON.parse(w.calls.at(-1)[2]), { code: "c", verifier: pending.verifier });
+	assert.equal(w.calls.at(-1)[1], undefined, "no token is sent to get one");
+	assert.equal(account.signedIn, true);
+	assert.equal(await account.token(), "zs_g1");
+	assert.deepEqual(account.member, { id: 7, name: "Ann A" });
+	assert.match(account.key, /^google:7$/);
+});
+
+test("adding Google to a GitHub sign-in links it, and the session stays the GitHub login's", async () => {
+	const local = signedIn();
+	const tab = memory();
+	const w = worker();
+	const account = createAccount({ authUrl: "https://w/auth", local, tab, githubToken: async () => "ghu_x", fetchImpl: w.fetchImpl });
+	await account.token();
+	await account.google.start("https://zaideih.com/", { link: true });
+	const { nonce } = JSON.parse(tab.getItem(GOOGLE_PENDING_KEY));
+	await account.google.finish({ code: "c", nonce });
+	assert.equal(JSON.parse(w.calls.at(-1)[2]).link, "zs_1");
+	assert.equal(account.key, "github:ann");
 });

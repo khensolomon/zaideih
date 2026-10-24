@@ -12,10 +12,9 @@
  *
  * State changes are announced on the "uploads" topic (core/store.js).
  */
-import { AUTH_URL, LIBRARY_URL } from "../config.js";
-import { createSession } from "../admin/session.js";
-import { readWho } from "./access.js";
-import { AccountError, createAccount } from "./account.js";
+import { LIBRARY_URL } from "../config.js";
+import { AccountError } from "./account.js";
+import { account } from "./signin.js";
 import { emit } from "./store.js";
 import { checkFile, detailsFromName, formatOf, FORMATS, UploadRuleError } from "./upload-rules.js";
 import { readTags, TAG_BYTES } from "./tags.js";
@@ -25,17 +24,11 @@ const LENGTH_TIMEOUT_MS = 15_000;
 
 export class UploadError extends Error {}
 
-let session = null;
-const signIn = () => (session ??= createSession({ authUrl: AUTH_URL, local: localStorage, tab: sessionStorage }));
-
-/** The Zaideih session (core/account.js), got from this device's GitHub sign-in. */
-let account = null;
-const accountOf = () => (account ??= createAccount({ authUrl: AUTH_URL, local: localStorage, githubToken: () => signIn().token() }));
 
 async function call(method, path, body) {
 	let res;
 	try {
-		res = await accountOf().send((token) => fetch(`${LIBRARY_URL}${path}`, {
+		res = await account().send((token) => fetch(`${LIBRARY_URL}${path}`, {
 			method,
 			headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
 			body: body ? JSON.stringify(body) : undefined,
@@ -114,7 +107,7 @@ export const uploads = {
 
 	/** True when this build has personal libraries and someone is signed in. */
 	get available() {
-		return Boolean(LIBRARY_URL) && Boolean(readWho(localStorage));
+		return Boolean(LIBRARY_URL) && account().signedIn;
 	},
 
 	/** Connects to the app's catalog and reads the library when someone is signed in. */
@@ -221,7 +214,7 @@ export const uploads = {
 			fileName: item.file.name, size: item.file.size, format: item.format, duration: item.duration,
 			title: item.title, artist: item.artist, album: item.album, year: item.year, track: item.track,
 		});
-		const token = await accountOf().token();
+		const token = await account().token();
 		const base = new URL(LIBRARY_URL).origin;
 		return new Promise((resolve, reject) => {
 			// XMLHttpRequest, because fetch() reports no upload progress.

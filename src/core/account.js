@@ -2,26 +2,41 @@
  * The Zaideih session on this device (docs/accounts.md): what the audio
  * Worker's own routes (personal libraries) accept, instead of a GitHub token.
  *
- * It is got from the GitHub sign-in (or the fine-grained token) at
- * <auth>/session when first needed, kept in localStorage with the GitHub
- * login it was got for, and dropped when that login is no longer the one
- * signed in, or when the Worker refuses it (then it is got once more).
+ * It comes from one of two places, and is kept in localStorage with where
+ * it came from (`via`):
+ *   google      Sign in with Google (google.start(), then google.finish()
+ *               on the account page Google returns to)
+ *   github:<l>  the GitHub sign-in of login <l> (or the fine-grained token),
+ *               exchanged at <auth>/session when first needed; dropped when
+ *               another GitHub login is signed in on the device
+ * A session the Worker refuses is dropped and, from GitHub, got once more.
  *
  * Pure apart from the injected fetch and storage: tested in Node (tests/account.test.mjs).
  */
 import { readWho, TOKEN_KEY } from "./access.js";
 
 export const ACCOUNT_KEY = "zaideih.account";
+export const GOOGLE_PENDING_KEY = "zaideih.account.google";
+
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const random = () => b64url(crypto.getRandomValues(new Uint8Array(32)));
+const challengeOf = async (verifier) => b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 
 export class AccountError extends Error {}
 
 /**
- * @param {{ authUrl: string, local: Storage, githubToken: () => Promise<string>, fetchImpl?: typeof fetch }} options
- *   githubToken answers the GitHub sign-in's current token (src/admin/session.js)
+ * @param {{ authUrl: string, local: Storage, tab?: Storage, githubToken: () => Promise<string>, fetchImpl?: typeof fetch, now?: () => number }} options
+ *   githubToken answers the GitHub sign-in's current token (src/admin/session.js);
+ *   tab (sessionStorage) keeps a Google sign-in's verifier while Google is open
  */
-export function createAccount({ authUrl, local, githubToken, fetchImpl = (...a) => fetch(...a) }) {
+export function createAccount({ authUrl, local, tab = null, githubToken, fetchImpl = (...a) => fetch(...a), now = () => Date.now() }) {
 	const read = () => {
-		try { return JSON.parse(local.getItem(ACCOUNT_KEY) ?? "null"); } catch { return null; }
+		let v = null;
+		try { v = JSON.parse(local.getItem(ACCOUNT_KEY) ?? "null"); } catch { /* none */ }
+		if (!v?.token) return null;
+		// Kept before Google sign-in existed: { for: <GitHub login> }.
+		if (!v.via && v.for) v.via = `github:${v.for}`;
+		return v;
 	};
 	const write = (value) => {
 		try {
@@ -35,7 +50,7 @@ export function createAccount({ authUrl, local, githubToken, fetchImpl = (...a) 
 		try {
 			res = await fetchImpl(`${authUrl}/${path}`, {
 				method: "POST",
-				headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+				headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), "Content-Type": "application/json" },
 				body: JSON.stringify(body),
 				cache: "no-store",
 			});
@@ -59,26 +74,102 @@ export function createAccount({ authUrl, local, githubToken, fetchImpl = (...a) 
 		return { login: who.login, token: githubToken };
 	}
 
+	const keep = (s, via) => {
+		write({ token: s.token, expires_at: s.expires_at, member: s.member, via });
+		return s;
+	};
+	/** The kept session when it is still the one to use: live, and not another GitHub login's. */
+	const current = () => {
+		const kept = read();
+		if (!kept || kept.expires_at <= now()) return null;
+		const gh = github();
+		if (gh && kept.via.startsWith("github:") && kept.via !== `github:${gh.login}`) return null;
+		return kept;
+	};
+
 	let getting = null;
 
 	const account = {
-		/** The session token, got first when this device has none for the person signed in. */
+		/** The session token, got from the GitHub sign-in first when this device has none. */
 		async token() {
+			const kept = current();
+			if (kept) return kept.token;
 			const gh = github();
-			if (!gh) { write(null); throw new AccountError("sign in with GitHub on the admin page first"); }
-			const kept = read();
-			if (kept?.token && kept.for === gh.login && kept.expires_at > Date.now()) return kept.token;
+			if (!gh) { write(null); throw new AccountError("sign in first (Your account)"); }
 			// One exchange at a time: parallel calls share it.
 			getting ??= gh.token()
 				.then((t) => post("session", t))
-				.then((s) => { write({ token: s.token, expires_at: s.expires_at, member: s.member, for: gh.login }); return s.token; })
+				.then((s) => keep(s, `github:${gh.login}`).token)
 				.finally(() => { getting = null; });
 			return getting;
 		},
 
+		/** True when this device is signed in: a session, or a GitHub sign-in to get one from. */
+		get signedIn() {
+			return Boolean(current() || github());
+		},
+
+		/** Who is signed in, as a short key that changes when someone else signs in (for refreshing what is shown). */
+		get key() {
+			const kept = current();
+			// A GitHub login names its person already; a Google session is named by its member.
+			if (kept) return kept.via.startsWith("github:") ? kept.via : `${kept.via}:${kept.member?.id ?? ""}`;
+			const gh = github();
+			return gh ? `github:${gh.login}` : "";
+		},
+
 		/** The member this device's session is for: { id, name }, or null. */
 		get member() {
-			return read()?.member ?? null;
+			return current()?.member ?? null;
+		},
+
+		/**
+		 * After a GitHub sign-in on the account page: a session for it, added
+		 * to the signed-in account with `link` (Add GitHub).
+		 */
+		async fromGitHub({ link = false } = {}) {
+			const gh = github();
+			if (!gh) throw new AccountError("the GitHub sign-in did not finish; try again");
+			const linkTo = link ? current()?.token : null;
+			const s = await post("session", await gh.token(), linkTo ? { link: linkTo } : {});
+			return keep(s, `github:${gh.login}`);
+		},
+
+		google: {
+			/** The address to go to for signing in with Google; `link` adds Google to the signed-in account. */
+			async start(returnTo, { link = false } = {}) {
+				if (!authUrl) throw new AccountError("sign-in is not built into this version");
+				if (!tab) throw new AccountError("Google sign-in needs a browser tab");
+				const verifier = random();
+				const nonce = random();
+				tab.setItem(GOOGLE_PENDING_KEY, JSON.stringify({ verifier, nonce, link }));
+				return `${authUrl}/google/login?${new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier) })}`;
+			},
+			/** Back from Google: the code for a session; refuses a code this tab did not ask for. */
+			async finish({ code, nonce }) {
+				let pending = null;
+				try { pending = JSON.parse(tab?.getItem(GOOGLE_PENDING_KEY) ?? "null"); } catch { /* none */ }
+				tab?.removeItem(GOOGLE_PENDING_KEY);
+				if (!pending || pending.nonce !== nonce) throw new AccountError("this sign-in was not started from this tab; sign in again");
+				const linkTo = pending.link ? current()?.token : null;
+				const s = await post("google/token", null, { code, verifier: pending.verifier, ...(linkTo ? { link: linkTo } : {}) });
+				// Added to an account signed in with GitHub: the session stays tied to that login.
+				const via = linkTo && read()?.via.startsWith("github:") ? read().via : "google";
+				return keep(s, via);
+			},
+		},
+
+		/** The signed-in member and their sign-ins: { member, logins }. */
+		async me() {
+			const res = await account.send((t) => fetchImpl(`${authUrl}/me`, { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}", cache: "no-store" }));
+			const answer = await res.json().catch(() => null);
+			if (!res.ok) throw new AccountError(answer?.error ?? `the sign-in service answered HTTP ${res.status}`);
+			return answer;
+		},
+
+		/** Removes one of the member's sign-ins; answers { member, logins }. */
+		async removeLogin(provider, subject) {
+			return post("logins/remove", await account.token(), { provider, subject });
 		},
 
 		/**

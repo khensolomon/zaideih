@@ -48,6 +48,10 @@ GITHUB_REPO = "khensolomon/zaideih"
 # account holds every right. The numeric id, since a login can be renamed
 # and then taken by someone else (GET /repos/khensolomon/zaideih: owner.id).
 OWNER_GITHUB_ID = "1753766"
+# Sign in with Google (google.js, docs/setup.md#google-sign-in): the OAuth
+# client's id (public); its secret is the Worker secret GOOGLE_CLIENT_SECRET.
+# Without both, Google sign-in answers 503 naming what is missing.
+# GOOGLE_CLIENT_ID = "<set once the Google client exists>"
 # Personal libraries (library.js, docs/library.md): at most 95 MB per file
 # (a Worker request body may be 100 MB on the Free and Pro plans) and 2 GB
 # per member; the owner has no limit. Streaming addresses are signed with

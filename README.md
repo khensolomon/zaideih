@@ -28,7 +28,7 @@ Started in 2006 and launched in 2007, Zaideih has been rebuilt several times: AS
 - Player with a queue, shuffle and repeat, lock-screen and media-key controls, and animated backgrounds in Now playing that follow the music.
 - Sound for old recordings, applied while listening: skip silent tape at the start and end, clean up air blowing, rumble and hiss, even out volume between recordings, play one-sided recordings in both ears, and a ten-band equaliser with presets.
 - Generated artwork: album covers and artist pictures drawn from the catalog itself.
-- Your own music: signed in with GitHub, upload music you own to a private library that only you can play, on any device. See [docs/library.md](docs/library.md).
+- Your own music: signed in with Google or GitHub, upload music you own to a private library that only you can play, on any device. See [docs/library.md](docs/library.md).
 
 ## Development
 

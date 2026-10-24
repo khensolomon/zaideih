@@ -72,13 +72,13 @@ export function createSession({ authUrl, local, tab, fetchImpl = (...a) => fetch
 			return live(t.expires_at) || (Boolean(t.refresh_token) && live(t.refresh_expires_at));
 		},
 
-		/** The address to go to for signing in (also keeps this tab's verifier and nonce). */
-		async start(returnTo) {
+		/** The address to go to for signing in (also keeps this tab's verifier and nonce); GitHub returns to #/<to> (admin, or account). */
+		async start(returnTo, { to = "admin" } = {}) {
 			if (!authUrl) throw new SignInError("sign-in with GitHub is not built into this version");
 			const verifier = random();
 			const nonce = random();
 			write(tab, PENDING_KEY, { verifier, nonce });
-			const q = new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier) });
+			const q = new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier), ...(to === "admin" ? {} : { to }) });
 			return `${authUrl}/login?${q}`;
 		},
 

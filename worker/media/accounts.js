@@ -18,11 +18,15 @@
  * after its last use (renewed at most daily), signing out deletes it, and
  * the personal library routes accept nothing else.
  *
- * Routes (under /auth, CORS for AUTH_ORIGINS, see auth.js):
- *   POST /auth/session      Authorization: Bearer <GitHub token> (a GitHub
- *                           sign-in or a fine-grained token), body {} or
- *                           {"link": "<session token>"} -> { token, expires_at, member, joined }
- *   POST /auth/session/end  Authorization: Bearer <session token> -> 204
+ * Routes (under /auth, POST, CORS for AUTH_ORIGINS, see auth.js):
+ *   /auth/session        Authorization: Bearer <GitHub token> (a GitHub
+ *                        sign-in or a fine-grained token), body {} or
+ *                        {"link": "<session token>"} -> { token, expires_at, member, joined, email }
+ *   /auth/session/end    Authorization: Bearer <session token> -> 204
+ *   /auth/me             Authorization: Bearer <session token> -> { member, logins }
+ *   /auth/logins/remove  {provider, subject}, with the session -> { member, logins };
+ *                        never the last sign-in, nor the owner's GitHub
+ * Google's sign-in (google.js) answers sessions the same way.
  */
 import { MemberError } from "./members.js";
 
@@ -143,9 +147,47 @@ export async function endSession(env, token) {
 
 /* ------------------------------------------------------------- routes ---- */
 
+/** The member a sign-in should be added to (`{"link": "<session>"}`), or null. */
+async function linkTarget(env, body, nowSeconds) {
+	if (body.link === undefined) return null;
+	if (typeof body.link !== "string" || !TOKEN.test(body.link)) throw new MemberError("link must be a session token");
+	return sessionMember(env, new Request("https://x", { headers: { Authorization: `Bearer ${body.link}` } }), nowSeconds);
+}
+
+/** Signs in `who` and answers the new session, as every sign-in route does. */
+export async function issueSession(env, who, body, nowSeconds) {
+	const member = await signIn(env, who, { linkTo: await linkTarget(env, body, nowSeconds), nowSeconds });
+	const session = await startSession(env, member.id, nowSeconds);
+	return { token: session.token, expires_at: session.expiresAt * 1000, member: { id: member.id, name: member.name }, joined: member.joined, email: who.email };
+}
+
+/** The signed-in member and their sign-ins, for "Your account". */
+async function me(env, memberId) {
+	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
+	const rows = (await env.DB.prepare("SELECT provider, subject, login, email, email_verified, created_at, last_used FROM member_logins WHERE member_id = ?1 ORDER BY created_at").bind(memberId).all()).results ?? [];
+	return {
+		member: { id: m.id, name: m.name },
+		logins: rows.map((r) => ({ provider: r.provider, subject: r.subject, login: r.login, email: r.email, emailVerified: r.email_verified === 1, added: r.created_at, used: r.last_used })),
+	};
+}
+
+/** Removes one of the member's sign-ins; never the last one, nor the owner's GitHub. */
+async function removeLogin(env, memberId, body) {
+	const { provider, subject } = body;
+	if (typeof provider !== "string" || typeof subject !== "string") throw new MemberError("expected {provider, subject}");
+	const row = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = ?1 AND subject = ?2").bind(provider, subject).first();
+	if (!row || row.member_id !== memberId) throw new MemberError("no such sign-in on your account", 404);
+	const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM member_logins WHERE member_id = ?1").bind(memberId).first()).n;
+	if (n <= 1) throw new MemberError("this is the only way you sign in; add another before removing it", 409);
+	if (provider === "github" && subject === env.OWNER_GITHUB_ID) throw new MemberError("the owner's GitHub sign-in is what makes the owner; it stays", 409);
+	await env.DB.prepare("DELETE FROM member_logins WHERE provider = ?1 AND subject = ?2").bind(provider, subject).run();
+	return me(env, memberId);
+}
+
 /**
- * POST /auth/session and /auth/session/end (called by auth.js, which checks
- * the origin and answers errors). Answers [status, body].
+ * The account routes under /auth (called by auth.js, which checks the
+ * origin and answers errors): session, session/end, me, logins/remove.
+ * Answers [status, body].
  */
 export async function handleSession(request, env, route, body, { fetchImpl, nowSeconds }) {
 	if (!env.DB) throw new MemberError("accounts are not set up on this Worker: missing the D1 binding DB", 503);
@@ -155,15 +197,11 @@ export async function handleSession(request, env, route, body, { fetchImpl, nowS
 		await endSession(env, token);
 		return [204, null];
 	}
+	if (route === "/auth/me") return [200, await me(env, await sessionMember(env, request, nowSeconds))];
+	if (route === "/auth/logins/remove") return [200, await removeLogin(env, await sessionMember(env, request, nowSeconds), body)];
+	// /auth/session: a GitHub token for a session.
 	const auth = /^Bearer (\S+)$/.exec(request.headers.get("authorization") ?? "");
 	if (!auth || TOKEN.test(auth[1])) throw new MemberError("expected Authorization: Bearer <GitHub token>", 400);
-	let linkTo = null;
-	if (body.link !== undefined) {
-		if (typeof body.link !== "string" || !TOKEN.test(body.link)) throw new MemberError("link must be a session token");
-		linkTo = await sessionMember(env, new Request("https://x", { headers: { Authorization: `Bearer ${body.link}` } }), nowSeconds);
-	}
 	const who = await githubIdentity(auth[1], fetchImpl);
-	const member = await signIn(env, who, { linkTo, nowSeconds });
-	const session = await startSession(env, member.id, nowSeconds);
-	return [200, { token: session.token, expires_at: session.expiresAt * 1000, member: { id: member.id, name: member.name }, joined: member.joined, email: who.email }];
+	return [200, await issueSession(env, who, body, nowSeconds)];
 }
