@@ -16,7 +16,23 @@ const PEOPLE = {
 	"gh-noperm": { user: { id: 43, login: "bo" } },
 	"gh-unverified": { user: { id: 44, login: "cy" }, emails: mails(["khen@example.com", false, true]) },
 };
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const GOOGLE = {
+	"code-khen": { sub: "g-111", email: "Khen@Example.com", email_verified: true, name: "Khen Solomon" },
+	"code-new": { sub: "g-222", email: "new@example.com", email_verified: true, name: "" },
+	"code-unverified": { sub: "g-333", email: "ann@work.example", email_verified: false, name: "Not Ann" },
+	"code-otherapp": { sub: "g-444", email: "x@example.com", email_verified: true, aud: "someone-else" },
+};
+const googleCalls = [];
 const github = async (url, init) => {
+	if (url === "https://oauth2.googleapis.com/token") {
+		const form = new URLSearchParams(init.body);
+		googleCalls.push(Object.fromEntries(form));
+		const c = GOOGLE[form.get("code")];
+		if (!c) return new Response(JSON.stringify({ error: "invalid_grant", error_description: "Bad Request" }), { status: 400 });
+		const claims = { iss: "https://accounts.google.com", aud: "g-client.apps.googleusercontent.com", exp: 1_900_000_000, ...c };
+		return new Response(JSON.stringify({ id_token: `${b64({ alg: "RS256" })}.${b64(claims)}.sig`, access_token: "ya29" }));
+	}
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response("{}", { status: 401 });
 	if (url.endsWith("/user")) return new Response(JSON.stringify(p.user));
@@ -25,13 +41,17 @@ const github = async (url, init) => {
 };
 
 function setup() {
-	const env = { DB: fakeD1(), BUCKET: fakeR2(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1753766", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "s", AUDIO_SIGNING_KEY: "k", UPLOAD_MAX_BYTES: "1000", UPLOAD_QUOTA_BYTES: "2000", UPLOAD_LIMIT: { limit: async () => ({ success: true }) } };
+	const env = { GOOGLE_CLIENT_ID: "g-client.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "g-secret", DB: fakeD1(), BUCKET: fakeR2(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1753766", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "s", AUDIO_SIGNING_KEY: "k", UPLOAD_MAX_BYTES: "1000", UPLOAD_QUOTA_BYTES: "2000", UPLOAD_LIMIT: { limit: async () => ({ success: true }) } };
 	let clock = 1_800_000_000_000;
 	const post = (path, token, body = {}) => handleAuth(new Request(`${W}${path}`, {
 		method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
 	}), env, { fetchImpl: github, now: () => clock });
 	const lib = (session) => handleLibrary(new Request(`${W}/library`, { headers: { Origin: ORIGIN, Authorization: `Bearer ${session}` } }), env, { now: () => clock });
-	return { env, post, lib, tick: (days) => { clock += days * 86400_000; } };
+	const get = (path) => handleAuth(new Request(`${W}${path}`), env, { fetchImpl: github, now: () => clock });
+	const google = (code, extra = {}) => handleAuth(new Request(`${W}/auth/google/token`, {
+		method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ code, verifier: "v".repeat(43), ...extra }),
+	}), env, { fetchImpl: github, now: () => clock });
+	return { env, post, lib, get, google, tick: (days) => { clock += days * 86400_000; } };
 }
 
 test("a GitHub sign-in becomes a Zaideih session; the library takes nothing else", { skip }, async () => {
@@ -100,4 +120,68 @@ test("sign-ins join one member by verified email, or by linking while signed in"
 	assert.equal(viaRoute.status, 409, "cy's GitHub already has its own account");
 	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM member_logins WHERE member_id = ?").get(bo.member.id).n, 2);
 	assert.equal((await post("/auth/session", "gh-ann", { link: "zs_" + "x".repeat(43) })).status, 401, "linking needs a live session");
+});
+
+test("Google sign-in: the Worker sends the browser to Google and back to the account page", { skip }, async () => {
+	const { env, get } = setup();
+	const q = new URLSearchParams({ return: `${ORIGIN}/`, nonce: "n".repeat(43), challenge: "c".repeat(43) });
+	const out = await get(`/auth/google/login?${q}`);
+	assert.equal(out.status, 302);
+	const to = new URL(out.headers.get("location"));
+	assert.equal(to.origin + to.pathname, "https://accounts.google.com/o/oauth2/v2/auth");
+	assert.deepEqual(["client_id", "redirect_uri", "scope", "code_challenge_method"].map((k) => to.searchParams.get(k)), ["g-client.apps.googleusercontent.com", `${W}/auth/google/callback`, "openid email profile", "S256"]);
+	const back = await get(`/auth/google/callback?code=abc&state=${to.searchParams.get("state")}`);
+	assert.equal(back.headers.get("location"), `${ORIGIN}/#/account?google=abc&nonce=${"n".repeat(43)}`);
+	const denied = await get(`/auth/google/callback?error=access_denied&state=${to.searchParams.get("state")}`);
+	assert.equal(denied.headers.get("location"), `${ORIGIN}/#/account?google-error=access_denied`);
+	assert.equal((await get(`/auth/google/login?${new URLSearchParams({ return: "https://evil.example/", nonce: "n".repeat(43), challenge: "c".repeat(43) })}`)).status, 403);
+	delete env.GOOGLE_CLIENT_SECRET;
+	const unset = await get(`/auth/google/login?${q}`);
+	assert.equal(unset.status, 503);
+	assert.match(await unset.text(), /missing GOOGLE_CLIENT_SECRET/);
+	// GitHub can return to the account page too.
+	const gh = await get(`/auth/login?${q}&to=account`);
+	const state = new URL(gh.headers.get("location")).searchParams.get("state");
+	assert.equal((await get(`/auth/callback?code=xyz&state=${state}`)).headers.get("location"), `${ORIGIN}/#/account?signin=xyz&nonce=${"n".repeat(43)}`);
+	assert.equal((await get(`/auth/login?${q}&to=elsewhere`)).status, 400);
+});
+
+test("Google sign-in: a verified email joins the GitHub account; nothing of Google's is kept", { skip }, async () => {
+	const { env, post, google } = setup();
+	const owner = await (await post("/auth/session", "gh-owner")).json();
+	const res = await google("code-khen");
+	assert.equal(res.status, 200, await res.clone().text());
+	const s = await res.json();
+	assert.deepEqual([s.member.id, s.joined, s.email], [owner.member.id, "email", "khen@example.com"]);
+	assert.equal(googleCalls.at(-1).code_verifier, "v".repeat(43));
+	assert.equal(googleCalls.at(-1).redirect_uri, `${W}/auth/google/callback`);
+	const fresh = await (await google("code-new")).json();
+	assert.deepEqual([fresh.joined, fresh.member.name], ["new", "new"], "named from the email when Google gives no name");
+	assert.equal((await (await google("code-unverified")).json()).joined, "new", "an unverified email joins nobody");
+	assert.equal((await google("code-otherapp")).status, 502, "an ID token for another application");
+	assert.equal((await google("code-bad")).status, 400);
+	assert.match(await (await google("code-bad")).text(), /Google did not sign you in: Bad Request/);
+	const kept = JSON.stringify(env.DB.raw.prepare("SELECT * FROM member_logins").all());
+	assert.doesNotMatch(kept, /ya29|sig/, "no Google token is stored");
+});
+
+test("Your account: the sign-ins, adding one, and removing all but the last", { skip }, async () => {
+	const { post, google } = setup();
+	const ann = await (await post("/auth/session", "gh-noperm")).json();
+	const meOf = async (t) => (await post("/auth/me", t)).json();
+	assert.deepEqual((await meOf(ann.token)).logins.map((l) => l.provider), ["github"]);
+	const added = await (await google("code-new", { link: ann.token })).json();
+	assert.deepEqual([added.member.id, added.joined], [ann.member.id, "link"]);
+	const both = await meOf(ann.token);
+	assert.deepEqual(both.logins.map((l) => [l.provider, l.email]), [["github", null], ["google", "new@example.com"]]);
+	const gh = both.logins[0];
+	const after = await post("/auth/logins/remove", ann.token, { provider: "github", subject: gh.subject });
+	assert.equal(after.status, 200);
+	assert.deepEqual((await after.json()).logins.map((l) => l.provider), ["google"]);
+	assert.equal((await post("/auth/logins/remove", ann.token, { provider: "google", subject: "g-222" })).status, 409, "never the last");
+	assert.equal((await post("/auth/logins/remove", ann.token, { provider: "github", subject: "1753766" })).status, 404, "nor someone else's");
+	const owner = await (await post("/auth/session", "gh-owner")).json();
+	await google("code-khen");
+	assert.equal((await post("/auth/logins/remove", owner.token, { provider: "github", subject: "1753766" })).status, 409, "the owner's GitHub stays");
+	assert.equal((await post("/auth/me", "zs_" + "x".repeat(43))).status, 401);
 });

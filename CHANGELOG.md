@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.2
+
+- Sign in with Google, and Your account: see and add your sign-ins, sign out; Google and GitHub with the same verified email are one account
+
 ## v26.10.24.1
 
 - Accounts: members become Zaideih accounts with GitHub as their first sign-in, joined by verified email; Zaideih's own sign-in sessions for personal libraries; database migrations

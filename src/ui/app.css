@@ -1262,3 +1262,19 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	.admin .adm-tracks li { grid-template-columns: 1fr auto; }
 	.admin .adm-tracks li [name="a"] { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Your account (#/account). */
+.acct-card { max-width: 520px; }
+.acct-lead { font-size: 17px; color: var(--ink-2); margin: 0 0 20px; }
+.acct-buttons { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; max-width: 360px; }
+.acct-buttons .btn { justify-content: center; min-height: 48px; font-size: 16px; }
+.acct-small { color: var(--ink-3); font-size: 14px; margin: 0 0 10px; }
+.acct-warn { padding: 12px 14px; border-radius: var(--radius-m); background: var(--danger-bg); color: #fff; margin: 0 0 16px; }
+.acct-name { display: flex; align-items: center; gap: 12px; font-size: 20px; margin: 0 0 20px; }
+.acct-avatar { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--raised); }
+.acct-card h2 { font-size: 15px; color: var(--ink-3); font-weight: 600; margin: 0 0 8px; }
+.acct-logins { list-style: none; padding: 0; margin: 0 0 16px; border-top: 1px solid var(--line); }
+.acct-logins li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.acct-logins small { display: block; color: var(--ink-3); overflow-wrap: anywhere; }
+.acct-g { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font-weight: 800; font-size: 13px; }
+.acct-links { margin: 0 0 16px; }

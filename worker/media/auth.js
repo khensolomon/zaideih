@@ -7,17 +7,21 @@
  * Zaideih's own (personal libraries).
  *
  * Routes (under /auth):
- *   GET  /auth/login     ?return=<page URL>&nonce=<n>&challenge=<PKCE S256>
+ *   GET  /auth/login     ?return=<page URL>&nonce=<n>&challenge=<PKCE S256>[&to=account]
  *                        Redirects to GitHub's authorize page.
  *   GET  /auth/callback  GitHub returns here with ?code&state (or ?error).
- *                        Redirects to <page URL>#/admin?signin=<code>&nonce=<n>,
- *                        or #/admin?signin-error=<message>.
+ *                        Redirects to <page URL>#/<to>?signin=<code>&nonce=<n>,
+ *                        or #/<to>?signin-error=<message>; <to> is admin
+ *                        (the default) or account.
  *   POST /auth/token     {"code", "verifier"}  -> tokens (see tokenAnswer)
  *   POST /auth/refresh   {"refresh_token"}     -> tokens
  *   POST /auth/signout   {"access_token"}      -> 204; revokes the token at GitHub
  *   POST /auth/suggest   a suggestion from someone without write access (suggest.js)
  *   POST /auth/session   a GitHub token for a Zaideih session (accounts.js)
  *   POST /auth/session/end  signs a Zaideih session out (accounts.js)
+ *   POST /auth/me, /auth/logins/remove  the signed-in member's sign-ins (accounts.js)
+ *   GET  /auth/google/login, /auth/google/callback, POST /auth/google/token
+ *                        Sign in with Google (google.js)
  *   OPTIONS              CORS preflight for AUTH_ORIGINS.
  *
  * Security:
@@ -37,7 +41,8 @@
  */
 
 import { suggest, SuggestError } from "./suggest.js";
-import { handleSession } from "./accounts.js";
+import { handleSession, issueSession } from "./accounts.js";
+import { googleAuthorizeUrl, googleConfig, googleExchange } from "./google.js";
 import { MemberError } from "./members.js";
 
 const GITHUB = "https://github.com";
@@ -45,6 +50,8 @@ const API = "https://api.github.com";
 const USER_AGENT = "zaideih-media-worker";
 const MAX_BODY = 4096;
 const MAX_SUGGEST_BODY = 20 * 1024 * 1024;
+// Pages a sign-in may return to (#/<to>).
+const RETURN_ROUTES = new Set(["admin", "account"]);
 // Base64url, 43 to 128 characters (RFC 7636 for the challenge; the nonce uses the same shape).
 const TOKENISH = /^[A-Za-z0-9_-]{43,128}$/;
 
@@ -147,45 +154,62 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			});
 		}
 
-		if (route === "/auth/login" && request.method === "GET") {
+		const google = route.startsWith("/auth/google/");
+		if ((route === "/auth/login" || route === "/auth/google/login") && request.method === "GET") {
 			const back = returnUrl(url.searchParams.get("return"), cfg.origins);
 			const nonce = url.searchParams.get("nonce") ?? "";
 			const challenge = url.searchParams.get("challenge") ?? "";
 			if (!TOKENISH.test(nonce) || !TOKENISH.test(challenge)) throw new AuthError("nonce and challenge must be base64url, 43 to 128 characters");
+			const page = google ? "account" : url.searchParams.get("to") ?? "admin";
+			if (!RETURN_ROUTES.has(page)) throw new AuthError(`to must be one of ${[...RETURN_ROUTES].join(", ")}`);
+			const state = b64url.encode(JSON.stringify({ r: back, n: nonce, t: page }));
+			if (google) {
+				let g;
+				try { g = googleConfig(env); } catch (err) { throw new AuthError(err.message, err.status); }
+				return redirect(googleAuthorizeUrl({ clientId: g.clientId, callback: `${url.origin}/auth/google/callback`, state, challenge }));
+			}
 			const to = new URL(`${GITHUB}/login/oauth/authorize`);
 			to.search = new URLSearchParams({
 				client_id: cfg.clientId,
 				redirect_uri: `${url.origin}/auth/callback`,
-				state: b64url.encode(JSON.stringify({ r: back, n: nonce })),
+				state,
 				code_challenge: challenge,
 				code_challenge_method: "S256",
 			});
 			return redirect(to.href);
 		}
 
-		if (route === "/auth/callback" && request.method === "GET") {
+		if ((route === "/auth/callback" || route === "/auth/google/callback") && request.method === "GET") {
 			let state;
 			try {
 				state = JSON.parse(b64url.decode(url.searchParams.get("state") ?? ""));
 			} catch {
-				throw new AuthError("the sign-in state is missing or damaged; start again from the admin page");
+				throw new AuthError("the sign-in state is missing or damaged; start again from the page you signed in on");
 			}
 			const back = returnUrl(state?.r, cfg.origins);
+			const page = RETURN_ROUTES.has(state.t) ? state.t : "admin";
+			const key = google ? "google" : "signin";
 			const code = url.searchParams.get("code");
 			const answer = code && TOKENISH.test(state.n ?? "")
-				? new URLSearchParams({ signin: code, nonce: state.n })
-				: new URLSearchParams({ "signin-error": url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? "GitHub returned no code" });
-			return redirect(`${back}#/admin?${answer}`);
+				? new URLSearchParams({ [key]: code, nonce: state.n })
+				: new URLSearchParams({ [`${key}-error`]: url.searchParams.get("error_description") ?? url.searchParams.get("error") ?? `${google ? "Google" : "GitHub"} returned no code` });
+			return redirect(`${back}#/${page}?${answer}`);
 		}
 
-		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end"].includes(route)) {
+		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
 		// Tokens are answered to the admin page's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
 		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
-		if (route === "/auth/session" || route === "/auth/session/end") {
+		if (route === "/auth/google/token") {
+			if (typeof body.code !== "string" || !body.code || !TOKENISH.test(body.verifier ?? "")) throw new AuthError("expected {code, verifier}");
+			const nowSeconds = Math.floor(now() / 1000);
+			const who = await googleExchange(googleConfig(env), { code: body.code, verifier: body.verifier, callback: `${url.origin}/auth/google/callback` }, fetchImpl, nowSeconds);
+			return json(200, await issueSession(env, who, body, nowSeconds), cors);
+		}
+		if (["/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove"].includes(route)) {
 			const [status, answer] = await handleSession(request, env, route, body, { fetchImpl, nowSeconds: Math.floor(now() / 1000) });
 			return json(status, answer, cors);
 		}

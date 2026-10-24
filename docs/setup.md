@@ -69,6 +69,19 @@ Optional Actions variables: `SITE_URL` (the address whose version is checked aft
 
 More: [worker-audio.md](worker-audio.md#sign-in-with-github).
 
+### Google sign-in
+
+- **Why**: most listeners sign in with Google ([accounts.md](accounts.md#sign-in-with-google)).
+- **Get it**: [console.cloud.google.com](https://console.cloud.google.com), a project named Zaideih, then Google Auth Platform:
+  1. **Get started** (Branding): app name **Zaideih**, a support email, audience **External**, a contact email.
+  2. **Branding**: home page `https://zaideih.com`, privacy policy `https://zaideih.com/#/terms`, authorised domain `zaideih.com`. A logo is optional, and adding one asks Google to verify the branding first.
+  3. **Data access**: nothing to add; `openid`, `email` and `profile` are there by default and need no review.
+  4. **Audience**: **Publish app** (In production). While it is in Testing, only the test users listed there can sign in.
+  5. **Clients**, Create client: **Web application**, named "Zaideih Worker"; Authorised redirect URIs: `https://media.zaideih.com/auth/google/callback`. No JavaScript origins (the browser never talks to Google's API).
+- **Public value**, in `worker/media/wrangler.toml`: `GOOGLE_CLIENT_ID` (the client's Client ID).
+- **Secret**, on the Worker: `npx wrangler secret put GOOGLE_CLIENT_SECRET --config worker/media/wrangler.toml` (the client's secret; Google shows it once, a new one can be added on the client's page).
+- Without either, Continue with Google answers "Google sign-in is not set up on this Worker" naming what is missing; everything else works.
+
 ### Signing key for personal libraries
 
 - **Why**: private songs play only through addresses the Worker signs; this is the key.
@@ -113,5 +126,5 @@ git push
 - [ ] R2 `media` holds `music/…`; D1 `audio` has its tables (`node tools/d1.mjs status`) and 28,180 track paths
 - [ ] Domains attached: `media.zaideih.com`, `zaideih.com`
 - [ ] GitHub secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-- [ ] Worker secrets: `GITHUB_CLIENT_SECRET`, `GITHUB_APP_KEY`, `AUDIO_SIGNING_KEY` (`npx wrangler secret list --config worker/media/wrangler.toml`)
+- [ ] Worker secrets: `GITHUB_CLIENT_SECRET`, `GITHUB_APP_KEY`, `AUDIO_SIGNING_KEY`, `GOOGLE_CLIENT_SECRET` (`npx wrangler secret list --config worker/media/wrangler.toml`)
 - [ ] GitHub App installed on `zaideih`, callback `https://media.zaideih.com/auth/callback`

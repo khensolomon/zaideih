@@ -9,6 +9,8 @@ import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { ADMIN_URL, AUTH_URL, LIBRARY_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
+import { account } from "./core/signin.js";
+import { accountView } from "./ui/account-view.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -42,6 +44,7 @@ route("library", V.libraryView);
 route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
+route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop" }));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -111,6 +114,7 @@ function renderAppMenu() {
 			<a href="#/search">${icon("search")}Search</a>
 			<a href="#/library">${icon("library")}Library</a>
 			<a href="#/admin" class="am-admin" hidden>${icon("edit")}<span class="lbl">Admin</span></a>
+			<a href="#/account" class="am-account">${icon("person")}<span class="lbl">Sign in</span></a>
 		</div>
 		<h2>Languages</h2>
 		<div class="am-group">${langs.map((l) => html`<a href="${href(`lang/${l.id}`)}"><span>${V.langLabel(l)}</span><span class="am-count">${l.albums.length.toLocaleString()}</span></a>`)}</div>
@@ -122,19 +126,27 @@ function renderAppMenu() {
 }
 
 /*
- * What the person signed in on this device may do (src/core/access.js):
- * editors and admins get a link to the admin page, contributors and guests
- * "Suggest edits"; listeners see neither (About offers the sign-in).
+ * Who is signed in on this device: "Sign in", or their name, opens Your
+ * account; with a GitHub sign-in (src/core/access.js) editors and admins
+ * also get a link to the admin page, contributors and guests "Suggest edits".
  */
 let accessKey = null;
 function syncAccess() {
 	const who = ADMIN_URL ? readWho(localStorage) : null;
+	const acct = AUTH_URL ? account() : null;
 	// Someone signed in or out (here or in another tab): their own uploads follow.
-	const key = who ? `${who.login}:${who.via}` : "";
+	const key = acct?.key ?? "";
 	if (key !== accessKey && uploads.catalog) {
 		accessKey = key;
-		if (who) uploads.refresh().catch((err) => console.warn("reading My uploads failed", err));
+		if (acct?.signedIn) uploads.refresh().catch((err) => console.warn("reading My uploads failed", err));
 		else uploads.clear();
+	}
+	const name = acct?.member?.name ?? who?.login ?? "";
+	for (const a of $$(".rail-account, .am-account")) {
+		a.hidden = !AUTH_URL;
+		a.dataset.hint = name || "Sign in";
+		$(".lbl", a).textContent = name || "Sign in";
+		a.title = name ? "Your account" : "";
 	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Admin" : "Suggest edits") : "";
 	for (const a of $$(".rail-admin, .am-admin")) {
@@ -231,7 +243,7 @@ function markNav(path) {
 	const browse = /^lang\/\d+/.exec(path)?.[0] ?? (path.startsWith("genre") ? "genres" : path === "top" ? "top" : null);
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path === "about" || path === "terms" || path === "help" || path === "admin" ? path
+		: path === "about" || path === "terms" || path === "help" || path === "admin" || path === "account" ? path
 		: browse ? null : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
@@ -1432,7 +1444,7 @@ export async function boot(platform) {
 	renderRail();
 	syncAccess();
 	// A sign-in or sign-out in another tab.
-	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.admin.")) syncAccess(); });
+	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.admin.") || e.key === "zaideih.account") syncAccess(); });
 	$("#bar-now").addEventListener("click", openSheet);
 	$("#bar-like").addEventListener("click", async (e) => {
 		const t = player.current();
