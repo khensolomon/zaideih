@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.22
+
+- "အလင်းသက်သေ": year (catalog, 1 change)
+
 ## v26.10.24.21
 
 - Admin: a studio page
