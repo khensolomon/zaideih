@@ -25,6 +25,16 @@ A song has its own words (lang `""`, "Original") and may have translations: Engl
 - The studio (`#/lyrics/<song>/studio?lang=en`): a language picker in the header (the languages without lyrics yet are marked "none yet"); translating, the song's own words are there for reference (open or closed). Drafts are kept per language. Parts are inserted with English names (Verse, Chorus).
 - The admin page's Lyrics list marks translations.
 
+## Shared lyrics
+
+The same song is often recorded again on other albums, by the same singer or another, with the same words. Such recordings share one text instead of keeping copies.
+
+- **Linking**: a song without lyrics offers the songs with lyrics that have the same title (compared without case, spaces or punctuation; the same artist first), each with its first line, to read. Many different songs share a title, so nothing is linked by itself: a person reads them and chooses "Use these lyrics" (signed in, after a confirmation). The song then shows that text, in every language.
+- **One text**: a correction, a translation, hiding or restoring, made from any of the recordings, is one for all of them. The lyrics page and the studio name the other recordings ("Also sung on …").
+- **Timing is each recording's own**, since a song sung again often has another tempo. A shared text keeps no times; each recording's are kept apart, put into the text it reads and taken out of the text it saves. Timing a recording makes no new version of the words. When a text is shared for the first time, the times in it are its own recording's: they move apart, and a version without them is saved (note "shared with song N; each recording keeps its own timing").
+- **Never over lyrics**: a song with lyrics of its own (in any language), a song whose lyrics others show, or a song already linked is not linked. A link to a linked song goes to the song that has the text.
+- **Undoing** is for the Lyrics right, in the studio of the linked song: "Give it a copy of its own" writes the text, with that recording's timing, as its own first version (note "copied from song N"), and from then on it changes on its own; "Unlink" leaves it without lyrics. The shared text stays with the others either way. Unlinked rows are kept (`unlinked_at`), for the index and the record.
+
 ## Search
 
 `src/core/lyrics-index.js` keeps every shown text's words on the device (IndexedDB `kv`, `lyrics.index`), from `GET /lyrics/index`: in full once, then only what changed since (`?since=`), at start and when the app comes back into view (at most every 30 minutes), and at once after saving in the studio. Searching is then offline and instant:
@@ -116,9 +126,13 @@ Lyrics once read are kept on the device (IndexedDB `kv`, `lyrics.<song id>`), so
 | `POST /lyrics/:song/report {reason}` | signed in | A report (1 to 300 characters); a second one by the same member replaces the first |
 | `POST /lyrics/:song/resolve` | Lyrics right | Its open reports dealt with, nothing changed |
 | `GET /lyrics/index?since=<seconds>` | anyone | `{at, songs: [[track, lang, version, words]], gone: [[track, lang]]}`: with since 0, every shown text (edge cached until the next change); later, what changed since (hidden texts as gone). `at` is the next `since` |
+| `POST /lyrics/:song/link {to}` | signed in | The song shows the lyrics of song `to` (or of the song `to` shows): 409 when it has lyrics of its own, others show its lyrics, or it is linked already. Answers its lyrics, with `shared` |
+| `POST /lyrics/:song/unlink {copy}` | Lyrics right | No longer shared; with `copy: true`, it keeps a copy of the text and its timing as its own. `{track, source, copied}` |
 | `GET /lyrics/recent` | Lyrics right | `{edits: [the 50 latest versions, with song, member and whether hidden], reports: [songs with open reports, with each reason]}` |
 
 `GET /lyrics/:song/versions` also lists the song's open reports. Hiding, showing and restoring deal with them.
+
+On a linked song, every route reads and writes the shared text (the `source` song's): versions, hiding, restoring, reports. Its answer carries `shared: {source, with: [the other songs]}` and the song's own timing; a save takes the times out of the text, keeps them for the song, and saves the words to the source (no new version when only the times changed). The index lists every linked song with the shared words, and an unlinked one as gone.
 
 D1:
 
@@ -127,8 +141,10 @@ D1:
 | `lyrics` | per song and language `(track, lang)`: the shown `version` and `text`, `words` (for searching), `updated_at`, `updated_by` (member id), `hidden_at`, `hidden_by`, `hidden_reason`, `changed_at` (the last save, hide or show) |
 | `lyrics_versions` | every version: `(track, lang, version)`, `text`, `member_id`, `at`, `note` |
 | `lyrics_reports` | reports: `track`, `lang`, `member_id`, `reason`, `at`, `resolved_at`, `resolved_by` |
+| `lyrics_links` | shared lyrics: `track` shows the text of `source`; `member_id`, `at`; `unlinked_at`, `unlinked_by` once undone |
+| `lyrics_times` | one recording's timing of a shared text: `(track, lang)`, `times` (JSON, a list of seconds per sung line, in order), `member_id`, `at` |
 
-`migrations/0002-lyrics-languages.sql` brings a database from before translations to this shape (the lyrics there become originals); `node tools/d1.mjs schema --apply` runs it once. The backup (`tools/d1.mjs lyrics`, format `zaideih-lyrics/2`) carries the language.
+`migrations/0002-lyrics-languages.sql` brings a database from before translations to this shape (the lyrics there become originals); `node tools/d1.mjs schema --apply` runs it once. The backup (`tools/d1.mjs lyrics`, format `zaideih-lyrics/2`) carries the language. `migrations/0004-lyrics-links.sql` adds the two tables of shared lyrics.
 
 A save is one D1 batch (the version row and the shown lyrics), each written only when the latest version is still `base`. Every change removes the song from the edge cache. Joining two accounts moves their versions to the kept member.
 
@@ -139,4 +155,4 @@ The lyrics cannot be rebuilt from git: `tools/d1.mjs reset` keeps them like the 
     node tools/d1.mjs lyrics            # counts, and where the file would go
     node tools/d1.mjs lyrics --apply    # writes build/d1/lyrics-<date>.json (or --out <file>)
 
-writes what is shown and every version (format `zaideih-lyrics/1`), with member ids only, no names or emails.
+writes what is shown and every version, which songs share another's lyrics, and each recording's timing of a shared text (format `zaideih-lyrics/3`), with member ids only, no names or emails.

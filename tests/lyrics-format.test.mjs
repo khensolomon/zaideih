@@ -206,3 +206,15 @@ test("Words and music: one credit for both", () => {
 	assert.deepEqual([p.meta.words, p.meta.music, p.meta.key], ["Charles F. Weigle", "Charles F. Weigle", "Eb"]);
 	assert.equal(parseLyrics("Words and music by: A\n\nx").meta.music, "A");
 });
+
+test("extractTimes and applyTimes move one recording's timing in and out of a text", async () => {
+	const { extractTimes, applyTimes, clearTimes } = await import("../src/core/lyrics-format.js");
+	const hymn = "1. [00:05.00]Topa ngak ta un\n[00:08.50]Vang liat na\n\nSakkik:\n[00:12.00]Hallelujah\n\n2. [00:30.00]Second verse\n[00:33.00]and more";
+	const times = extractTimes(hymn);
+	assert.deepEqual(times, [[5], [8.5], [12], [30], [33]]);
+	assert.equal(applyTimes(clearTimes(hymn), times), hymn, "after the verse number, as Timing writes them");
+	assert.deepEqual(extractTimes(clearTimes(hymn)), [], "an untimed text has none");
+	assert.equal(applyTimes(hymn, []), clearTimes(hymn), "none takes them away");
+	// Lines added later keep the times of the lines before them; the rest follow by order.
+	assert.match(applyTimes("1. One\nTwo\nThree", [[1], [2]]), /^1\. \[00:01\.00\]One\n\[00:02\.00\]Two\nThree$/);
+});

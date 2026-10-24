@@ -1499,6 +1499,16 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-block { margin: 0 0 22px; }
 /* Part names stay out of the way of the words: small and dimmer. */
 .ly-part { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #d2d2d2; opacity: 0.85; }
+/* Shared lyrics (ui/lyrics-share.js): the same song on other albums, and the recordings a text is shared with. */
+.ly-same { margin: 24px 0; max-width: 720px; }
+.ly-same h2 { margin: 0 0 4px; font-size: 18px; }
+.ly-same ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.ly-same li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 14px; border-radius: var(--radius-m); background: var(--surface); }
+.ly-same-text { flex: 1 1 260px; min-width: 0; display: grid; gap: 2px; }
+.ly-same-text span { font-size: 13px; color: var(--ink-3); }
+.ly-same-text q { font-size: 14px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ly-same-act { flex: none; display: flex; gap: 8px; }
+.ly-shared .text-link { color: inherit; }
 .ly-repeat { margin-left: 4px; letter-spacing: 0; text-transform: none; font-weight: 600; }
 .ly-line { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .ly-line.my { line-height: 1.9; }

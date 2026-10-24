@@ -18,7 +18,7 @@
  */
 import { AUTH_URL } from "../config.js";
 import { html } from "../core/html.js";
-import { dropDraft, hideLyrics, keepDraft, LYRICS_URL, lyricsVersions, readDraft, readLyrics, resolveReports, restoreLyrics, saveLyrics, showLyrics } from "../core/lyrics.js";
+import { dropDraft, hideLyrics, keepDraft, linkLyrics, LYRICS_URL, lyricsVersions, readDraft, readLyrics, resolveReports, restoreLyrics, saveLyrics, showLyrics, unlinkLyrics } from "../core/lyrics.js";
 import { clearTimes, DETAILS, hasSheetSyllables, joinSyllables, looksZawgyi, lrcTime, parseLyrics, setDetail, setLineTimes, splitDetails } from "../core/lyrics-format.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
@@ -29,6 +29,7 @@ import { forgetNpLyrics } from "./np-lyrics.js";
 import { icon } from "./icons.js";
 import { creditsHtml, detailChips, formatHint, guideHtml, lyricsHtml } from "./lyrics-render.js";
 import { scriptClass } from "./parts.js";
+import { sharedWithHtml, suggestionsHtml } from "./lyrics-share.js";
 
 const MAX = 20_000;
 const DRAFT_MS = 300;
@@ -52,7 +53,7 @@ export function lyricsStudio(catalog, id, ctx, lang = "") {
 	if (!(lang in LYRICS_LANGS)) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such language</h2><p>Lyrics are kept in the song's own words, and in ${Object.values(LYRICS_LANGS).slice(1).join(" and ")} translations.</p></div>` };
 	if (!track || track.upload) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
 	st = {
-		id, track, lang, original: null, names: lang ? { verse: "Verse", chorus: "Chorus" } : partNames(track), mode: "write", loading: true,
+		catalog, id, track, lang, original: null, names: lang ? { verse: "Verse", chorus: "Chorus" } : partNames(track), mode: "write", loading: true,
 		server: null, text: "", head: "", base: 0, parsed: parseLyrics(""), draft: null,
 		saving: false, error: "", conflict: undefined, keepSyllables: false, guide: false,
 		history: null, next: 0,
@@ -87,7 +88,7 @@ function frame(ctx) {
 	}
 	if (st.loading) return html`${head(ctx)}<p class="muted st-pad" aria-busy="true">Reading the lyrics…</p>`;
 	const body = { write, preview, timing, history }[st.mode](ctx);
-	return html`${head(ctx)}<div class="st-page">${banners()}${body}</div>`;
+	return html`${head(ctx)}<div class="st-page">${banners(ctx)}${body}</div>`;
 }
 
 function head(ctx) {
@@ -115,8 +116,19 @@ function head(ctx) {
 	</header>`;
 }
 
-function banners() {
+function banners(ctx) {
 	const out = [];
+	// Shared lyrics (docs/lyrics.md): one text for several recordings; timing is each one's own.
+	const shared = st.server?.shared;
+	if (shared) {
+		const linked = shared.source !== st.id;
+		out.push(html`<div class="st-banner"><p><b>Shared lyrics.</b> ${sharedWithHtml(st.catalog, shared)}: changing the words changes them there too. Timing is this recording's own.</p>
+			${linked && ctx.canModerate() ? html`<button class="btn" data-st="unlink-copy">Give it a copy of its own</button><button class="link-btn" data-st="unlink">Unlink</button>` : ""}</div>`);
+	}
+	if (!st.server && !st.lang && !st.text.trim()) {
+		const offer = suggestionsHtml(st.catalog, st.track, { canLink: true, attr: "data-st" });
+		if (offer) out.push(offer);
+	}
 	if (st.draft) {
 		out.push(html`<div class="st-banner"><p>Continuing your draft from ${clock(st.draft.at)}.${st.draft.newer ? html` Someone saved version ${st.server.version} since: saving will show you theirs to compare.` : ""}</p><button class="link-btn" data-st="discard">Discard draft</button></div>`);
 	}
@@ -512,12 +524,14 @@ function mount(root, ctx) {
 		} else if (what === "save") {
 			await guarded(async () => {
 				try {
+					const before = st.base;
 					const saved = await saveLyrics(st.id, st.text, st.base, st.lang);
 					Object.assign(st, { server: saved, base: saved.version, draft: null, conflict: undefined });
 					setText(saved.text);
 					reparse();
 					await dropDraft(st.id, st.lang);
-					ctx.notify(`Saved as version ${saved.version}`);
+					// A shared text: timing alone is this recording's, and makes no new version of the words.
+					ctx.notify(saved.version === before ? "Timing saved for this recording" : `Saved as version ${saved.version}`);
 					lyricsIndex.refresh({ force: true }).catch(() => {});
 					forgetNpLyrics(st.id);
 					if (st.history) await loadHistory();
@@ -525,6 +539,34 @@ function mount(root, ctx) {
 					if (err.status !== 409) throw err;
 					Object.assign(st, { conflict: err.current ?? null, base: err.current?.version ?? 0 });
 				}
+			});
+		} else if (what === "link") {
+			const from = st.catalog.track(Number(b.dataset.to));
+			if (!from || !(await ctx.confirmAction(`Show the lyrics of “${from.title}” from ${from.album.title} on this song too? Both will show one text; only those who look after lyrics can undo it.`, "Use these lyrics"))) return;
+			await guarded(async () => {
+				const lyrics = await linkLyrics(st.id, from.id);
+				Object.assign(st, { server: lyrics, base: lyrics.version, draft: null });
+				setText(lyrics.text);
+				reparse();
+				await dropDraft(st.id, st.lang);
+				ctx.notify("Linked: this song now shows those lyrics");
+				lyricsIndex.refresh({ force: true }).catch(() => {});
+				forgetNpLyrics(st.id);
+			});
+		} else if (what === "unlink" || what === "unlink-copy") {
+			const copy = what === "unlink-copy";
+			if (!(await ctx.confirmAction(copy
+				? "Give this recording a copy of the lyrics as its own, with its timing? From then on, changes to it are its own, and the others' no longer reach it."
+				: "Unlink this recording? It will have no lyrics until someone adds or links them. The shared text stays with the others.", copy ? "Make a copy" : "Unlink"))) return;
+			await guarded(async () => {
+				await unlinkLyrics(st.id, copy);
+				const { lyrics } = await readLyrics(st.id, st.lang);
+				Object.assign(st, { server: lyrics, base: lyrics?.version ?? 0, draft: null, history: null });
+				setText(lyrics?.text ?? "");
+				reparse();
+				ctx.notify(copy ? "This recording now has its own copy" : "Unlinked");
+				lyricsIndex.refresh({ force: true }).catch(() => {});
+				forgetNpLyrics(st.id);
 			});
 		} else if (what === "discard") {
 			if (!(await ctx.confirmAction(st.server ? `Discard your changes and go back to version ${st.server.version}?` : "Discard what you have written?", "Discard"))) return;

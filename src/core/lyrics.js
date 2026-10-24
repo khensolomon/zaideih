@@ -61,7 +61,7 @@ export async function readLyrics(id, lang = "") {
 	}
 	const body = await res.json().catch(() => null);
 	if (!res.ok || !body) throw new LyricsError(body?.error ?? `the lyrics could not be read (HTTP ${res.status})`, res.status);
-	const lyrics = { version: body.version, text: body.text, updated: body.updated };
+	const lyrics = { version: body.version, text: body.text, updated: body.updated, shared: body.shared ?? null };
 	await keep(id, lyrics, lang);
 	return { lyrics, offline: false };
 }
@@ -89,10 +89,24 @@ async function call(method, path, body) {
 /** Saves `text` as the next version of song `id` in `lang`, started from version `base`; answers the new lyrics. */
 export async function saveLyrics(id, text, base, lang = "") {
 	const saved = await call("POST", `/${id}${q(lang)}`, { text, base });
-	const lyrics = { version: saved.version, text: saved.text, updated: saved.updated };
+	const lyrics = { version: saved.version, text: saved.text, updated: saved.updated, shared: saved.shared ?? null };
 	await keep(id, lyrics, lang);
 	return lyrics;
 }
+
+/**
+ * Shared lyrics (docs/lyrics.md): song `id`, without lyrics of its own,
+ * shows those of song `to` (another recording of the same song). Answers its
+ * lyrics, with `shared`.
+ */
+export async function linkLyrics(id, to) {
+	const linked = await call("POST", `/${id}/link`, { to });
+	const lyrics = { version: linked.version, text: linked.text, updated: linked.updated, shared: linked.shared ?? null };
+	await keep(id, lyrics);
+	return lyrics;
+}
+/** The Lyrics right: song `id` no longer shows another's lyrics; with `copy`, it keeps a copy as its own. */
+export const unlinkLyrics = (id, copy) => call("POST", `/${id}/unlink`, { copy: Boolean(copy) });
 
 /** The Lyrics right: { version, hidden, versions: [{version, text, at, note, by: {id, name}}] }. */
 export const lyricsVersions = (id, lang = "") => call("GET", `/${id}/versions${q(lang)}`);

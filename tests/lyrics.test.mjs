@@ -250,3 +250,82 @@ test("migration 0002 keeps the lyrics there were, as the originals", { skip }, a
 	const empty = new sqlite(":memory:");
 	assert.doesNotThrow(() => empty.exec(readFileSync(new URL("../worker/media/migrations/0002-lyrics-languages.sql", import.meta.url), "utf8")));
 });
+
+test("shared lyrics: one text for several recordings, each with its own timing", { skip }, async () => {
+	const { env, call, read, signIn, tick } = setup();
+	await seed(env);
+	await env.DB.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (103, 'a', 'd.mp3', 0), (104, 'a', 'e.mp3', 0)").run();
+	const { applyTimes, clearTimes } = await import("../src/core/lyrics-format.js");
+	// Ann's recording, timed to her song.
+	const timed = "Key: G\n\n[Verse 1]\n[00:10.00]Topa ngak ta un\n[00:14.00]Vang liat na\n\n[Chorus]\n[00:20.00][01:05.00]Hallelujah";
+	assert.equal((await call("gh-ann", "POST", "/lyrics/101", { text: timed, base: 0 })).status, 200);
+	tick(60);
+
+	// Bo links another recording of the same song.
+	const linked = await call("gh-bo", "POST", "/lyrics/102/link", { to: 101 });
+	assert.equal(linked.status, 200, JSON.stringify(linked.body));
+	assert.deepEqual(linked.body.shared, { source: 101, with: [101] });
+	assert.equal(linked.body.text, clearTimes(timed), "the linked recording shows the words, untimed");
+	const own = await read(101);
+	assert.equal(own.body.text, timed, "the source keeps its own timing");
+	assert.deepEqual(own.body.shared, { source: 101, with: [102] });
+	const mod = (await signIn("gh-mod")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
+	const history = await call("gh-mod", "GET", "/lyrics/102/versions");
+	assert.equal(history.body.source, 101);
+	assert.match(history.body.versions[0].note, /shared with song 102/);
+	assert.equal(history.body.versions[0].text, clearTimes(timed), "the shared text keeps no times");
+
+	// Never over lyrics, never twice, never in a circle; a link to a linked song goes to its source.
+	assert.equal((await call("gh-bo", "POST", "/lyrics/101/link", { to: 102 })).status, 409, "101 has its own");
+	assert.equal((await call("gh-bo", "POST", "/lyrics/102/link", { to: 101 })).status, 409, "already linked");
+	assert.equal((await call("gh-bo", "POST", "/lyrics/104/link", { to: 999 })).status, 404, "no such song");
+	assert.equal((await call(null, "POST", "/lyrics/104/link", { to: 101 })).status, 401);
+	const third = await call("gh-bo", "POST", "/lyrics/103/link", { to: 102 });
+	assert.deepEqual(third.body.shared, { source: 101, with: [101, 102] });
+
+	// Bo times his recording: the words stay one version, his times are his.
+	const v = linked.body.version;
+	const bos = applyTimes(linked.body.text, [[5], [9], [15, 50]]);
+	const timedBo = await call("gh-bo", "POST", "/lyrics/102", { text: bos, base: v });
+	assert.equal(timedBo.status, 200, JSON.stringify(timedBo.body));
+	assert.equal(timedBo.body.version, v, "timing only: no new version of the words");
+	assert.equal((await read(102)).body.text, bos);
+	assert.equal((await read(101)).body.text, timed, "Ann's timing is untouched");
+	assert.equal((await read(103)).body.text, clearTimes(timed));
+
+	// A correction from any recording is one for all; each keeps its timing.
+	tick(60);
+	const fixed = await call("gh-bo", "POST", "/lyrics/102", { text: bos.replace("Vang liat na", "Vang-liat-na!"), base: v });
+	assert.equal(fixed.body.version, v + 1);
+	assert.match((await read(101)).body.text, /\[00:14\.00\]Vang-liat-na!/);
+	assert.match((await read(103)).body.text, /^Vang-liat-na!$/m);
+
+	// The index lists every recording with the words.
+	const idx = await call(null, "GET", "/lyrics/index?since=0");
+	assert.deepEqual(idx.body.songs.map((s) => s[0]), [101, 102, 103]);
+	assert.ok(idx.body.songs.every((s) => s[3] === idx.body.songs[0][3]));
+
+	// Unlinking is for the Lyrics right; with a copy, the recording keeps the text and its timing as its own.
+	const before = idx.body.at;
+	tick(60);
+	assert.equal((await call("gh-bo", "POST", "/lyrics/102/unlink", { copy: true })).status, 403);
+	const copied = await call("gh-mod", "POST", "/lyrics/102/unlink", { copy: true });
+	assert.deepEqual(copied.body, { track: 102, source: 101, copied: true });
+	const mine = await read(102);
+	assert.equal(mine.body.shared, undefined);
+	assert.equal(mine.body.text, applyTimes(clearTimes(fixed.body.text), [[5], [9], [15, 50]]), "the copy carries 102's timing");
+	assert.equal((await call("gh-mod", "GET", "/lyrics/102/versions")).body.versions[0].note, "copied from song 101");
+	assert.deepEqual((await read(101)).body.shared, { source: 101, with: [103] }, "the source is untouched");
+	const changes = await call(null, "GET", `/lyrics/index?since=${before + 1}`);
+	assert.deepEqual(changes.body.gone, [[102, ""]]);
+	assert.ok(changes.body.songs.some((s) => s[0] === 102), "and comes back with its own copy");
+
+	// Unlinking without a copy leaves the recording without lyrics; hiding from a linked song hides the shared text.
+	assert.equal((await call("gh-mod", "POST", "/lyrics/103/unlink", {})).status, 200);
+	assert.equal((await read(103)).status, 404);
+	assert.equal((await call("gh-ann", "POST", "/lyrics/103/link", { to: 101 })).status, 200, "linking again");
+	assert.equal((await call("gh-mod", "POST", "/lyrics/103/hide", { reason: "wrong song" })).status, 200);
+	assert.equal((await read(101)).status, 404, "hidden for every recording");
+	assert.equal((await read(102)).status, 200, "the copy is its own");
+});

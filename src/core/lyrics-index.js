@@ -43,6 +43,8 @@ export const lyricsIndex = {
 	/** The languages song `id` has lyrics in, the original first. */
 	langs: (id) => Object.keys(LYRICS_LANGS).filter((l) => songs.get(id)?.has(l)),
 	get size() { return songs.size; },
+	/** The first sung line of song `id`'s own words, as kept for searching, or "". */
+	firstLine: (id) => texts.get(`${id}/`)?.words.split("\n").find((l) => l.trim()) ?? "",
 
 	/** Reads what is kept on the device, then asks the Worker for what changed (at most every 30 minutes unless `force`). */
 	refresh({ force = false } = {}) {
