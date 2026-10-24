@@ -54,8 +54,8 @@ test("a section name above a blank line keeps the lines after it", () => {
 test("hymnbook style: numbered stanzas and Chorus: lines", () => {
 	const p = parseLyrics("1. Amazing grace how sweet\nThat saved a wretch\n\nChorus:\nMy chains are gone\n\n2. Twas grace that taught\nMy heart to fear\n\nRefrain: I once was lost");
 	assert.deepEqual(shape(p), [
-		["verse", "Verse 1", ["Amazing grace how sweet", "That saved a wretch"]], ["chorus", "Chorus", ["My chains are gone"]],
-		["verse", "Verse 2", ["Twas grace that taught", "My heart to fear"]], ["chorus", "Refrain", ["I once was lost"]],
+		["verse", "1", ["Amazing grace how sweet", "That saved a wretch"]], ["chorus", "Chorus", ["My chains are gone"]],
+		["verse", "2", ["Twas grace that taught", "My heart to fear"]], ["chorus", "Refrain", ["I once was lost"]],
 	]);
 	assert.deepEqual(p.formats, ["hymnbook"]);
 });
@@ -103,4 +103,30 @@ test("notes in brackets, unknown sections, and nothing refused", () => {
 	assert.equal(p.blocks[0].lines[1].kind, "note");
 	assert.equal(parseLyrics("").blocks.length, 0);
 	assert.doesNotThrow(() => parseLyrics("[[[\n{{{\n}}}\n[00:\n1.\nChorus:"));
+});
+
+test("Zolai hymnbook: Tang and Sakkik, the chorus sung after every verse", () => {
+	assert.equal(sectionOf("Sakkik:").kind, "chorus");
+	assert.equal(sectionOf("Tang 2").kind, "verse");
+	for (const words of ["Tang ding hi", "Sakkik ka lawm"]) assert.equal(sectionOf(words), null, words);
+	// Hymn 167, as typed from the book: the Sakkik once, after verse 1.
+	const p = parseLyrics(`1. Topa ngak ta un, Kam hong ciam khin zo hi;
+Topa ngak ta un, van pan hong tuak ding hi;
+
+Sakkik:
+Vang-liat-na! vang-liat-na! (Pen-te-kos vang-liat-na!)
+Mawh-na tung gual-zawh-na le lung-sim sian-tho-na;
+
+2. Topa ngak ta un, Jesu tung ki-ap-in;
+Topa ngak ta un, mawh-na a sian' dong-in;
+
+3. Topa ngak ta un, a sang-zaw kah na'ng-in;
+Topa ngak ta un, deih-na lian-pi nei-in;`);
+	assert.deepEqual(p.blocks.map((b) => [b.kind, b.label, b.recall]), [
+		["verse", "1", false], ["chorus", "Sakkik", false], ["verse", "2", false], ["chorus", "Sakkik", true], ["verse", "3", false], ["chorus", "Sakkik", true],
+	]);
+	assert.equal(p.blocks[3].lines.length, 2);
+	// [Tang 1] and [Sakkik] in brackets work the same; a chorus written out each time is left alone.
+	const q = parseLyrics("[Tang 1]\nA\n\n[Sakkik]\nB\nC\n\n[Tang 2]\nD\n\n[Sakkik]");
+	assert.deepEqual(q.blocks.map((b) => [b.kind, b.label, b.recall]), [["verse", "Tang 1", false], ["chorus", "Sakkik", false], ["verse", "Tang 2", false], ["chorus", "Sakkik", true]]);
 });

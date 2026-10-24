@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.17
+
+- Lyrics: Zolai hymnbook (Tang, Sakkik), the chorus after every verse
+
 ## v26.10.24.16
 
 - Lyrics: sections, chords with transpose, timed lyrics
