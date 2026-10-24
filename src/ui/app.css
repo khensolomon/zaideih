@@ -1325,6 +1325,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-bridge { padding: 8px 14px; border-radius: var(--radius-m); background: var(--surface-2); }
 .ly-intro, .ly-outro, .ly-interlude, .ly-spoken { color: var(--ink-2); font-style: italic; }
 .ly-recall { opacity: 0.72; }
+.ly-echo { color: var(--ink-3); font-style: italic; font-weight: 400; }
 .ly-note { margin: 2px 0; font-size: 15px; font-style: italic; color: var(--ink-3); }
 .ly-note::before { content: "("; }
 .ly-note::after { content: ")"; }

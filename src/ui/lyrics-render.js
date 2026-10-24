@@ -36,7 +36,9 @@ function lineHtml(line, n, { chords, transpose, flats }) {
 	if (line.kind === "tab") return html`<pre class="ly-tab">${text}</pre>`;
 	const time = line.time ?? "";
 	if (!(chords && line.parts.some((p) => p.chord))) {
-		return html`<p class="ly-line ${scriptClass(text)}" data-n="${n}" data-time="${time}">${text.trim() ? text : "\u00a0"}</p>`;
+		// "(…)" inside a line: the answering part (another voice, an echo), lighter.
+		const pieces = text.trim() ? text.split(/(\([^()]{1,120}\))/).map((x) => (/^\(.*\)$/.test(x) ? html`<span class="ly-echo">${x}</span>` : x)) : "\u00a0";
+		return html`<p class="ly-line ${scriptClass(text)}" data-n="${n}" data-time="${time}">${pieces}</p>`;
 	}
 	return html`<p class="ly-line ly-chorded ${scriptClass(text)}" data-n="${n}" data-time="${time}">${line.parts.map((p) => html`<span class="ly-seg"><b class="ly-chord">${p.chord ? transposeChord(p.chord, transpose, flats) : "\u00a0"}</b><span class="ly-w">${p.text || "\u00a0"}</span></span>`)}</p>`;
 }

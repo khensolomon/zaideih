@@ -21,17 +21,18 @@ Lyrics are kept exactly as typed; their structure is read when they are shown (`
 | Format | Written as | Shown as |
 |---|---|---|
 | Sections (Genius style) | `[Verse 1]`, `[Chorus]`, `[Pre-Chorus]`, `[Bridge x2]`, `[Outro]` on a line of their own | A small label over each part |
-| Hymnbook | `1.` opening a verse; `Chorus:` or `Refrain:` on its own line, or before the first words | The same |
+| Hymnbook | `1.` opening a verse (labelled by its number alone, as hymnbooks print it); `Chorus:`, `Sakkik:` or `Refrain:` on its own line, or before the first words | The same; a chorus written once, after the first verse, is shown again after every later verse, as it is sung |
 | A recalled chorus | `[Chorus]` (or `{chorus}`) with nothing under it | The last chorus again, dimmed |
 | ChordPro | `{key: G}` `{capo: 2}` `{tempo: 72}` `{time: 3/4}`, `{soc}` … `{eoc}` (and verse, bridge, tab), `{c: softly}`, chords inline: `A[G]mazing [C]grace` | Details as chips; sections; notes; chords |
 | Chord sheet | A line of only chords above the words, lined up by column | Chords over the words |
 | Details, plain | `Key: G`, `Capo: 2`, `Tempo: 72` at the very top | Chips |
 | Notes | A line in brackets: `(spoken)`, `(repeat)` | Small italic |
+| Answering part | `(…)` inside a line: another voice, an echo | Lighter, in italics |
 | LRC | `[01:23.40] words`, several times on one line, `[offset: +250]`, `[ti:]` `[ar:]` | Timed lines (below) |
 
 Without any section names, a block of two or more lines that comes back the same is taken for the chorus.
 
-Section names are matched on the start of the label, followed only by a number, a repeat (`x2`, `(2x)`) or a singer (`Chorus - Lal Pa`), so a line of words such as "Verse of my life" stays words. The names are in `SECTION_WORDS`: English, and Myanmar သံပြိုင် (chorus) and အပိုဒ် (verse). An unknown name in brackets (`[Lasak]`) is shown as a label of its own. Names used in Zolai, Mizo and Falam hymnbooks belong in that list.
+Section names are matched on the start of the label, followed only by a number, a repeat (`x2`, `(2x)`) or a singer (`Chorus - Lal Pa`), so a line of words such as "Verse of my life" stays words. The names are in `SECTION_WORDS`: English; Myanmar သံပြိုင် (chorus) and အပိုဒ် (verse); Zolai Sakkik (chorus) and Tang (verse). An unknown name in brackets (`[Lasak]`) is shown as a label of its own. Names used in Mizo and Falam hymnbooks belong in that list.
 
 Chord names: a root A to G with `#`, `b`, `♯` or `♭`; a quality (`m`, `maj`, `min`, `dim`, `aug`, `sus`, `add`, `°`, `ø`, `+`); extensions; a bass (`/F#`); or `N.C.`. Words that only look like chords ("Ama", "Am I") are left as words: a chord line holds nothing but chords.
 

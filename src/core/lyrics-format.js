@@ -39,6 +39,8 @@ export const SECTION_WORDS = [
 	["spoken", "spoken"], ["rap", "verse"],
 	// Myanmar: သံပြိုင် (chorus), အပိုဒ် (verse, stanza).
 	["သံပြိုင်", "chorus"], ["အပိုဒ်", "verse"],
+	// Zolai (Tedim): Sakkik (chorus), Tang (verse), as in the hymnbook.
+	["sakkik", "chorus"], ["tang", "verse"],
 ];
 
 /** The section kinds, as labelled when a section has no label of its own. */
@@ -261,7 +263,8 @@ export function parseLyrics(text) {
 		const numbered = !block ? /^(\d{1,2})[.)]\s+(\S.*)$/.exec(trimmed) : null;
 		if (numbered) {
 			formats.add("hymnbook");
-			open("verse", `${SECTION_LABELS.verse} ${numbered[1]}`);
+			// Labelled by its number alone, as hymnbooks print it, whatever the language of the rest.
+			open("verse", numbered[1]);
 			add(wordsLine(numbered[2], null));
 			continue;
 		}
@@ -302,6 +305,7 @@ export function parseLyrics(text) {
 	const timed = blocks.some((b) => b.lines.some((l) => l.time !== null));
 	if (timed) sortTimed(blocks);
 	if (!blocks.some((b) => b.kind !== "plain" && b.kind !== "tab")) findChorus(blocks);
+	if (formats.has("hymnbook")) chorusAfterEachVerse(blocks);
 	for (const b of blocks) if (b.kind === "plain") b.kind = "verse";
 	return {
 		meta,
@@ -329,6 +333,24 @@ function sortTimed(blocks) {
 	if (times.every((t, i) => i === 0 || t >= times[i - 1])) return;
 	const sorted = [...all].sort((a, b) => (a.time ?? -1) - (b.time ?? -1));
 	blocks.splice(0, blocks.length, { kind: "plain", label: "", repeat: null, recall: false, auto: false, lines: sorted });
+}
+
+/**
+ * Hymnbooks print the chorus once, after the first verse, and it is sung
+ * after every verse. When the lyrics have one chorus, written right after a
+ * verse and never repeated, it is shown again after each later verse (as a
+ * repeat). A chorus written out more than once, or recalled, is left as it is.
+ */
+function chorusAfterEachVerse(blocks) {
+	const choruses = blocks.filter((b) => b.kind === "chorus");
+	if (choruses.length !== 1 || !choruses[0].lines.length) return;
+	const at = blocks.indexOf(choruses[0]);
+	if (blocks[at - 1]?.kind !== "verse") return;
+	for (let i = blocks.length - 1; i > at; i--) {
+		if (blocks[i].kind !== "verse" || blocks[i + 1]?.kind === "chorus") continue;
+		const c = choruses[0];
+		blocks.splice(i + 1, 0, { kind: "chorus", label: c.label, repeat: null, recall: true, auto: true, lines: c.lines.map((l) => ({ ...l, time: null })) });
+	}
 }
 
 /** Lyrics without sections: a block of two or more lines that comes back the same is the chorus. */
