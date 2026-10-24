@@ -1,5 +1,5 @@
 /**
- * Catalog health checks for the admin page's Tools tab: things worth a look
+ * Catalog health checks for the admin page's Checks section: things worth a look
  * in the source data, each item opening its editor. Some checks come with a
  * fix that adds the corrections to the draft (spacing and Unicode form).
  * Pure: tested in Node (tests/admin.test.mjs).

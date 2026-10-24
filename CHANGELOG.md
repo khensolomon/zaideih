@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.21
+
+- Admin: a studio page
+
 ## v26.10.24.20
 
 - Account: your name and photo from your sign-ins

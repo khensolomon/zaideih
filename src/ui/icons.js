@@ -48,6 +48,10 @@ const paths = {
 	muted: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
 	scene: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>',
 	watch: '<path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/>',
+	grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+	inbox: '<path d="M4 13l3-8h10l3 8v6H4z"/><path d="M4 13h5l1 2h4l1-2h5"/>',
+	people: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c.8-3.5 3.3-5 6-5s5.2 1.5 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2 0 3.5 1.2 4 3.5"/>',
+	shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="m9 12 2 2 4-4"/>',
 	chart: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
 	offline: '<path d="M2 8.5a15 15 0 0 1 4-2.6M9.5 5.1A15 15 0 0 1 22 8.5M5 12a10 10 0 0 1 3.5-2M13 9.7A10 10 0 0 1 19 12M8.5 15.5a5 5 0 0 1 5.5-.9M12 19h.01M3 3l18 18"/>',
 };
