@@ -1531,6 +1531,13 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-same-text q { font-size: 14px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ly-same-act { flex: none; display: flex; gap: 8px; }
 .ly-shared .text-link { color: inherit; }
+.ly-same-text i { font-style: normal; color: var(--ink-2); }
+.ly-find { margin: 16px 0 0; }
+.ly-find-field { display: flex; align-items: center; min-height: 46px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.ly-find-field:focus-within { border-color: var(--ink-3); }
+.ly-find-input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 15px; outline: none; }
+.ly-find-input::placeholder { color: var(--ink-3); }
+.ly-find-results:not(:empty) { margin-top: 10px; }
 .ly-repeat { margin-left: 4px; letter-spacing: 0; text-transform: none; font-weight: 600; }
 .ly-line { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .ly-line.my { line-height: 1.9; }

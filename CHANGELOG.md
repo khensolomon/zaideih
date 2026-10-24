@@ -1,8 +1,13 @@
 # Version
 
-## v26.10.24.29
+## v26.10.24.30
 
 - Getting around while listening: player More, sleep timer, share
+- Lyrics: Play as an icon that shows whether the song is playing
+- Shared lyrics: similar titles offered, and finding the song by title, artist or a line of the words
+
+## v26.10.24.28
+
 - Lyrics: play this song
 
 ## v26.10.24.27

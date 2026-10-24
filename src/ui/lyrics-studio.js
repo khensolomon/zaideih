@@ -29,7 +29,7 @@ import { forgetNpLyrics } from "./np-lyrics.js";
 import { icon } from "./icons.js";
 import { creditsHtml, detailChips, formatHint, guideHtml, lyricsHtml } from "./lyrics-render.js";
 import { scriptClass } from "./parts.js";
-import { sharedWithHtml, suggestionsHtml } from "./lyrics-share.js";
+import { sharedWithHtml, suggestionsHtml, wireFind } from "./lyrics-share.js";
 
 const MAX = 20_000;
 const DRAFT_MS = 300;
@@ -646,6 +646,8 @@ function mount(root, ctx) {
 	// The original, beside a translation: open or closed as the writer left it.
 	root.addEventListener("toggle", (e) => { if (e.target.classList?.contains("st-ref")) st.refOpen = e.target.open; }, true);
 	root.addEventListener("input", (e) => { if (e.target.id === "st-text") changed(st.head + e.target.value); });
+	// Finding the same song to use its lyrics (an empty song): results as the person types.
+	wireFind(root, st.catalog, st.track, { canLink: true, attr: "data-st" });
 	root.addEventListener("keyup", (e) => { if (e.target.id === "st-text") caretPlus(); });
 	root.addEventListener("pointerup", (e) => { if (e.target.id === "st-text") caretPlus(); });
 	root.addEventListener("focusin", (e) => { if (e.target.id === "st-text") { document.body.classList.add("st-typing"); caretPlus(); } });
@@ -657,7 +659,8 @@ function mount(root, ctx) {
 	});
 	// Ctrl or Cmd + S saves; Esc goes back to the lyrics (the draft is kept).
 	root.addEventListener("keydown", (e) => {
-		if (e.key === "Escape" && !document.querySelector("dialog[open], .menu")) {
+		// Escape in the find field clears it (the browser's own), not the studio.
+		if (e.key === "Escape" && !document.querySelector("dialog[open], .menu") && !e.target.closest?.(".ly-find-input")) {
 			e.preventDefault();
 			location.hash = href(`lyrics/${st.id}`, st.lang ? { lang: st.lang } : undefined);
 			return;

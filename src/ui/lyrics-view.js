@@ -31,7 +31,7 @@ import { icon } from "./icons.js";
 import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { artistLinks, cover, scriptClass } from "./parts.js";
-import { sharedWithHtml, suggestionsHtml } from "./lyrics-share.js";
+import { sharedWithHtml, suggestionsHtml, wireFind } from "./lyrics-share.js";
 
 const SIZE_KEY = "zaideih.lyrics.size";
 const SIZES = [16, 18, 21, 25];
@@ -168,6 +168,8 @@ function content() {
 
 function mount(root, ctx) {
 	const mine = st;
+	// Finding the same song to use its lyrics (a song without lyrics): results as the person types.
+	wireFind(root, st.catalog, st.track, { canLink: true, attr: "data-ly" });
 	const draw = () => {
 		if (st !== mine || !root.isConnected) return;
 		root.innerHTML = content();

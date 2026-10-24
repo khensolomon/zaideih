@@ -3,69 +3,110 @@
  * on other albums, offered to a song without lyrics, and the recordings a
  * shared text is shown on.
  *
- * Offered by title only, and only songs that have lyrics: many different
- * songs share a title, so a person reads them and decides; nothing is linked
- * by itself.
+ * Offered: songs with lyrics whose title is the same or close (a song sung
+ * again often has its title written another way: "သားသမီးတိုင်းအတွက်ယေရှု",
+ * "သားသမီးတိုင်းရဲ့ယေရှု"). Found: any song with lyrics, by its title, artist,
+ * album or a line of its words. Many different songs share a title, so
+ * nothing is linked by itself: a person reads them and decides.
  */
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { lyricsIndex } from "../core/lyrics-index.js";
 import { href } from "../core/router.js";
 import { normalize } from "../core/text.js";
+import { CLOSE_TITLES, titleCloseness, titleKey } from "../core/titles.js";
 import { scriptClass } from "./parts.js";
 
-/** A title as compared: the app's search form, without spaces or punctuation. */
-const titleKey = (title) => normalize(title).replace(/[\s\p{P}]+/gu, "");
+const withLyrics = (catalog, track) => [...lyricsIndex.originals()].map((id) => catalog.track(id)).filter((t) => t && t.id !== track.id && !t.upload);
 
-const byTitle = new WeakMap();
-function titles(catalog) {
-	let map = byTitle.get(catalog);
-	if (!map) {
-		map = new Map();
-		for (const t of catalog.tracks.values()) {
-			const k = titleKey(t.title);
-			if (!k) continue;
-			if (!map.has(k)) map.set(k, []);
-			map.get(k).push(t);
-		}
-		byTitle.set(catalog, map);
+/**
+ * Songs with lyrics titled like `track` (the same, or close): the same
+ * title first, then the closest, the same artist before others.
+ */
+export function sameSong(catalog, track, limit = 6) {
+	const key = titleKey(track.title);
+	const artists = new Set(track.artists.map((a) => a.id));
+	return withLyrics(catalog, track)
+		.map((t) => ({ t, score: titleCloseness(key, titleKey(t.title)), same: t.artists.some((a) => artists.has(a.id)) }))
+		.filter((x) => x.score >= CLOSE_TITLES)
+		.sort((a, b) => b.score - a.score || b.same - a.same || b.t.plays - a.t.plays)
+		.slice(0, limit);
+}
+
+/** Songs with lyrics found by `query`: in the title, an artist, the album, or a line of the words. */
+export function findSongs(catalog, track, query, limit = 8) {
+	const q = normalize(query).trim();
+	if (q.replace(/\s/g, "").length < 2) return [];
+	const found = new Map();
+	for (const t of withLyrics(catalog, track)) {
+		if (found.size >= limit) break;
+		if (normalize(t.title).includes(q) || titleKey(t.title).includes(titleKey(query)) || t.artists.some((a) => normalize(a.name).includes(q)) || normalize(t.album.title).includes(q)) found.set(t.id, { t });
 	}
-	return map;
+	for (const hit of lyricsIndex.search(query, limit)) {
+		if (found.size >= limit) break;
+		const t = catalog.track(hit.track);
+		if (t && t.id !== track.id && !found.has(t.id) && lyricsIndex.langs(t.id).includes("")) found.set(t.id, { t, line: hit.line });
+	}
+	return [...found.values()];
+}
+
+function item({ t, score, line }, { canLink, attr }) {
+	const first = line ?? lyricsIndex.firstLine(t.id);
+	const how = score === undefined ? "" : score === 1 ? "Same title" : "Similar title";
+	return html`<li>
+		<div class="ly-same-text">
+			<b class="${scriptClass(t.title)}">${t.title}</b>
+			<span>${t.album.title} · ${creditOf(t.artists, 2)}${t.album.year ? ` · ${t.album.year}` : ""}${how ? html` · <i>${how}</i>` : ""}</span>
+			${first ? html`<q class="${scriptClass(first)}">${first}</q>` : ""}
+		</div>
+		<span class="ly-same-act">
+			<a class="btn ly-small" href="${href(`lyrics/${t.id}`)}">Read</a>
+			${canLink ? html`<button class="btn primary ly-small" ${attr}="link" data-to="${t.id}">Use these lyrics</button>` : ""}
+		</span>
+	</li>`;
+}
+
+/** What the find field has, per song, so the page can be drawn again without losing it. */
+const typed = new Map();
+
+function resultsHtml(catalog, track, opts) {
+	const q = typed.get(track.id) ?? "";
+	if (q.replace(/\s/g, "").length < 2) return "";
+	const list = findSongs(catalog, track, q);
+	return list.length ? html`<ul>${list.map((x) => item(x, opts))}</ul>` : html`<p class="acct-small">No song with lyrics matches “${q}”.</p>`;
 }
 
 /**
- * Songs titled like `track` on other albums that have lyrics: the same
- * artist first, then the most played.
+ * The offer on a song without lyrics: the same or a similar title, each with
+ * its first line, to read and, signed in, to use; and, signed in, a field to
+ * find the song another way.
  */
-export function sameTitle(catalog, track, limit = 6) {
-	const artists = new Set(track.artists.map((a) => a.id));
-	return (titles(catalog).get(titleKey(track.title)) ?? [])
-		.filter((t) => t.id !== track.id && lyricsIndex.has(t.id))
-		.map((t) => ({ t, same: t.artists.some((a) => artists.has(a.id)) }))
-		.sort((a, b) => b.same - a.same || b.t.plays - a.t.plays)
-		.slice(0, limit)
-		.map((x) => x.t);
-}
-
-/** The offer on a song without lyrics: each candidate with its first line, to read, and to use when signed in. */
-export function suggestionsHtml(catalog, track, { canLink, attr }) {
-	const list = sameTitle(catalog, track);
-	if (!list.length) return "";
+export function suggestionsHtml(catalog, track, opts) {
+	const list = sameSong(catalog, track);
+	if (!list.length && !opts.canLink) return "";
 	return html`<section class="ly-same" aria-label="The same song on other albums">
 		<h2>Same song on another album?</h2>
-		<p class="acct-small">These have lyrics and the same title. Many songs share a title: read them first.${canLink ? " Using them shows one text on both: a correction to either is one for both, and each keeps its own timing." : ""}</p>
-		<ul>${list.map((t) => html`<li>
-			<div class="ly-same-text">
-				<b class="${scriptClass(t.title)}">${t.album.title}</b>
-				<span>${creditOf(t.artists, 2)}${t.album.year ? ` · ${t.album.year}` : ""}</span>
-				${lyricsIndex.firstLine(t.id) ? html`<q class="${scriptClass(lyricsIndex.firstLine(t.id))}">${lyricsIndex.firstLine(t.id)}</q>` : ""}
-			</div>
-			<span class="ly-same-act">
-				<a class="btn ly-small" href="${href(`lyrics/${t.id}`)}">Read</a>
-				${canLink ? html`<button class="btn primary ly-small" ${attr}="link" data-to="${t.id}">Use these lyrics</button>` : ""}
-			</span>
-		</li>`)}</ul>
+		<p class="acct-small">${list.length ? "These have lyrics and the same or a similar title. Many songs share a title: read them first." : "No song with lyrics has the same or a similar title."}${opts.canLink ? " Using one shows one text on both: a correction to either is one for both, and each keeps its own timing." : ""}</p>
+		${list.length ? html`<ul>${list.map((x) => item(x, opts))}</ul>` : ""}
+		${opts.canLink ? html`<div class="ly-find">
+			<label class="ly-find-field"><span class="sr">Find the song</span><input type="search" class="ly-find-input" data-song="${track.id}" value="${typed.get(track.id) ?? ""}" placeholder="Not here? Find it by title, artist or a line of the words" autocomplete="off" spellcheck="false"></label>
+			<div class="ly-find-results" aria-live="polite">${resultsHtml(catalog, track, opts)}</div>
+		</div>` : ""}
 	</section>`;
+}
+
+/**
+ * Wires the find field inside `root` (once; the field may be drawn again):
+ * results as the person types, without drawing the page again.
+ */
+export function wireFind(root, catalog, track, opts) {
+	root.addEventListener("input", (e) => {
+		const input = e.target.closest?.(".ly-find-input");
+		if (!input || Number(input.dataset.song) !== track.id) return;
+		typed.set(track.id, input.value);
+		const out = input.closest(".ly-find")?.querySelector(".ly-find-results");
+		if (out) out.innerHTML = String(resultsHtml(catalog, track, opts));
+	});
 }
 
 /** The other recordings a shared text is shown on, linked to their lyrics. */
