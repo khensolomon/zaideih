@@ -94,3 +94,35 @@ export const lyricsVersions = (id) => call("GET", `/${id}/versions`);
 export const hideLyrics = (id, reason) => call("POST", `/${id}/hide`, { reason });
 export const showLyrics = (id) => call("POST", `/${id}/show`, {});
 export const restoreLyrics = (id, version, base) => call("POST", `/${id}/restore`, { version, base });
+/** Anyone signed in: tells the Lyrics right something is wrong with song `id`'s lyrics. */
+export const reportLyrics = (id, reason) => call("POST", `/${id}/report`, { reason });
+/** The Lyrics right: song `id`'s open reports are dealt with, nothing changed. */
+export const resolveReports = (id) => call("POST", `/${id}/resolve`, {});
+/** The Lyrics right: { edits: [{track, version, at, note, hidden, by}], reports: [{track, latest, reasons: [{reason, at, by}]}] }. */
+export const recentLyrics = () => call("GET", "/recent");
+
+/*
+ * Drafts (docs/lyrics.md, "Studio"): what is typed in the studio is kept on
+ * the device as it is typed, per song, with the version it started from, so
+ * a closed tab or a dead battery loses nothing. Saving clears it.
+ */
+const draftKey = (id) => `lyrics.draft.${id}`;
+export async function readDraft(id) {
+	try {
+		return (await db.get("kv", draftKey(id))) ?? null;
+	} catch {
+		return null;
+	}
+}
+export async function keepDraft(id, draft) {
+	try {
+		await db.put("kv", { ...draft, at: Date.now() }, draftKey(id));
+	} catch (err) {
+		console.warn("the draft could not be kept on this device", err);
+	}
+}
+export async function dropDraft(id) {
+	try {
+		await db.delete("kv", draftKey(id));
+	} catch { /* nothing kept */ }
+}

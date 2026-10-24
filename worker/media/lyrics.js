@@ -11,6 +11,14 @@
  *   POST /lyrics/:track/restore {version, base}
  *                                        Lyrics right: an earlier version's text
  *                                        becomes the newest version
+ *   POST /lyrics/:track/report {reason}  signed in: something is wrong with them
+ *   POST /lyrics/:track/resolve          Lyrics right: its open reports dealt with
+ *   GET  /lyrics/recent                  Lyrics right: the latest edits, and the
+ *                                        songs with open reports
+ *
+ * Myanmar text must be Unicode: text in the Zawgyi encoding is refused (422)
+ * with a clear message, never converted. A member (without the Lyrics right)
+ * saves at most MAX_PER_HOUR versions an hour.
  *
  * Anyone signed in (and not blocked) adds or edits lyrics; they appear at
  * once. Every version is kept (`lyrics_versions`), so a bad edit is undone
@@ -23,9 +31,12 @@
  */
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
+import { looksZawgyi } from "../../src/core/lyrics-format.js";
 
 export const MAX_LYRICS = 20_000;
 const MAX_REASON = 300;
+export const MAX_PER_HOUR = 30;
+const RECENT = 50;
 const BROWSER_S = 300;
 const EDGE_S = 7 * 86_400;
 const cacheKey = (track) => new Request(`https://cache.internal/lyrics/v1/${track}`);
@@ -37,6 +48,7 @@ export function cleanLyrics(text) {
 	const clean = text.normalize("NFC").replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[ \t ]+$/u, "")).join("\n").replace(/^\n+|\n+$/g, "").replace(/\n{3,}/g, "\n\n");
 	if (!clean.trim()) throw new MemberError("the lyrics are empty; to take lyrics down, ask someone with the Lyrics right to hide them");
 	if (clean.length > MAX_LYRICS) throw new MemberError(`lyrics may be at most ${MAX_LYRICS} characters`, 413);
+	if (looksZawgyi(clean)) throw new MemberError("this text is in the Zawgyi encoding; Zaideih keeps Myanmar text in Unicode only. Convert it to Unicode first, then save", 422);
 	return clean;
 }
 
@@ -134,7 +146,7 @@ function mayModerate(me) {
 
 export async function handleLyrics(request, env, ctx, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
-	const match = /^\/lyrics\/(\d{1,12})(?:\/(versions|hide|show|restore))?\/?$/.exec(url.pathname);
+	const match = /^\/lyrics\/(?:(recent)|(\d{1,12})(?:\/(versions|hide|show|restore|report|resolve))?)\/?$/.exec(url.pathname);
 	const origin = request.headers.get("origin");
 	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 	const cors = origin && origins.has(origin) ? origin : null;
@@ -144,8 +156,8 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
 	}
 	if (!match) return answer(404, { error: "lyrics addresses are /lyrics/<song id>" }, cors ?? "*");
-	const track = Number(match[1]);
-	const action = match[2] ?? "";
+	const track = Number(match[2] ?? 0);
+	const action = match[1] ?? match[3] ?? "";
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
 		if (!env.DB) throw new MemberError("lyrics are not set up on this Worker: missing DB", 503);
@@ -160,12 +172,44 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			const base = baseOf(body);
 			const row = await current(env, track);
 			if (row?.hidden_at && !can(me, "lyrics")) throw new MemberError(`these lyrics were taken down by ${row.hidden_by}: ${row.hidden_reason}`, 403);
+			if (!can(me, "lyrics")) {
+				const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics_versions WHERE member_id = ?1 AND at > ?2").bind(me.id, nowSeconds - 3600).first())?.n ?? 0;
+				if (n >= MAX_PER_HOUR) throw new MemberError(`you have saved ${n} versions of lyrics in the last hour; try again later (your text stays in the studio)`, 429);
+			}
 			// Unchanged: nothing to keep.
 			if (row && row.version === base && row.text === text) return answer(200, shown(row), cors);
 			return answer(200, await write(env, track, text, base, me.id, "", nowSeconds), cors);
 		}
 
+		if (action === "report" && m === "POST") {
+			const body = await readBody(request);
+			const reason = typeof body.reason === "string" ? body.reason.replace(/\s+/g, " ").trim() : "";
+			if (!reason || reason.length > MAX_REASON) throw new MemberError(`say what is wrong in 1 to ${MAX_REASON} characters`);
+			if (!(await current(env, track))) throw new MemberError("this song has no lyrics to report", 404);
+			// One open report per member and song: a second one replaces the first.
+			await env.DB.batch([
+				env.DB.prepare("DELETE FROM lyrics_reports WHERE track = ?1 AND member_id = ?2 AND resolved_at IS NULL").bind(track, me.id),
+				env.DB.prepare("INSERT INTO lyrics_reports (track, member_id, reason, at) VALUES (?1, ?2, ?3, ?4)").bind(track, me.id, reason, nowSeconds),
+			]);
+			return answer(201, { reported: true }, cors);
+		}
+
 		mayModerate(me);
+		if (action === "recent" && m === "GET") {
+			const edits = (await env.DB.prepare(`SELECT v.track, v.version, v.at, v.note, v.member_id, m.name, l.hidden_at FROM lyrics_versions v
+				LEFT JOIN members m ON m.id = v.member_id LEFT JOIN lyrics l ON l.track = v.track ORDER BY v.at DESC, v.version DESC LIMIT ?1`).bind(RECENT).all()).results ?? [];
+			const reports = (await env.DB.prepare(`SELECT r.track, r.reason, r.at, m.name FROM lyrics_reports r LEFT JOIN members m ON m.id = r.member_id
+				WHERE r.resolved_at IS NULL ORDER BY r.at DESC LIMIT 200`).all()).results ?? [];
+			const bySong = new Map();
+			for (const r of reports) {
+				if (!bySong.has(r.track)) bySong.set(r.track, { track: r.track, latest: r.at, reasons: [] });
+				bySong.get(r.track).reasons.push({ reason: r.reason, at: r.at, by: r.name ?? "a member no longer here" });
+			}
+			return answer(200, {
+				edits: edits.map((e) => ({ track: e.track, version: e.version, at: e.at, note: e.note, hidden: Boolean(e.hidden_at), by: { id: e.member_id, name: e.name ?? "a member no longer here" } })),
+				reports: [...bySong.values()],
+			}, cors);
+		}
 		if (action === "versions" && m === "GET") {
 			const row = await current(env, track);
 			const versions = (await env.DB.prepare(`SELECT v.version, v.text, v.at, v.note, v.member_id, m.name FROM lyrics_versions v LEFT JOIN members m ON m.id = v.member_id
@@ -175,13 +219,19 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 				version: row?.version ?? 0,
 				hidden: row?.hidden_at ? { at: row.hidden_at, by: row.hidden_by, reason: row.hidden_reason } : null,
 				versions: versions.map((v) => ({ version: v.version, text: v.text, at: v.at, note: v.note, by: { id: v.member_id, name: v.name ?? "a member no longer here" } })),
+				reports: ((await env.DB.prepare(`SELECT r.reason, r.at, m.name FROM lyrics_reports r LEFT JOIN members m ON m.id = r.member_id
+					WHERE r.track = ?1 AND r.resolved_at IS NULL ORDER BY r.at DESC`).bind(track).all()).results ?? []).map((r) => ({ reason: r.reason, at: r.at, by: r.name ?? "a member no longer here" })),
 			}, cors);
 		}
 		if (m !== "POST") throw new MemberError(`no route ${m} ${url.pathname}`, 404);
 		const body = await readBody(request);
 		const row = await current(env, track);
 		if (!row) throw new MemberError("this song has no lyrics yet", 404);
-		if (action === "hide") {
+		// Every decision on a song deals with its open reports.
+		const resolve = () => env.DB.prepare("UPDATE lyrics_reports SET resolved_at = ?2, resolved_by = ?3 WHERE track = ?1 AND resolved_at IS NULL").bind(track, nowSeconds, me.login).run();
+		if (action === "resolve") {
+			await resolve();
+		} else if (action === "hide") {
 			const reason = typeof body.reason === "string" ? body.reason.replace(/\s+/g, " ").trim() : "";
 			if (!reason || reason.length > MAX_REASON) throw new MemberError(`give a reason of 1 to ${MAX_REASON} characters; it is shown to whoever tries to edit them`);
 			await env.DB.prepare("UPDATE lyrics SET hidden_at = ?2, hidden_by = ?3, hidden_reason = ?4 WHERE track = ?1").bind(track, nowSeconds, me.login, reason).run();
@@ -194,6 +244,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			if (!old) throw new MemberError(`there is no version ${body.version} of these lyrics`, 404);
 			await write(env, track, old.text, base, me.id, `restored version ${body.version}`, nowSeconds);
 		}
+		if (action !== "resolve") await resolve();
 		await forget(track);
 		const after = await current(env, track);
 		return answer(200, { ...shown(after), hidden: after.hidden_at ? { at: after.hidden_at, by: after.hidden_by, reason: after.hidden_reason } : null }, cors);

@@ -351,6 +351,8 @@ export const player = {
 	},
 
 	pause() { audio.pause(); },
+	/** Where the song is now, in seconds, exactly (the "time" event comes only a few times a second). */
+	get position() { return audio.currentTime || 0; },
 	toggle() { return state.playing ? player.pause() : player.play(); },
 
 	next() {

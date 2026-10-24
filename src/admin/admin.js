@@ -142,6 +142,7 @@ export function mount(root, ctx) {
 				s.rights = new Set(lib.member?.rights ?? []);
 				s.isOwner = lib.member?.role === "owner";
 				if (may("review")) loadRequests().catch(fail);
+				if (may("lyrics")) loadLyrics().catch(fail);
 				render();
 			}, (err) => console.warn("library", err.message));
 			ctx.onWho?.();
@@ -520,6 +521,52 @@ export function mount(root, ctx) {
 		return answer;
 	}
 
+	/* ------------------------------------------------------------- lyrics ---- */
+
+	/*
+	 * For the Lyrics right (docs/lyrics.md): songs with open reports, then the
+	 * latest edits, each opening the song in the lyrics studio, where its
+	 * versions, hiding and restoring are.
+	 */
+	async function loadLyrics() {
+		const url = ctx.libraryUrl ? ctx.libraryUrl.replace(/\/library$/, "/lyrics/recent") : "";
+		if (!url) throw new Error("lyrics are not built into this version");
+		let res;
+		try {
+			res = await account.send((token) => fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }));
+		} catch (err) {
+			if (err instanceof AccountError) throw new SignInError(err.message);
+			throw new SignInError(`the lyrics could not be reached (${err.message})`);
+		}
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(answer?.error ?? `the lyrics answered HTTP ${res.status}`);
+		s.lyrics = answer;
+		render();
+	}
+
+	function lyricsTab() {
+		const l = s.lyrics;
+		if (!l) return html`<p class="adm-note">Reading the latest lyrics…</p>`;
+		const song = (id) => {
+			const t = ctx.catalog.track(id);
+			return t ? html`<a href="#/lyrics/${id}/studio">${t.title}</a> <span class="adm-note">${t.album.title}</span>` : html`<a href="#/lyrics/${id}/studio">Song ${id}</a>`;
+		};
+		const when = (sec) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+		return html`<div class="adm-lyrics">
+			<div class="adm-actions"><button class="btn" data-adm="lyrics-reload">Read again</button></div>
+			<h2>Reported${l.reports.length ? ` (${l.reports.length})` : ""}</h2>
+			${l.reports.length ? html`<ul class="adm-list">${l.reports.map((r) => html`<li>
+				<div>${song(r.track)}</div>
+				${r.reasons.map((x) => html`<div class="adm-note">“${x.reason}”, ${x.by}, ${when(x.at)}</div>`)}
+			</li>`)}</ul>` : html`<p class="adm-note">Nothing reported.</p>`}
+			<h2>Latest edits</h2>
+			${l.edits.length ? html`<ul class="adm-list">${l.edits.map((e) => html`<li>
+				<div>${song(e.track)}${e.hidden ? html` <span class="adm-tag danger">hidden</span>` : ""}</div>
+				<div class="adm-note">Version ${e.version} by ${e.by.name}, ${when(e.at)}${e.note ? `, ${e.note}` : ""}</div>
+			</li>`)}</ul>` : html`<p class="adm-note">No lyrics yet.</p>`}
+		</div>`;
+	}
+
 	async function loadMembers() {
 		s.members = (await libraryCall("GET", "/members")).members;
 		render();
@@ -851,7 +898,7 @@ export function mount(root, ctx) {
 		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
 	};
 
-	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", requests: "Requests", members: "Members", tools: "Tools", stats: "Statistics" };
+	const TABS = { edit: "Edit", draft: "Draft", suggestions: "Suggestions", requests: "Requests", lyrics: "Lyrics", members: "Members", tools: "Tools", stats: "Statistics" };
 
 	/** One line about the person: their level and what they have had released. */
 	function status() {
@@ -897,6 +944,7 @@ export function mount(root, ctx) {
 				${tab("draft", s.draft.pr ? "#" + s.draft.pr.number : n ? String(n) : "")}
 				${s.canWrite ? tab("suggestions", sugg ? String(sugg) : "") : ""}
 				${may("review") ? tab("requests", s.requests ? String(s.requests.requests.filter((r) => r.status === "open").length || "") : "") : ""}
+				${may("lyrics") ? tab("lyrics", s.lyrics?.reports.length ? String(s.lyrics.reports.length) : "") : ""}
 				${s.rights.size ? tab("members", s.members ? String(s.members.length) : "") : ""}
 				${tab("tools")}
 				${tab("stats")}
@@ -919,7 +967,7 @@ export function mount(root, ctx) {
 		root.innerHTML = html`${header()}
 			${s.busy ? html`<p class="muted adm-busy">${s.busy}</p>` : ""}
 			${s.error ? html`<p class="adm-error" role="alert">${s.error} <button class="link-btn" data-adm="dismiss">Dismiss</button></p>` : ""}
-			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "requests" ? requestsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
+			<section class="adm-body">${s.tab === "edit" ? editTab() : s.tab === "draft" ? draftTab() : s.tab === "suggestions" ? suggestionsTab() : s.tab === "members" ? membersTab() : s.tab === "requests" ? requestsTab() : s.tab === "lyrics" ? lyricsTab() : s.tab === "tools" ? tools() : statistics()}</section>`;
 		if (focusName === "search") {
 			const el = root.querySelector("[data-adm=search]");
 			el?.focus();
@@ -986,6 +1034,7 @@ export function mount(root, ctx) {
 					if (s.tab === "suggestions") await loadSuggestions();
 					if (s.tab === "members") await loadMembers();
 					if (s.tab === "requests") await loadRequests();
+					if (s.tab === "lyrics") await loadLyrics();
 					break;
 				case "requests-reload": s.requests = null; render(); await loadRequests(); break;
 				case "req-review": s.reviewing = Number(b.dataset.id); render(); root.querySelector("[data-form=approve]")?.scrollIntoView({ block: "start" }); break;
@@ -993,6 +1042,7 @@ export function mount(root, ctx) {
 				case "req-merge": await mergePublished(b.dataset.url); break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
+				case "lyrics-reload": s.lyrics = null; render(); await loadLyrics(); break;
 				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
 				case "member-unblock": await setMember(Number(b.dataset.id), { blocked: false }, "Unblocked"); break;
 				case "member-right": {

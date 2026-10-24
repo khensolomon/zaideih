@@ -341,3 +341,17 @@ CREATE TABLE IF NOT EXISTS lyrics_versions (
     PRIMARY KEY (track, version)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_lyrics_versions_member ON lyrics_versions (member_id);
+-- lyrics_reports: listeners telling the Lyrics right something is wrong with a
+-- song's lyrics. One open report per member and song; hiding, showing,
+-- restoring or resolving a song deals with its open reports.
+CREATE TABLE IF NOT EXISTS lyrics_reports (
+    id           INTEGER PRIMARY KEY,
+    track        INTEGER NOT NULL,
+    member_id    INTEGER NOT NULL,
+    reason       TEXT    NOT NULL,
+    at           INTEGER NOT NULL,
+    resolved_at  INTEGER,
+    resolved_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lyrics_reports_open ON lyrics_reports (resolved_at, track);
+CREATE INDEX IF NOT EXISTS idx_lyrics_versions_at ON lyrics_versions (at);

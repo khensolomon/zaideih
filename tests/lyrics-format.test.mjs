@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isChord, lineAt, parseLyrics, prefersFlats, sectionOf, transposeChord } from "../src/core/lyrics-format.js";
+import { clearTimes, hasSheetSyllables, isChord, joinSyllables, lineAt, looksZawgyi, lrcTime, parseLyrics, prefersFlats, sectionOf, setLineTimes, transposeChord } from "../src/core/lyrics-format.js";
 
 const words = (line) => line.parts.map((p) => p.text).join("");
 const shape = (parsed) => parsed.blocks.map((b) => [b.kind, b.label, b.lines.map(words)]);
@@ -65,7 +65,7 @@ test("ChordPro: details, sections, inline chords and comments", () => {
 	assert.deepEqual(p.meta, { title: "Amazing Grace", key: "G", capo: "2", tempo: "72" });
 	assert.equal(p.chords, true);
 	assert.deepEqual(p.blocks[0].lines[0].parts, [{ chord: "", text: "A" }, { chord: "G", text: "mazing " }, { chord: "G7", text: "grace how " }, { chord: "C", text: "sweet the " }, { chord: "G", text: "sound" }]);
-	assert.deepEqual(p.blocks[0].lines[1], { kind: "note", parts: [{ chord: "", text: "softly" }], time: null });
+	assert.deepEqual(p.blocks[0].lines[1], { kind: "note", parts: [{ chord: "", text: "softly" }], time: null, times: [] });
 	assert.deepEqual(shape(p).slice(1), [["chorus", "Chorus", ["My chains are gone", "I've been set free"]], ["chorus", "Chorus", ["My chains are gone", "I've been set free"]]]);
 	assert.equal(p.blocks[2].recall, true);
 	assert.ok(p.formats.includes("chordpro"));
@@ -129,4 +129,80 @@ Topa ngak ta un, deih-na lian-pi nei-in;`);
 	// [Tang 1] and [Sakkik] in brackets work the same; a chorus written out each time is left alone.
 	const q = parseLyrics("[Tang 1]\nA\n\n[Sakkik]\nB\nC\n\n[Tang 2]\nD\n\n[Sakkik]");
 	assert.deepEqual(q.blocks.map((b) => [b.kind, b.label, b.recall]), [["verse", "Tang 1", false], ["chorus", "Sakkik", false], ["verse", "Tang 2", false], ["chorus", "Sakkik", true]]);
+});
+
+test("credits at the top: hymn number, original title, words, music, scripture", () => {
+	const p = parseLyrics("Hymn: 167\nOriginal title: Waiting on the Lord\nWords: C. F. Weigle\nMusic by: Charles F. Weigle\nScripture: Luk. 24:49\nKey: Eb\n\n1. Topa ngak ta un");
+	assert.deepEqual(p.meta, { hymn: "167", original: "Waiting on the Lord", words: "C. F. Weigle", music: "Charles F. Weigle", scripture: "Luk. 24:49", key: "Eb" });
+	assert.equal(parseLyrics("{composer: A}\n{lyricist: B}\nx").meta.music, "A");
+});
+
+test("Zawgyi is told from Unicode", () => {
+	assert.equal(looksZawgyi("နေကောင်းလား"), false, "Unicode");
+	assert.equal(looksZawgyi("ဖေဖေ နဲ့ မေမေ"), false, "Unicode, E after its consonant");
+	assert.equal(looksZawgyi("ေနေကာင္းလား"), true, "Zawgyi: E first, virama as asat");
+	assert.equal(looksZawgyi("Topa ngak ta un"), false);
+	assert.equal(looksZawgyi("မင်္ဂလာ"), false, "a real stacked consonant");
+});
+
+test("sheet-music syllables are found and joined; real hyphens stay", () => {
+	const sheet = "To - pa ngak ta un, Je - su tung ki - ap - in;\nVang-liat - na! vang-liat -";
+	assert.equal(hasSheetSyllables(sheet), true);
+	assert.equal(joinSyllables(sheet), "Topa ngak ta un, Jesu tung kiapin;\nVang-liatna! vang-liat");
+	assert.equal(hasSheetSyllables("Vang-liat-na! Pen-te-kos"), false);
+});
+
+test("times for a chorus sung after every verse; writing times back into the text", () => {
+	const text = "1. [00:05.00]Verse one\n\nSakkik:\n[00:10.00][00:30.00][00:50.00]Chorus line\n\n2. [00:20.00]Verse two\n\n3. [00:40.00]Verse three";
+	const p = parseLyrics(text);
+	assert.deepEqual(p.blocks.map((b) => [b.label, b.lines.map((l) => l.time)]), [["1", [5]], ["Sakkik", [10]], ["2", [20]], ["Sakkik", [30]], ["3", [40]], ["Sakkik", [50]]]);
+	assert.equal(lineAt(p, 31), 3);
+	// A repeated line written once with no place to repeat: lines in the order sung.
+	const flat = parseLyrics("[00:10.00][00:30.00]Again\n[00:20.00]Middle");
+	assert.deepEqual(flat.blocks.flatMap((b) => b.lines.map((l) => l.time)), [10, 20, 30]);
+	// Where each line's words start, and times written there.
+	const q = parseLyrics("1. Verse one\nSecond line\n\nSakkik: Chorus here");
+	const [l1, l2] = q.blocks[0].lines;
+	assert.deepEqual([l1.src, l1.col, l2.src, l2.col], [0, 3, 1, 0]);
+	let t = setLineTimes("1. Verse one\nSecond line\n\nSakkik: Chorus here", l1.src, l1.col, [5.25]);
+	t = setLineTimes(t, q.blocks[1].lines[0].src, q.blocks[1].lines[0].col, [12, 61.5]);
+	assert.equal(t, "1. [00:05.25]Verse one\nSecond line\n\nSakkik: [00:12.00][01:01.50]Chorus here");
+	assert.equal(setLineTimes(t, 0, 3, [6]), "1. [00:06.00]Verse one\nSecond line\n\nSakkik: [00:12.00][01:01.50]Chorus here");
+	assert.equal(clearTimes(`[offset:+100]\n${t}`), "1. Verse one\nSecond line\n\nSakkik: Chorus here");
+	assert.equal(lrcTime(83.4), "01:23.40");
+});
+
+test("parts know the lines of the text they span", () => {
+	const p = parseLyrics("Key: Eb\n\n1. One\nTwo\n\nSakkik:\nC1\nC2\n\n2. Three");
+	assert.deepEqual(p.blocks.map((b) => [b.label, b.src, b.last, b.recall]), [["1", 2, 3, false], ["Sakkik", 5, 7, false], ["2", 9, 9, false], ["Sakkik", null, null, true]]);
+});
+
+test("setDetail writes the details at the top, replacing, adding and taking away", async () => {
+	const { setDetail } = await import("../src/core/lyrics-format.js");
+	assert.equal(setDetail("1. One", "key", "Eb"), "Key: Eb\n\n1. One");
+	assert.equal(setDetail("Key: Eb\n\n1. One", "time", "4/4"), "Key: Eb\nTime: 4/4\n\n1. One");
+	assert.equal(setDetail("Key: Eb\nTime: 4/4\n\n1. One", "key", "F"), "Key: F\nTime: 4/4\n\n1. One");
+	assert.equal(setDetail("Key: Eb\nWords by: X\n\n1. One", "words", "Y"), "Key: Eb\nWords: Y\n\n1. One");
+	assert.equal(setDetail("Key: Eb\nTime: 4/4\n\n1. One", "key", ""), "Time: 4/4\n\n1. One");
+	assert.equal(setDetail("{key: G}\n{title: X}\n\nWords", "key", "A"), "{key: A}\n{title: X}\n\nWords");
+	assert.equal(setDetail("", "hymn", "167"), "Hymn: 167");
+	assert.equal(parseLyrics(setDetail("1. One", "original", "Waiting on the Lord")).meta.original, "Waiting on the Lord");
+	assert.throws(() => setDetail("x", "nope", "1"), /no such detail/);
+});
+
+test("splitDetails: the details at the top, and the words after them", async () => {
+	const { splitDetails } = await import("../src/core/lyrics-format.js");
+	assert.deepEqual(splitDetails("Key: Eb\nTime: 4/4\n\n1. One\nTwo"), { head: "Key: Eb\nTime: 4/4\n\n", body: "1. One\nTwo", offset: 3 });
+	assert.deepEqual(splitDetails("1. One"), { head: "", body: "1. One", offset: 0 });
+	assert.deepEqual(splitDetails("Key: Eb"), { head: "Key: Eb\n", body: "", offset: 1 });
+	const t = "{key: G}\n\nKey: G\n\nWords";
+	const s = splitDetails(t);
+	assert.equal(s.head + s.body, t);
+	assert.equal(s.body, "Words");
+});
+
+test("Words and music: one credit for both", () => {
+	const p = parseLyrics("Words & Music: Charles F. Weigle\nKey: Eb\n\nOne");
+	assert.deepEqual([p.meta.words, p.meta.music, p.meta.key], ["Charles F. Weigle", "Charles F. Weigle", "Eb"]);
+	assert.equal(parseLyrics("Words and music by: A\n\nx").meta.music, "A");
 });

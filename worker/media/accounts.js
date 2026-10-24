@@ -146,6 +146,7 @@ export async function mergeMembers(env, a, b, nowSeconds) {
 		q("DELETE FROM library_sync WHERE member_id = ?2"),
 		q("UPDATE lyrics_versions SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE lyrics SET updated_by = ?1 WHERE updated_by = ?2"),
+		q("UPDATE lyrics_reports SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE uploads SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE publish_requests SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE published_tracks SET owner_id = ?1 WHERE owner_id = ?2"),
