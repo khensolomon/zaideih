@@ -10,6 +10,7 @@
  *   OPTIONS  /plays       CORS preflight for counting origins.
  *   /auth/*               Sign in with GitHub for the admin page (auth.js).
  *   /library/*            Personal libraries: uploads and moderation (library.js).
+ *   /lyrics/:id           Lyrics of catalog songs: public reading, editing signed in (lyrics.js).
  *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *   GET/HEAD /k/:key      A file in storage (private/), through a signed address (library.js).
  *
@@ -59,6 +60,7 @@
 
 import { handleAuth } from "./auth.js";
 import { handleLibrary, handleSignedAudio, handleSignedKey } from "./library.js";
+import { handleLyrics } from "./lyrics.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
@@ -90,6 +92,7 @@ export default {
 		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env, ctx);
 		if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return handleAuth(request, env);
 		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
+		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
 		const signed = /^\/u\/(\d+)$/.exec(url.pathname);
 		if (signed) return handleSignedAudio(request, env, Number(signed[1]));
 		const stored = /^\/k\/([A-Za-z0-9_-]+)$/.exec(url.pathname);

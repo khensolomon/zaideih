@@ -8,6 +8,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
 | `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
 | `/auth/session`, `/auth/me`, `/auth/google/*`, `/auth/passkey/*` | accounts: Zaideih sessions from GitHub, Google or passkey sign-ins ([accounts.md](accounts.md)) | `accounts.js`, `google.js`, `passkeys.js` |
+| `/lyrics/:song` | lyrics of catalog songs: public reading, editing signed in, the Lyrics right ([lyrics.md](lyrics.md)) | `lyrics.js` |
 | `POST /library/sync` | liked songs and playlists on every device ([sync.md](sync.md)) | `sync.js` |
 | `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, asking to publish, signed streaming | `library.js`, `members.js`, `requests.js` |
 

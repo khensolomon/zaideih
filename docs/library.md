@@ -20,6 +20,7 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
+| Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version ([lyrics.md](lyrics.md)) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
 

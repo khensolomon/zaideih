@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.14
+
+- Lyrics: add, edit and read song lyrics; every version kept; the Lyrics right hides, shows and restores
+
 ## v26.10.24.13
 
 - Sync liked songs and playlists

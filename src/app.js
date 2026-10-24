@@ -13,6 +13,8 @@ import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
 import { accountView } from "./ui/account-view.js";
+import { lyricsView } from "./ui/lyrics-view.js";
+import { LYRICS_URL } from "./core/lyrics.js";
 import { probeOn, startProbe, toggleProbe } from "./ui/viewport-probe.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
@@ -48,6 +50,7 @@ route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
+route("lyrics/:id", (c, { id }) => lyricsView(c, Number(id), { notify, promptText, confirmAction, canModerate: () => uploads.canLyrics, redrawn: watchLargeTitle }));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -408,6 +411,7 @@ function renderSheet() {
 				<button class="icon-btn" data-act="sound" aria-label="Sound: skip silence, clean up, volume, equaliser" aria-haspopup="dialog">${icon("sliders")}</button>
 				<button class="icon-btn" data-act="scene-menu" aria-label="Background: ${sceneLabel()}" aria-haspopup="menu">${icon("scene")}</button>
 				<button class="icon-btn" data-act="watch" aria-label="Watch the background" hidden>${icon("watch")}</button>
+				${LYRICS_URL && !t.upload ? html`<a class="icon-btn" href="${href(`lyrics/${t.id}`)}" data-act="close-sheet" aria-label="Lyrics">${icon("lyrics")}</a>` : ""}
 				<a class="icon-btn" href="${href(`album/${t.album.id}`)}" data-act="close-sheet" aria-label="Go to album">${icon("album")}</a>
 			</span>
 		</div>
@@ -860,6 +864,7 @@ function trackMenu(anchor, track, extra) {
 			: { label: "Download", run: () => startDownload([track]) },
 		"-",
 		{ label: "Go to album", run: () => { closeSheet(); go(`album/${track.album.id}`); } },
+		...(LYRICS_URL && !track.upload ? [{ label: "Lyrics", run: () => { closeSheet(); go(`lyrics/${track.id}`); } }] : []),
 		...(track.upload ? [] : track.artists.slice(0, 2).map((a) => ({ label: `Go to ${a.name}`, run: () => { closeSheet(); go(`artist/${a.id}`); } }))),
 	];
 	if (track.upload) {

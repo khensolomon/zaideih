@@ -1308,3 +1308,26 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .acct-logins.acct-skeleton li { display: block; height: 64px; padding-top: 25px; box-sizing: border-box; }
 .acct-skeleton li::after { content: ""; display: block; width: 60%; height: 14px; border-radius: 7px; background: var(--raised); opacity: 0.6; }
 
+
+/* =================================================================== lyrics (ui/lyrics-view.js) */
+.ly-text { font: inherit; font-size: 18px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 16px; max-width: 40em; }
+.ly-text.my { line-height: 2; }
+.ly-empty { text-align: left; padding: 8px 0 16px; }
+.ly-edit { max-width: 40em; }
+.ly-label { display: block; font-weight: 600; margin: 0 0 8px; }
+.ly-edit textarea {
+	display: block; width: 100%; min-height: 50vh; box-sizing: border-box; margin: 0 0 10px; padding: 12px 14px;
+	font: inherit; font-size: 17px; line-height: 1.6; color: var(--ink); background: var(--surface-2);
+	border: 1px solid var(--line); border-radius: var(--radius-m); resize: vertical;
+}
+.ly-edit textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ly-conflict { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--raised); margin: 0 0 16px; }
+.ly-conflict .ly-text { font-size: 15px; max-height: 40vh; overflow: auto; margin: 8px 0 0; }
+.ly-mod { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); max-width: 40em; }
+.ly-mod h2 { font-size: 15px; color: var(--ink-3); font-weight: 600; margin: 0 0 10px; }
+.ly-mod h3 { font-size: 15px; margin: 16px 0 6px; }
+.ly-versions { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.ly-versions li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.ly-versions summary { cursor: pointer; padding: 4px 0; }
+.ly-shown { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--raised); margin-left: 4px; }
+.ly-versions .ly-text { font-size: 15px; margin: 10px 0; }

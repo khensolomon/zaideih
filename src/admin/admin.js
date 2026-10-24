@@ -553,6 +553,7 @@ export function mount(root, ctx) {
 		review: ["Review publishing", "approves or rejects requests to publish"],
 		moderate: ["Moderate members", "blocks members and deletes uploads"],
 		storage: ["Storage", "adds files from a folder in storage the owner sets"],
+		lyrics: ["Lyrics", "hides lyrics, shows them again, and restores earlier versions"],
 	};
 
 	/**

@@ -11,7 +11,7 @@ D1 `member_logins` holds one row per way a member signs in: the provider (`githu
 A sign-in finds its member (`worker/media/accounts.js`):
 
 1. A sign-in seen before belongs to its member.
-2. Adding a sign-in while signed in (`link`) joins the signed-in member. When that sign-in already belongs to another member, the two members become one: completing both sign-ins shows one person holds both. The older member stays (its id, so its R2 files keep their place) and takes the other's sign-ins, sessions, passkeys, uploads, publish requests, rights, storage folder, liked songs and playlists ([sync.md](sync.md)), in one D1 batch; refused while either is blocked.
+2. Adding a sign-in while signed in (`link`) joins the signed-in member. When that sign-in already belongs to another member, the two members become one: completing both sign-ins shows one person holds both. The older member stays (its id, so its R2 files keep their place) and takes the other's sign-ins, sessions, passkeys, uploads, publish requests, rights, storage folder, liked songs and playlists ([sync.md](sync.md)), lyrics versions ([lyrics.md](lyrics.md)), in one D1 batch; refused while either is blocked.
 3. A sign-in whose provider vouches for an email that exactly one member already has verified joins that member. Every verified address counts (GitHub lists all of a person's addresses; `@users.noreply.github.com` ones are skipped). Two members with that email: neither is guessed; a new member is made.
 4. Otherwise a new member is made.
 
