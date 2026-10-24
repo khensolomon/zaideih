@@ -11,6 +11,7 @@ import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
 import { accountView } from "./ui/account-view.js";
+import { probeOn, startProbe, toggleProbe } from "./ui/viewport-probe.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
@@ -49,6 +50,11 @@ route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
 route("code", V.codeView);
+// Hidden: a live readout of the page's sizes, for layout faults seen only on a device (ui/viewport-probe.js). Not linked anywhere.
+route("viewport", () => {
+	const on = toggleProbe();
+	return { title: "Viewport", body: html`<div class="about"><h1 class="page-title">Viewport readout</h1><p>The readout is <b>${on ? "on" : "off"}</b> on this device. Open <code>#/viewport</code> again to turn it ${on ? "off" : "on"}.</p><p><a class="btn" href="#/">Home</a> <a class="btn" href="#/account">Sign in page</a></p></div>` };
+});
 route("code/:code", V.codeView);
 // Hidden: the admin page (src/admin), its own bundle, loaded only here. Not linked anywhere.
 route("admin", () => ({
@@ -169,12 +175,13 @@ function lockPage() {
 	document.documentElement.classList.add("menu-open");
 	$("#menu-scrim").hidden = false;
 }
-function unlockPage() {
+/** Lets the page move again; back where it was, unless a page change is about to replace it (restoreScroll false). */
+function unlockPage({ restoreScroll = true } = {}) {
 	if (lockedAt === null) return;
 	Object.assign(document.body.style, { position: "", top: "", left: "", right: "" });
 	document.documentElement.classList.remove("menu-open");
 	$("#menu-scrim").hidden = true;
-	scrollTo(0, lockedAt);
+	if (restoreScroll) scrollTo(0, lockedAt);
 	lockedAt = null;
 }
 
@@ -187,11 +194,11 @@ function openAppMenu() {
 	$(".nav-logo").setAttribute("aria-expanded", "true");
 	$("a", menu)?.focus();
 }
-function closeAppMenu({ restoreFocus = false } = {}) {
+function closeAppMenu({ restoreFocus = false, restoreScroll = true } = {}) {
 	const menu = $("#app-menu");
 	if (menu.hidden) return;
 	menu.hidden = true;
-	unlockPage();
+	unlockPage({ restoreScroll });
 	$(".nav-logo").setAttribute("aria-expanded", "false");
 	if (restoreFocus) $(".nav-logo").focus();
 }
@@ -1418,10 +1425,20 @@ export async function boot(platform) {
 	document.documentElement.dataset.platform = platform.name;
 	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
 	setOnline();
+	if (probeOn()) startProbe();
+	// Never a loading screen for ever: after a while it says so and offers to reload.
+	const slowStart = setTimeout(() => {
+		const splash = $("#splash");
+		if (!splash || splash.classList.contains("done")) return;
+		splash.insertAdjacentHTML("beforeend", html`<p class="splash-slow">Zaideih is taking long to start.</p><button class="btn splash-reload" type="button">Reload</button>`);
+		$(".splash-reload", splash).addEventListener("click", () => location.reload());
+	}, 15_000);
 	try {
 		const [model] = await Promise.all([loadCatalog(platform.catalogBase), library.init(), offline.init()]);
+		clearTimeout(slowStart);
 		catalog = model;
 	} catch (err) {
+		clearTimeout(slowStart);
 		fatal(err);
 		return;
 	}
@@ -1464,7 +1481,8 @@ export async function boot(platform) {
 		if ($("#app-menu").hidden) return;
 		if (!e.target.closest("#app-menu, .nav-logo") || e.target.closest("#app-menu a")) closeAppMenu();
 	});
-	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu(); if (!$("#sheet").hidden) closeSheet(); render(); });
+	// A link in the menu: the menu closes onto the new page, without first putting the old one back in place.
+	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu({ restoreScroll: false }); if (!$("#sheet").hidden) closeSheet(); render(); });
 	trackDepth();
 	await render();
 	document.body.classList.add("ready");

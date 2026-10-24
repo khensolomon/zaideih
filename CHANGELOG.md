@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.8
+
+- Installed app: no endless loading screen (Safari's storage nudged and given a time limit, a slow network no longer holds up the start), menu links close onto the new page, and a hidden viewport readout (#/viewport) for device-only layout faults
+
 ## v26.10.24.7
 
 - Installed app: the privacy page opens (no stored redirect), the sign-in page appears at its full size at once, and the menus have no scroll bar
