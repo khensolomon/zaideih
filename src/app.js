@@ -1,6 +1,7 @@
 import { analytics } from "./core/analytics.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
-import { StorageError } from "./core/db.js";
+import { db, StorageError } from "./core/db.js";
+import { createSync } from "./core/sync.js";
 import { escape, html } from "./core/html.js";
 import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
@@ -143,12 +144,13 @@ let accessKey = null;
 function syncAccess() {
 	const who = ADMIN_URL ? readWho(localStorage) : null;
 	const acct = AUTH_URL ? account() : null;
-	// Someone signed in or out (here or in another tab): their own uploads follow.
+	// Someone signed in or out (here or in another tab): their own uploads and their library follow.
 	const key = acct?.key ?? "";
 	if (key !== accessKey && uploads.catalog) {
 		accessKey = key;
 		if (acct?.signedIn) uploads.refresh().catch((err) => console.warn("reading My uploads failed", err));
 		else uploads.clear();
+		syncer?.run().catch((err) => console.warn("syncing the library failed; it is tried again later", err));
 	}
 	const name = acct?.member?.name ?? who?.login ?? "";
 	for (const a of $$(".rail-account, .am-account")) {
@@ -1440,6 +1442,46 @@ function setOnline() {
 addEventListener("online", () => { setOnline(); notify("Back online"); });
 addEventListener("offline", () => { setOnline(); notify("You're offline. Downloaded songs still play."); });
 
+/* =================================================================== sync */
+/*
+ * Liked songs and playlists on every device (core/sync.js, docs/sync.md):
+ * sent and fetched while signed in, at start, on signing in, soon after a
+ * change, when the connection returns, when the app is shown again, and
+ * every SYNC_EVERY_MS while it is open.
+ */
+const SYNC_EVERY_MS = 5 * 60_000;
+let syncer = null;
+function startSync() {
+	if (!LIBRARY_URL || !AUTH_URL) return;
+	syncer = createSync({
+		load: async () => (await db.get("kv", "sync.state")) ?? { outbox: [], since: 0, member: null },
+		save: (s) => db.put("kv", s, "sync.state"),
+		local: () => library.snapshot(),
+		apply: (remote, pending) => library.applyRemote(remote, pending),
+		send: async (body) => {
+			const res = await account().send((token) => fetch(`${LIBRARY_URL}/sync`, {
+				method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store",
+			}));
+			const answer = await res.json().catch(() => null);
+			if (!res.ok) throw new Error(answer?.error ?? `the library answered HTTP ${res.status}`);
+			return answer;
+		},
+		member: async () => {
+			const a = account();
+			if (!a.signedIn) return null;
+			await a.token();
+			return a.member?.id ?? null;
+		},
+		online: () => navigator.onLine,
+	});
+	library.onChange = (change) => { syncer.note(change).catch((err) => console.warn("a library change could not be kept for syncing", err)); };
+	const sync = () => syncer.run().catch((err) => console.warn("syncing the library failed; it is tried again later", err));
+	addEventListener("online", sync);
+	document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
+	setInterval(() => { if (document.visibilityState === "visible") sync(); }, SYNC_EVERY_MS);
+	sync();
+}
+
 /* =================================================================== boot */
 const START_LIMIT_MS = 20_000;
 
@@ -1493,6 +1535,7 @@ export async function boot(platform) {
 		fatal(err);
 		return;
 	}
+	startSync();
 	// Your uploads: read once someone is signed in (syncAccess), shown where they appear.
 	uploads.catalog = catalog;
 	syncAccess();

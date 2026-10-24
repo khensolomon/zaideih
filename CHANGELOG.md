@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.24.13
+
+- Sync liked songs and playlists
+
 ## v26.10.24.12
 
 - Passkeys: add one on Your account, then sign in with the device's face, fingerprint or code

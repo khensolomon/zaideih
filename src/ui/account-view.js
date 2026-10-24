@@ -142,6 +142,7 @@ function accountCard() {
 			${passkeysAvailable() ? html`<button class="btn" data-acct="passkey-add" ${st.passkey?.kind === "create" ? "" : "disabled"}>${icon("key")} Add a passkey on this device</button>` : ""}
 		</div>`}
 		<p class="acct-small">Signing in with Google and GitHub with the same verified email is one account; with different emails, add the second here. A passkey signs you in with this device's face, fingerprint or code.</p>
+		<p class="acct-small">Your liked songs and playlists are kept with your account, on every device where you sign in. What is on a device when you first sign in there joins them; signing out keeps it on the device.</p>
 		<p class="acct-links"><a class="text-link" href="#/library/uploads">Your uploads</a></p>
 		<p><button class="btn" data-acct="signout">Sign out on this device</button></p>
 	</section>`;

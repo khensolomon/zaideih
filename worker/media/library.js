@@ -4,6 +4,7 @@
  *
  * Routes (JSON, `Authorization: Bearer <Zaideih session>` (accounts.js), CORS for AUTH_ORIGINS):
  *   GET    /library                         the member, their space and uploads (with signed addresses)
+ *   POST   /library/sync                    {since, changes}: liked songs and playlists on every device (sync.js)
  *   POST   /library/uploads                 {fileName, size, format, duration, title, artist?, album?, year?, track?}
  *                                           -> {id, upload: "/library/uploads/<id>/file"}
  *   PUT    /library/uploads/<id>/file       the file itself (Content-Length must match)
@@ -36,6 +37,7 @@
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
 import { can, MemberError, memberRow, ownerId, RIGHTS, rightsOf } from "./members.js";
 import { sessionMember } from "./accounts.js";
+import { handleSync } from "./sync.js";
 import { formatOf } from "../../src/core/upload-rules.js";
 import { handleRequests, settleReleased } from "./requests.js";
 
@@ -456,7 +458,15 @@ export async function handleLibrary(request, env, { now = () => Date.now() } = {
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
 		if (!cors) throw new LibraryError("this origin may not use personal libraries (AUTH_ORIGINS)", 403);
-		const me = await memberRow(env, await sessionMember(env, request, nowSeconds), nowSeconds);
+		const memberId = await sessionMember(env, request, nowSeconds);
+		const path0 = url.pathname.replace(/\/+$/, "");
+		// Syncing the library needs only the member and the block, which keeps it within the Free plan's queries per request.
+		if (path0 === "/library/sync" && request.method === "POST") {
+			const b = await env.DB.prepare("SELECT blocked_at, blocked_by, blocked_reason FROM members WHERE id = ?1").bind(memberId).first();
+			if (b?.blocked_at) throw new LibraryError(`Your library is closed by ${b.blocked_by}: ${b.blocked_reason}`, 403);
+			return json(200, await handleSync(env, memberId, await readJson(request, 512 * 1024), now()), cors);
+		}
+		const me = await memberRow(env, memberId, nowSeconds);
 		if (me.blocked) throw new LibraryError(`Your library is closed by ${me.blocked.by}: ${me.blocked.reason}`, 403);
 		const path = url.pathname.replace(/\/+$/, "");
 		const m = request.method;

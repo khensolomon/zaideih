@@ -137,6 +137,13 @@ export async function mergeMembers(env, a, b, nowSeconds) {
 		q("UPDATE member_logins SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE member_sessions SET member_id = ?1 WHERE member_id = ?2"),
 		q("UPDATE passkeys SET member_id = ?1 WHERE member_id = ?2"),
+		// Libraries (sync.js): the moved rows take a new counter so every device of the account sees them.
+		env.DB.prepare("INSERT INTO library_sync (member_id, seq) VALUES (?1, 0) ON CONFLICT (member_id) DO NOTHING").bind(keep),
+		q("UPDATE library_sync SET seq = seq + 1 + COALESCE((SELECT seq FROM library_sync WHERE member_id = ?2), 0) WHERE member_id = ?1"),
+		q("INSERT OR IGNORE INTO library_likes (member_id, track, liked, at, seq) SELECT ?1, track, liked, at, (SELECT seq FROM library_sync WHERE member_id = ?1) FROM library_likes WHERE member_id = ?2"),
+		q("DELETE FROM library_likes WHERE member_id = ?2"),
+		q("UPDATE library_playlists SET member_id = ?1, seq = (SELECT seq FROM library_sync WHERE member_id = ?1) WHERE member_id = ?2"),
+		q("DELETE FROM library_sync WHERE member_id = ?2"),
 		q("UPDATE uploads SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE publish_requests SET owner_id = ?1 WHERE owner_id = ?2"),
 		q("UPDATE published_tracks SET owner_id = ?1 WHERE owner_id = ?2"),
