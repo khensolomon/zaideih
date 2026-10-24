@@ -80,6 +80,8 @@ Chord names: a root A to G with `#`, `b`, `♯` or `♭`; a quality (`m`, `maj`,
 - Chords are hidden until **Show chords** (the choice is kept on the device, `zaideih.lyrics.chords`). Shown, each chord sits over the syllable it starts on, and **−** / **+** transpose by a semitone (from −5 to +6), the key chip following ("A (from G)"). A song written with flats keeps to flats.
 - Timed lyrics (LRC) show without their times. While that song plays, the line being sung is lit and kept in view (not while the listener has scrolled by hand in the last 4 seconds), and tapping a line goes there.
 
+The page's head: the album cover (to the album), the title, and on the line under it Play (a round icon) with whether this song is the one playing: moving bars and "Playing", or "Paused"; then the artists and the album, as links. Play starts this song, from it on in its album; on the song playing, it pauses and resumes. When the song ends and another plays while the page is open, a line says what plays now, with the way to its lyrics. **Share** gives the page's link (the device's share sheet, or the link copied).
+
 Credits show as a line under the title ("Hymn 167 · *Waiting on the Lord* · Words and music: … · Luk. 24:49"). The text size (A− / A+, four steps) is kept on the device (`zaideih.lyrics.size`).
 
 ## Studio

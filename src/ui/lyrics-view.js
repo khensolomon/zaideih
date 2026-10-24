@@ -30,7 +30,7 @@ import { on } from "../core/store.js";
 import { icon } from "./icons.js";
 import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
-import { scriptClass } from "./parts.js";
+import { artistLinks, cover, scriptClass } from "./parts.js";
 import { sharedWithHtml, suggestionsHtml } from "./lyrics-share.js";
 
 const SIZE_KEY = "zaideih.lyrics.size";
@@ -60,7 +60,7 @@ export function lyricsView(catalog, id, ctx, lang = "") {
 	const track = catalog.track(id);
 	if (!(lang in LYRICS_LANGS)) lang = "";
 	if (!track || track.upload) return { title: "Lyrics", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
-	st = { catalog, id, track, lang, lyrics: undefined, original: null, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
+	st = { catalog, id, track, lang, heard: player.current()?.id === id, lyrics: undefined, original: null, offline: false, error: "", transpose: 0, parsed: null, parsedOf: null, lit: -2 };
 	return {
 		title: `Lyrics: ${track.title}${lang ? ` (${LYRICS_LANGS[lang]})` : ""}`,
 		body: html`<div class="ly-root">${content()}</div>`,
@@ -86,23 +86,43 @@ function langSwitch() {
 	</div>`;
 }
 
-/** Play this song (from it on, in its album), or pause and go on when it is the one playing. */
+/**
+ * Play, as an icon on the line under the title: this song (from it on, in its
+ * album), or pause and resume when it is the one playing. Beside it, whether
+ * it is: bars moving while it plays, "Paused" while it waits.
+ */
 function playButton() {
 	const now = player.current()?.id === st.id;
 	const playing = now && player.state.playing;
 	const label = playing ? "Pause" : now ? "Resume" : "Play this song";
-	return html`<button class="btn primary ly-play" data-ly="play" aria-label="${label}">${icon(playing ? "pause" : "play")}${label}</button>`;
+	return html`<span class="ly-play-wrap" data-state="${playing ? "playing" : now ? "paused" : "other"}">
+		<button class="play-btn ly-play" data-ly="play" data-page-play="${st.track.title}" aria-label="${label}" title="${label}">${icon(playing ? "pause" : "play")}</button>
+		${now ? html`<span class="ly-state" aria-live="polite">${playing ? html`<i class="eq" aria-hidden="true"><i></i><i></i><i></i></i>Playing` : "Paused"}</span>` : ""}
+	</span>`;
 }
 
 function header() {
 	const t = st.track;
-	return html`<div class="hero ly-hero" style="grid-template-columns:1fr"><div>
-		<div class="kind">Lyrics</div>
-		<h1 class="page-title ${scriptClass(t.title)}">${t.title}</h1>
-		<div class="facts"><span>${creditOf(t.artists, 3)}</span><span><a class="text-link" href="${href(`album/${t.album.id}`)}">${t.album.title}</a></span></div>
-		${st.lyrics ? creditsHtml(parsed()) : ""}
-		<div class="ly-play-row">${playButton()}</div>
-	</div></div>`;
+	return html`<div class="hero ly-hero">
+		<a class="ly-cover" href="${href(`album/${t.album.id}`)}" aria-label="Album: ${t.album.title}" title="${t.album.title}">${cover(t.album, { label: false })}</a>
+		<div class="ly-hero-text">
+			<div class="kind">Lyrics</div>
+			<h1 class="page-title ${scriptClass(t.title)}">${t.title}</h1>
+			<div class="facts">${playButton()}<span class="ly-artists">${artistLinks(t.artists.slice(0, 3))}</span><span><a class="text-link" href="${href(`album/${t.album.id}`)}">${t.album.title}</a></span></div>
+			${st.lyrics ? creditsHtml(parsed()) : ""}
+		</div>
+	</div>`;
+}
+
+/**
+ * After this song, while the page is still open: what plays now, with the
+ * way to its lyrics.
+ */
+function nextNotice() {
+	const t = player.current();
+	if (!st.heard || !t || t.id === st.id || t.upload) return html`<div class="ly-next" hidden></div>`;
+	const has = lyricsIndex.has(t.id);
+	return html`<div class="ly-next" role="status"><span>Now playing <b class="${scriptClass(t.title)}">${t.title}</b></span><a class="btn ly-small" href="${href(`lyrics/${t.id}`)}">${has ? "Its lyrics" : "Its page"}</a></div>`;
 }
 
 function content() {
@@ -112,7 +132,7 @@ function content() {
 	const l = st.lyrics;
 	const studio = href(`lyrics/${st.id}/studio`, st.lang ? { lang: st.lang } : undefined);
 	if (!l) {
-		return html`${header()}${langSwitch()}
+		return html`${header()}${nextNotice()}${langSwitch()}
 			${st.error ? html`<p class="error" role="alert">${st.error}</p>` : html`<div class="empty ly-empty"><h2>No lyrics yet</h2><p>${signedIn ? "Know the words? Add them for everyone." : "Nobody has added the lyrics of this song yet."}</p></div>`}
 			${signedIn ? html`<p><a class="btn primary" href="${studio}">${icon("edit")} Add lyrics</a></p>` : AUTH_URL ? html`<p class="acct-small"><a class="text-link" href="#/account">Sign in</a> to add the lyrics.</p>` : ""}
 			${st.lang || st.error ? "" : suggestionsHtml(st.catalog, st.track, { canLink: signedIn, attr: "data-ly" })}`;
@@ -122,7 +142,7 @@ function content() {
 	const flats = prefersFlats(p);
 	const size = sizeIndex();
 	const following = p.timed && player.current()?.id === st.id;
-	return html`${header()}
+	return html`${header()}${nextNotice()}
 		${st.error ? html`<p class="error" role="alert">${st.error}</p>` : ""}
 		${langSwitch()}
 		<div class="ly-bar">
@@ -136,6 +156,7 @@ function content() {
 				</span>` : ""}
 				<button class="icon-btn ly-size" data-ly="smaller" aria-label="Smaller text" title="Smaller text" ${size === 0 ? "disabled" : ""}>A−</button>
 				<button class="icon-btn ly-size" data-ly="larger" aria-label="Larger text" title="Larger text" ${size === SIZES.length - 1 ? "disabled" : ""}>A+</button>
+				<button class="icon-btn" data-act="share" data-share="lyrics/${st.id}${st.lang ? `?lang=${st.lang}` : ""}" data-share-title="${st.track.title}" aria-label="Share these lyrics" title="Share these lyrics">${icon("share")}</button>
 				${signedIn && !st.offline ? html`<a class="icon-btn" href="${studio}" aria-label="Edit in the lyrics studio" title="Edit in the lyrics studio">${icon("edit")}</a>` : ""}
 			</span>
 		</div>
@@ -247,8 +268,12 @@ function mount(root, ctx) {
 	// The page's words for the timed lyrics change when this song starts or stops.
 	const offPlayer = on("player", () => {
 		if (st !== mine || !root.isConnected) { offPlayer(); return; }
-		const play = root.querySelector("[data-ly=play]");
+		const play = root.querySelector(".ly-play-wrap");
 		if (play) play.outerHTML = String(playButton());
+		// Heard here, then the player went on: say what plays now.
+		if (player.current()?.id === st.id) st.heard = true;
+		const next = root.querySelector(".ly-next");
+		if (next) next.outerHTML = String(nextNotice());
 		const follow = root.querySelector(".ly-follow");
 		const want = player.current()?.id === st.id ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along.";
 		if (follow && follow.textContent !== want) follow.textContent = want;
