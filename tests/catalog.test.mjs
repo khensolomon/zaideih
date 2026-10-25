@@ -199,5 +199,7 @@ test("My music: the person's own uploads are searched only when asked, the catal
 	const mine = withMine(model);
 	assert.deepEqual(search(mine, "lungdam").tracks.items.map((t) => t.id), ["u5"]);
 	assert.deepEqual(search(mine, "home songs").albums.items.map((a) => a.id), ["u-album-1"]);
+	const byArtist = search(withMine(model), "Me");
+	assert.deepEqual([byArtist.tracks.items.map((t) => t.id), byArtist.albums.items.map((a) => a.id)], [["u5"], ["u-album-1"]], "found by the artist's name too");
 	assert.equal(model.tracks.has("u5"), false, "the catalog's own lists are untouched");
 });
