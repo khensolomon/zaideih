@@ -1,6 +1,6 @@
 # Songbooks
 
-Status: proposed 2026-10-25, not built. To be agreed before any part is built.
+Status: agreed 2026-10-25. Step 1 (data and Worker) built in v26.10.25.15; steps 2 to 5 to come.
 
 Hymnals and praise books (Tedim Labu, Galhiam and others) as lyrics collections of their own: texts with no recording in Zaideih, found by book and hymn number, searchable, and joined to the recordings that sing them. Built on the lyrics system (docs/lyrics.md), which already keeps versions, history, reports, translations and shared texts.
 
@@ -64,8 +64,26 @@ Each step is a release of its own, agreed before it starts:
 4. Search and joining recordings to texts (and merging typed-in copies).
 5. Workspace: managing books, people and works; making a book public.
 
-## Open questions
+## Decisions
 
-- Ids: entries and texts need ids the lyrics tables accept beside track ids. A reserved range (texts from 10,000,000,000 up, far above any track id) keeps every lyrics route working unchanged; a separate column is cleaner but touches every lyrics query. The range is proposed.
-- Does a person record join catalog artists when a writer also performs (one person, two records today)?
-- Topics and scripture: free text, or fixed lists?
+- Ids: text ids start at 10,000,000,000 (`TEXT_BASE`, worker/media/songbooks.js), far above any track id, so every lyrics route takes a text id as it takes a track id.
+- People are their own records for now; a writer who also performs has a person and a catalog artist, to be joined later if wanted.
+- Topics and scripture are free text for now.
+
+## Worker (step 1)
+
+Routes in `worker/media/songbooks.js` (its header has the full list):
+
+| Route | Who |
+|---|---|
+| `GET /songbooks` | anyone: public books; with the Songbooks right, private ones too |
+| `POST /songbooks`, `POST /songbooks/:book` | Songbooks right; making a book public (or private again) is for the owner and co-owners, and needs rights `permission` or `public-domain` with a note |
+| `GET /songbooks/:book` | the book and its entries (private: the right) |
+| `POST /songbooks/:book/entries`, `POST /songbooks/:book/entries/:number` | Songbooks right: a hymn number printing a new or existing text; another text; taken out |
+| `GET /songbooks/texts/:id` | a text with its work, credits, books and words (private: the right) |
+| `POST /songbooks/texts/:id` | Songbooks right: title, language, first line, work, translated from, credits |
+| `GET/POST /songbooks/people…`, `/songbooks/works…` | Songbooks right |
+
+A text's words are lyrics rows under its id (`/lyrics/<text id>`): saved, versioned, hidden and restored there. For a text in no public book, the public read answers 404, and only the Songbooks right reads or edits it; the Songbooks right also looks after its versions as the Lyrics right does. Texts are not joined to recordings and not in the app's lyrics index until step 4.
+
+Tables (`migrations/0007-songbooks.sql`): `songbooks`, `songbook_entries`, `song_texts`, `song_works`, `song_people`, `song_credits`; kept by `tools/d1.mjs reset` (`LIBRARY_TABLES`).

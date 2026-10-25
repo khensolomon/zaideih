@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.15
+
+- Songbooks, step 1: books, hymn numbers, texts, works and people on the Worker, private by default
+
 ## v26.10.25.14
 
 - My music: your songs and albums found by artist name too

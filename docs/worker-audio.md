@@ -9,6 +9,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | `/auth/*` | sign in with GitHub for the Workspace; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
 | `/auth/session`, `/auth/me`, `/auth/google/*`, `/auth/passkey/*` | accounts: Zaideih sessions from GitHub, Google or passkey sign-ins ([accounts.md](accounts.md)) | `accounts.js`, `google.js`, `passkeys.js` |
 | `/holds`, `/holds/:album` | albums held back without a release: the public list, set by the Albums right; held songs are refused at `/audio/:id` with 403 ([holds.md](holds.md)) | `holds.js` |
+| `/songbooks`, `/songbooks/…` | songbooks: books, hymn numbers, texts, works, people and credits; private until a book's rights are settled ([songbooks.md](songbooks.md)) | `songbooks.js` |
 | `/lyrics/:song`, `/lyrics/recent`, `/lyrics/index` | lyrics of catalog songs: public reading, editing and reporting signed in, the Lyrics right ([lyrics.md](lyrics.md)) | `lyrics.js` |
 | `POST /library/sync` | liked songs and playlists on every device ([sync.md](sync.md)) | `sync.js` |
 | `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, asking to publish, signed streaming | `library.js`, `members.js`, `requests.js` |

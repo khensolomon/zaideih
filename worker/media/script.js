@@ -20,6 +20,8 @@
  *   /holds, /holds/:album  Albums held back without a release: public list,
  *                         set by the Albums right; held songs are refused
  *                         here with 403 (holds.js).
+ *   /songbooks/*          Songbooks: books, hymn numbers, texts, works, people and
+ *                         credits; texts' words are lyrics (songbooks.js).
  *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *   GET/HEAD /k/:key      A file in storage (private/), through a signed address (library.js).
  *
@@ -71,6 +73,7 @@ import { handleAuth } from "./auth.js";
 import { handleLibrary, handleSignedAudio, handleSignedKey } from "./library.js";
 import { handleLyrics } from "./lyrics.js";
 import { handleHolds, heldTracks } from "./holds.js";
+import { handleSongbooks } from "./songbooks.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
@@ -104,6 +107,7 @@ export default {
 		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
 		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
 		if (url.pathname === "/holds" || url.pathname.startsWith("/holds/")) return handleHolds(request, env, ctx);
+		if (url.pathname === "/songbooks" || url.pathname.startsWith("/songbooks/")) return handleSongbooks(request, env, ctx);
 		const signed = /^\/u\/(\d+)$/.exec(url.pathname);
 		if (signed) return handleSignedAudio(request, env, Number(signed[1]));
 		const stored = /^\/k\/([A-Za-z0-9_-]+)$/.exec(url.pathname);

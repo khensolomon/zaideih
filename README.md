@@ -91,7 +91,7 @@ A push to master whose first line, or whose merged pull request's title, starts 
 - [docs/sync.md](docs/sync.md): liked songs and playlists synced across devices
 - [docs/lyrics.md](docs/lyrics.md): lyrics: rules, formats, the studio, shared lyrics, search
 - [docs/holds.md](docs/holds.md): holding albums back from listeners without a release
-- [docs/songbooks.md](docs/songbooks.md): songbooks (hymnals) as lyrics collections: proposed design
+- [docs/songbooks.md](docs/songbooks.md): songbooks (hymnals) as lyrics collections
 - [docs/releasing.md](docs/releasing.md): one-time Cloudflare and GitHub setup, release targets, rollback
 - [docs/TODO.md](docs/TODO.md): work not yet done
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
