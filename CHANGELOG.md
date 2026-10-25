@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.5
+
+- add genre and make correction to artist name (catalog, 7 changes)
+
 ## v26.10.25.4
 
 - Audit fixes: releases from pull request titles, lyrics sharing edge cases, studio typing, updates
