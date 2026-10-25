@@ -391,7 +391,7 @@ export function mount(root, ctx) {
 		const r = results();
 		const q = s.query.trim();
 		return html`<div class="adm-find-page">
-			<label class="adm-search">${icon("search")}<input type="search" data-adm="search" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"></label>
+			<label class="adm-search">${icon("search")}<input type="search" data-adm="search" data-where="page" value="${s.query}" placeholder="Find an album or an artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"></label>
 			${normalize(q).length < 2
 				? html`<p class="adm-hint">Two letters or more, or an album id. ${plural(s.data.albums.length, "album")} and ${plural(s.data.artists.length, "artist")} on ${BASE}.</p>`
 				: !r.albums.length && !r.artists.length ? html`<p class="adm-hint">Nothing found for “${q}”.</p>` : ""}
@@ -1151,7 +1151,7 @@ export function mount(root, ctx) {
 	function signIn(message = null) {
 		return html`<div class="adm-gate"><div class="adm-card">
 			<span class="adm-logo logo-tile">${raw(logoMark())}</span>
-			<h1>Zaideih admin</h1>
+			<h1>Admin</h1>
 			${message ?? html`
 				<p class="muted">Edit the catalog through GitHub: every change becomes a pull request on <b>${REPO}</b>, released when merged.</p>
 				${s.busy ? html`<p class="adm-busy">${s.busy}</p>` : ""}
@@ -1248,7 +1248,8 @@ export function mount(root, ctx) {
 		return html`<header class="st-head adm-head">
 			<a class="st-icon" href="#/" aria-label="Back to the app" title="Back to the app">${icon("back")}</a>
 			<div class="st-title"><b>${SECTIONS[s.tab][0]}</b><span>${subtitle()}</span></div>
-			<button class="adm-find" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<span>Find an album or artist</span><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></button>
+			<label class="adm-find" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<input type="search" data-adm="search" data-where="head" value="${s.query}" placeholder="Find an album or artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></label>
+			<button class="adm-find-icon" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}</button>
 			<div class="st-modes adm-modes" role="tablist" aria-label="Admin">
 				${Object.entries(SECTIONS).filter(([id, [, , hint]]) => hint && sectionShown(id)).map(([id, [, ic, hint]]) => {
 					const count = sectionCount(id);
@@ -1316,6 +1317,7 @@ export function mount(root, ctx) {
 		// A render replaces the page; the field being typed in keeps the focus.
 		const active = document.activeElement?.closest?.(".admin") ? document.activeElement : null;
 		const focusName = active?.dataset.adm ?? null;
+		const focusWhere = active?.dataset.where ?? null;
 		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
 		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Admin` : "Admin";
 		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
@@ -1328,7 +1330,7 @@ export function mount(root, ctx) {
 			<div class="adm-page" data-section="${s.tab}">${messages()}${body()}</div>
 			${tray()}`;
 		if (focusName === "search") {
-			const el = root.querySelector("[data-adm=search]");
+			const el = root.querySelector(`[data-adm=search][data-where="${focusWhere}"]`);
 			el?.focus();
 			el?.setSelectionRange(el.value.length, el.value.length);
 		} else if (focusField) {
@@ -1352,10 +1354,16 @@ export function mount(root, ctx) {
 		if (id === "stats" && !s.totals) await loadTotals();
 	}
 
+	/**
+	 * Find: the header's field where it is one (wide screens), else the
+	 * Catalog page's own. One field shows at a time (app.css).
+	 */
 	function find() {
+		const head = root.querySelector("[data-adm=search][data-where=head]");
+		if (head && head.offsetParent) { head.focus(); head.select(); return; }
 		s.open = null;
 		openSection("catalog").catch(fail);
-		root.querySelector("[data-adm=search]")?.focus();
+		root.querySelector("[data-adm=search][data-where=page]")?.focus();
 	}
 
 	/* ------------------------------------------------------------ events ---- */
@@ -1374,7 +1382,8 @@ export function mount(root, ctx) {
 		if (e.target.dataset?.keep === "token") s.tokenOpen = e.target.open;
 	}, true);
 	root.addEventListener("input", (e) => {
-		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; render(); }
+		// Typing in the header's field shows the results in Catalog, wherever the page was.
+		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; s.tab = "catalog"; render(); }
 	});
 	// The album and artist pages keep each field as it changes.
 	root.addEventListener("change", (e) => {

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.2
+
+- Admin: one search field; Admin on the sign-in card
+
 ## v26.10.25.1
 
 - Search on phones: one bar, chips with icons, Lyrics; About folded in the sidebar
