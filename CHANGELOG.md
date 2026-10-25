@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.3
+
+- Admin header: back inside the admin, no Catalog icon
+
 ## v26.10.25.2
 
 - Admin: one search field; Admin on the sign-in card
