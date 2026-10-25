@@ -1917,51 +1917,61 @@ img.acct-avatar { object-fit: cover; }
 	.sheet * { app-region: no-drag; -webkit-app-region: no-drag; }
 }
 @media (display-mode: window-controls-overlay) and (min-width: 900px) {
-	:root { --tb-h: 52px; }
+	/*
+	 * The bar is the system title bar's own height, so the window's buttons sit
+	 * in the middle of it; everything in it is sized to fit (--tb-ctl).
+	 */
+	:root { --tb-h: max(var(--tb-sys), 30px); --tb-ctl: calc(var(--tb-h) - 6px); }
 	.shell { padding-top: 0; }
 	.topbar {
 		left: var(--rail); height: var(--tb-h);
 		display: grid; grid-template-columns: 1fr minmax(0, 440px) 1fr; align-items: center; gap: 12px;
-		padding: 0 calc(var(--tb-end) + 12px) 0 16px; box-sizing: border-box;
+		padding: 0 calc(var(--tb-end) + 12px) 0 12px; box-sizing: border-box;
 		transition: left 0.2s ease;
 	}
-	.tb-nav { display: flex; gap: 6px; }
+	.tb-nav { display: flex; gap: 4px; }
 	.tb-btn {
-		display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
-		background: var(--surface); color: var(--ink); cursor: pointer;
+		display: inline-grid; place-items: center; width: var(--tb-ctl); height: var(--tb-ctl); padding: 0; border: 0; border-radius: 50%;
+		background: none; color: var(--ink-2); cursor: pointer;
 	}
-	.tb-btn:hover { background: var(--raised); }
-	.tb-btn svg.i { width: 18px; height: 18px; stroke-width: 2.2; }
+	.tb-btn:hover { background: var(--raised); color: var(--ink); }
+	.tb-btn svg.i { width: 16px; height: 16px; stroke-width: 2.2; }
 	.tb-search {
-		display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; box-sizing: border-box;
+		display: flex; align-items: center; gap: 8px; height: var(--tb-ctl); padding: 0 6px 0 12px; box-sizing: border-box;
 		border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2);
-		color: var(--ink-3); font-size: 14px; white-space: nowrap; overflow: hidden;
+		color: var(--ink-3); font-size: 13px; white-space: nowrap; overflow: hidden;
 	}
 	.tb-search:hover { text-decoration: none; border-color: var(--search-edge); color: var(--ink-2); }
-	.tb-search svg.i { width: 17px; height: 17px; }
+	.tb-search svg.i { width: 15px; height: 15px; }
 	.tb-search span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-	.tb-search kbd { font: inherit; font-size: 12px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 5px; }
-	main { padding-top: calc(var(--tb-h) + 8px); }
-	/* The sidebar's head lines up with the bar, and moves the window too. */
-	.rail { padding-top: 4px; }
-	.rail .brand { min-height: 48px; app-region: drag; -webkit-app-region: drag; }
+	.tb-search kbd { font: inherit; font-size: 11px; line-height: 1; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; }
+	main { padding-top: calc(var(--tb-h) + 24px); }
+	/* The sidebar's head: in the bar's strip, its logo and toggle at the bar's size, and it moves the window too. */
+	.rail { padding-top: 0; }
+	.rail .brand { height: var(--tb-h); min-height: 0; padding: 0 4px; app-region: drag; -webkit-app-region: drag; }
 	.rail .brand :is(a, button) { app-region: no-drag; -webkit-app-region: no-drag; }
-	body[data-rail="mini"] .rail { padding-top: 4px; }
-	body[data-tb-left] .rail, body[data-tb-left][data-rail="mini"] .rail { padding-top: calc(var(--tb-sys) + 6px); }
+	.rail .brand .logo-tile { width: var(--tb-ctl); height: var(--tb-ctl); }
+	.rail .brand .rail-toggle { width: var(--tb-ctl); height: var(--tb-ctl); }
+	.rail .brand .rail-toggle svg.i { width: 18px; height: 18px; }
+	body[data-rail="mini"] .rail { padding-top: 0; }
+	body[data-rail="mini"] .rail .brand { height: auto; padding-top: 3px; }
+	/* macOS: the window's buttons are over the sidebar's head, which starts below them. */
+	body[data-tb-left] .rail, body[data-tb-left][data-rail="mini"] .rail { padding-top: var(--tb-h); }
 	/* Search is always in the bar. */
 	.rail nav a[data-nav="search"] { display: none; }
 	/* The search page's own field takes the bar's place. */
 	body[data-page="search"] .tb-search { visibility: hidden; }
 	body[data-page="search"] .searchbox {
-		position: fixed; z-index: 30; top: calc((var(--tb-h) - 36px) / 2); margin: 0;
-		left: calc(var(--rail) + 16px + (100vw - var(--rail) - 28px - var(--tb-end)) / 2);
-		width: min(440px, calc(100vw - var(--rail) - var(--tb-end) - 200px)); transform: translateX(-50%);
+		position: fixed; z-index: 30; top: calc((var(--tb-h) - var(--tb-ctl)) / 2); margin: 0;
+		left: calc(var(--rail) + 12px + (100vw - var(--rail) - 24px - var(--tb-end)) / 2);
+		width: min(440px, calc(100vw - var(--rail) - var(--tb-end) - 180px)); transform: translateX(-50%);
 		app-region: no-drag; -webkit-app-region: no-drag;
 	}
-	body[data-page="search"] .searchbox input { min-height: 36px; height: 36px; padding-left: 40px; border-radius: 999px; font-size: 14px; }
-	body[data-page="search"] .searchbox.open input { border-radius: 18px 18px 0 0; }
-	body[data-page="search"] .searchbox > svg { left: 14px; top: 18px; width: 17px; height: 17px; }
-	body[data-page="search"] .search-clear { top: 18px; right: 2px; width: 30px; height: 30px; }
+	body[data-page="search"] .searchbox input { min-height: 0; height: var(--tb-ctl); padding-left: 34px; border-radius: 999px; font-size: 13px; }
+	body[data-page="search"] .searchbox.open input { border-radius: 14px 14px 0 0; }
+	body[data-page="search"] .searchbox > svg { left: 12px; top: calc(var(--tb-ctl) / 2); width: 15px; height: 15px; }
+	body[data-page="search"] .search-clear { top: calc(var(--tb-ctl) / 2); right: 2px; width: calc(var(--tb-ctl) - 4px); height: calc(var(--tb-ctl) - 4px); }
+	body[data-page="search"] .search-clear svg.i { width: 15px; height: 15px; }
 	/* Its scope buttons as icons only (each named in its label and tooltip): all five fit the bar's width. */
 	body[data-page="search"] .sg-panel .scopes { gap: 8px; }
 	body[data-page="search"] .sg-panel .scopes button { width: 44px; padding: 0; justify-content: center; }
@@ -1969,31 +1979,32 @@ img.acct-avatar { object-fit: cover; }
 	body[data-page="search"] .sg-panel .scopes svg.i { width: 18px; height: 18px; }
 	/* Open suggestions blur the page below the bar only: the bar, the sidebar's head and the window's buttons stay one sharp strip. */
 	body.search-open::before { top: var(--tb-h); }
-	/* The lyrics studio and the Workspace: their own header, when they show one, is the bar. */
+	/* The lyrics studio and the Workspace: their own header, when they show one, is the bar, at its height. */
 	body[data-studio]:has(.st-head) .topbar { display: none; }
 	body[data-studio] main { padding-top: 0; }
-	/* Exactly the bar's height, its controls sized to it as the bar's own are. */
 	body[data-studio] .st-head {
-		height: var(--tb-h); padding-top: 0; padding-bottom: 0; gap: 10px; box-sizing: border-box;
-		padding-right: calc(var(--tb-end) + 28px);
+		height: var(--tb-h); padding-top: 0; padding-bottom: 0; gap: 8px; box-sizing: border-box;
+		padding-right: calc(var(--tb-end) + 16px);
 		app-region: drag; -webkit-app-region: drag;
 	}
-	body[data-studio] .st-head .st-icon { width: 36px; height: 36px; }
-	body[data-studio] .st-head .st-icon svg.i { width: 20px; height: 20px; }
-	body[data-studio] .st-head .st-title b { font-size: 16px; }
-	body[data-studio] .st-head .st-title span { font-size: 12.5px; }
-	body[data-studio] .st-head .st-modes { padding: 2px; }
-	body[data-studio] .st-head .st-mode { width: 38px; height: 32px; }
-	body[data-studio] .st-head .st-mode svg.i { width: 18px; height: 18px; }
-	body[data-studio] .st-head .st-save { width: 36px; height: 36px; }
-	body[data-studio] .st-head .st-save svg.i { width: 19px; height: 19px; }
-	body[data-studio] .st-head .st-lang { min-height: 34px; }
-	body[data-studio] .adm-head .adm-find { min-height: 36px; height: 36px; }
-	body[data-studio] .adm-head .adm-find-icon { width: 36px; height: 36px; }
-	body[data-studio] .adm-head .adm-draft-btn { min-height: 36px; padding: 0 5px 0 14px; font-size: 14px; }
-	body[data-studio] .adm-head .adm-draft-btn .n { min-width: 26px; height: 26px; font-size: 12px; }
-	body[data-studio] .adm-head .adm-me-btn .adm-photo { width: 34px; height: 34px; }
-	body[data-studio] .adm-head .adm-mode-dot { top: 4px; right: 6px; }
+	body[data-studio] .st-head :is(.st-icon, .st-save) { width: var(--tb-ctl); height: var(--tb-ctl); }
+	body[data-studio] .st-head :is(.st-icon, .st-save) svg.i { width: 16px; height: 16px; }
+	body[data-studio] .st-head .st-title b { font-size: 14px; }
+	body[data-studio] .st-head .st-title span { font-size: 12px; }
+	body[data-studio] .st-head .st-modes { padding: 1px; }
+	body[data-studio] .st-head .st-mode { width: 34px; height: calc(var(--tb-ctl) - 2px); }
+	body[data-studio] .st-head .st-mode svg.i { width: 16px; height: 16px; }
+	body[data-studio] .st-head .st-lang { min-height: 0; height: var(--tb-ctl); font-size: 13px; padding: 0 8px 0 12px; }
+	body[data-studio] .adm-head .adm-find { min-height: 0; height: var(--tb-ctl); gap: 8px; padding: 0 8px 0 12px; }
+	body[data-studio] .adm-head .adm-find svg.i { width: 15px; height: 15px; }
+	body[data-studio] .adm-head .adm-find input { font-size: 13px; }
+	body[data-studio] .adm-head .adm-find kbd { font-size: 11px; padding: 0 5px; }
+	body[data-studio] .adm-head .adm-find-icon { width: var(--tb-ctl); height: var(--tb-ctl); }
+	body[data-studio] .adm-head .adm-find-icon svg.i { width: 15px; height: 15px; }
+	body[data-studio] .adm-head .adm-draft-btn { min-height: 0; height: var(--tb-ctl); gap: 6px; padding: 0 3px 0 12px; font-size: 13px; }
+	body[data-studio] .adm-head .adm-draft-btn .n { min-width: calc(var(--tb-ctl) - 6px); height: calc(var(--tb-ctl) - 6px); font-size: 11px; }
+	body[data-studio] .adm-head .adm-me-btn .adm-photo { width: var(--tb-ctl); height: var(--tb-ctl); font-size: 11px; }
+	body[data-studio] .adm-head .adm-mode-dot { top: 3px; right: 5px; width: 6px; height: 6px; }
 	/* Content scrolled under the bar: a soft shadow below it (body[data-scrolled], app.js). */
 	.topbar, body[data-studio] .st-head { transition: box-shadow 0.18s ease; }
 	body[data-scrolled] .topbar, body[data-scrolled][data-studio] .st-head { box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.45); }

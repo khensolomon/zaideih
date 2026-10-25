@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.11
+
+- Title bar at the system's own height; the Workspace and studio headers sized to it
+
 ## v26.10.25.10
 
 - Title bar search: scope icons only; the bar stays sharp under open suggestions
