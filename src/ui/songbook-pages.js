@@ -50,14 +50,14 @@ export async function bookView(_c, { id }) {
 	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>
 		<div class="sb-head">
 			<span class="sb-short sb-short-big">${book.short}</span>
-			<div><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "hymn" : "hymns"}</p></div>
+			<div><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}</p></div>
 		</div>
 		${book.public ? "" : html`<p class="held-note">${icon("lock")} Private: seen only with the Songbooks right until its rights are settled and the owner makes it public.</p>`}
 		${editor() ? html`<div class="actions"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit">${icon("edit")} Details and rights</button></div><div id="sb-book-edit"></div>` : ""}
-		<label class="sb-filter">${icon("search")}<input type="search" data-hy="filter" placeholder="A number, a title or the first line" aria-label="Find a hymn in ${book.title}: a number, a title or the first line" autocomplete="off" enterkeyhint="go"></label>
+		<label class="sb-filter">${icon("search")}<input type="search" data-hy="filter" placeholder="A number, a title or the first line" aria-label="Find a song in ${book.title}: a number, a title or the first line" autocomplete="off" enterkeyhint="go"></label>
 		${book.entries.length ? html`<ol class="sb-index">${book.entries.map((e) => html`<li data-n="${e.number}" data-find="${`${e.number} ${e.title} ${e.firstLine}`.toLowerCase()}">
 			<a href="${href(`songbook/${book.id}/${e.number}`)}"><span class="sb-num">${e.number}</span><span class="sb-hymn-text"><b class="${scriptClass(e.title)}">${e.title}</b>${e.firstLine && e.firstLine !== e.title ? html`<small class="${scriptClass(e.firstLine)}">${e.firstLine}</small>` : ""}</span></a>
-		</li>`)}</ol><p class="muted sb-none" hidden>No hymn matches.</p>` : html`<div class="empty"><h2>No hymns yet</h2>${editor() ? html`<p><a class="btn primary" href="${href("songbooks/import", { book: book.id })}">Add pages</a></p>` : ""}</div>`}`;
+		</li>`)}</ol><p class="muted sb-none" hidden>No song matches.</p>` : html`<div class="empty"><h2>No songs yet</h2>${editor() ? html`<p><a class="btn primary" href="${href("songbooks/import", { book: book.id })}">Add pages</a></p>` : ""}</div>`}`;
 	return { title: book.title, ...own(body, (root) => mountBook(root, book)) };
 }
 
@@ -74,7 +74,7 @@ function bookForm(book) {
 			<label class="sb-field sb-wide"><span>Publisher</span><input name="publisher" maxlength="200" value="${book.publisher}"></label>
 			<label class="sb-field"><span>Rights</span><select name="rights">${[["unsettled", "Not settled yet"], ["permission", "Permission given"], ["public-domain", "Public domain"]].map(([v, l]) => html`<option value="${v}" ${v === book.rights ? "selected" : ""}>${l}</option>`)}</select></label>
 			<label class="sb-field sb-wide"><span>How the rights are settled</span><input name="rightsNote" maxlength="500" value="${book.rightsNote}" placeholder="For example: letter from the publisher, 2026"></label>
-			${canPublish ? html`<label class="check sb-wide"><input type="checkbox" name="public" ${book.public ? "checked" : ""}> Public: everyone sees this book and its hymns (needs the rights settled)</label>` : html`<p class="muted sb-wide">Only the owner and co-owners make a book public.</p>`}
+			${canPublish ? html`<label class="check sb-wide"><input type="checkbox" name="public" ${book.public ? "checked" : ""}> Public: everyone sees this book and its songs (needs the rights settled)</label>` : html`<p class="muted sb-wide">Only the owner and co-owners make a book public.</p>`}
 		</div>
 		<p class="error" role="alert" hidden></p>
 		<p><button class="btn primary" type="submit">Save</button></p>
@@ -150,7 +150,7 @@ async function textPage(c, textId, query, where, ctx) {
 	try {
 		t = await readText(textId);
 	} catch (err) {
-		return failed("This hymn could not be read", err);
+		return failed("This song could not be read", err);
 	}
 	const lang = query?.get("lang") ?? "";
 	const words = t.lyrics.find((l) => l.lang === lang) ?? null;
@@ -179,7 +179,7 @@ async function textPage(c, textId, query, where, ctx) {
 		</div>
 		${ed ? html`<div id="sb-details"></div>` : ""}
 		${parsed ? html`${detailChips(parsed)}<div class="ly-text-wrap">${lyricsHtml(parsed)}</div>${creditsHtml(parsed)}` : html`<div class="empty"><h2>No words yet</h2>${ed ? html`<p><a class="btn primary" href="${href(`songbooks/text/${t.id}/studio`)}">Write them</a></p>` : ""}</div>`}
-		${work || t.credits.length ? html`<section class="section sb-credits"><header><h2>About this hymn</h2></header><dl>
+		${work || t.credits.length ? html`<section class="section sb-credits"><header><h2>About this song</h2></header><dl>
 			${work ? html`<dt>Work</dt><dd><a class="text-link" href="${href(`songbooks/work/${work.id}`)}">${work.title}</a>${work.lang !== t.lang ? ` (${work.lang})` : ""}</dd>` : ""}
 			${work ? ["words", "music", "arrangement"].map((r) => (people(work.credits, r).length ? html`<dt>${ROLE_NAMES[r]}</dt><dd>${personLinks(people(work.credits, r))}</dd>` : "")) : ""}
 			${["translation", "words"].map((r) => (people(t.credits, r).length ? html`<dt>${r === "words" ? `Words in ${t.lang}` : "Translated by"}</dt><dd>${personLinks(people(t.credits, r))}</dd>` : ""))}
@@ -194,7 +194,7 @@ async function textPage(c, textId, query, where, ctx) {
 			${recordings.length ? html`<ol class="tracks">${recordings.map((r, k) => trackRow(r, listKey, k, { showAlbum: true, thumb: true }))}</ol>` : html`<p class="muted">No recording in Zaideih sings these words yet.</p>`}
 			${ed ? html`<div class="sb-join"><label class="sb-filter">${icon("search")}<input type="search" data-hy="join-q" placeholder="Join a recording: its title" autocomplete="off"></label><ul class="sb-list" id="sb-join-results"></ul></div>` : ""}
 		</section>
-		${book ? html`<nav class="sb-prevnext" aria-label="Hymns">${prev ? html`<a class="btn" href="${href(`songbook/${book.id}/${prev.number}`)}">${icon("back")} ${prev.number}</a>` : html`<span></span>`}${next ? html`<a class="btn" href="${href(`songbook/${book.id}/${next.number}`)}">${next.number} ${icon("chevron")}</a>` : ""}</nav>` : ""}`;
+		${book ? html`<nav class="sb-prevnext" aria-label="Songs">${prev ? html`<a class="btn" href="${href(`songbook/${book.id}/${prev.number}`)}">${icon("back")} ${prev.number}</a>` : html`<span></span>`}${next ? html`<a class="btn" href="${href(`songbook/${book.id}/${next.number}`)}">${next.number} ${icon("chevron")}</a>` : ""}</nav>` : ""}`;
 	return { title: label ? `${label} ${t.title}` : t.title, ...own(body, ed ? (root) => mountHymn(root, c, t, where, ctx) : null) };
 }
 
@@ -222,7 +222,7 @@ function detailsForm(t, where, c) {
 			<label class="sb-field sb-wide"><span>Topics</span><input name="topics" maxlength="300" value="${work.topics}"></label>
 			<p class="sb-wide"><button class="btn primary" type="submit">Save the work</button> <button class="link-btn" type="button" data-hy="work-drop">Not this work</button></p>
 		</form>
-		${["words", "music", "arrangement"].map((r) => html`<div class="sb-credit-row"><b>${ROLE_NAMES[r]}</b>${creditChips(work.credits, r, "work")}${personPicker(r, "work")}</div>`)}` : html`<p class="muted">The hymn as a work, whatever its language: its writers, composer, tune. Find it, or add it.</p>
+		${["words", "music", "arrangement"].map((r) => html`<div class="sb-credit-row"><b>${ROLE_NAMES[r]}</b>${creditChips(work.credits, r, "work")}${personPicker(r, "work")}</div>`)}` : html`<p class="muted">The song as a work, whatever its language: its writers, composer, tune. Find it, or add it.</p>
 		<div class="sb-pick"><input data-hy="work-q" placeholder="The work's title or tune" autocomplete="off"><span class="sb-pick-results" id="sb-work-results"></span></div>`}
 		${t.recordings.length ? html`<h3>Joined recordings</h3><ul class="sb-list">${t.recordings.map((r) => html`<li><span>${c.track(r)?.title ?? `Song ${r}`} <span class="muted">${c.track(r)?.album.title ?? ""}</span></span><button type="button" class="btn" data-hy="unjoin" data-id="${r}">Unjoin</button></li>`)}</ul>` : ""}
 		${where?.book ? html`<p class="sb-remove"><button class="link-btn danger" data-hy="entry-remove">Take ${where.book.short} ${where.book.entries[where.at].number} out of ${where.book.title}</button> <small class="muted">The text and its words stay.</small></p>` : ""}

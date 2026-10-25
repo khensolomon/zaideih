@@ -1838,7 +1838,8 @@ export async function boot(platform) {
 		// The hymns of the books, for search and for naming them: private ones too with the Songbooks right.
 		refreshHymnIndex({ editor: uploads.canSongbooks }).catch((err) => console.warn("songbooks index", err.message));
 		const path = currentRoute?.path ?? "";
-		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-")) rerender();
+		// Songbook pages show editing to the Songbooks right, known once the member is read.
+		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
