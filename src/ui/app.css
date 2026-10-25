@@ -1221,14 +1221,23 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .admin .adm-loading { padding: 40px 0; }
 .admin .adm-head { z-index: 18; }
 .admin .adm-head .st-title b { font-size: 18px; }
+/* Find: a real field in the header on wide screens (the Catalog page's own is hidden there), an icon below. */
 .adm-find {
-	flex: 0 1 280px; min-width: 0; display: inline-flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 14px;
-	border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-3); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+	flex: 0 1 300px; min-width: 0; display: inline-flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px 0 14px;
+	border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-3); cursor: text;
 }
-.adm-find:hover { color: var(--ink); border-color: var(--ink-3); }
+.adm-find:focus-within { border-color: var(--ink-3); color: var(--ink); }
 .adm-find svg.i { flex: none; width: 18px; height: 18px; }
-.adm-find span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-find input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 14px; outline: none; }
+.adm-find input::placeholder { color: var(--ink-3); }
+.adm-find input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .adm-find kbd { flex: none; font: inherit; font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); }
+.adm-find:focus-within kbd { display: none; }
+.adm-find-icon { display: none; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.adm-find-icon svg.i { width: 18px; height: 18px; }
+@media (min-width: 1180px) {
+	.adm-page[data-section="catalog"] .adm-find-page > .adm-search { display: none; }
+}
 .adm-modes .st-mode { position: relative; }
 .adm-mode-dot { position: absolute; top: 6px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn, #f0c674); }
 .adm-draft-btn {
@@ -1473,9 +1482,9 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .admin .adm-flash { animation: adm-flash 1.6s ease-out; }
 @keyframes adm-flash { from { background: rgb(255 255 255 / 0.18); } }
 
-@media (max-width: 1180px) {
-	.adm-find { flex: none; width: 44px; height: 44px; padding: 0; justify-content: center; }
-	.adm-find span, .adm-find kbd { display: none; }
+@media (max-width: 1179px) {
+	.adm-find { display: none; }
+	.adm-find-icon { display: inline-grid; }
 }
 /* Phones and narrow windows: the sections on a row of their own under the header's first line. */
 @media (max-width: 899px) {
