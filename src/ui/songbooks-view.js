@@ -1,16 +1,15 @@
 /**
  * Songbooks in the app (docs/songbooks.md): the books, a new book, and
- * importing a book's pages. Pages of a book and of a hymn come in a later
- * step; until then the books are listed for the Songbooks right, which adds
- * them.
+ * importing a book's pages.
  *
- *   #/songbooks                  the books; the Songbooks right adds one
+ *   #/songbooks                  the books the person sees; the Songbooks right adds one
  *   #/songbooks/import?book=<id> pages of a book, as text, split into hymns
- *                                (core/songbook-import.js), checked, then added
+ *                                (core/songbook-import.js), checked, then added,
+ *                                by those who edit the book (its `may`)
  */
 import { html } from "../core/html.js";
 import { splitHymns } from "../core/songbook-import.js";
-import { addHymns, createBook, listBooks, readBook, SongbookError } from "../core/songbooks.js";
+import { addHymns, createBook, listBooks, mayEdit, readBook, SongbookError } from "../core/songbooks.js";
 import { uploads } from "../core/uploads.js";
 import { href } from "../core/router.js";
 import { icon } from "./icons.js";
@@ -20,10 +19,9 @@ const notSignedIn = () => html`<div class="empty"><h2>Songbooks</h2><p>Hymn book
 
 /** #/songbooks */
 export async function songbooksView() {
-	const editor = uploads.canSongbooks;
-	let books;
+	let books, editor;
 	try {
-		books = await listBooks();
+		({ books, create: editor } = await listBooks());
 	} catch (err) {
 		return { title: "Songbooks", body: html`<h1>Songbooks</h1><div class="empty"><h2>The songbooks could not be read</h2><p>${err.message}</p></div>` };
 	}
@@ -32,10 +30,11 @@ export async function songbooksView() {
 			<a class="sb-book-open" href="${href(`songbook/${b.id}`)}" aria-label="Open ${b.title}">
 				<span class="sb-short">${b.short}</span>
 				<span class="sb-book-text"><b>${b.title}</b><small>${[b.lang, b.edition && `edition ${b.edition}`, b.year, `${b.entries.toLocaleString()} ${b.entries === 1 ? "song" : "songs"}`].filter(Boolean).join(" · ")}</small></span>
-				${b.public ? "" : html`<span class="sb-private" title="Seen only with the Songbooks right until its rights are settled">${icon("lock")} Private</span>`}
+				${b.may === "edit" || b.may === "read" ? html`<span class="sb-private">${b.may === "edit" ? "Editor" : "Reader"}</span>` : ""}
+				${b.public ? "" : html`<span class="sb-private" title="Seen only with the Songbooks right, or by those appointed to it, until its rights are settled">${icon("lock")} Private</span>`}
 				${icon("chevron")}
 			</a>
-			${editor ? html`<a class="btn" href="${href("songbooks/import", { book: b.id })}">${icon("upload")} Add pages</a>` : ""}
+			${mayEdit(b.may) ? html`<a class="btn" href="${href("songbooks/import", { book: b.id })}">${icon("upload")} Add pages</a>` : ""}
 		</li>`)}</ul>` : html`<div class="empty"><h2>No songbooks yet</h2><p>${editor ? "Add the first one below." : "Hymn books and praise books, with every song's words, are coming to Zaideih."}</p></div>`}
 		${editor ? newBookForm() : ""}`;
 	return { title: "Songbooks", ...own(body, editor ? mountList : null) };
@@ -84,7 +83,6 @@ function mountList(root) {
 /** #/songbooks/import?book=<id> */
 export async function songbookImportView(_c, _params, query) {
 	if (!uploads.available) return { title: "Add pages", body: notSignedIn() };
-	if (!uploads.canSongbooks) return { title: "Add pages", body: html`<div class="empty"><h2>Adding pages needs the Songbooks right</h2><p>The owner gives it, in the Workspace, Members.</p></div>` };
 	const id = Number(query.get("book"));
 	let book;
 	try {
@@ -92,6 +90,7 @@ export async function songbookImportView(_c, _params, query) {
 	} catch (err) {
 		return { title: "Add pages", body: html`<div class="empty"><h2>This songbook could not be read</h2><p>${err.message}</p><p><a class="btn" href="#/songbooks">Songbooks</a></p></div>` };
 	}
+	if (!mayEdit(book.may)) return { title: "Add pages", body: html`<div class="empty"><h2>Adding pages to ${book.title} is for its editors</h2><p>The owner, a co-owner or someone with the Songbooks right appoints them, on the book's page, Collaborators.</p><p><a class="btn" href="${href(`songbook/${book.id}`)}">${book.title}</a></p></div>` };
 	const have = new Set(book.entries.map((e) => e.number));
 	const next = book.entries.length ? book.entries.at(-1).number + 1 : "";
 	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>

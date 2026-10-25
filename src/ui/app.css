@@ -2132,3 +2132,11 @@ a.sb-book-text:hover { text-decoration: none; }
 .sb-renumber { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .sb-renumber .sb-field { max-width: 220px; }
 .btn.danger { color: var(--danger-ink); }
+.sb-appointed { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+.sb-team { margin: 14px 0; }
+.sb-team h2 { margin-top: 0; }
+.sb-team-do { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sb-team-do select, .sb-team-add select { min-height: 36px; }
+.sb-team-add { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-top: 12px; }
+.sb-team-add .sb-pick { flex: 1 1 260px; display: flex; flex-direction: column; }
+.sb-team-add .sb-pick-results { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

@@ -40,6 +40,19 @@ Person ── translated ──────────────────�
 - Making a book public is one switch, by the owner or a co-owner, with the rights note required.
 - A new **Songbooks** right (given in Members, like any right) creates books, people and works, and edits entries; members can correct texts of public books as they correct lyrics now.
 
+### Collaborators on one book
+
+The Songbooks right reaches every book. To give someone one book only, the owner, a co-owner or anyone with the Songbooks right appoints them to it (the book's page, **Collaborators**: found by name, GitHub login or email; they sign in to Zaideih once first). Appointments are kept in `songbook_members` (migration 0008), one role per member and book:
+
+| Role | Sees | Changes |
+|---|---|---|
+| Editor | the book while private, its songs, their words and history | the book's details and rights note, Add pages, numbers (renumber, add, delete in a private book), each song's words (studio), title, first line, language, credits and work, recordings joined; new people and works, and the people and works of the book's songs |
+| Reader | the book while private, its songs and their words | nothing |
+
+What stays with the owner and co-owners: making a book public or private again, and deleting songs from a public book. What stays with the Songbooks right: new books, appointing, and people or works credited only outside the editor's books (they are shared by every book). A song printed in two books is edited by an editor of either. A blocked member sees what the public sees; joining two accounts keeps the appointments of both.
+
+Every book the person sees carries `may`: `manage` (the Songbooks right), `edit`, `read`, or null (a public book, not appointed). The app shows editing from it; a text's `may` is the most its books allow.
+
 ## Scanning
 
 - Tedim and other Latin-script books: the phone's own text recognition (Live Text on iPhone, Google Lens on Android) already reads a page well, at no cost and with nothing to add to the app. The page's text is pasted into an import screen that splits it at hymn numbers into entries, as drafts to correct, never saved unseen.
@@ -70,13 +83,13 @@ Pages (`src/ui/songbook-pages.js`):
 - **A person** (`#/songbooks/person/<id>`) and **a work** (`#/songbooks/work/<id>`): what they wrote, composed or translated; the work's versions.
 - **Editing** (the Songbooks right), on the hymn: Edit the words opens the lyrics studio for the text (`#/songbooks/text/<id>/studio`: writing and preview; no timing or same-song offers, which are for recordings); Details edits the title, first line and language, translators and words in that language, the work (found by title or tune, or new) with its words, music and arrangement; changes the hymn's number in the book (a number taken is refused); and deletes the hymn. Deleting takes only this number out when the words are printed in another book too; otherwise the text goes with its words, versions, reports and credits, and is refused (409) while recordings are joined to it, which are unjoined first. In a public book only the owner and co-owners delete. Under Recordings, Join a recording lists the catalog's songs with a title close to the hymn's (`core/titles.js`, the same closeness as for same-song offers; held albums left out), each with Join, and finds any other by title; recordings are joined (a recording with words of its own is joined only when asked, its own kept in its history), or unjoined.
 
-Search (`src/ui/views.js`, `src/ui/suggest.js`): "TL 145", "tl145" or "Tedim Labu 145" opens that hymn, first among the suggestions and above the results; a book's name or short name shows the book; a line of a public hymn's words finds it ("In the songbooks"), from the app's lyrics index, which takes public texts in and drops texts of a book made private. The hymns are named from `GET /songbooks/index` (`core/songbooks.js`, kept on the device, read again every 10 minutes; private books for the Songbooks right, in memory only).
+Search (`src/ui/views.js`, `src/ui/suggest.js`): "TL 145", "tl145" or "Tedim Labu 145" opens that hymn, first among the suggestions and above the results; a book's name or short name shows the book; a line of a public hymn's words finds it ("In the songbooks"), from the app's lyrics index, which takes public texts in and drops texts of a book made private. The hymns are named from `GET /songbooks/index` (`core/songbooks.js`, kept on the device, read again every 10 minutes; signed in, the private books the person sees, in memory only).
 
-Recordings: a recording joined to a text shows its words (shared lyrics: the text is the source, each recording keeps its own timing) and says "Words from Tedim Labu 145" on its lyrics page. Joining needs the Lyrics or the Songbooks right. A recording joined to a private text shows no words.
+Recordings: a recording joined to a text shows its words (shared lyrics: the text is the source, each recording keeps its own timing) and says "Words from Tedim Labu 145" on its lyrics page. Joining needs the Lyrics or the Songbooks right, or to be an editor of a book printing the text. A recording joined to a private text shows no words.
 
 Step 5 was planned for the Workspace; it is in the app instead, on the book and hymn pages, because the Workspace needs a GitHub sign-in and the Songbooks right does not.
 
-Songbooks shows in the sidebar's Browse and the logo menu once a book is public, and always for the Songbooks right.
+Songbooks shows in the sidebar's Browse and the logo menu once a book is public, always for the Songbooks right, and for those appointed to a book.
 
 ## Steps
 
@@ -100,13 +113,15 @@ Routes in `worker/media/songbooks.js` (its header has the full list):
 
 | Route | Who |
 |---|---|
-| `GET /songbooks` | anyone: public books; with the Songbooks right, private ones too |
-| `POST /songbooks`, `POST /songbooks/:book` | Songbooks right; making a book public (or private again) is for the owner and co-owners, and needs rights `permission` or `public-domain` with a note |
+| `GET /songbooks` | anyone: public books, and the private ones the person sees (the right, or appointed); each with `may`; `create`, `publish` say what the person may do |
+| `GET /songbooks/:book/collaborators`, `POST /songbooks/:book/collaborators {member, role}` | Songbooks right: those appointed; appoints as `editor` or `reader`, or (`role: null`) takes off |
+| `GET /songbooks/members?q=` | Songbooks right: members by name, GitHub login or email (2 letters at least), to appoint |
+| `POST /songbooks`, `POST /songbooks/:book` | Songbooks right (a new book); the right or an editor (a book's details); making a book public (or private again) is for the owner and co-owners, and needs rights `permission` or `public-domain` with a note |
 | `GET /songbooks/:book` | the book and its entries (private: the right) |
-| `POST /songbooks/:book/entries`, `POST /songbooks/:book/entries/:number` | Songbooks right: a hymn number printing a new or existing text; another text (`text`); another number (`number`); taken out (`remove`); deleted (`delete`: the number, or the text when no other book prints it) |
+| `POST /songbooks/:book/entries`, `POST /songbooks/:book/entries/:number` | Songbooks right or an editor of the book: a hymn number printing a new or existing text; another text (`text`); another number (`number`); taken out (`remove`); deleted (`delete`: the number, or the text when no other book prints it) |
 | `GET /songbooks/texts/:id` | a text with its work, credits, books and words (private: the right) |
-| `POST /songbooks/texts/:id` | Songbooks right: title, language, first line, work, translated from, credits |
-| `GET/POST /songbooks/people…`, `/songbooks/works…` | Songbooks right |
+| `POST /songbooks/texts/:id` | Songbooks right, or an editor of a book printing it: title, language, first line, work, translated from, credits |
+| `GET/POST /songbooks/people…`, `/songbooks/works…` | Songbooks right; an editor finds and adds them, and changes those of the songs in their books |
 
 A text's words are lyrics rows under its id (`/lyrics/<text id>`): saved, versioned, hidden and restored there. For a text in no public book, the public read answers 404, and only the Songbooks right reads or edits it; the Songbooks right also looks after its versions as the Lyrics right does. Texts are not joined to recordings and not in the app's lyrics index until step 4.
 

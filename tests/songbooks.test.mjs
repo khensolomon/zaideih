@@ -172,3 +172,64 @@ test("songbooks: a number changes; a song is deleted with its words, unless prin
 	assert.equal((await sb("gh-ed", "GET", `/songbooks/texts/${text}`)).status, 404);
 	assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics_versions WHERE track = ?1").bind(text).first()).n, 0, "its words and history go with it");
 });
+
+test("songbooks: collaborators appointed to one book edit or read it, and nothing else", { skip }, async () => {
+	const { env, signIn, sb, ly } = setup();
+	const ed = (await signIn("gh-ed")).member.id;
+	const ann = (await signIn("gh-ann")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'songbooks', 'khen', 0)").bind(ed).run();
+	const tl = (await sb("gh-ed", "POST", "/songbooks", { title: "Tedim Labu", short: "TL", lang: "tedim" })).body.id;
+	const ob = (await sb("gh-ed", "POST", "/songbooks", { title: "Other Book", short: "OB", lang: "tedim" })).body.id;
+	const fanny = (await sb("gh-ed", "POST", "/songbooks/people", { name: "Fanny Crosby" })).body.id;
+	const elsewhere = (await sb("gh-ed", "POST", "/songbooks/people", { name: "Only In OB" })).body.id;
+	const work = (await sb("gh-ed", "POST", "/songbooks/works", { title: "Blessed Assurance", lang: "english", credits: [{ person: fanny, role: "words" }] })).body.id;
+	const t1 = (await sb("gh-ed", "POST", `/songbooks/${tl}/entries`, { number: 1, title: "Lungmuanna", work })).body.text;
+	const t2 = (await sb("gh-ed", "POST", `/songbooks/${ob}/entries`, { number: 1, title: "Other song" })).body.text;
+	await sb("gh-ed", "POST", `/songbooks/texts/${t2}`, { credits: [{ person: elsewhere, role: "translation" }] });
+
+	// Not appointed: the private books are not there.
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/${tl}`)).status, 404);
+	assert.deepEqual((await sb("gh-ann", "GET", "/songbooks")).body.books, []);
+	// Appointing is for the right.
+	assert.equal((await sb("gh-ann", "GET", "/songbooks/members?q=ann")).status, 403);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}/collaborators`, { member: ann, role: "editor" })).status, 404, "a private book is not there for them");
+	const found = await sb("gh-ed", "GET", "/songbooks/members?q=ann");
+	assert.deepEqual(found.body.members.map((x) => x.id), [ann]);
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${tl}/collaborators`, { member: ann, role: "owner" })).status, 400);
+
+	// A reader sees the book and its songs, and changes nothing.
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${tl}/collaborators`, { member: ann, role: "reader" })).status, 200);
+	const read = await sb("gh-ann", "GET", `/songbooks/${tl}`);
+	assert.deepEqual([read.status, read.body.may], [200, "read"]);
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/texts/${t1}`)).body.may, "read");
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}/entries/1`, { number: 2 })).status, 403);
+	assert.equal((await ly("gh-ann", "POST", `/lyrics/${t1}`, { text: "Lungmuanna ka nei hi", base: 0 })).status, 403);
+
+	// An editor changes the book, its numbers, its songs and their words.
+	const list = await sb("gh-ed", "POST", `/songbooks/${tl}/collaborators`, { member: ann, role: "editor" });
+	assert.deepEqual(list.body.collaborators.map((c) => [c.member, c.role, c.addedBy]), [[ann, "editor", "ed"]]);
+	assert.deepEqual((await sb("gh-ann", "GET", "/songbooks")).body.books.map((b) => [b.short, b.may]), [["TL", "edit"]]);
+	assert.deepEqual((await sb("gh-ann", "GET", "/songbooks/index")).body.books.map((b) => b.short), ["TL"]);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}/entries/1`, { number: 2 })).status, 200);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}/entries`, { number: 3, title: "Pathian" })).status, 201);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/texts/${t1}`, { title: "Lungmuanna Ka Nei" })).status, 200);
+	assert.equal((await ly("gh-ann", "POST", `/lyrics/${t1}`, { text: "Lungmuanna ka nei hi", base: 0 })).status, 200);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}`, { edition: "1995" })).status, 200);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}`, { public: true, rights: "public-domain", rightsNote: "old" })).status, 403, "public is for the owner and co-owners");
+	// People and works: new ones, and those of their book's songs.
+	assert.equal((await sb("gh-ann", "POST", "/songbooks/people", { name: "New Person" })).status, 201);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/people/${fanny}`, { name: "Fanny J. Crosby" })).status, 200);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/works/${work}`, { title: "Blessed Assurance", lang: "english", year: 1873 })).status, 200);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/people/${elsewhere}`, { name: "Renamed" })).status, 403);
+	// Not the other book, its songs, or appointing.
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/${ob}`)).status, 404);
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/texts/${t2}`)).status, 404);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${ob}/entries`, { number: 5, title: "X" })).status, 404);
+	assert.equal((await sb("gh-ann", "POST", `/songbooks/${tl}/entries`, { number: 9, text: t2 })).status, 404, "a text of a book not seen");
+	assert.equal((await ly("gh-ann", "POST", `/lyrics/${t2}`, { text: "x", base: 0 })).status, 404);
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/${tl}/collaborators`)).status, 403);
+
+	// Taken off: the book is gone again.
+	assert.deepEqual((await sb("gh-ed", "POST", `/songbooks/${tl}/collaborators`, { member: ann, role: null })).body.collaborators, []);
+	assert.equal((await sb("gh-ann", "GET", `/songbooks/${tl}`)).status, 404);
+});
