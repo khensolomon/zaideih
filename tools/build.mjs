@@ -148,7 +148,16 @@ await mkdir(OUT, { recursive: true });
 
 // 1. The sound worklet (src/core/sound-worklet.js): its own file, loaded by
 // the app with audioWorklet.addModule(), so the app needs its hashed name.
-const worklet = await esbuild.build({
+//
+// Every bundle goes through bundle(): a warning from esbuild (a duplicate key,
+// an import that is not exported) fails the build, since the bundle it
+// describes is not what the source means. esbuild has printed it already.
+async function bundle(what, options) {
+	const result = await esbuild.build(options);
+	if (result.warnings.length) die(`${what}: ${result.warnings.length} esbuild warning(s), printed above; the build stops on warnings`);
+	return result;
+}
+const worklet = await bundle("the sound worklet", {
 	entryPoints: { "sound-worklet": "src/core/sound-worklet.js" },
 	outdir: join(OUT, "assets"),
 	entryNames: "[name].[hash]",
@@ -165,7 +174,7 @@ const workletFile = Object.keys(worklet.metafile.outputs).map((p) => posix(relat
 if (!workletFile) die(`unexpected esbuild output for the sound worklet: ${Object.keys(worklet.metafile.outputs).join(", ")}`);
 
 // 1b. The Workspace (src/workspace): its own file, loaded only when #/workspace opens.
-const workspace = values.platform === "web" ? await esbuild.build({
+const workspace = values.platform === "web" ? await bundle("the Workspace", {
 	entryPoints: { workspace: "src/workspace/workspace.js" },
 	outdir: join(OUT, "assets"),
 	entryNames: "[name].[hash]",
@@ -182,7 +191,7 @@ const workspaceFile = workspace ? Object.keys(workspace.metafile.outputs).map((p
 if (workspace && !workspaceFile) die(`unexpected esbuild output for the Workspace: ${Object.keys(workspace.metafile.outputs).join(", ")}`);
 
 // 2. App bundle (JS + CSS + fonts), content-hashed.
-const app = await esbuild.build({
+const app = await bundle("the app", {
 	entryPoints: { app: platform.entry, style: "src/ui/app.css" },
 	outdir: join(OUT, "assets"),
 	entryNames: "[name].[hash]",
@@ -254,7 +263,7 @@ if (values.platform === "web") {
 			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" ||
 			f === "catalog/meta.json" || f === `catalog/${catalogMeta.catalog}`),
 	];
-	await esbuild.build({
+	await bundle("the service worker", {
 		entryPoints: ["platforms/web/sw.js"],
 		outfile: join(OUT, "sw.js"),
 		bundle: true,

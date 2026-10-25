@@ -1,5 +1,10 @@
 # Version
 
+## v26.10.25.20
+
+- Build: the duplicate info icon removed; esbuild warnings fail the build
+- `tools/build.mjs`: every bundle (sound worklet, Workspace, app, service worker) stops the build on an esbuild warning, naming the bundle
+
 ## v26.10.25.19
 
 - Songbooks: change a number, delete a song, find recordings to join
