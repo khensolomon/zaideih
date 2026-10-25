@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.16
+
+- Songbooks, step 2: add a book and import its pages, split into hymns
+
 ## v26.10.25.15
 
 - Songbooks, step 1: books, hymn numbers, texts, works and people on the Worker, private by default

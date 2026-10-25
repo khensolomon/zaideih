@@ -198,6 +198,12 @@ export const uploads = {
 		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage") || m.rights?.includes("lyrics")));
 	},
 
+	/** True for the owner, co-owners and the Songbooks right: songbooks, private ones too (docs/songbooks.md). */
+	get canSongbooks() {
+		const m = this.state.member;
+		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage") || m.rights?.includes("songbooks")));
+	},
+
 	/** Asks to publish an album of one's uploads: { lang, note } (a reviewer may leave out the language). Answers { id, songs }. */
 	async askPublish(albumTitle, { lang, note = "" } = {}) {
 		const answer = await call("POST", "/requests", { album: albumTitle, ...(lang ? { lang: Number(lang) } : {}), note });

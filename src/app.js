@@ -36,6 +36,7 @@ import { clearRecent, closeSuggestions, forgetSearch, forgetSearches, getScope, 
 import * as V from "./ui/views.js";
 import { focusKey, refocus } from "./ui/focus.js";
 import { viz } from "./ui/viz.js";
+import { songbookImportView, songbooksView } from "./ui/songbooks-view.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -56,6 +57,8 @@ route("library", V.libraryView);
 route("library/:tab", V.libraryView);
 route("playlist/:id", V.playlist);
 route("about", V.about);
+route("songbooks", songbooksView);
+route("songbooks/import", songbookImportView);
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
 route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), {
 	notify, promptText, confirmAction, redrawn: watchLargeTitle,
@@ -162,6 +165,7 @@ function renderAppMenu() {
 			<a href="#/search">${icon("search")}Search</a>
 			<a href="#/library">${icon("library")}Library</a>
 			<a href="#/workspace" class="am-workspace" hidden>${icon("edit")}<span class="lbl">Workspace</span></a>
+			<a href="#/songbooks" class="am-songbooks" hidden>${icon("lyrics")}<span class="lbl">Songbooks</span></a>
 			<a href="#/account" class="am-account">${icon("person")}<span class="lbl">Sign in</span></a>
 		</div>
 		<h2>Languages</h2>
@@ -198,6 +202,8 @@ function syncAccess() {
 		a.title = name ? "Account" : "";
 	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Workspace" : "Suggest edits") : "";
+	// Songbooks: for the Songbooks right until books are public (docs/songbooks.md).
+	for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks;
 	for (const a of $$(".rail-workspace, .am-workspace")) {
 		a.hidden = !who;
 		a.dataset.hint = label;
@@ -313,6 +319,7 @@ function markNav(path) {
 	const browse = /^lang\/\d+/.exec(path)?.[0] ?? (path.startsWith("genre") ? "genres" : path === "top" ? "top" : null);
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
+		: path.startsWith("songbooks") ? "songbooks"
 		: path === "about" || path === "terms" || path === "help" || path === "workspace" || path === "account" ? path
 		: browse ? null : "home";
 	for (const a of $$("[data-nav]")) {
@@ -1799,6 +1806,7 @@ export async function boot(platform) {
 	uploads.catalog = catalog;
 	syncAccess();
 	on("uploads", () => {
+		for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks;
 		const path = currentRoute?.path ?? "";
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-")) rerender();
 	});
