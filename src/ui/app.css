@@ -2042,3 +2042,39 @@ img.acct-avatar { object-fit: cover; }
 		border-image: linear-gradient(180deg, rgb(98 98 98 / 0) 0, #626262 72px) 1;
 	}
 }
+
+/* =================================================================== songbooks (ui/songbooks-view.js) */
+.sb-books { list-style: none; margin: 0 0 28px; padding: 0; display: grid; gap: 8px; }
+.sb-book { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-m); background: var(--surface); }
+.sb-short { flex: none; display: inline-grid; place-items: center; min-width: 48px; height: 48px; padding: 0 8px; box-sizing: border-box; border-radius: 12px; background: var(--raised); font-weight: 800; letter-spacing: 0.02em; }
+.sb-book-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.sb-book-text small { color: var(--ink-3); font-size: 14px; }
+.sb-private { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
+.sb-private svg.i { width: 15px; height: 15px; }
+.sb-new { display: grid; gap: 12px; }
+.sb-new h2, .sb-new p { margin: 0; }
+.sb-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.sb-wide { grid-column: 1 / -1; }
+.sb-field { display: grid; gap: 6px; font-size: 14px; color: var(--ink-3); }
+.sb-field input, .sb-field textarea {
+	box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: var(--radius-s); border: 1px solid var(--line);
+	background: var(--surface-2); color: var(--ink); font: inherit; font-size: 16px;
+}
+.sb-field textarea { resize: vertical; line-height: 1.5; font-size: 15px; }
+.sb-how p { margin: 0 0 8px; }
+.sb-how p:last-child { margin: 0; }
+.sb-import { display: grid; gap: 12px; margin: 18px 0; }
+.sb-from { max-width: 260px; }
+.sb-notes { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; color: var(--ink-2); font-size: 15px; }
+.sb-notes li { display: flex; align-items: center; gap: 8px; }
+.sb-notes svg.i { width: 16px; height: 16px; flex: none; }
+.sb-hymns { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+.sb-hymn { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--radius-s); background: var(--surface); }
+.sb-have { opacity: 0.55; }
+.sb-num { flex: none; min-width: 70px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sb-hymn-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.sb-hymn-text input { border: 0; border-bottom: 1px solid transparent; background: none; color: var(--ink); font: inherit; font-weight: 600; padding: 2px 0; }
+.sb-hymn-text input:focus { outline: none; border-bottom-color: var(--ink-3); }
+.sb-hymn-text small { color: var(--ink-3); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-done { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 640px) { .sb-fields { grid-template-columns: 1fr; } .sb-book { flex-wrap: wrap; } }

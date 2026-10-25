@@ -1,6 +1,6 @@
 # Songbooks
 
-Status: agreed 2026-10-25. Step 1 (data and Worker) built in v26.10.25.15; steps 2 to 5 to come.
+Status: agreed 2026-10-25. Step 1 (data and Worker) built in v26.10.25.15, step 2 (import) in v26.10.25.16; steps 3 to 5 to come.
 
 Hymnals and praise books (Tedim Labu, Galhiam and others) as lyrics collections of their own: texts with no recording in Zaideih, found by book and hymn number, searchable, and joined to the recordings that sing them. Built on the lyrics system (docs/lyrics.md), which already keeps versions, history, reports, translations and shared texts.
 
@@ -45,6 +45,13 @@ Person ── translated ──────────────────�
 - Tedim and other Latin-script books: the phone's own text recognition (Live Text on iPhone, Google Lens on Android) already reads a page well, at no cost and with nothing to add to the app. The page's text is pasted into an import screen that splits it at hymn numbers into entries, as drafts to correct, never saved unseen.
 - Myanmar-script books need real recognition (docs/TODO.md, "typing in a scanned page"): a library in the app or a vision model on the server, each with its cost. Decided when a Myanmar book is started.
 - A command-line import (`tools/songbook.mjs`, dry run unless `--apply`) for a whole book from a text file, for books typed elsewhere.
+
+### Import (step 2)
+
+- Splitting (`src/core/songbook-import.js`, `splitHymns`): a hymn starts at its number alone on a line with its title on the next line with words, or at its number and its title in capitals on one line. A number alone with no title after it (a page number) and verse numbers ("1. …") are not hymns; a heading is only taken when its number is larger than the hymn before it, and the first one can be named (`from`). Titles in capitals become title case ("LUNGMUANNA KA NEI" → "Lungmuanna Ka Nei"). It says what to check: lines before the first hymn, numbers missing between two hymns, hymns with no words.
+- In the app, for the Songbooks right: Songbooks (`#/songbooks`, in the sidebar's Browse and the logo menu, shown only to the right until books are public) lists the books and adds one (title, short name, language, edition, year, publisher; private). A book's **Add pages** (`#/songbooks/import?book=<id>`) takes pasted pages, shows the hymns found with their titles to correct and numbers already in the book greyed out (left as they are), and adds the rest one by one: the number and title, then the words as the text's first version. Adding stops at the first failure and says which hymn; what was added stays.
+- From a file: `node tools/songbook.mjs split <file> [--from N]` shows the hymns found; `import <file> --book <id> [--from N] [--apply]` adds them the same way, signed in with `ZAIDEIH_SESSION` (a signed-in device's session token).
+- Editing one hymn's words, its page and the book's index come with step 3.
 
 ## In the app
 
