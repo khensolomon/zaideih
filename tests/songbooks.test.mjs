@@ -96,3 +96,52 @@ test("songbooks: private until its rights are settled and the owner makes it pub
 	assert.equal((await sb("gh-ed", "POST", `/songbooks/${book.body.id}/entries/146`, { remove: true })).status, 200);
 	assert.equal((await sb("gh-ed", "POST", `/songbooks/${book.body.id}/entries/146`, { remove: true })).status, 404);
 });
+
+test("songbooks: public texts in the index and on pages; recordings joined to a text; private again takes them out", { skip }, async () => {
+	const { env, signIn, sb, ly } = setup();
+	const ed = (await signIn("gh-ed")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'songbooks', 'khen', 0)").bind(ed).run();
+	await env.DB.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (101, 'a', 'b.mp3', 0), (102, 'a', 'c.mp3', 0)").run();
+	const book = (await sb("gh-ed", "POST", "/songbooks", { title: "Tedim Labu", short: "TL", lang: "tedim" })).body;
+	const fanny = (await sb("gh-ed", "POST", "/songbooks/people", { name: "Fanny Crosby" })).body;
+	const work = (await sb("gh-ed", "POST", "/songbooks/works", { title: "Blessed Assurance", lang: "english", credits: [{ person: fanny.id, role: "words" }] })).body;
+	const text = (await sb("gh-ed", "POST", `/songbooks/${book.id}/entries`, { number: 145, title: "Lungmuanna Ka Nei", work: work.id })).body.text;
+	const english = (await sb("gh-ed", "POST", `/songbooks/${book.id}/entries`, { number: 900, title: "Blessed Assurance", lang: "english", work: work.id })).body.text;
+	await ly("gh-ed", "POST", `/lyrics/${text}`, { text: "Lungmuanna ka nei hi", base: 0 });
+	assert.deepEqual((await sb("gh-ed", "GET", "/songbooks/works?q=bless")).body.works.map((w) => w.id), [work.id]);
+
+	// Private: the index, people and works show nothing of it to the public.
+	assert.deepEqual((await sb(null, "GET", "/songbooks/index")).body, { books: [], entries: [] });
+	assert.deepEqual((await sb("gh-ed", "GET", "/songbooks/index")).body.entries, [[text, book.id, 145, "Lungmuanna Ka Nei"], [english, book.id, 900, "Blessed Assurance"]]);
+	assert.equal((await sb(null, "GET", `/songbooks/people/${fanny.id}`)).status, 404);
+	assert.equal((await sb(null, "GET", `/songbooks/works/${work.id}`)).status, 404);
+
+	// A recording joined to the private text, by the Songbooks right: its words are not shown either.
+	const joined = await ly("gh-ed", "POST", "/lyrics/101/link", { to: text });
+	assert.equal(joined.status, 200, JSON.stringify(joined.body));
+	assert.equal((await ly(null, "GET", "/lyrics/101")).status, 404);
+	assert.equal((await ly("gh-ann", "POST", "/lyrics/102/link", { to: text })).status, 404, "a private text is not there for a member without the right");
+	const before = (await ly(null, "GET", "/lyrics/index?since=0")).body;
+	assert.deepEqual(before.songs, []);
+
+	// Public: the index, the recording, the person and the work.
+	await sb("gh-owner", "POST", `/songbooks/${book.id}`, { rights: "public-domain", rightsNote: "Printed 1902", public: true });
+	const after = (await ly(null, "GET", `/lyrics/index?since=${before.at}`)).body;
+	assert.deepEqual(after.songs.map((s) => s[0]).sort(), [101, text].sort());
+	assert.equal((await ly(null, "GET", "/lyrics/101")).body.text, "Lungmuanna ka nei hi");
+	assert.deepEqual((await sb(null, "GET", `/songbooks/texts/${text}`)).body.recordings, [101]);
+	assert.deepEqual((await sb(null, "GET", `/songbooks/texts/${text}`)).body.versions.map((v) => [v.id, v.label]), [[english, "TL 900"]]);
+	const person = (await sb(null, "GET", `/songbooks/people/${fanny.id}`)).body;
+	assert.deepEqual([person.name, person.works.map((w) => [w.title, w.role])], ["Fanny Crosby", [["Blessed Assurance", "words"]]]);
+	assert.deepEqual((await sb(null, "GET", `/songbooks/works/${work.id}`)).body.texts.map((t) => t.label), ["TL 900", "TL 145"]);
+	assert.deepEqual((await sb(null, "GET", "/songbooks/index")).body.books.map((b) => b.short), ["TL"]);
+
+	// Private again: gone from the index for the app, and the recording shows nothing.
+	const mid = (await ly(null, "GET", "/lyrics/index?since=0")).body.at;
+	await sb("gh-owner", "POST", `/songbooks/${book.id}`, { public: false });
+	const gone = (await ly(null, "GET", `/lyrics/index?since=${mid}`)).body;
+	assert.deepEqual(gone.gone.map((g) => g[0]).sort(), [101, text].sort());
+	assert.equal((await ly(null, "GET", "/lyrics/101")).status, 404);
+	// The Songbooks right unjoins it.
+	assert.equal((await ly("gh-ed", "POST", "/lyrics/101/unlink", {})).status, 200);
+});

@@ -164,6 +164,8 @@ async function view(env, track, lang, { hiddenToo = false } = {}) {
 	const source = await sourceOf(env, track);
 	const row = await current(env, source, lang);
 	if (!row || (row.hidden_at && !hiddenToo)) return null;
+	// A songbook text in no public book (songbooks.js): not shown, nor on the recordings joined to it.
+	if (isText(source) && !hiddenToo && !(await textIsPublic(env, source))) return null;
 	const linked = await linkedTo(env, source);
 	if (!linked.length) return shown(row);
 	return {
@@ -237,21 +239,23 @@ async function index(env, since, ctx, nowSeconds) {
 		const hit = await cache.match(INDEX_KEY);
 		if (hit) return answer(200, await hit.json(), "*", headers);
 	}
-	// Songbook texts are not in the app's index yet (docs/songbooks.md, step 4).
-	const rows = (await env.DB.prepare(`SELECT track, lang, version, text, words, hidden_at, changed_at FROM lyrics WHERE changed_at >= ?1 AND track < ?2 ${since ? "" : "AND hidden_at IS NULL"} ORDER BY track, lang`).bind(since, TEXT_BASE).all()).results ?? [];
+	// Songbook texts are in it while printed in a public book; one made private is gone (`pub` 0).
+	const PUB = (col) => `CASE WHEN ${col} < ?2 THEN 1 ELSE EXISTS (SELECT 1 FROM songbook_entries pe JOIN songbooks pb ON pb.id = pe.book_id WHERE pe.text_id = ${col} AND pb.public = 1) END`;
+	const rows = (await env.DB.prepare(`SELECT track, lang, version, text, words, hidden_at, changed_at, ${PUB("track")} AS pub FROM lyrics
+		WHERE changed_at >= ?1 ${since ? "" : `AND hidden_at IS NULL AND ${PUB("track")} = 1`} ORDER BY track, lang`).bind(since, TEXT_BASE).all()).results ?? [];
 	const missing = rows.filter((r) => r.words === null);
 	if (missing.length) {
 		for (const r of missing) r.words = lyricsWords(r.text);
 		await env.DB.batch(missing.map((r) => env.DB.prepare("UPDATE lyrics SET words = ?3 WHERE track = ?1 AND lang = ?2").bind(r.track, r.lang, r.words)));
 	}
 	// Linked recordings show their source's words: changed when the link or the source's text did.
-	const linked = (await env.DB.prepare(`SELECT k.track, l.lang, l.version, l.text, l.words, l.hidden_at, k.unlinked_at,
+	const linked = (await env.DB.prepare(`SELECT k.track, l.lang, l.version, l.text, l.words, l.hidden_at, k.unlinked_at, ${PUB("k.source")} AS pub,
 		MAX(k.at, l.changed_at, COALESCE(k.unlinked_at, 0)) AS changed_at
 		FROM lyrics_links k JOIN lyrics l ON l.track = k.source
-		WHERE MAX(k.at, l.changed_at, COALESCE(k.unlinked_at, 0)) >= ?1 ${since ? "" : "AND k.unlinked_at IS NULL AND l.hidden_at IS NULL"} ORDER BY k.track, l.lang`).bind(since).all()).results ?? [];
+		WHERE MAX(k.at, l.changed_at, COALESCE(k.unlinked_at, 0)) >= ?1 ${since ? "" : `AND k.unlinked_at IS NULL AND l.hidden_at IS NULL AND ${PUB("k.source")} = 1`} ORDER BY k.track, l.lang`).bind(since, TEXT_BASE).all()).results ?? [];
 	for (const r of linked) r.words ??= lyricsWords(r.text);
 	const all = [...rows, ...linked];
-	const out = (r) => r.hidden_at || r.unlinked_at;
+	const out = (r) => r.hidden_at || r.unlinked_at || !r.pub;
 	const body = {
 		at: all.reduce((t, r) => Math.max(t, r.changed_at), since) || nowSeconds,
 		// The app drops what is gone, then adds what is shown: a recording unlinked with a copy of its own keeps it.
@@ -345,9 +349,9 @@ async function signedIn(env, request, nowSeconds) {
 	return me;
 }
 
-function mayModerate(me, track = 0) {
-	// A songbook text is looked after by the Songbooks right too.
-	if (!can(me, "lyrics") && !(isText(track) && can(me, "songbooks"))) throw new MemberError("this needs the Lyrics right", 403);
+function mayModerate(me, ...ids) {
+	// A songbook text, and a recording joined to one, are looked after by the Songbooks right too.
+	if (!can(me, "lyrics") && !(ids.some((i) => isText(i)) && can(me, "songbooks"))) throw new MemberError("this needs the Lyrics right", 403);
 }
 
 const nameOf = (r) => r.name ?? "a member no longer here";
@@ -419,9 +423,12 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		}
 
 		if (action === "propose" && m === "POST") return answer(201, await propose(env, track, await readBody(request), me, nowSeconds), cors);
+		const linkBody = action === "link" && m === "POST" ? await readBody(request) : null;
+		// Joining a recording to a songbook text: the Songbooks right too.
+		const toText = Number.isSafeInteger(linkBody?.to) && isText(linkBody.to);
 		// App builds before 26.10.24.32 offer "Use these lyrics" to every member: without the right, it is a proposal.
-		if (action === "link" && m === "POST" && !can(me, "lyrics")) {
-			await propose(env, track, await readBody(request), me, nowSeconds);
+		if (linkBody && !can(me, "lyrics") && !(toText && can(me, "songbooks"))) {
+			await propose(env, track, linkBody, me, nowSeconds);
 			throw new MemberError("only those who look after lyrics link songs; your suggestion was sent to them instead", 403);
 		}
 		if (action === "report" && m === "POST") {
@@ -437,9 +444,10 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			return answer(201, { reported: true }, cors);
 		}
 
-		mayModerate(me, track);
+		// A recording showing a songbook text is looked after by the Songbooks right too.
+		mayModerate(me, track, toText ? linkBody.to : 0, action === "unlink" ? await sourceOf(env, track) : 0);
 		if (action === "link" && m === "POST") {
-			const body = await readBody(request);
+			const body = linkBody;
 			if (!Number.isSafeInteger(body.to) || body.to <= 0) throw new MemberError("to must be the song whose lyrics to show");
 			await checkTrack(env, track);
 			await checkTrack(env, body.to);

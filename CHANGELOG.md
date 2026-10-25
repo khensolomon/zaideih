@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.25.17
+
+- Songbooks: book and hymn pages, search by hymn number, recordings joined to hymns, editing details and credits
+- A book's index filtered by number or words; a hymn with its work, writers, translators, other versions and recordings; person and work pages
+- Search: "TL 145" opens that hymn; a line of a public hymn's words finds it
+- Songbooks right: edit words in the studio, details, credits and work, join or unjoin recordings, take a number out; owner and co-owners make a book public
+- Songbook pages no longer pile up their listeners when moved between (the import page added hymns twice after a second visit)
+
 ## v26.10.25.16
 
 - Songbooks, step 2: add a book and import its pages, split into hymns

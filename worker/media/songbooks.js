@@ -9,11 +9,16 @@
  * above any track id, so the lyrics routes take either.
  *
  * A book is private until its rights are settled and the owner or a co-owner
- * makes it public: its entries and texts are then seen only with the
- * Songbooks right. People and works are read with the right only, until their
- * public pages come (a later step).
+ * makes it public: until then its entries and texts are seen only with the
+ * Songbooks right. A person or a work is public once one of their texts is.
+ * Recordings join a text as shared lyrics (lyrics.js, link): the text is the
+ * source; a recording joined to a private text shows nothing. Making a book
+ * public or private touches its texts and their links, so the app's lyrics
+ * index takes them in or drops them.
  *
  *   GET  /songbooks                        public books; with the right, private ones too
+ *   GET  /songbooks/index                  every hymn of those books, [text, book, number, title],
+ *                                          for the app's search (cached 5 minutes when public)
  *   POST /songbooks {title, short, lang, edition, year, publisher}
  *                                          Songbooks right: a new book, private
  *   GET  /songbooks/:book                  the book and its entries (private: the right)
@@ -29,10 +34,13 @@
  *   GET  /songbooks/texts/:id              a text: its work and credits, the books
  *                                          printing it, its words (private: the right)
  *   POST /songbooks/texts/:id {title, lang, firstLine, work, from, credits}
+ *   GET  /songbooks/people/:id             what a person wrote, composed or translated (public
+ *                                          texts only, without the right)
  *   GET  /songbooks/people?q=              Songbooks right: people by name
  *   POST /songbooks/people {name, aka, born, died, note}
  *   POST /songbooks/people/:id {...}
- *   GET  /songbooks/works/:id              Songbooks right: a work, its credits and texts
+ *   GET  /songbooks/works/:id              a work, its credits and texts (public texts only, without the right)
+ *   GET  /songbooks/works?q=               Songbooks right: works by title or tune
  *   POST /songbooks/works {title, lang, tune, metre, year, scripture, topics, note, credits}
  *   POST /songbooks/works/:id {...}
  *
@@ -156,6 +164,12 @@ const writeCredits = (env, subject, subjectId, credits) => [
 	...credits.map((c) => env.DB.prepare("INSERT OR IGNORE INTO song_credits (subject, subject_id, person_id, role) VALUES (?1, ?2, ?3, ?4)").bind(subject, subjectId, c.person, c.role)),
 ];
 
+/** SQL: 1 when text `col` is printed in a public book. */
+const PUBLIC_SQL = (col) => `EXISTS (SELECT 1 FROM songbook_entries pe JOIN songbooks pb ON pb.id = pe.book_id WHERE pe.text_id = ${col} AND pb.public = 1)`;
+/** SQL: where text `col` is printed first ("TL 145"), books in title order. */
+const LABEL_SQL = (col, editor) => `(SELECT lb.short || ' ' || le.number FROM songbook_entries le JOIN songbooks lb ON lb.id = le.book_id
+	WHERE le.text_id = ${col}${editor ? "" : " AND lb.public = 1"} ORDER BY lb.title, le.number LIMIT 1)`;
+
 async function textShape(env, t, editor) {
 	const entries = (await env.DB.prepare(`SELECT e.number, b.id, b.short, b.title, b.public FROM songbook_entries e JOIN songbooks b ON b.id = e.book_id
 		WHERE e.text_id = ?1 ORDER BY b.title, e.number`).bind(t.id).all()).results ?? [];
@@ -167,6 +181,11 @@ async function textShape(env, t, editor) {
 		work: work ? { ...work, credits: await creditsOf(env, "work", work.id) } : null,
 		books: entries.filter((e) => editor || e.public).map((e) => ({ book: e.id, short: e.short, title: e.title, number: e.number })),
 		lyrics: words.filter((w) => editor || !w.hidden_at).map((w) => ({ lang: w.lang, version: w.version, text: w.text, hidden: Boolean(w.hidden_at) })),
+		// The recordings that show this text (lyrics_links, as shared lyrics).
+		recordings: ((await env.DB.prepare("SELECT track FROM lyrics_links WHERE source = ?1 AND unlinked_at IS NULL ORDER BY track").bind(t.id).all()).results ?? []).map((r) => r.track),
+		// Other versions of the same work: the original, other translations.
+		versions: work ? ((await env.DB.prepare(`SELECT t.id, t.title, t.lang, ${LABEL_SQL("t.id", editor)} AS label FROM song_texts t
+			WHERE t.work_id = ?1 AND t.id <> ?2 ${editor ? "" : `AND ${PUBLIC_SQL("t.id")}`} ORDER BY t.lang, t.title`).bind(work.id, t.id).all()).results ?? []) : [],
 	};
 }
 
@@ -219,6 +238,18 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 				${all ? "" : "WHERE b.public = 1"} ORDER BY b.title`).all()).results ?? [];
 			return reply(200, { books: rows.map(bookShape) });
 		}
+		// GET /songbooks/index: every hymn of the books, for the app's search and lookups.
+		if (parts[0] === "index" && parts.length === 1 && m === "GET") {
+			const me = await maybeMember(env, request, nowSeconds);
+			const all = Boolean(me && can(me, "songbooks"));
+			const books = (await env.DB.prepare(`SELECT id, short, title, lang, public FROM songbooks ${all ? "" : "WHERE public = 1"} ORDER BY title`).all()).results ?? [];
+			const entries = (await env.DB.prepare(`SELECT e.text_id, e.book_id, e.number, t.title FROM songbook_entries e JOIN songbooks b ON b.id = e.book_id JOIN song_texts t ON t.id = e.text_id
+				${all ? "" : "WHERE b.public = 1"} ORDER BY e.book_id, e.number`).all()).results ?? [];
+			return answer(200, {
+				books: books.map((b) => ({ id: b.id, short: b.short, title: b.title, lang: b.lang, public: Boolean(b.public) })),
+				entries: entries.map((e) => [e.text_id, e.book_id, e.number, e.title]),
+			}, cors ?? "*", all ? {} : { "Cache-Control": "public, max-age=300" });
+		}
 		// POST /songbooks
 		if (!parts.length) {
 			const me = await editor(env, request, nowSeconds);
@@ -234,6 +265,20 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 
 		// /songbooks/people
 		if (parts[0] === "people") {
+			// A person's page: what they wrote, composed or translated (public texts only, without the right).
+			if (parts.length === 2 && m === "GET") {
+				const pid = id(Number(parts[1]), "the person");
+				const viewer = await maybeMember(env, request, nowSeconds);
+				const all = Boolean(viewer && can(viewer, "songbooks"));
+				const p = await env.DB.prepare("SELECT id, name, aka, born, died, note FROM song_people WHERE id = ?1").bind(pid).first();
+				if (!p) throw new MemberError(`there is no person ${pid}`, 404);
+				const works = (await env.DB.prepare(`SELECT w.id, w.title, w.lang, c.role FROM song_credits c JOIN song_works w ON w.id = c.subject_id
+					WHERE c.subject = 'work' AND c.person_id = ?1 ${all ? "" : `AND EXISTS (SELECT 1 FROM song_texts vt WHERE vt.work_id = w.id AND ${PUBLIC_SQL("vt.id")})`} ORDER BY w.title`).bind(pid).all()).results ?? [];
+				const texts = (await env.DB.prepare(`SELECT t.id, t.title, t.lang, c.role, ${LABEL_SQL("t.id", all)} AS label FROM song_credits c JOIN song_texts t ON t.id = c.subject_id
+					WHERE c.subject = 'text' AND c.person_id = ?1 ${all ? "" : `AND ${PUBLIC_SQL("t.id")}`} ORDER BY t.title`).bind(pid).all()).results ?? [];
+				if (!all && !works.length && !texts.length) throw new MemberError(`there is no person ${pid}`, 404);
+				return reply(200, { ...p, works, texts });
+			}
 			const me = await editor(env, request, nowSeconds);
 			if (parts.length === 1 && m === "GET") {
 				const q = (url.searchParams.get("q") ?? "").trim();
@@ -255,13 +300,22 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 
 		// /songbooks/works
 		if (parts[0] === "works") {
-			const me = await editor(env, request, nowSeconds);
 			const wid = parts[1] === undefined ? null : id(Number(parts[1]), "the work");
+			// A work: its credits and its texts (public ones only, without the right).
 			if (wid !== null && m === "GET" && parts.length === 2) {
+				const viewer = await maybeMember(env, request, nowSeconds);
+				const all = Boolean(viewer && can(viewer, "songbooks"));
 				const w = await env.DB.prepare("SELECT * FROM song_works WHERE id = ?1").bind(wid).first();
-				if (!w) throw new MemberError(`there is no work ${wid}`, 404);
-				const texts = (await env.DB.prepare("SELECT id, title, lang FROM song_texts WHERE work_id = ?1 ORDER BY lang, title").bind(wid).all()).results ?? [];
+				const texts = w ? (await env.DB.prepare(`SELECT t.id, t.title, t.lang, ${LABEL_SQL("t.id", all)} AS label FROM song_texts t
+					WHERE t.work_id = ?1 ${all ? "" : `AND ${PUBLIC_SQL("t.id")}`} ORDER BY t.lang, t.title`).bind(wid).all()).results ?? [] : [];
+				if (!w || (!all && !texts.length)) throw new MemberError(`there is no work ${wid}`, 404);
 				return reply(200, { id: w.id, title: w.title, lang: w.lang, tune: w.tune, metre: w.metre, year: w.year, scripture: w.scripture, topics: w.topics, note: w.note, credits: await creditsOf(env, "work", wid), texts });
+			}
+			const me = await editor(env, request, nowSeconds);
+			if (wid === null && m === "GET" && parts.length === 1) {
+				const q = (url.searchParams.get("q") ?? "").trim();
+				const rows = (await env.DB.prepare("SELECT id, title, lang, tune, year FROM song_works WHERE ?1 = '' OR title LIKE '%' || ?1 || '%' OR tune LIKE '%' || ?1 || '%' ORDER BY title LIMIT ?2").bind(q, PEOPLE_LIMIT).all()).results ?? [];
+				return reply(200, { works: rows });
 			}
 			if (m !== "POST" || parts.length > 2) throw new MemberError(`no route ${m} ${url.pathname}`, 404);
 			const body = await readBody(request);
@@ -334,6 +388,13 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 			const row = await env.DB.prepare(`UPDATE songbooks SET title = ?2, short = ?3, lang = ?4, edition = ?5, year = ?6, publisher = ?7, rights = ?8, rights_note = ?9, public = ?10 WHERE id = ?1 RETURNING *`)
 				.bind(bookId, str(body, "title", { required: true, fallback: b.title }), short, lang(body, { fallback: b.lang }), str(body, "edition", { fallback: b.edition }),
 					body.year === undefined ? b.year : year(body, "year"), str(body, "publisher", { fallback: b.publisher }), rights, rightsNote, Number(pub)).first();
+			// Made public or private: its texts, and the recordings showing them, change in the app's index (lyrics.js).
+			if (pub !== Boolean(b.public)) {
+				await env.DB.batch([
+					env.DB.prepare("UPDATE lyrics SET changed_at = ?2 WHERE track IN (SELECT text_id FROM songbook_entries WHERE book_id = ?1)").bind(bookId, nowSeconds),
+					env.DB.prepare("UPDATE lyrics_links SET at = ?2 WHERE unlinked_at IS NULL AND source IN (SELECT text_id FROM songbook_entries WHERE book_id = ?1)").bind(bookId, nowSeconds),
+				]);
+			}
 			return answer(200, bookShape(row), cors);
 		}
 

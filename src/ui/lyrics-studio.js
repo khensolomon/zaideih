@@ -49,16 +49,18 @@ const day = (s) => new Date(s * 1000).toLocaleDateString(undefined, { year: "num
 
 /** The names a song's parts are inserted with: the hymnbook's for Zolai songs. */
 function partNames(track) {
-	return /^zo/i.test(track.album?.lang?.name ?? "") ? { verse: "Tang", chorus: "Sakkik" } : { verse: "Verse", chorus: "Chorus" };
+	return /^(zo|tedim)/i.test(track.album?.lang?.name ?? "") ? { verse: "Tang", chorus: "Sakkik" } : { verse: "Verse", chorus: "Chorus" };
 }
 
 /**
  * @param {object} catalog
  * @param {number} id  the song
- * @param {object} ctx { notify, promptText, confirmAction, openMenu, canModerate: () => boolean, playSong(track) }
+ * @param {object} ctx { notify, promptText, confirmAction, openMenu, canModerate: () => boolean, playSong(track) },
+ *   and for a songbook text (docs/songbooks.md): `song` (its title, and as `album` where it is printed and
+ *   its language), `path` (its page, "songbooks/text/<id>"): no timing, no same-song offers.
  */
 export function lyricsStudio(catalog, id, ctx, lang = "") {
-	const track = catalog.track(id);
+	const track = ctx.song ?? catalog.track(id);
 	if (!(lang in LYRICS_LANGS)) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such language</h2><p>Lyrics are kept in the song's own words, and in ${Object.values(LYRICS_LANGS).slice(1).join(" and ")} translations.</p></div>` };
 	if (!track || track.upload) return { title: "Lyrics studio", body: html`<div class="empty"><h2>No such song</h2><p>Lyrics are kept for songs in the catalog.</p></div>` };
 	st = {
@@ -75,6 +77,8 @@ export function lyricsStudio(catalog, id, ctx, lang = "") {
 }
 
 const dirty = () => st.text !== (st.server?.text ?? "");
+/** The page these lyrics are read on, and the studio's own: a song's, or a songbook text's. */
+const pagePath = (ctx) => ctx.path ?? `lyrics/${st.id}`;
 /*
  * The text box holds the words; the details at the top (Key: Eb ...) are the
  * chips. st.text is always st.head + the words. The split is made again only
@@ -109,11 +113,11 @@ function head(ctx) {
 		: !signed || st.loading ? ""
 		: dirty() ? "Draft kept on this device"
 		: st.server ? `Version ${st.server.version}` : "No lyrics yet";
-	const modes = [["write", "Write", "edit"], ["preview", "Preview", "eye"], ["timing", "Timing: tap along to time the lines", "timer"]];
+	const modes = [["write", "Write", "edit"], ["preview", "Preview", "eye"], ...(ctx.song ? [] : [["timing", "Timing: tap along to time the lines", "timer"]])];
 	if (ctx.canModerate()) modes.push(["history", "History, reports and hiding", "history"]);
 	const blocked = !dirty() || st.saving || looksZawgyi(st.text) || !st.text.trim();
 	return html`<header class="st-head">
-		<a class="st-icon" href="${href(`lyrics/${st.id}`, st.lang ? { lang: st.lang } : undefined)}" aria-label="Back to the lyrics (Esc)" title="Back to the lyrics (Esc)">${icon("back")}</a>
+		<a class="st-icon" href="${href(pagePath(ctx), st.lang ? { lang: st.lang } : undefined)}" aria-label="Back to the lyrics (Esc)" title="Back to the lyrics (Esc)">${icon("back")}</a>
 		<div class="st-title">
 			<b class="${scriptClass(t.title)}">${t.title}</b>
 			<span>${t.album.title}${state ? html` · ${state}` : ""}</span>
@@ -135,7 +139,7 @@ function banners(ctx) {
 		out.push(html`<div class="st-banner"><p><b>Shared lyrics.</b> ${sharedWithHtml(st.catalog, shared)}: changing the words changes them there too. Timing is this recording's own.</p>
 			${linked && ctx.canModerate() ? html`<button class="btn" data-st="unlink-copy">Give it a copy of its own</button><button class="link-btn" data-st="unlink">Unlink</button>` : ""}</div>`);
 	}
-	if (!st.server && !st.lang && !st.text.trim()) {
+	if (!st.server && !st.lang && !st.text.trim() && !ctx.song) {
 		const offer = suggestionsHtml(st.catalog, st.track, sameOpts(ctx));
 		if (offer) out.push(offer);
 	}
@@ -339,7 +343,7 @@ function history(ctx) {
 			<summary><b>Version ${v.version}</b> by ${v.by.name}, ${day(v.at)}${v.note ? html` <span class="muted">(${v.note})</span>` : ""}</summary>
 			<pre class="ly-text ${scriptClass(v.text)}">${v.text}</pre>
 		</details></li>`)}</ol>` : ""}
-		${st.lang || st.compare ? "" : suggestionsHtml(st.catalog, st.track, sameOpts(ctx))}
+		${st.lang || st.compare || ctx.song ? "" : suggestionsHtml(st.catalog, st.track, sameOpts(ctx))}
 	</div>`;
 }
 
@@ -719,7 +723,7 @@ function mount(root, ctx) {
 		} else if (what === "lang") {
 			ctx.openMenu(b, Object.entries(LYRICS_LANGS).map(([code, name]) => ({
 				label: `${name}${code === st.lang ? " ✓" : lyricsIndex.langs(st.id).includes(code) ? "" : " (none yet)"}`,
-				run: () => { location.hash = href(`lyrics/${st.id}/studio`, code ? { lang: code } : undefined); },
+				run: () => { location.hash = href(`${pagePath(ctx)}/studio`, code ? { lang: code } : undefined); },
 			})));
 		} else if (what === "part") {
 			insertPart(b.dataset.part);
@@ -766,7 +770,7 @@ function mount(root, ctx) {
 	root.addEventListener("toggle", (e) => { if (e.target.classList?.contains("st-ref")) st.refOpen = e.target.open; }, true);
 	root.addEventListener("input", (e) => { if (e.target.id === "st-text") changed(st.head + e.target.value); });
 	// Finding the same song: results as the person types, offering what fits who is looking.
-	wireFind(root, st.catalog, st.track, () => sameOpts(ctx));
+	if (!ctx.song) wireFind(root, st.catalog, st.track, () => sameOpts(ctx));
 	root.addEventListener("change", (e) => {
 		if (e.target.dataset?.st === "merge-keep" && st.compare) { st.compare.keep = e.target.value; draw(); }
 	});
@@ -784,7 +788,7 @@ function mount(root, ctx) {
 		// Escape in the find field clears it (the browser's own), not the studio.
 		if (e.key === "Escape" && !document.querySelector("dialog[open], .menu") && !e.target.closest?.(".ly-find-input")) {
 			e.preventDefault();
-			location.hash = href(`lyrics/${st.id}`, st.lang ? { lang: st.lang } : undefined);
+			location.hash = href(pagePath(ctx), st.lang ? { lang: st.lang } : undefined);
 			return;
 		}
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {

@@ -2078,3 +2078,46 @@ img.acct-avatar { object-fit: cover; }
 .sb-hymn-text small { color: var(--ink-3); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-done { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 640px) { .sb-fields { grid-template-columns: 1fr; } .sb-book { flex-wrap: wrap; } }
+/* A songbook, a hymn, a person (ui/songbook-pages.js). */
+.sb-head { display: flex; align-items: center; gap: 16px; margin: 0 0 14px; }
+.sb-head h1 { margin: 0; }
+.sb-head p { margin: 4px 0 0; }
+.sb-short-big { min-width: 64px; height: 64px; font-size: 20px; border-radius: 16px; }
+.sb-label { min-width: 0; padding: 0 14px; font-size: 18px; white-space: nowrap; }
+a.sb-book-text { color: inherit; }
+a.sb-book-text:hover { text-decoration: none; }
+.sb-filter { display: flex; align-items: center; gap: 10px; margin: 16px 0; padding: 0 14px; min-height: 46px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); }
+.sb-filter input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 16px; outline: none; }
+.sb-filter svg.i { width: 18px; height: 18px; }
+.sb-index { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sb-index a { display: flex; align-items: center; gap: 14px; padding: 9px 12px; border-radius: var(--radius-s); color: inherit; }
+.sb-index a:hover { text-decoration: none; background: var(--surface); }
+.sb-index small { color: var(--ink-3); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-langs { display: inline-flex; gap: 6px; }
+.sb-langs .chip.on { background: var(--accent); color: var(--on-accent); }
+.sb-credits dl, .sb-credits-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+.sb-credits dt, .sb-credits-dl dt { color: var(--ink-3); }
+.sb-credits dd, .sb-credits-dl dd { margin: 0; }
+.sb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sb-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: var(--radius-s); background: var(--surface); }
+.sb-list a { color: inherit; flex: 1; min-width: 0; }
+.sb-list a:hover { text-decoration: none; }
+.sb-join { margin-top: 14px; }
+.sb-prevnext { display: flex; justify-content: space-between; margin: 28px 0 0; }
+.sb-details { display: grid; gap: 14px; margin: 0 0 20px; }
+.sb-details h3 { margin: 8px 0 0; }
+.sb-credit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sb-credit-row > b { min-width: 120px; }
+.sb-chip { display: inline-flex; align-items: center; gap: 4px; }
+.sb-chip button { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.sb-chip svg.i { width: 14px; height: 14px; }
+.sb-pick { position: relative; display: inline-flex; flex-direction: column; gap: 6px; min-width: 200px; }
+.sb-pick input { padding: 6px 10px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 14px; }
+.sb-pick-results { display: flex; flex-wrap: wrap; gap: 6px; }
+.sb-pick-results .chip { cursor: pointer; border: 0; font: inherit; font-size: 13px; }
+.sb-jump { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; color: inherit; }
+.sb-jump:hover { text-decoration: none; background: var(--raised); }
+.sb-jump span { display: grid; gap: 2px; }
+.sb-jump small { color: var(--ink-3); }
+.ly-hymn { display: inline-flex; align-items: center; gap: 6px; }
+.ly-hymn svg.i { width: 16px; height: 16px; }

@@ -14,6 +14,7 @@ import { addHymns, createBook, listBooks, readBook, SongbookError } from "../cor
 import { uploads } from "../core/uploads.js";
 import { href } from "../core/router.js";
 import { icon } from "./icons.js";
+import { own } from "./songbook-pages.js";
 
 const notSignedIn = () => html`<div class="empty"><h2>Songbooks</h2><p>Hymnals and praise books, with every hymn's words, are coming to Zaideih. Those who add them sign in first.</p><p><a class="btn primary" href="#/account">Sign in</a></p></div>`;
 
@@ -29,12 +30,12 @@ export async function songbooksView() {
 	const body = html`<h1>Songbooks</h1>
 		${books.length ? html`<ul class="sb-books">${books.map((b) => html`<li class="sb-book">
 			<span class="sb-short">${b.short}</span>
-			<span class="sb-book-text"><b>${b.title}</b><small>${[b.lang, b.edition && `edition ${b.edition}`, b.year, `${b.entries.toLocaleString()} ${b.entries === 1 ? "hymn" : "hymns"}`].filter(Boolean).join(" · ")}</small></span>
+			<a class="sb-book-text" href="${href(`songbook/${b.id}`)}"><b>${b.title}</b><small>${[b.lang, b.edition && `edition ${b.edition}`, b.year, `${b.entries.toLocaleString()} ${b.entries === 1 ? "hymn" : "hymns"}`].filter(Boolean).join(" · ")}</small></a>
 			${b.public ? "" : html`<span class="sb-private" title="Seen only with the Songbooks right until its rights are settled">${icon("lock")} Private</span>`}
 			${editor ? html`<a class="btn" href="${href("songbooks/import", { book: b.id })}">${icon("upload")} Add pages</a>` : ""}
 		</li>`)}</ul>` : html`<div class="empty"><h2>No songbooks yet</h2><p>${editor ? "Add the first one below." : "Hymnals and praise books, with every hymn's words, are coming to Zaideih."}</p></div>`}
 		${editor ? newBookForm() : ""}`;
-	return { title: "Songbooks", body, mount: editor ? mountList : undefined };
+	return { title: "Songbooks", ...own(body, editor ? mountList : null) };
 }
 
 function newBookForm() {
@@ -102,7 +103,7 @@ export async function songbookImportView(_c, _params, query) {
 			<p><button class="btn primary" type="submit">Split into hymns</button></p>
 		</form>
 		<div id="sb-preview" aria-live="polite"></div>`;
-	return { title: `${book.title}: add pages`, body, mount: (root) => mountImport(root, book, have) };
+	return { title: `${book.title}: add pages`, ...own(body, (root) => mountImport(root, book, have)) };
 }
 
 function mountImport(root, book, have) {
