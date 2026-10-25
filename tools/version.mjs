@@ -73,7 +73,7 @@ try {
 		console.log("\ndry run: nothing written. Re-run with --apply to update package.json files.");
 		process.exit(0);
 	}
-	// The release files change in one place, shared with the admin page (tools/lib/version.mjs).
+	// The release files change in one place, shared with the Workspace (tools/lib/version.mjs).
 	const texts = {};
 	for (const path of [...VERSION_FILES.packages, ...VERSION_FILES.locks, CHANGELOG]) {
 		const text = await readFile(path, "utf8").catch(() => null);

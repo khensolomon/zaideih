@@ -1,10 +1,10 @@
 /**
- * Who is using the app, as far as the admin page knows: the level of the
+ * Who is using the app, as far as the Workspace knows: the level of the
  * person signed in on this device, so every page can offer what that level
- * may do (a link to the admin page for editors, "Suggest edits" for guests).
+ * may do (a link to the Workspace for editors, "Suggest edits" for guests).
  *
  * The level comes from the repository permission GitHub reports for the
- * person (src/admin/github.js); it is a convenience for the interface only.
+ * person (src/workspace/github.js); it is a convenience for the interface only.
  * What anyone can actually change is decided by GitHub on every request.
  *
  *   admin        repository admin or maintainer: everything
@@ -13,10 +13,10 @@
  *   guest        any other GitHub account: suggestions, reviewed by an editor
  *   viewer       not signed in (listeners)
  */
-export const WHO_KEY = "zaideih.admin.who";
-/** The GitHub sign-in (src/admin/session.js) and the fine-grained token, as the admin page keeps them. */
-export const SESSION_KEY = "zaideih.admin.session";
-export const TOKEN_KEY = "zaideih.admin.token";
+export const WHO_KEY = "zaideih.workspace.who";
+/** The GitHub sign-in (src/workspace/session.js) and the fine-grained token, as the Workspace keeps them. */
+export const SESSION_KEY = "zaideih.workspace.session";
+export const TOKEN_KEY = "zaideih.workspace.token";
 
 export const LEVELS = Object.freeze({
 	admin: { name: "Admin", canWrite: true },

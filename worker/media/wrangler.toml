@@ -35,7 +35,7 @@ META_CACHE_VERSION = "1"
 # Origins whose song plays are counted (POST /plays): the released app only,
 # so plays while testing locally never count.
 PLAY_ORIGINS = "https://zaideih.com,https://beta.zaideih.com,app://zaideih"
-# Sign in with GitHub for the admin page (auth.js): the GitHub App "Zaideih"
+# Sign in with GitHub for the Workspace (auth.js): the GitHub App "Zaideih"
 # (App ID 5427707). The client secret is a Worker secret:
 #   npx wrangler secret put GITHUB_CLIENT_SECRET --config worker/media/wrangler.toml
 # The App's callback URL is https://media.zaideih.com/auth/callback.

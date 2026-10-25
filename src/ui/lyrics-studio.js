@@ -16,7 +16,7 @@
  * Same song (ui/lyrics-share.js): without lyrics, a member proposes another
  * song's and the Lyrics right uses them; with lyrics of its own, the Lyrics
  * right compares the two in the merge panel (core/lyrics-merge.js), which
- * ?merge=<song>&proposal=<id> opens from the admin page.
+ * ?merge=<song>&proposal=<id> opens from the Workspace.
  *
  * What is typed is kept on the device as it is typed (core/lyrics.js
  * drafts), so leaving the page loses nothing: coming back continues it.
@@ -826,7 +826,7 @@ function mount(root, ctx) {
 		st.loading = false;
 		reparse();
 		draw();
-		// Opened to compare with another song (the admin's Waiting list, the lyrics page).
+		// Opened to compare with another song (the Workspace's Waiting list, the lyrics page).
 		st.proposal = ctx.proposal ?? null;
 		if (ctx.merge && ctx.canModerate() && st.server) await openCompare(ctx.merge);
 		else root.querySelector("#st-text")?.focus({ preventScroll: true });

@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS member_rights (
 -- =============================================================================
 -- member_folders: where in R2 a member with the Storage right adds files from
 -- =============================================================================
--- Set by the owner or a co-owner on the admin page (Members). Without a row
+-- Set by the owner or a co-owner in the Workspace (Members). Without a row
 -- the folder is private/<member id>/. The owner and co-owners add from the
 -- whole bucket except users/ (members' uploads).
 -- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.

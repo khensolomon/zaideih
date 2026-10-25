@@ -154,7 +154,7 @@ export async function suggest(request, env, body, { fetchImpl = (...a) => fetch(
 	const title = `Suggestion: ${s.note}`;
 	const author = { name: user.login, email: `${user.id}+${user.login}@users.noreply.github.com`, date: new Date(now()).toISOString() };
 	const commit = await gh(fetchImpl, "POST", `${repo}/git/commits`, token, {
-		message: `${title}\n\nSuggested by @${user.login} on the admin page.`,
+		message: `${title}\n\nSuggested by @${user.login} in the Workspace.`,
 		tree: newTree.sha,
 		parents: [s.base],
 		author,
@@ -165,7 +165,7 @@ export async function suggest(request, env, body, { fetchImpl = (...a) => fetch(
 		title,
 		head: branch,
 		base: "master",
-		body: `Suggested by @${user.login} on the admin page.\n\n${s.lines.map((l) => `- ${l}`).join("\n")}\n\nMerging adds it to master; it ships with the next release.`,
+		body: `Suggested by @${user.login} in the Workspace.\n\n${s.lines.map((l) => `- ${l}`).join("\n")}\n\nMerging adds it to master; it ships with the next release.`,
 		maintainer_can_modify: true,
 	});
 	return { number: pr.number, url: pr.html_url, branch };

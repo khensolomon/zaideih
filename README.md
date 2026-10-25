@@ -84,7 +84,7 @@ A push to master whose first line, or whose merged pull request's title, starts 
 ### Documentation
 
 - [docs/setup.md](docs/setup.md): from a fresh clone to a release: accounts, credentials (where to get them, where they go, what they may do) and settings
-- [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline, play counts, admin page
+- [docs/architecture.md](docs/architecture.md): design, data flow, catalog, audio, offline, play counts, Workspace
 - [docs/worker-audio.md](docs/worker-audio.md): the audio Worker: routes, deploying, checking, sign-in
 - [docs/accounts.md](docs/accounts.md): accounts, sign-ins and sessions
 - [docs/library.md](docs/library.md): personal libraries (uploads, signed streaming, moderation)
@@ -97,7 +97,7 @@ A push to master whose first line, or whose merged pull request's title, starts 
 ## Roadmap
 
 - [x] Show the counted plays in the app
-- [x] Hidden admin page to edit the catalog through GitHub
+- [x] Workspace to edit the catalog through GitHub
 - [x] Personal libraries: private uploads with moderation
 - [ ] Add albums from R2 folders to the catalog
 - [x] Ask for an upload to be published

@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.25.6
+
+- Admin is now the Workspace
+- The address is `#/workspace`; `#/admin` links (older pull requests, bookmarks) forward to it
+- Sign-in, token and unsent draft move to the new keys once, on first load
+- Pull requests opened from it say "from the Workspace"
+
 ## v26.10.25.5
 
 - add genre and make correction to artist name (catalog, 7 changes)

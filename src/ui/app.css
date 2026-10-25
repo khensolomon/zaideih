@@ -526,13 +526,13 @@ body.is-playing .track.now .no .eq i:nth-child(3) { animation-duration: 1.1s; an
  * Selects draw their own arrow: the browser's sits at the very edge and
  * differs per platform. The arrow keeps the same inset as the text.
  */
-.select, .admin select {
+.select, .workspace select {
 	-webkit-appearance: none; appearance: none; cursor: pointer;
 	min-height: 40px; padding: 0 40px 0 14px; border-radius: 10px; border: 1px solid var(--line);
 	background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center / 16px 16px, var(--surface);
 }
 .select:hover { border-color: rgb(255 255 255 / 0.28); }
-.select option, .admin select option { background: var(--surface); color: var(--ink); }
+.select option, .workspace select option { background: var(--surface); color: var(--ink); }
 .segmented { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; overflow-x: auto; max-width: 100%; }
 .segmented a { padding: 6px 14px; border-radius: 999px; color: var(--ink-2); font-weight: 550; white-space: nowrap; }
 .segmented a[aria-current="page"] { background: var(--tab-active); color: var(--ink); }
@@ -1188,8 +1188,8 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .sound-panel .sp-status { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
 .sound-panel [disabled] { opacity: 0.45; cursor: default; }
 
-/* ---------- admin page (src/admin, hidden at #/admin) ---------- */
-.admin { min-width: 0; }
+/* ---------- Workspace (src/workspace, #/workspace) ---------- */
+.workspace { min-width: 0; }
 /* Sign-in: one card in the middle of the page. */
 .admin .adm-gate { min-height: calc(var(--vvh, 100dvh) - var(--deck) - 160px); display: grid; place-items: center; }
 .admin .adm-card {
@@ -1525,7 +1525,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	.adm-members .adm-actions { justify-content: flex-start; margin-left: 58px; }
 	.adm-tray { padding-left: 14px; gap: 10px; }
 	.adm-tray-text span, .adm-tray .link-btn { display: none; }
-	body[data-page="admin"] main { padding-bottom: calc(var(--deck) + 40px + env(safe-area-inset-bottom)); }
+	body[data-page="workspace"] main { padding-bottom: calc(var(--deck) + 40px + env(safe-area-inset-bottom)); }
 }
 
 /* Your account (#/account). */
@@ -1874,10 +1874,10 @@ img.acct-avatar { object-fit: cover; }
 .st-suggested { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11.5px; font-weight: 700; }
 .st-merge .actions { display: flex; align-items: center; gap: 14px; }
 
-/* Admin, Lyrics: proposals that two songs are the same, waiting. */
+/* Workspace, Lyrics: proposals that two songs are the same, waiting. */
 .adm-proposals { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 8px; }
 .adm-proposals li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; border-radius: 12px; background: var(--surface); }
 .adm-proposals .adm-row-text > span small { margin-left: 6px; color: var(--ink-3); }
 .adm-proposals .adm-actions { margin: 0; }
-/* Admin header, medium widths: the line under the section name gives way to the sections. */
+/* Workspace header, medium widths: the line under the section name gives way to the sections. */
 @media (min-width: 900px) and (max-width: 1179px) { .adm-head .st-title span { display: none; } }

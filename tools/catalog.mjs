@@ -150,7 +150,7 @@ export function compile({ albums, artists, category }) {
 					if (!artistById.has(a)) errors.push(`${tw} (id ${t.i}): unknown artist id ${a}`);
 					if (t.h !== true) usedArtists.add(a);
 				}
-				// Hidden tracks (h: true, set on the admin page) stay in the source, keeping
+				// Hidden tracks (h: true, set in the Workspace) stay in the source, keeping
 				// their id, but are not shipped: likes and playlists simply no longer list them.
 				if (t.h === true) { hiddenCount += 1; continue; }
 				tracks.push([t.i, canonicalText(t.t, normalized), t.a, t.d, t.p]);

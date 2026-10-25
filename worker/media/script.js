@@ -8,7 +8,7 @@
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
- *   /auth/*               Sign in with GitHub for the admin page and suggestions
+ *   /auth/*               Sign in with GitHub for the Workspace and suggestions
  *                         (auth.js, suggest.js); accounts: Zaideih sessions from
  *                         GitHub, Google or passkey sign-ins (accounts.js,
  *                         google.js, passkeys.js), all through auth.js.

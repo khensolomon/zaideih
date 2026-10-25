@@ -1,5 +1,5 @@
 /**
- * Admin drafts: catalog edits kept as a list of changes, not as edited files,
+ * Workspace drafts: catalog edits kept as a list of changes, not as edited files,
  * so a draft can be put onto the newest data from GitHub at publish time and
  * a change made on GitHub meanwhile is not overwritten.
  *
@@ -7,7 +7,7 @@
  *   album   id = album ui;  fields ab (title), yr (year or null), lg (language id), gr (genre ids)
  *   track   id = track i;   fields t (title), a (artist ids), h (hidden)
  *   artist  id = artist id; fields name, aka, type, thesaurus (spelling variants)
- * Pure functions: tested in Node (tests/admin.test.mjs).
+ * Pure functions: tested in Node (tests/workspace.test.mjs).
  */
 
 export class DraftError extends Error {}

@@ -60,8 +60,8 @@ export const CHANGELOG_HEAD = "# Version\n\n";
  * (only its version field changes), each lock file (top-level and root
  * package version) and, with `notes`, a "## v<next>" section at the top of
  * the changelog. `files` maps paths to current contents; a missing lock
- * file is skipped. Pure, so the CLI (tools/version.mjs) and the admin page
- * (src/admin) write releases the same way.
+ * file is skipped. Pure, so the CLI (tools/version.mjs) and the Workspace
+ * (src/workspace) write releases the same way.
  */
 export function releaseFiles(files, next, notes = []) {
 	parseVersion(next);

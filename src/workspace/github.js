@@ -1,6 +1,6 @@
 /**
- * The few GitHub REST calls the admin page needs, with either a GitHub
- * sign-in (the GitHub App's user token, src/admin/session.js) or a
+ * The few GitHub REST calls the Workspace needs, with either a GitHub
+ * sign-in (the GitHub App's user token, src/workspace/session.js) or a
  * fine-grained token (repository khensolomon/zaideih only: Contents read and
  * write, Pull requests read and write, Checks read). Both can do only what
  * the person may do on the repository. Every failure throws GitHubError with

@@ -1,6 +1,6 @@
 # Accounts
 
-A Zaideih account is one person, however they sign in. Personal libraries, rights, blocks, synced likes and playlists, and lyrics belong to the account, not to a GitHub account. GitHub stays what catalog editing runs on: the admin page edits the catalog with the person's GitHub sign-in, and GitHub decides what it may do.
+A Zaideih account is one person, however they sign in. Personal libraries, rights, blocks, synced likes and playlists, and lyrics belong to the account, not to a GitHub account. GitHub stays what catalog editing runs on: the Workspace edits the catalog with the person's GitHub sign-in, and GitHub decides what it may do.
 
 Status: agreed 2026-10-24. Built: accounts, GitHub as their first sign-in, Zaideih sessions (v26.10.24.1); Google sign-in and Your account (v26.10.24.2); passkeys (v26.10.24.12); likes and playlists synced across devices (v26.10.24.13); lyrics (v26.10.24.14).
 
@@ -28,7 +28,7 @@ The page (`#/account`) shows the person's own name and photo as their sign-ins g
 - Signed out: Continue with Google first (most listeners have a Google account and have never heard of GitHub), then Continue with GitHub, for catalog editors. Inside another app's browser (Facebook, Messenger, Instagram, LINE, WeChat, Android web views) Google refuses to sign in, so the page says to open the site in Chrome or Safari first.
 - Signed in: the name, every sign-in with its email, Add Google or Add GitHub for the one not there yet, Remove (never the last sign-in, nor the owner's GitHub), Your uploads, and Sign out on this device, which ends the Zaideih session and revokes the GitHub sign-in.
 
-Both sign-ins return to this page, which finishes them and takes the code out of the address at once. A GitHub sign-in made here also signs in the admin page, so editors get the Admin link.
+Both sign-ins return to this page, which finishes them and takes the code out of the address at once. A GitHub sign-in made here also signs in the Workspace, so editors get the Admin link.
 
 ## From an app on the home screen
 
@@ -40,7 +40,7 @@ So in such an app (`display-mode: standalone`, or `navigator.standalone` on iOS)
 2. The sign-in starts with `wait=1`. Its callback does not return to the app: it keeps the code (or the error) in D1 `signin_waiting` under a SHA-256 hash of the nonce, for 10 minutes, and shows "Signed in. Close this window and go back to Zaideih".
 3. The app asks `POST /auth/wait {nonce}` every 2 seconds, and at once when it is shown again; the Worker answers the code once (`{code}`, `{error}`, or 204 while waiting). The app then finishes as usual, with its verifier.
 
-The code alone signs nobody in: it needs the PKCE verifier, which never leaves the app. The admin page's GitHub sign-in works the same way from the home screen.
+The code alone signs nobody in: it needs the PKCE verifier, which never leaves the app. The Workspace's GitHub sign-in works the same way from the home screen.
 
 ## Sign in with Google
 

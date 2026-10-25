@@ -1,7 +1,7 @@
 /**
  * Page views. Each view returns { title, body } where body is SafeHtml.
  */
-import { ADMIN_URL, APP_VERSION, LIBRARY_URL } from "../config.js";
+import { APP_VERSION, LIBRARY_URL, WORKSPACE_URL } from "../config.js";
 import { uploadsPanel } from "./uploads-view.js";
 import { uploads } from "../core/uploads.js";
 import { LEVELS, readWho } from "../core/access.js";
@@ -126,15 +126,15 @@ export function top(c) {
 }
 
 /*
- * Edit in the admin page, for people signed in there (src/core/access.js):
+ * Edit in the Workspace, for people signed in there (src/core/access.js):
  * editors get "Edit", contributors and guests "Suggest an edit". Listeners
  * see nothing.
  */
 function editLink(query) {
-	const who = ADMIN_URL ? readWho(localStorage) : null;
+	const who = WORKSPACE_URL ? readWho(localStorage) : null;
 	if (!who) return "";
 	const label = LEVELS[who.level].canWrite ? "Edit" : "Suggest an edit";
-	return html`<a class="btn" href="${href("admin", query)}" data-edit>${icon("edit")} ${label}</a>`;
+	return html`<a class="btn" href="${href("workspace", query)}" data-edit>${icon("edit")} ${label}</a>`;
 }
 
 /* ---------- language ---------- */
@@ -218,7 +218,7 @@ function publishRow(c, a) {
 	const inCatalog = r?.catalogAlbum && c.album(r.catalogAlbum) && !c.album(r.catalogAlbum).upload
 		? html` <a class="text-link" href="${href(`album/${r.catalogAlbum}`)}">Open it in the catalog</a>` : "";
 	const said = {
-		requested: uploads.canReview ? html`Waiting for approval. <a class="text-link" href="#/admin?review=${r?.id}">Approve it</a>` : "Waiting for a reviewer. You can still listen; changes wait until it is decided.",
+		requested: uploads.canReview ? html`Waiting for approval. <a class="text-link" href="#/workspace?review=${r?.id}">Approve it</a>` : "Waiting for a reviewer. You can still listen; changes wait until it is decided.",
 		published: html`Approved${r?.reviewer ? ` by ${r.reviewer}` : ""}: it joins the catalog with the next release. Published by you.`,
 		released: html`In the catalog, published by you.${inCatalog}`,
 		private: r?.status === "rejected" ? html`Not published: ${r.reason}` : uploads.canReview ? "Only you can play it." : "Only you can play it. Ask to share it with everyone in the catalog.",
@@ -611,7 +611,7 @@ export function about(c) {
 						: html`<button class="btn" data-act="consent" data-value="granted">Turn on</button>`}</div>
 				</div>` : ""}
 				<p>Artists and rights holders who want a recording credited differently or removed can <a class="text-link" href="${ISSUES}" target="_blank" rel="noopener">open an issue</a>.</p>
-				${ADMIN_URL && !readWho(localStorage) ? html`<p>Spotted a wrong title, year or credit? <a class="text-link" href="#/admin">Sign in with GitHub</a> to suggest a correction; an editor reviews it before it is released. To keep music of your own, <a class="text-link" href="#/account">sign in</a> with Google or GitHub.</p>` : ""}
+				${WORKSPACE_URL && !readWho(localStorage) ? html`<p>Spotted a wrong title, year or credit? <a class="text-link" href="#/workspace">Sign in with GitHub</a> to suggest a correction; an editor reviews it before it is released. To keep music of your own, <a class="text-link" href="#/account">sign in</a> with Google or GitHub.</p>` : ""}
 				<p class="about-foot"><span>Version ${APP_VERSION}</span><span>Catalog ${c.version}</span><a class="text-link" href="#/terms">Terms</a></p>
 			</div>`,
 	};

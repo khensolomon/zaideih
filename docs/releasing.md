@@ -41,7 +41,7 @@ The first line of the commit decides what is released:
 
 After the target, an optional version (`26.10.20.6` or `v26.10.20.6`) must equal `package.json`, and the rest of the line is the note Cloudflare shows next to the deployment.
 
-When the head commit's first line does not start with `release:`, the title of the merged pull request it came from is read instead, so a pull request titled `release: web 26.10.20.6 Help page` releases however it is merged. This covers a merge commit ("Merge pull request #…") and a squash under GitHub's default message, where a single-commit pull request is merged with that commit's message rather than the title. Setting the squash message to "Pull request title" (Settings, General, Pull Requests) is optional. A push whose first line and pull request title both lack `release:` releases nothing. Admin "Merge and release" sets the squash commit's first line itself (`commit_title`, see below), so it does not depend on either.
+When the head commit's first line does not start with `release:`, the title of the merged pull request it came from is read instead, so a pull request titled `release: web 26.10.20.6 Help page` releases however it is merged. This covers a merge commit ("Merge pull request #…") and a squash under GitHub's default message, where a single-commit pull request is merged with that commit's message rather than the title. Setting the squash message to "Pull request title" (Settings, General, Pull Requests) is optional. A push whose first line and pull request title both lack `release:` releases nothing. The Workspace's "Merge and release" sets the squash commit's first line itself (`commit_title`, see below), so it does not depend on either.
 
 To see what a push would do, without pushing:
 
@@ -86,9 +86,9 @@ A 403 from the live checks is usually Cloudflare bot protection refusing GitHub'
 
 Every address the app is served from must be in the audio Worker's `ALLOWED_ORIGINS` (and in `AUTH_ORIGINS` for sign-in), or songs fail there with a CORS error; changing them needs `release: audio`.
 
-## Catalog edits from the admin page
+## Catalog edits from the Workspace
 
-The admin page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge that passes `commit_title`, so the first line is `release: web <version> <note>` whatever the repository's squash setting), so they go through the same checks and workflow as any release. People sign in with GitHub (or a fine-grained token, see [setup.md](setup.md)); usage statistics must be off on that device. See [architecture.md](architecture.md#admin-page).
+The Workspace `#/workspace` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge that passes `commit_title`, so the first line is `release: web <version> <note>` whatever the repository's squash setting), so they go through the same checks and workflow as any release. People sign in with GitHub (or a fine-grained token, see [setup.md](setup.md)); usage statistics must be off on that device. See [architecture.md](architecture.md#workspace).
 
 Suggestions from people without write access arrive as pull requests titled `Suggestion: …`. Merging one adds it to `master` without releasing; it ships with the next release.
 

@@ -45,7 +45,7 @@ Optional Actions variables: `SITE_URL` (the address whose version is checked aft
 
 ### GitHub App "Zaideih" (sign-in, suggestions)
 
-- **Why**: sign in with GitHub on the admin page, and pull requests opened for people without write access.
+- **Why**: sign in with GitHub in the Workspace, and pull requests opened for people without write access.
 - **Get it**: github.com/settings/apps/new, owned by the repository's owner.
   - Callback URL `https://media.zaideih.com/auth/callback`; Expire user authorization tokens on; OAuth during installation off; Device Flow off; Webhook off.
   - Repository permissions: Contents **read and write**, Pull requests **read and write**, Checks **read** (Metadata read is added).
@@ -94,9 +94,9 @@ More: [library.md](library.md).
 
 ### Fine-grained GitHub token (optional)
 
-- **Why**: an alternative to signing in on the admin page, for someone with write access.
+- **Why**: an alternative to signing in in the Workspace, for someone with write access.
 - **Get it**: GitHub, Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token. Repository access: only `khensolomon/zaideih`. Permissions: Contents read and write, Pull requests read and write, Checks read. An expiry date.
-- **Put it**: the admin page, "Use a token instead", on the device used for editing. It stays in that browser only.
+- **Put it**: the Workspace, "Use a token instead", on the device used for editing. It stays in that browser only.
 
 ## 4. Settings in the files
 
@@ -119,7 +119,7 @@ git commit -am "release: all $(node -p 'require("./package.json").version') Firs
 git push
 ```
 
-`release: all` deploys the site and the Worker (and applies the D1 schema); `release: d1` loads track paths. Check afterwards: the site shows its version on About, a song plays, and `#/admin` signs in. [releasing.md](releasing.md) covers targets, failures and rollback.
+`release: all` deploys the site and the Worker (and applies the D1 schema); `release: d1` loads track paths. Check afterwards: the site shows its version on About, a song plays, and `#/workspace` signs in. [releasing.md](releasing.md) covers targets, failures and rollback.
 
 A pull request titled `release: …` releases when merged, by merge commit or by squash: when the first line on `master` does not start with `release:`, the workflow reads the merged pull request's title. No repository setting is needed for this; setting the squash message to "Pull request title" (Settings, General, Pull Requests) is optional.
 

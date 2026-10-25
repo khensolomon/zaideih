@@ -2,7 +2,7 @@
  * Asking to publish (docs/library.md): a member's album of uploads asked to
  * join the public catalog, reviewed, and on approval copied to the
  * catalog's place in R2. The catalog itself (albums.json, media.json) is
- * changed by a pull request the reviewer's admin page opens, since the
+ * changed by a pull request the reviewer's Workspace opens, since the
  * catalog lives in git; the release that merges it loads the songs, and the
  * member's uploaded copies are then removed (settleReleased).
  *

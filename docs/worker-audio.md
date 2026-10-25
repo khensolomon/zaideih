@@ -6,7 +6,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 |---|---|---|
 | `GET /audio/:id` | a catalog song from R2 (`music/…`, path from D1 `tracks`), with ranges | `script.js` |
 | `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
-| `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
+| `/auth/*` | sign in with GitHub for the Workspace; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
 | `/auth/session`, `/auth/me`, `/auth/google/*`, `/auth/passkey/*` | accounts: Zaideih sessions from GitHub, Google or passkey sign-ins ([accounts.md](accounts.md)) | `accounts.js`, `google.js`, `passkeys.js` |
 | `/lyrics/:song`, `/lyrics/recent`, `/lyrics/index` | lyrics of catalog songs: public reading, editing and reporting signed in, the Lyrics right ([lyrics.md](lyrics.md)) | `lyrics.js` |
 | `POST /library/sync` | liked songs and playlists on every device ([sync.md](sync.md)) | `sync.js` |
@@ -175,10 +175,10 @@ Answers: 200 `{"accepted": n, "rejected": [[index, reason], ...]}` (reasons `inv
 
 ## Sign in with GitHub
 
-The admin page (`#/admin`) signs people in with the GitHub App "Zaideih" (App ID 5427707, owned by khensolomon, installed on `khensolomon/zaideih` only). GitHub's token endpoint needs the App's client secret, which cannot live in a public page, so the Worker finishes the sign-in (`auth.js`). The GitHub tokens stay on the device; for its own routes (personal libraries) the Worker gives a Zaideih session instead (`POST /auth/session`, [accounts.md](accounts.md#sessions)).
+The Workspace (`#/workspace`) signs people in with the GitHub App "Zaideih" (App ID 5427707, owned by khensolomon, installed on `khensolomon/zaideih` only). GitHub's token endpoint needs the App's client secret, which cannot live in a public page, so the Worker finishes the sign-in (`auth.js`). The GitHub tokens stay on the device; for its own routes (personal libraries) the Worker gives a Zaideih session instead (`POST /auth/session`, [accounts.md](accounts.md#sessions)).
 
 1. The page keeps a PKCE verifier and a nonce for its tab and opens `/auth/login?return=<page>&nonce=<n>&challenge=<S256>`; the Worker sends the browser on to GitHub.
-2. GitHub returns to `/auth/callback`; the Worker returns to `<page>#/admin?signin=<code>&nonce=<n>` (or `signin-error=<reason>`). The page checks the nonce and removes the code from the address.
+2. GitHub returns to `/auth/callback`; the Worker returns to `<page>#/workspace?signin=<code>&nonce=<n>` (or `signin-error=<reason>`). The page checks the nonce and removes the code from the address.
 3. The page posts the code and verifier to `/auth/token` and gets an access token (8 hours) and a refresh token (6 months), kept on that device; `/auth/refresh` renews the access token, `/auth/signout` revokes it.
 
 What a token may do is what both the App (Contents and Pull requests read and write, Checks read) and the person may do on the repository; GitHub enforces it, so merging still needs write access. The Worker returns only to origins in `AUTH_ORIGINS` (checked at login and again at the callback) and answers tokens only to them (CORS).

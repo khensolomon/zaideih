@@ -77,7 +77,7 @@ export function waitForSignIn({ authUrl, nonce, fetchImpl = (...a) => fetch(...a
 
 /**
  * @param {{ authUrl: string, local: Storage, tab?: Storage, githubToken: () => Promise<string>, fetchImpl?: typeof fetch, now?: () => number }} options
- *   githubToken answers the GitHub sign-in's current token (src/admin/session.js);
+ *   githubToken answers the GitHub sign-in's current token (src/workspace/session.js);
  *   tab (sessionStorage) keeps a Google sign-in's verifier while Google is open
  */
 export function createAccount({ authUrl, local, tab = null, githubToken, fetchImpl = (...a) => fetch(...a), now = () => Date.now() }) {
