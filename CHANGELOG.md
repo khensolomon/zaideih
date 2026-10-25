@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.23
+
+- add album & spelling (catalog, 1 change)
+
 ## v26.10.25.22
 
 - Songbooks: a shelf of covers, find and sort, New songbook as a dialog
