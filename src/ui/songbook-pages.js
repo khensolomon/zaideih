@@ -24,6 +24,7 @@ import {
 	refreshHymnIndex, setCollaborator, setEntry, updateBook, updateText, updateWork,
 } from "../core/songbooks.js";
 import { icon } from "./icons.js";
+import { coverHtml } from "./songbooks-view.js";
 import { creditsHtml, detailChips, lyricsHtml } from "./lyrics-render.js";
 import { registerList, scriptClass, trackRow } from "./parts.js";
 import { creditOf } from "../core/catalog.js";
@@ -54,13 +55,14 @@ export async function bookView(_c, { id }) {
 	const ed = mayEdit(book.may);
 	const facts = [book.lang, book.edition && `edition ${book.edition}`, book.year, book.publisher].filter(Boolean).join(" · ");
 	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>
-		<div class="sb-head">
-			<span class="sb-short sb-short-big">${book.short}</span>
-			<div><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}</p></div>
+		<div class="sb-head sb-book-head">
+			${coverHtml(book, "sb-cover-head")}
+			<div class="sb-book-head-text"><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}</p>
+			${ed ? html`<div class="sb-tools"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit" aria-expanded="false">${icon("edit")} Details</button>${book.may === "manage" ? html`<button class="btn" data-hy="team" aria-expanded="false">${icon("people")} Collaborators</button>` : ""}</div>` : ""}</div>
 		</div>
 		${book.public ? "" : html`<p class="held-note">${icon("lock")} ${PRIVATE}</p>`}
 		${book.may === "edit" || book.may === "read" ? html`<p class="muted sb-appointed">${icon("info")} You are ${book.may === "edit" ? "an editor" : "a reader"} of this book${book.may === "edit" ? ": you change its details, numbers and songs" : ""}.</p>` : ""}
-		${ed ? html`<div class="actions"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit">${icon("edit")} Details and rights</button>${book.may === "manage" ? html`<button class="btn" data-hy="team">${icon("people")} Collaborators</button>` : ""}</div><div id="sb-book-edit"></div><div id="sb-team"></div>` : ""}
+		${ed ? html`<div id="sb-book-edit"></div><div id="sb-team"></div>` : ""}
 		<label class="sb-filter">${icon("search")}<input type="search" data-hy="filter" placeholder="A number, a title or the first line" aria-label="Find a song in ${book.title}: a number, a title or the first line" autocomplete="off" enterkeyhint="go"></label>
 		${book.entries.length ? html`<ol class="sb-index">${book.entries.map((e) => html`<li data-n="${e.number}" data-find="${`${e.number} ${e.title} ${e.firstLine}`.toLowerCase()}">
 			<a href="${href(`songbook/${book.id}/${e.number}`)}"><span class="sb-num">${e.number}</span><span class="sb-hymn-text"><b class="${scriptClass(e.title)}">${e.title}</b>${e.firstLine && e.firstLine !== e.title ? html`<small class="${scriptClass(e.firstLine)}">${e.firstLine}</small>` : ""}</span></a>
@@ -112,6 +114,7 @@ function mountBook(root, book) {
 		if (!e.target.closest("[data-hy=book-edit]")) return;
 		const box = root.querySelector("#sb-book-edit");
 		box.innerHTML = box.innerHTML ? "" : bookForm(book).toString();
+		e.target.closest("[data-hy=book-edit]").setAttribute("aria-expanded", String(Boolean(box.innerHTML)));
 	});
 	if (book.may === "manage") mountTeam(root, book);
 	root.addEventListener("submit", async (e) => {
@@ -171,6 +174,7 @@ function mountTeam(root, book) {
 		const b = e.target.closest("[data-hy=team], [data-hy=team-drop], [data-hy=member-pick]");
 		if (!b) return;
 		if (b.dataset.hy === "team") {
+			b.setAttribute("aria-expanded", String(!box.innerHTML));
 			if (box.innerHTML) { box.innerHTML = ""; return; }
 			try {
 				list = await listCollaborators(book.id);
