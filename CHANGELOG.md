@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.18
+
+- Songbooks: a book opens from its row; editing shows on a first visit; songs, not only hymns
+
 ## v26.10.25.17
 
 - Songbooks: book and hymn pages, search by hymn number, recordings joined to hymns, editing details and credits

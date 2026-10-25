@@ -2045,7 +2045,11 @@ img.acct-avatar { object-fit: cover; }
 
 /* =================================================================== songbooks (ui/songbooks-view.js) */
 .sb-books { list-style: none; margin: 0 0 28px; padding: 0; display: grid; gap: 8px; }
-.sb-book { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--radius-m); background: var(--surface); }
+.sb-book { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: var(--radius-m); background: var(--surface); }
+/* The whole row opens the book. */
+.sb-book-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 6px 8px 6px 6px; border-radius: var(--radius-s); color: inherit; }
+.sb-book-open:hover { text-decoration: none; background: var(--raised); }
+.sb-book-open > svg.i { flex: none; color: var(--ink-3); }
 .sb-short { flex: none; display: inline-grid; place-items: center; min-width: 48px; height: 48px; padding: 0 8px; box-sizing: border-box; border-radius: 12px; background: var(--raised); font-weight: 800; letter-spacing: 0.02em; }
 .sb-book-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .sb-book-text small { color: var(--ink-3); font-size: 14px; }

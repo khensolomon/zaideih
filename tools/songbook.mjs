@@ -40,7 +40,7 @@ const { values, positionals } = parseArgs({
 const [command, file] = positionals;
 if (!["split", "import"].includes(command) || !file || positionals.length > 2) fail("use: songbook.mjs split <file> [--from N] | import <file> --book <id> [--from N] [--apply]");
 const from = values.from === undefined ? null : Number(values.from);
-if (from !== null && !Number.isSafeInteger(from)) fail("--from must be a hymn number");
+if (from !== null && !Number.isSafeInteger(from)) fail("--from must be a song number");
 
 let text;
 try {
@@ -56,11 +56,11 @@ try {
 }
 const { entries, notes } = split;
 for (const n of notes) console.log(`check      ${n}`);
-if (!entries.length) fail("no hymn number found: each hymn starts at its number, with its title under it or beside it in capitals");
+if (!entries.length) fail("no song number found: each song starts at its number, with its title under it or beside it in capitals");
 
 if (command === "split") {
 	for (const e of entries) console.log(`${String(e.number).padStart(5)}  ${e.title}  (${((n) => `${n} line${n === 1 ? "" : "s"}`)(e.text.split("\n").filter((l) => l.trim()).length)})`);
-	console.log(`${entries.length} hymn${entries.length === 1 ? "" : "s"}`);
+	console.log(`${entries.length} song${entries.length === 1 ? "" : "s"}`);
 	process.exit(0);
 }
 

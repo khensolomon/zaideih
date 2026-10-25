@@ -16,7 +16,7 @@ import { href } from "../core/router.js";
 import { icon } from "./icons.js";
 import { own } from "./songbook-pages.js";
 
-const notSignedIn = () => html`<div class="empty"><h2>Songbooks</h2><p>Hymnals and praise books, with every hymn's words, are coming to Zaideih. Those who add them sign in first.</p><p><a class="btn primary" href="#/account">Sign in</a></p></div>`;
+const notSignedIn = () => html`<div class="empty"><h2>Songbooks</h2><p>Hymn books and praise books, with every song's words, are coming to Zaideih. Those who add them sign in first.</p><p><a class="btn primary" href="#/account">Sign in</a></p></div>`;
 
 /** #/songbooks */
 export async function songbooksView() {
@@ -29,11 +29,14 @@ export async function songbooksView() {
 	}
 	const body = html`<h1>Songbooks</h1>
 		${books.length ? html`<ul class="sb-books">${books.map((b) => html`<li class="sb-book">
-			<span class="sb-short">${b.short}</span>
-			<a class="sb-book-text" href="${href(`songbook/${b.id}`)}"><b>${b.title}</b><small>${[b.lang, b.edition && `edition ${b.edition}`, b.year, `${b.entries.toLocaleString()} ${b.entries === 1 ? "hymn" : "hymns"}`].filter(Boolean).join(" · ")}</small></a>
-			${b.public ? "" : html`<span class="sb-private" title="Seen only with the Songbooks right until its rights are settled">${icon("lock")} Private</span>`}
+			<a class="sb-book-open" href="${href(`songbook/${b.id}`)}" aria-label="Open ${b.title}">
+				<span class="sb-short">${b.short}</span>
+				<span class="sb-book-text"><b>${b.title}</b><small>${[b.lang, b.edition && `edition ${b.edition}`, b.year, `${b.entries.toLocaleString()} ${b.entries === 1 ? "song" : "songs"}`].filter(Boolean).join(" · ")}</small></span>
+				${b.public ? "" : html`<span class="sb-private" title="Seen only with the Songbooks right until its rights are settled">${icon("lock")} Private</span>`}
+				${icon("chevron")}
+			</a>
 			${editor ? html`<a class="btn" href="${href("songbooks/import", { book: b.id })}">${icon("upload")} Add pages</a>` : ""}
-		</li>`)}</ul>` : html`<div class="empty"><h2>No songbooks yet</h2><p>${editor ? "Add the first one below." : "Hymnals and praise books, with every hymn's words, are coming to Zaideih."}</p></div>`}
+		</li>`)}</ul>` : html`<div class="empty"><h2>No songbooks yet</h2><p>${editor ? "Add the first one below." : "Hymn books and praise books, with every song's words, are coming to Zaideih."}</p></div>`}
 		${editor ? newBookForm() : ""}`;
 	return { title: "Songbooks", ...own(body, editor ? mountList : null) };
 }
@@ -94,13 +97,13 @@ export async function songbookImportView(_c, _params, query) {
 	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>
 		<h1>${book.title}: add pages</h1>
 		<div class="panel sb-how">
-			<p>Photograph a page and copy its text: on an iPhone, open the photo and press on the text (Live Text); on Android, Google Lens, Text. Paste one page or many below. Each hymn starts at its number with its title under it, or beside it in capitals.</p>
-			<p class="muted">${book.entries.length ? `${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "hymn is" : "hymns are"} in the book; the last is ${book.entries.at(-1).number}.` : "The book has no hymns yet."} Numbers already there are left as they are.</p>
+			<p>Photograph a page and copy its text: on an iPhone, open the photo and press on the text (Live Text); on Android, Google Lens, Text. Paste one page or many below. Each song starts at its number with its title under it, or beside it in capitals.</p>
+			<p class="muted">${book.entries.length ? `${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song is" : "songs are"} in the book; the last is ${book.entries.at(-1).number}.` : "The book has no songs yet."} Numbers already there are left as they are.</p>
 		</div>
 		<form class="sb-import" data-sb="split">
 			<label class="sb-field"><span>Pages, as text</span><textarea name="pages" rows="14" spellcheck="false" placeholder="145&#10;LUNGMUANNA KA NEI&#10;1. Lungmuanna ka nei hi, …"></textarea></label>
-			<label class="sb-field sb-from"><span>First hymn on these pages (optional)</span><input name="from" type="number" min="1" max="99999" inputmode="numeric" value="${next}"></label>
-			<p><button class="btn primary" type="submit">Split into hymns</button></p>
+			<label class="sb-field sb-from"><span>First song on these pages (optional)</span><input name="from" type="number" min="1" max="99999" inputmode="numeric" value="${next}"></label>
+			<p><button class="btn primary" type="submit">Split into songs</button></p>
 		</form>
 		<div id="sb-preview" aria-live="polite"></div>`;
 	return { title: `${book.title}: add pages`, ...own(body, (root) => mountImport(root, book, have)) };
@@ -111,7 +114,7 @@ function mountImport(root, book, have) {
 	const preview = root.querySelector("#sb-preview");
 	const draw = (status = "") => {
 		const adding = draft.filter((h) => !have.has(h.number));
-		preview.innerHTML = draft.length ? html`<h2>${adding.length} ${adding.length === 1 ? "hymn" : "hymns"} to add</h2>
+		preview.innerHTML = draft.length ? html`<h2>${adding.length} ${adding.length === 1 ? "song" : "songs"} to add</h2>
 			${status}
 			<ol class="sb-hymns">${draft.map((h, i) => html`<li class="sb-hymn${have.has(h.number) ? " sb-have" : ""}">
 				<span class="sb-num">${book.short} ${h.number}</span>
@@ -133,7 +136,7 @@ function mountImport(root, book, have) {
 			const { entries, notes } = splitHymns(String(f.get("pages") ?? ""), { from });
 			draft = entries;
 			if (!entries.length) {
-				draw(html`<p class="error" role="alert">No hymn number found${from ? ` starting at ${from}` : ""}. Each hymn starts at its number, with its title under it or beside it in capitals.</p>`);
+				draw(html`<p class="error" role="alert">No song number found${from ? ` starting at ${from}` : ""}. Each song starts at its number, with its title under it or beside it in capitals.</p>`);
 				return;
 			}
 			draw(notesHtml(notes));
@@ -158,7 +161,7 @@ function mountImport(root, book, have) {
 			const added = await addHymns(book.id, adding.map((h) => ({ ...h, title: h.title.trim() })), { onStep: progress });
 			for (const a of added) have.add(a.number);
 			draft = [];
-			draw(html`<p class="sb-done">${icon("check")} ${added.length} ${added.length === 1 ? "hymn" : "hymns"} added to ${book.title}. Paste the next pages above.</p>`);
+			draw(html`<p class="sb-done">${icon("check")} ${added.length} ${added.length === 1 ? "song" : "songs"} added to ${book.title}. Paste the next pages above.</p>`);
 			root.querySelector("textarea[name=pages]").value = "";
 			const from = root.querySelector("input[name=from]");
 			from.value = String(Math.max(...have) + 1);

@@ -30,8 +30,8 @@ test("splitHymns: hymns at their numbers, titles beside or under them, verse num
 	]);
 	assert.equal(entries[0].text, "1. Lungmuanna ka nei hi,\nJesu a ka hi;\n\n2. Ka lungdam hi,\nKa la sa hi.");
 	assert.deepEqual(notes, [
-		"2 lines before the first hymn number were left out.",
-		"Hymns 147 to 148 are not in these pages.",
+		"2 lines before the first song number were left out.",
+		"Numbers 147 to 148 are not in these pages.",
 	]);
 });
 
@@ -40,7 +40,7 @@ test("splitHymns: `from` names the first hymn; a verse number alone is not taken
 	const { entries, notes } = splitHymns("12\nNGAH LUNG\n1\nKa lungdam hi\n13 HONG IT\nHong it hi");
 	assert.deepEqual(entries.map((e) => [e.number, e.text]), [[12, "1\nKa lungdam hi"], [13, "Hong it hi"]]);
 	assert.deepEqual(notes, []);
-	assert.deepEqual(splitHymns("Hong it hi\n2 Hong").notes, ["2 lines before the first hymn number were left out."]);
+	assert.deepEqual(splitHymns("Hong it hi\n2 Hong").notes, ["2 lines before the first song number were left out."]);
 	assert.deepEqual(splitHymns("", {}), { entries: [], notes: [] });
 	assert.throws(() => splitHymns("x", { from: 0 }), /first number/);
 	assert.throws(() => splitHymns(null), /must be text/);

@@ -74,7 +74,7 @@ export function splitHymns(text, { from = null } = {}) {
 	}
 	if (current) entries.push(current);
 
-	if (before) notes.push(`${before} line${before === 1 ? "" : "s"} before the first hymn number ${before === 1 ? "was" : "were"} left out.`);
+	if (before) notes.push(`${before} line${before === 1 ? "" : "s"} before the first song number ${before === 1 ? "was" : "were"} left out.`);
 	const out = entries.map((e) => {
 		const body = e.body.join("\n").replace(/^\n+|\n+$/g, "").replace(/\n{3,}/g, "\n\n");
 		const firstLine = (body.split("\n").find((l) => /\p{L}/u.test(l)) ?? "").trim().replace(VERSE, "");
@@ -82,8 +82,8 @@ export function splitHymns(text, { from = null } = {}) {
 	});
 	for (let k = 1; k < out.length; k++) {
 		const gap = out[k].number - out[k - 1].number - 1;
-		if (gap > 0) notes.push(`${gap === 1 ? `Hymn ${out[k - 1].number + 1} is` : `Hymns ${out[k - 1].number + 1} to ${out[k].number - 1} are`} not in these pages.`);
+		if (gap > 0) notes.push(`${gap === 1 ? `Number ${out[k - 1].number + 1} is` : `Numbers ${out[k - 1].number + 1} to ${out[k].number - 1} are`} not in these pages.`);
 	}
-	for (const e of out) if (!e.text.trim()) notes.push(`Hymn ${e.number} has no words.`);
+	for (const e of out) if (!e.text.trim()) notes.push(`Number ${e.number} has no words.`);
 	return { entries: out, notes };
 }
