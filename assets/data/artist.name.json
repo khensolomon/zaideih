@@ -7361,7 +7361,9 @@
   },
   {
     "name": "အောင်ပဏ်း",
-    "thesaurus": [],
+    "thesaurus": [
+      "Aung Ban"
+    ],
     "correction": [],
     "type": 2,
     "id": 501,
