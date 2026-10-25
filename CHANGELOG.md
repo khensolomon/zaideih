@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.9
+
+- Title bar: a shadow over scrolled content; the studio and Workspace headers at its height; Library: Uploads
+
 ## v26.10.25.8
 
 - Installed on a desktop: the app's own title bar

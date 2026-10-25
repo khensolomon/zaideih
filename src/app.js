@@ -1754,6 +1754,12 @@ function watchTitleBar() {
 	const place = () => document.body.toggleAttribute("data-tb-left", wco.visible && wco.getTitlebarAreaRect().x > 0);
 	wco.addEventListener("geometrychange", place);
 	place();
+	// Content under the bar casts a shadow below it (app.css), as soon as the page has scrolled.
+	let frame = 0;
+	const mark = () => { frame = 0; document.body.toggleAttribute("data-scrolled", scrollY > 0); };
+	addEventListener("scroll", () => { frame ||= requestAnimationFrame(mark); }, { passive: true });
+	addEventListener("hashchange", () => requestAnimationFrame(mark));
+	mark();
 }
 
 export async function boot(platform) {
@@ -1780,7 +1786,7 @@ export async function boot(platform) {
 	}
 	startSync();
 	startLyricsIndex();
-	// Your uploads: read once someone is signed in (syncAccess), shown where they appear.
+	// Uploads: read once someone is signed in (syncAccess), shown where they appear.
 	uploads.catalog = catalog;
 	syncAccess();
 	on("uploads", () => {
