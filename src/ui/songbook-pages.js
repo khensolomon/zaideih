@@ -25,6 +25,8 @@ import { uploads } from "../core/uploads.js";
 import { icon } from "./icons.js";
 import { creditsHtml, detailChips, lyricsHtml } from "./lyrics-render.js";
 import { registerList, scriptClass, trackRow } from "./parts.js";
+import { creditOf } from "../core/catalog.js";
+import { CLOSE_TITLES, titleCloseness, titleKey } from "../core/titles.js";
 
 const ROLE_NAMES = { words: "Words", music: "Music", arrangement: "Arrangement", translation: "Translation" };
 const editor = () => uploads.canSongbooks;
@@ -192,13 +194,35 @@ async function textPage(c, textId, query, where, ctx) {
 		${t.versions.length ? html`<section class="section"><header><h2>Other versions</h2></header><ul class="sb-list">${t.versions.map((v) => html`<li><a href="${href(`songbooks/text/${v.id}`)}"><b>${v.title}</b> <span class="muted">${[v.lang, v.label].filter(Boolean).join(" · ")}</span></a></li>`)}</ul></section>` : ""}
 		<section class="section"><header><h2>Recordings</h2></header>
 			${recordings.length ? html`<ol class="tracks">${recordings.map((r, k) => trackRow(r, listKey, k, { showAlbum: true, thumb: true }))}</ol>` : html`<p class="muted">No recording in Zaideih sings these words yet.</p>`}
-			${ed ? html`<div class="sb-join"><label class="sb-filter">${icon("search")}<input type="search" data-hy="join-q" placeholder="Join a recording: its title" autocomplete="off"></label><ul class="sb-list" id="sb-join-results"></ul></div>` : ""}
+			${ed ? joinPanel(c, t) : ""}
 		</section>
 		${book ? html`<nav class="sb-prevnext" aria-label="Songs">${prev ? html`<a class="btn" href="${href(`songbook/${book.id}/${prev.number}`)}">${icon("back")} ${prev.number}</a>` : html`<span></span>`}${next ? html`<a class="btn" href="${href(`songbook/${book.id}/${next.number}`)}">${next.number} ${icon("chevron")}</a>` : ""}</nav>` : ""}`;
 	return { title: label ? `${label} ${t.title}` : t.title, ...own(body, ed ? (root) => mountHymn(root, c, t, where, ctx) : null) };
 }
 
 /* ---------------------------------------------------- editing a hymn ---- */
+
+/**
+ * Joining a recording in Zaideih to these words: the catalog's songs with a
+ * title close to this one first (core/titles.js), then any found by title.
+ */
+function joinPanel(c, t) {
+	const key = titleKey(t.title);
+	const close = key ? [...c.tracks.values()]
+		.filter((x) => !t.recordings.includes(x.id) && !x.album.off)
+		.map((x) => ({ x, score: titleCloseness(key, titleKey(x.title)) }))
+		.filter((m) => m.score >= CLOSE_TITLES)
+		.sort((a, b) => b.score - a.score || b.x.plays - a.x.plays)
+		.slice(0, 8) : [];
+	const row = (x) => html`<li><span><b class="${scriptClass(x.title)}">${x.title}</b> <span class="muted">${x.album.title} · ${creditOf(x.artists, 1)}</span></span><button class="btn" data-hy="join" data-id="${x.id}">${icon("plus")} Join</button></li>`;
+	return html`<div class="sb-join">
+		<h3>Join a recording</h3>
+		<p class="muted">A song in Zaideih that sings these words shows them, and is listed here with Play.</p>
+		${close.length ? html`<p class="sb-join-hint">Close in title:</p><ul class="sb-list">${close.map((m) => row(m.x))}</ul>` : ""}
+		<label class="sb-filter">${icon("search")}<input type="search" data-hy="join-q" placeholder="Find a song in Zaideih by its title" autocomplete="off"></label>
+		<ul class="sb-list" id="sb-join-results"></ul>
+	</div>`;
+}
 
 function detailsForm(t, where, c) {
 	const work = t.work;
@@ -225,7 +249,8 @@ function detailsForm(t, where, c) {
 		${["words", "music", "arrangement"].map((r) => html`<div class="sb-credit-row"><b>${ROLE_NAMES[r]}</b>${creditChips(work.credits, r, "work")}${personPicker(r, "work")}</div>`)}` : html`<p class="muted">The song as a work, whatever its language: its writers, composer, tune. Find it, or add it.</p>
 		<div class="sb-pick"><input data-hy="work-q" placeholder="The work's title or tune" autocomplete="off"><span class="sb-pick-results" id="sb-work-results"></span></div>`}
 		${t.recordings.length ? html`<h3>Joined recordings</h3><ul class="sb-list">${t.recordings.map((r) => html`<li><span>${c.track(r)?.title ?? `Song ${r}`} <span class="muted">${c.track(r)?.album.title ?? ""}</span></span><button type="button" class="btn" data-hy="unjoin" data-id="${r}">Unjoin</button></li>`)}</ul>` : ""}
-		${where?.book ? html`<p class="sb-remove"><button class="link-btn danger" data-hy="entry-remove">Take ${where.book.short} ${where.book.entries[where.at].number} out of ${where.book.title}</button> <small class="muted">The text and its words stay.</small></p>` : ""}
+		${where?.book ? html`<form class="sb-renumber" data-hy="renumber"><label class="sb-field"><span>Number in ${where.book.title}</span><input name="number" type="number" min="1" max="99999" required value="${where.book.entries[where.at].number}" inputmode="numeric"></label><button class="btn" type="submit">Change the number</button></form>
+		<p class="sb-remove"><button class="btn danger" data-hy="entry-delete">${icon("close")} Delete ${where.book.short} ${where.book.entries[where.at].number}</button> <small class="muted">${t.books.length > 1 ? "Only this number goes: the words are printed in other books too." : "The song goes, with its words and their history. Recordings joined to it are unjoined first."}</small></p>` : ""}
 		<p class="error" role="alert" hidden></p>
 	</div>`;
 }
@@ -255,7 +280,8 @@ function mountHymn(root, c, t, where, ctx) {
 				if (hy === "join-q") {
 					const box = root.querySelector("#sb-join-results");
 					const r = q.length >= 2 ? search(c, q, { tracks: 8, albums: 0, artists: 0 }) : null;
-					box.innerHTML = r ? html`${r.tracks.items.filter((x) => !t.recordings.includes(x.id)).map((x) => html`<li><span><b>${x.title}</b> <span class="muted">${x.album.title}</span></span><button class="btn" data-hy="join" data-id="${x.id}">Join</button></li>`)}`.toString() : "";
+					const found = r ? r.tracks.items.filter((x) => !t.recordings.includes(x.id)) : [];
+					box.innerHTML = q.length < 2 ? "" : found.length ? html`${found.map((x) => html`<li><span><b class="${scriptClass(x.title)}">${x.title}</b> <span class="muted">${x.album.title} · ${creditOf(x.artists, 1)}</span></span><button class="btn" data-hy="join" data-id="${x.id}">${icon("plus")} Join</button></li>`)}`.toString() : html`<li class="muted">No song in Zaideih matches “${q}”.</li>`.toString();
 					return;
 				}
 				const box = el.parentElement.querySelector(".sb-pick-results");
@@ -307,11 +333,13 @@ function mountHymn(root, c, t, where, ctx) {
 					await updateText(t.id, { work: null });
 					reload();
 					break;
-				case "entry-remove": {
+				case "entry-delete": {
 					const n = where.book.entries[where.at].number;
-					if (!(await ctx.confirmAction(`Take ${where.book.short} ${n} out of ${where.book.title}? Its text and words stay.`, "Take it out"))) return;
-					await setEntry(where.book.id, n, { remove: true });
+					const only = t.books.length <= 1;
+					if (!(await ctx.confirmAction(only ? `Delete ${where.book.short} ${n}, “${t.title}”, with its words and their history? This cannot be undone.` : `Take ${where.book.short} ${n} out of ${where.book.title}? The words stay in the other books.`, only ? "Delete" : "Take it out"))) return;
+					await setEntry(where.book.id, n, { delete: true });
 					refreshHymnIndex({ force: true, editor: true }).catch(() => {});
+					ctx.notify(only ? `${where.book.short} ${n} deleted` : `${where.book.short} ${n} taken out`);
 					location.hash = href(`songbook/${where.book.id}`);
 					break;
 				}
@@ -343,6 +371,22 @@ function mountHymn(root, c, t, where, ctx) {
 			if (!(await ctx.confirmAction("Unjoin this recording? It shows no words until it is joined again or given its own.", "Unjoin"))) return;
 			await unlinkLyrics(Number(b.dataset.id), false);
 			reload();
+		} catch (err) {
+			fail(err);
+		}
+	});
+	root.addEventListener("submit", async (e) => {
+		const renumber = e.target.closest("[data-hy=renumber]");
+		if (!renumber) return;
+		e.preventDefault();
+		const from = where.book.entries[where.at].number;
+		const to = Number(new FormData(renumber).get("number"));
+		if (to === from) return;
+		try {
+			await setEntry(where.book.id, from, { number: to });
+			refreshHymnIndex({ force: true, editor: true }).catch(() => {});
+			ctx.notify(`${where.book.short} ${from} is now ${where.book.short} ${to}`);
+			location.hash = href(`songbook/${where.book.id}/${to}`);
 		} catch (err) {
 			fail(err);
 		}

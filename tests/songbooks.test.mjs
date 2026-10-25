@@ -145,3 +145,30 @@ test("songbooks: public texts in the index and on pages; recordings joined to a 
 	// The Songbooks right unjoins it.
 	assert.equal((await ly("gh-ed", "POST", "/lyrics/101/unlink", {})).status, 200);
 });
+
+test("songbooks: a number changes; a song is deleted with its words, unless printed elsewhere or sung by a joined recording", { skip }, async () => {
+	const { env, signIn, sb, ly } = setup();
+	const ed = (await signIn("gh-ed")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'songbooks', 'khen', 0)").bind(ed).run();
+	await env.DB.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (101, 'a', 'b.mp3', 0)").run();
+	const book = (await sb("gh-ed", "POST", "/songbooks", { title: "Galhiam", short: "GH", lang: "tedim" })).body;
+	const other = (await sb("gh-ed", "POST", "/songbooks", { title: "Other", short: "OT", lang: "tedim" })).body;
+	const text = (await sb("gh-ed", "POST", `/songbooks/${book.id}/entries`, { number: 5, title: "Five" })).body.text;
+	await ly("gh-ed", "POST", `/lyrics/${text}`, { text: "Line", base: 0 });
+	await sb("gh-ed", "POST", `/songbooks/${book.id}/entries`, { number: 6, title: "Six" });
+
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${book.id}/entries/5`, { number: 6 })).status, 409, "the number is taken");
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${book.id}/entries/5`, { number: 7 })).status, 200);
+	assert.deepEqual((await sb("gh-ed", "GET", `/songbooks/${book.id}`)).body.entries.map((e) => e.number), [6, 7]);
+
+	// Printed in another book too: only this number goes.
+	await sb("gh-ed", "POST", `/songbooks/${other.id}/entries`, { number: 1, text });
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${book.id}/entries/7`, { delete: true })).body.deleted, "number");
+	// A recording joined: refused until it is unjoined.
+	await ly("gh-ed", "POST", "/lyrics/101/link", { to: text });
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${other.id}/entries/1`, { delete: true })).status, 409);
+	await ly("gh-ed", "POST", "/lyrics/101/unlink", {});
+	assert.equal((await sb("gh-ed", "POST", `/songbooks/${other.id}/entries/1`, { delete: true })).body.deleted, "text");
+	assert.equal((await sb("gh-ed", "GET", `/songbooks/texts/${text}`)).status, 404);
+	assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics_versions WHERE track = ?1").bind(text).first()).n, 0, "its words and history go with it");
+});
