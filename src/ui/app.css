@@ -2010,3 +2010,17 @@ img.acct-avatar { object-fit: cover; }
 	body[data-scrolled] .topbar, body[data-scrolled][data-studio] .st-head { box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.45); }
 	body[data-studio] .st-head :is(a, button, input, select, label, summary, [tabindex]) { app-region: no-drag; -webkit-app-region: no-drag; }
 }
+
+/*
+ * Installed on a desktop, with the system title bar or the app's own: the
+ * title bar is the page's colour (theme-color, #5a5a5a), the sidebar darker.
+ * Its head fades from the title bar's colour into its own, and its edge in
+ * with it, so no seam shows where they meet.
+ */
+@media (min-width: 900px) and (display-mode: standalone), (min-width: 900px) and (display-mode: window-controls-overlay) {
+	.rail {
+		background: linear-gradient(180deg, var(--mist) 0, var(--rail-bg) 72px);
+		border-right-color: transparent;
+		border-image: linear-gradient(180deg, rgb(98 98 98 / 0) 0, #626262 72px) 1;
+	}
+}
