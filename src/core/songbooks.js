@@ -36,7 +36,8 @@ async function call(method, path, body) {
 	return answer;
 }
 
-export const listBooks = async () => (await call("GET", "")).books;
+/** The books the person sees: { books (each with `may`), create (may add a book), publish (may make one public) }. */
+export const listBooks = () => call("GET", "");
 export const readBook = (id) => call("GET", `/${id}`);
 export const createBook = (fields) => call("POST", "", fields);
 export const updateBook = (id, fields) => call("POST", `/${id}`, fields);
@@ -74,6 +75,14 @@ export const readWork = (id) => call("GET", `/works/${id}`);
 export const findWorks = async (q) => (await call("GET", `/works?q=${encodeURIComponent(q)}`)).works;
 export const createWork = (fields) => call("POST", "/works", fields);
 export const updateWork = (id, fields) => call("POST", `/works/${id}`, fields);
+/** Those appointed to book `bookId`: [{ member, name, role, addedBy, at }] (the Songbooks right). */
+export const listCollaborators = async (bookId) => (await call("GET", `/${bookId}/collaborators`)).collaborators;
+/** Appoints `member` to book `bookId` as "editor" or "reader"; null takes them off. Answers the collaborators. */
+export const setCollaborator = async (bookId, member, role) => (await call("POST", `/${bookId}/collaborators`, { member, role })).collaborators;
+/** Members by name or sign-in, to appoint: [{ id, name, logins }]. */
+export const findMembers = async (q) => (await call("GET", `/members?q=${encodeURIComponent(q)}`)).members;
+/** True when `may` (a book's or a text's) lets the person change it. */
+export const mayEdit = (may) => may === "edit" || may === "manage";
 /** Hymn `number` of book `bookId` prints another text, or (`remove`) is taken out. */
 export const setEntry = (bookId, number, change) => call("POST", `/${bookId}/entries/${number}`, change);
 
@@ -82,8 +91,9 @@ export const setEntry = (bookId, number, change) => call("POST", `/${bookId}/ent
 /*
  * Every hymn of the books (GET /songbooks/index), for search and for naming
  * a text where it is printed ("TL 145"). The public index is kept on the
- * device (KEY) and read again after INDEX_MS; with the Songbooks right the
- * private books come too, kept in memory only.
+ * device (KEY) and read again after INDEX_MS; signed in, the private books
+ * the person sees come too (the Songbooks right, or appointed to them), and
+ * the index is kept in memory only.
  */
 const KEY = "zaideih.songbooks.index";
 const INDEX_MS = 10 * 60 * 1000;
@@ -104,13 +114,14 @@ try {
 	if (saved?.data) index = build(saved.data, saved.at ?? 0, false);
 } catch { /* read again below */ }
 
-/** Reads the index again when it is older than INDEX_MS, or when `force`; `editor`: with private books. */
-export async function refreshHymnIndex({ force = false, editor = false } = {}) {
+/** Reads the index again when it is older than INDEX_MS, when someone signs in or out, or when `force`. */
+export async function refreshHymnIndex({ force = false } = {}) {
 	if (!SONGBOOKS_URL) return index;
-	if (!force && editor === index.private && Date.now() - index.at < INDEX_MS) return index;
+	const signed = account().signedIn;
+	if (!force && signed === index.private && Date.now() - index.at < INDEX_MS) return index;
 	const data = await call("GET", "/index");
-	index = build(data, Date.now(), editor);
-	if (!editor) {
+	index = build(data, Date.now(), signed);
+	if (!signed) {
 		try { localStorage.setItem(KEY, JSON.stringify({ at: index.at, data })); } catch { /* this visit only */ }
 	}
 	return index;

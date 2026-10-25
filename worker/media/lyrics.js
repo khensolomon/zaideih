@@ -79,7 +79,7 @@
  */
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
-import { isText, TEXT_BASE, textExists, textIsPublic } from "./songbooks.js";
+import { isText, TEXT_BASE, textAccess, textExists, textIsPublic } from "./songbooks.js";
 import { applyTimes, clearTimes, extractTimes, looksZawgyi, lyricsWords } from "../../src/core/lyrics-format.js";
 
 export const MAX_LYRICS = 20_000;
@@ -349,9 +349,18 @@ async function signedIn(env, request, nowSeconds) {
 	return me;
 }
 
-function mayModerate(me, ...ids) {
-	// A songbook text, and a recording joined to one, are looked after by the Songbooks right too.
-	if (!can(me, "lyrics") && !(ids.some((i) => isText(i)) && can(me, "songbooks"))) throw new MemberError("this needs the Lyrics right", 403);
+/**
+ * True when `me` looks after a songbook text among `ids` (songbooks.js): the
+ * Songbooks right, or an editor of a book printing it.
+ */
+async function editsText(env, me, ...ids) {
+	for (const i of ids) if (isText(i) && ["edit", "manage"].includes(await textAccess(env, me, i))) return true;
+	return false;
+}
+
+async function mayModerate(env, me, ...ids) {
+	// A songbook text, and a recording joined to one, are looked after by those who edit the text too.
+	if (!can(me, "lyrics") && !(await editsText(env, me, ...ids))) throw new MemberError("this needs the Lyrics right", 403);
 }
 
 const nameOf = (r) => r.name ?? "a member no longer here";
@@ -389,7 +398,9 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		if (!cors) throw new MemberError("this origin may not edit lyrics (AUTH_ORIGINS)", 403);
 		const me = await signedIn(env, request, nowSeconds);
 		if (isText(track)) {
-			if (privateText && !can(me, "songbooks")) throw new MemberError(`there is no songbook text ${track}`, 404);
+			// A private text: those who see its book only; its words are changed by its editors.
+			if (privateText && !(await textAccess(env, me, track))) throw new MemberError(`there is no songbook text ${track}`, 404);
+			if (privateText && !(await editsText(env, me, track)) && m === "POST") throw new MemberError("changing this song needs the Songbooks right, or to be an editor of its book", 403);
 			// Joining texts and recordings comes later (docs/songbooks.md, step 4).
 			if (["link", "unlink", "propose", "compare", "decline"].includes(action)) throw new MemberError("songbook texts are not joined to recordings yet", 400);
 		}
@@ -427,7 +438,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		// Joining a recording to a songbook text: the Songbooks right too.
 		const toText = Number.isSafeInteger(linkBody?.to) && isText(linkBody.to);
 		// App builds before 26.10.24.32 offer "Use these lyrics" to every member: without the right, it is a proposal.
-		if (linkBody && !can(me, "lyrics") && !(toText && can(me, "songbooks"))) {
+		if (linkBody && !can(me, "lyrics") && !(toText && (await editsText(env, me, linkBody.to)))) {
 			await propose(env, track, linkBody, me, nowSeconds);
 			throw new MemberError("only those who look after lyrics link songs; your suggestion was sent to them instead", 403);
 		}
@@ -445,7 +456,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		}
 
 		// A recording showing a songbook text is looked after by the Songbooks right too.
-		mayModerate(me, track, toText ? linkBody.to : 0, action === "unlink" ? await sourceOf(env, track) : 0);
+		await mayModerate(env, me, track, toText ? linkBody.to : 0, action === "unlink" ? await sourceOf(env, track) : 0);
 		if (action === "link" && m === "POST") {
 			const body = linkBody;
 			if (!Number.isSafeInteger(body.to) || body.to <= 0) throw new MemberError("to must be the song whose lyrics to show");

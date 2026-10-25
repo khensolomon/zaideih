@@ -227,7 +227,7 @@ function syncAccess() {
 		a.title = name ? "Account" : "";
 	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Workspace" : "Suggest edits") : "";
-	// Songbooks: for the Songbooks right until books are public (docs/songbooks.md).
+	// Songbooks: for the Songbooks right, and those appointed to a book, until books are public (docs/songbooks.md).
 	for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
 	for (const a of $$(".rail-workspace, .am-workspace")) {
 		a.hidden = !who;
@@ -1834,9 +1834,11 @@ export async function boot(platform) {
 	uploads.catalog = catalog;
 	syncAccess();
 	on("uploads", () => {
-		for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
-		// The hymns of the books, for search and for naming them: private ones too with the Songbooks right.
-		refreshHymnIndex({ editor: uploads.canSongbooks }).catch((err) => console.warn("songbooks index", err.message));
+		// The hymns of the books, for search and for naming them: signed in, the private ones the person sees too
+		// (the Songbooks right, or appointed to a book); Songbooks shows in the sidebar once there are any.
+		refreshHymnIndex().then(() => {
+			for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
+		}, (err) => console.warn("songbooks index", err.message));
 		const path = currentRoute?.path ?? "";
 		// Songbook pages show editing to the Songbooks right, known once the member is read.
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();

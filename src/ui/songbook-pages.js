@@ -1,9 +1,11 @@
 /**
  * A songbook's pages (docs/songbooks.md, steps 3 to 5): a book and its hymns,
  * a hymn (a text, with its work, credits, other versions and the recordings
- * that sing it), a person and a work. Those with the Songbooks right also
- * edit here: a book's details, its rights and (owner and co-owners) whether
- * it is public; a hymn's details, its work and credits; joining recordings.
+ * that sing it), a person and a work. Those who may edit a book (the
+ * Songbooks right, or appointed to it as an editor: the book's `may`) edit
+ * here: its details and rights, its songs' numbers, details, work, credits
+ * and recordings joined. The owner and co-owners make it public; the
+ * Songbooks right appoints editors and readers (Collaborators).
  *
  *   #/songbook/<book>              the book: its hymns, filtered; a number jumps
  *   #/songbook/<book>/<number>     a hymn of the book
@@ -18,10 +20,9 @@ import { linkLyrics, unlinkLyrics } from "../core/lyrics.js";
 import { href } from "../core/router.js";
 import { search } from "../core/search.js";
 import {
-	createPerson, createWork, findPeople, findWorks, hymnHref, hymnOf, readBook, readPerson, readText, readWork,
-	refreshHymnIndex, setEntry, updateBook, updateText, updateWork,
+	createPerson, createWork, findMembers, findPeople, findWorks, hymnHref, hymnOf, listCollaborators, mayEdit, readBook, readPerson, readText, readWork,
+	refreshHymnIndex, setCollaborator, setEntry, updateBook, updateText, updateWork,
 } from "../core/songbooks.js";
-import { uploads } from "../core/uploads.js";
 import { icon } from "./icons.js";
 import { creditsHtml, detailChips, lyricsHtml } from "./lyrics-render.js";
 import { registerList, scriptClass, trackRow } from "./parts.js";
@@ -29,7 +30,9 @@ import { creditOf } from "../core/catalog.js";
 import { CLOSE_TITLES, titleCloseness, titleKey } from "../core/titles.js";
 
 const ROLE_NAMES = { words: "Words", music: "Music", arrangement: "Arrangement", translation: "Translation" };
-const editor = () => uploads.canSongbooks;
+const ROLES = { editor: "Editor", reader: "Reader" };
+/** Who sees a private book, said on its pages. */
+const PRIVATE = "Private: seen only with the Songbooks right, or by those appointed to it, until its rights are settled and the owner makes it public.";
 const failed = (title, err) => ({ title, body: html`<div class="empty"><h2>${title}</h2><p>${err.message}</p><p><a class="btn" href="#/songbooks">Songbooks</a></p></div>` });
 /**
  * The page in a wrapper of its own, its listeners on it: the view element
@@ -48,23 +51,25 @@ export async function bookView(_c, { id }) {
 	} catch (err) {
 		return failed("This songbook could not be read", err);
 	}
+	const ed = mayEdit(book.may);
 	const facts = [book.lang, book.edition && `edition ${book.edition}`, book.year, book.publisher].filter(Boolean).join(" · ");
 	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>
 		<div class="sb-head">
 			<span class="sb-short sb-short-big">${book.short}</span>
 			<div><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}</p></div>
 		</div>
-		${book.public ? "" : html`<p class="held-note">${icon("lock")} Private: seen only with the Songbooks right until its rights are settled and the owner makes it public.</p>`}
-		${editor() ? html`<div class="actions"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit">${icon("edit")} Details and rights</button></div><div id="sb-book-edit"></div>` : ""}
+		${book.public ? "" : html`<p class="held-note">${icon("lock")} ${PRIVATE}</p>`}
+		${book.may === "edit" || book.may === "read" ? html`<p class="muted sb-appointed">${icon("info")} You are ${book.may === "edit" ? "an editor" : "a reader"} of this book${book.may === "edit" ? ": you change its details, numbers and songs" : ""}.</p>` : ""}
+		${ed ? html`<div class="actions"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit">${icon("edit")} Details and rights</button>${book.may === "manage" ? html`<button class="btn" data-hy="team">${icon("people")} Collaborators</button>` : ""}</div><div id="sb-book-edit"></div><div id="sb-team"></div>` : ""}
 		<label class="sb-filter">${icon("search")}<input type="search" data-hy="filter" placeholder="A number, a title or the first line" aria-label="Find a song in ${book.title}: a number, a title or the first line" autocomplete="off" enterkeyhint="go"></label>
 		${book.entries.length ? html`<ol class="sb-index">${book.entries.map((e) => html`<li data-n="${e.number}" data-find="${`${e.number} ${e.title} ${e.firstLine}`.toLowerCase()}">
 			<a href="${href(`songbook/${book.id}/${e.number}`)}"><span class="sb-num">${e.number}</span><span class="sb-hymn-text"><b class="${scriptClass(e.title)}">${e.title}</b>${e.firstLine && e.firstLine !== e.title ? html`<small class="${scriptClass(e.firstLine)}">${e.firstLine}</small>` : ""}</span></a>
-		</li>`)}</ol><p class="muted sb-none" hidden>No song matches.</p>` : html`<div class="empty"><h2>No songs yet</h2>${editor() ? html`<p><a class="btn primary" href="${href("songbooks/import", { book: book.id })}">Add pages</a></p>` : ""}</div>`}`;
+		</li>`)}</ol><p class="muted sb-none" hidden>No song matches.</p>` : html`<div class="empty"><h2>No songs yet</h2>${ed ? html`<p><a class="btn primary" href="${href("songbooks/import", { book: book.id })}">Add pages</a></p>` : ""}</div>`}`;
 	return { title: book.title, ...own(body, (root) => mountBook(root, book)) };
 }
 
 function bookForm(book) {
-	const canPublish = uploads.canPublishBooks;
+	const canPublish = book.publish;
 	return html`<form class="panel sb-new" data-hy="book-save">
 		<h2>Details and rights</h2>
 		<div class="sb-fields">
@@ -108,6 +113,7 @@ function mountBook(root, book) {
 		const box = root.querySelector("#sb-book-edit");
 		box.innerHTML = box.innerHTML ? "" : bookForm(book).toString();
 	});
+	if (book.may === "manage") mountTeam(root, book);
 	root.addEventListener("submit", async (e) => {
 		const form = e.target.closest("[data-hy=book-save]");
 		if (!form) return;
@@ -115,16 +121,90 @@ function mountBook(root, book) {
 		const f = new FormData(form);
 		const fields = Object.fromEntries(["title", "short", "lang", "edition", "publisher", "rights", "rightsNote"].map((k) => [k, String(f.get(k) ?? "")]));
 		fields.year = f.get("year") ? Number(f.get("year")) : null;
-		if (uploads.canPublishBooks) fields.public = f.get("public") === "on";
+		if (book.publish) fields.public = f.get("public") === "on";
 		try {
 			await updateBook(book.id, fields);
-			refreshHymnIndex({ force: true, editor: editor() }).catch(() => {});
+			refreshHymnIndex({ force: true }).catch(() => {});
 			dispatchEvent(new HashChangeEvent("hashchange"));
 		} catch (err) {
 			const box = form.querySelector(".error");
 			box.textContent = err.message;
 			box.hidden = false;
 		}
+	});
+}
+
+/* ----------------------------------------------------- collaborators ---- */
+
+function teamHtml(book, list) {
+	return html`<section class="panel sb-team">
+		<h2>Collaborators</h2>
+		<p class="muted">An editor changes ${book.title}: its details, its songs' numbers, words and details, and the recordings joined to them. A reader sees it while it is private. Making it public stays with the owner and co-owners.</p>
+		${list.length ? html`<ul class="sb-list">${list.map((x) => html`<li><span><b>${x.name}</b> <span class="muted">added by ${x.addedBy}</span></span>
+			<span class="sb-team-do"><select data-hy="team-role" data-member="${x.member}" aria-label="${x.name}'s role">${Object.entries(ROLES).map(([v, l]) => html`<option value="${v}" ${v === x.role ? "selected" : ""}>${l}</option>`)}</select>
+			<button type="button" class="btn" data-hy="team-drop" data-member="${x.member}" data-name="${x.name}">${icon("close")} Take off</button></span></li>`)}</ul>` : html`<p>No one is appointed to this book yet.</p>`}
+		<div class="sb-team-add">
+			<label class="sb-field"><span>Add as</span><select data-hy="team-as">${Object.entries(ROLES).map(([v, l]) => html`<option value="${v}">${l}</option>`)}</select></label>
+			<label class="sb-field sb-pick"><span>Member</span><input data-hy="member-q" placeholder="A name, a GitHub login or an email" autocomplete="off"><span class="sb-pick-results"></span></label>
+		</div>
+	</section>`;
+}
+
+function mountTeam(root, book) {
+	const box = root.querySelector("#sb-team");
+	let list = [];
+	const fail = (err) => {
+		box.querySelector(".sb-team .error")?.remove();
+		box.querySelector(".sb-team")?.insertAdjacentHTML("beforeend", html`<p class="error" role="alert">${err.message}</p>`.toString());
+	};
+	const draw = () => { box.innerHTML = teamHtml(book, list).toString(); };
+	const save = async (member, role) => {
+		try {
+			list = await setCollaborator(book.id, member, role);
+			draw();
+		} catch (err) {
+			fail(err);
+		}
+	};
+	let timer = 0;
+	root.addEventListener("click", async (e) => {
+		const b = e.target.closest("[data-hy=team], [data-hy=team-drop], [data-hy=member-pick]");
+		if (!b) return;
+		if (b.dataset.hy === "team") {
+			if (box.innerHTML) { box.innerHTML = ""; return; }
+			try {
+				list = await listCollaborators(book.id);
+				draw();
+				box.querySelector("[data-hy=member-q]")?.focus();
+			} catch (err) {
+				box.innerHTML = html`<p class="error" role="alert">${err.message}</p>`.toString();
+			}
+		} else if (b.dataset.hy === "team-drop") {
+			await save(Number(b.dataset.member), null);
+		} else {
+			await save(Number(b.dataset.id), box.querySelector("[data-hy=team-as]").value);
+		}
+	});
+	root.addEventListener("change", (e) => {
+		if (e.target.dataset.hy === "team-role") save(Number(e.target.dataset.member), e.target.value);
+	});
+	root.addEventListener("input", (e) => {
+		if (e.target.dataset.hy !== "member-q") return;
+		const el = e.target;
+		clearTimeout(timer);
+		timer = setTimeout(async () => {
+			const out = el.parentElement.querySelector(".sb-pick-results");
+			const q = el.value.trim();
+			if (q.length < 2) { out.innerHTML = ""; return; }
+			try {
+				const found = (await findMembers(q)).filter((x) => !list.some((y) => y.member === x.id));
+				out.innerHTML = found.length
+					? html`${found.map((x) => html`<button type="button" class="chip" data-hy="member-pick" data-id="${x.id}">${icon("plus")} ${x.name}${x.logins ? html` <span class="muted">${x.logins}</span>` : ""}</button>`)}`.toString()
+					: html`<span class="muted">No member matches “${q}”. They sign in to Zaideih once first.</span>`.toString();
+			} catch (err) {
+				fail(err);
+			}
+		}, 250);
 	});
 }
 
@@ -166,14 +246,14 @@ async function textPage(c, textId, query, where, ctx) {
 	const recordings = t.recordings.map((r) => c.track(r)).filter(Boolean);
 	const listKey = recordings.length ? registerList(recordings.map((r) => r.id), t.title) : "";
 	const pagePath = book ? `songbook/${book.id}/${entry.number}` : `songbooks/text/${t.id}`;
-	const ed = editor();
+	const ed = mayEdit(t.may);
 	const body = html`<p class="kind">${book ? html`<a class="text-link" href="${href(`songbook/${book.id}`)}">${book.title}</a>` : html`<a class="text-link" href="#/songbooks">Songbooks</a>`}</p>
 		<div class="sb-head">
 			${label ? html`<span class="sb-short sb-short-big sb-label">${label}</span>` : ""}
 			<div><h1 class="${scriptClass(t.title)}">${t.title}</h1>
 			<p class="muted">${[t.lang, ...t.books.filter((b) => !entry || b.book !== book.id || b.number !== entry.number).map((b) => `${b.short} ${b.number}`)].join(" · ")}</p></div>
 		</div>
-		${book && !book.public ? html`<p class="held-note">${icon("lock")} Private: seen only with the Songbooks right until the book's rights are settled.</p>` : ""}
+		${book && !book.public ? html`<p class="held-note">${icon("lock")} ${PRIVATE}</p>` : ""}
 		<div class="actions">
 			${recordings.length ? html`<button class="btn primary" data-act="play-all" data-list="${listKey}">${icon("play")} Play</button>` : ""}
 			${t.lyrics.length > 1 || lang ? html`<span class="sb-langs">${t.lyrics.map((l) => html`<a class="chip${l.lang === lang ? " on" : ""}" href="${href(pagePath, l.lang ? { lang: l.lang } : undefined)}">${LYRICS_LANGS[l.lang] ?? l.lang}</a>`)}</span>` : ""}
@@ -338,7 +418,7 @@ function mountHymn(root, c, t, where, ctx) {
 					const only = t.books.length <= 1;
 					if (!(await ctx.confirmAction(only ? `Delete ${where.book.short} ${n}, “${t.title}”, with its words and their history? This cannot be undone.` : `Take ${where.book.short} ${n} out of ${where.book.title}? The words stay in the other books.`, only ? "Delete" : "Take it out"))) return;
 					await setEntry(where.book.id, n, { delete: true });
-					refreshHymnIndex({ force: true, editor: true }).catch(() => {});
+					refreshHymnIndex({ force: true }).catch(() => {});
 					ctx.notify(only ? `${where.book.short} ${n} deleted` : `${where.book.short} ${n} taken out`);
 					location.hash = href(`songbook/${where.book.id}`);
 					break;
@@ -384,7 +464,7 @@ function mountHymn(root, c, t, where, ctx) {
 		if (to === from) return;
 		try {
 			await setEntry(where.book.id, from, { number: to });
-			refreshHymnIndex({ force: true, editor: true }).catch(() => {});
+			refreshHymnIndex({ force: true }).catch(() => {});
 			ctx.notify(`${where.book.short} ${from} is now ${where.book.short} ${to}`);
 			location.hash = href(`songbook/${where.book.id}/${to}`);
 		} catch (err) {
@@ -399,7 +479,7 @@ function mountHymn(root, c, t, where, ctx) {
 		try {
 			if (form.dataset.hy === "text-save") await updateText(t.id, { title: f.title, firstLine: f.firstLine, lang: f.lang });
 			else await updateWork(t.work.id, { title: f.title, lang: f.lang, tune: f.tune, metre: f.metre, year: f.year ? Number(f.year) : null, scripture: f.scripture, topics: f.topics });
-			refreshHymnIndex({ force: true, editor: true }).catch(() => {});
+			refreshHymnIndex({ force: true }).catch(() => {});
 			reload();
 		} catch (err) {
 			fail(err);

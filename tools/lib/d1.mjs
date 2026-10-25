@@ -136,7 +136,7 @@ export function lyricsBackup(lyrics, versions, exportedAt, { links = [], times =
 }
 
 /** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
-export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times", "lyrics_proposals", "album_holds", "album_hold_tracks", "album_hold_log", "songbooks", "songbook_entries", "song_texts", "song_works", "song_people", "song_credits"]);
+export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times", "lyrics_proposals", "album_holds", "album_hold_tracks", "album_hold_log", "songbooks", "songbook_members", "songbook_entries", "song_texts", "song_works", "song_people", "song_credits"]);
 
 /**
  * Why a reset must not go ahead, or null: it would lose personal libraries

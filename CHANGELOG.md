@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.25.21
+
+- Songbooks: collaborators appointed to one book, as editor or reader
+- A book's page, Collaborators (owner, co-owners and the Songbooks right): find a member by name, GitHub login or email, appoint as Editor or Reader, change the role, take off
+- An editor changes that book only: details, Add pages, numbers, each song's words, details, credits, work and joined recordings; a reader sees it while private
+- Public or private, and deleting from a public book, stay with the owner and co-owners
+- Audio Worker: `songbook_members` (migration 0008); books and texts carry `may`; `GET/POST /songbooks/:book/collaborators`, `GET /songbooks/members?q=`; lyrics of a private text are edited by its book's editors
+
 ## v26.10.25.20
 
 - Build: the duplicate info icon removed; esbuild warnings fail the build
