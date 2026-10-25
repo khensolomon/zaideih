@@ -10,7 +10,13 @@
  *   Preview  the lyrics as listeners will see them.
  *   Timing   tap as each line starts while the song plays; the times are
  *            written into the text (LRC), a chorus sung again included.
- *   History  for the Lyrics right: versions, reports, hide, show, restore.
+ *   History  for the Lyrics right: versions, reports, hide, show, restore;
+ *            on a linked song, "Give it a copy of its own" and Unlink.
+ *
+ * Same song (ui/lyrics-share.js): without lyrics, a member proposes another
+ * song's and the Lyrics right uses them; with lyrics of its own, the Lyrics
+ * right compares the two in the merge panel (core/lyrics-merge.js), which
+ * ?merge=<song>&proposal=<id> opens from the admin page.
  *
  * What is typed is kept on the device as it is typed (core/lyrics.js
  * drafts), so leaving the page loses nothing: coming back continues it.

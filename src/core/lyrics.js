@@ -5,8 +5,10 @@
  * Reading needs no account. Lyrics once read are kept on the device (IndexedDB
  * `kv`, "lyrics.<song id>"), so they show offline; online, the Worker's copy
  * is asked for each time (it comes from its edge cache, not the database).
- * Adding and editing need a sign-in; the Lyrics right hides, shows and
- * restores earlier versions.
+ * Adding, editing, reporting and proposing that two songs are the same need
+ * a sign-in; the Lyrics right hides, shows and restores earlier versions,
+ * links, merges and unlinks songs, and compares copies. Recent edits and
+ * declining proposals are the admin page's own calls (src/admin/admin.js).
  */
 import { LIBRARY_URL } from "../config.js";
 import { db } from "./db.js";

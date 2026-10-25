@@ -8,7 +8,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
 | `/auth/*` | sign in with GitHub for the admin page; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
 | `/auth/session`, `/auth/me`, `/auth/google/*`, `/auth/passkey/*` | accounts: Zaideih sessions from GitHub, Google or passkey sign-ins ([accounts.md](accounts.md)) | `accounts.js`, `google.js`, `passkeys.js` |
-| `/lyrics/:song`, `/lyrics/recent` | lyrics of catalog songs: public reading, editing and reporting signed in, the Lyrics right ([lyrics.md](lyrics.md)) | `lyrics.js` |
+| `/lyrics/:song`, `/lyrics/recent`, `/lyrics/index` | lyrics of catalog songs: public reading, editing and reporting signed in, the Lyrics right ([lyrics.md](lyrics.md)) | `lyrics.js` |
 | `POST /library/sync` | liked songs and playlists on every device ([sync.md](sync.md)) | `sync.js` |
 | `/library/*`, `GET /u/:id`, `GET /k/:key` | personal libraries: uploads, adding from storage, rights and moderation, asking to publish, signed streaming | `library.js`, `members.js`, `requests.js` |
 
@@ -203,10 +203,13 @@ A Worker missing any of these answers `/auth/*` with 503 naming what is missing.
 
 ## Personal libraries
 
-`/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; `/library/requests*` (`requests.js`) asking to publish them. The design is in [library.md](library.md).
+`/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; `/library/requests*` (`requests.js`) asking to publish them. The design is in [library.md](library.md). The upload and storage routes are listed in the header of `library.js`.
 
 | Route | Who | Does |
 |---|---|---|
+| `GET /library/members` | any right | every member with space used, uploads and rights |
+| `GET /library/members/<member id>` | Moderate members | one member's uploads (titles only, no addresses) |
+| `POST /library/members/<member id>` | Moderate members; co-owners for rights and folder | `{blocked: true, reason}` or `{blocked: false}`; `{rights: {<right>: true or false}}`; `{folder: "<prefix>/" or null}`, where Storage adds from |
 | `POST /library/requests` `{album, lang, note}` | the member | asks to publish an album of their uploads (MP3 only, else 415 naming the files) |
 | `GET /library/requests` | signed in | the person's own requests; with Review publishing, every open one and the 50 latest decided, each song with a signed address |
 | `DELETE /library/requests/<id>` | the member, a co-owner | withdraws an open request |
@@ -233,7 +236,7 @@ npx wrangler d1 execute audio --remote --command \
   "SELECT m.name, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.id GROUP BY m.id ORDER BY mb DESC"
 ```
 
-`tools/d1.mjs reset` refuses while the library tables (`members`, `uploads`, `member_rights`, `member_folders`, `publish_requests`, `published_tracks`) hold rows (`--drop-library` overrides it; the files then stay in R2 under `users/` without an owner).
+`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (`LIBRARY_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics). `--drop-library` overrides it; the files then stay in R2 under `users/` without an owner.
 
 ## History: the Worker without Django
 

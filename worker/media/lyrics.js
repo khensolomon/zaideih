@@ -17,8 +17,8 @@
  *                                        becomes the newest version
  *   POST /lyrics/:track/report {reason}  signed in: something is wrong with them
  *   POST /lyrics/:track/resolve          Lyrics right: its open reports dealt with
- *   GET  /lyrics/recent                  Lyrics right: the latest edits, and the
- *                                        songs with open reports
+ *   GET  /lyrics/recent                  Lyrics right: open proposals, the latest
+ *                                        edits, and the songs with open reports
  *   GET  /lyrics/index?since=<seconds>   public: what the app searches (below)
  *   POST /lyrics/:track/propose {to, note} signed in: proposes that this song is
  *                                        the same as `to`, for the Lyrics right
@@ -27,13 +27,20 @@
  *                                        lyrics of recording `to` (shared
  *                                        lyrics); with merge, two songs that
  *                                        both have lyrics become one text, the
- *                                        copy `keep` names ("track" or "to")
+ *                                        copy `keep` names ("track" or "to");
+ *                                        signed in without the right: 403,
+ *                                        and the link is sent as a proposal
  *   GET  /lyrics/:track/compare?with=<id> Lyrics right: both copies, to merge
  *   POST /lyrics/:track/decline {proposal, reason}
- *                                        Lyrics right: a proposal declined
+ *                                        Lyrics right: a proposal declined; the
+ *                                        reason is kept with it (not shown to
+ *                                        members yet)
  *   POST /lyrics/:track/unlink {copy}    Lyrics right: no longer shared; with
  *                                        copy, the recording keeps a copy of
- *                                        the text (and its timing) as its own
+ *                                        the text (and its timing) as its own,
+ *                                        hidden texts excepted; when the last
+ *                                        linked recording leaves, the source's
+ *                                        own timing goes back into its text
  *
  * Shared lyrics (docs/lyrics.md): the same song recorded on several albums
  * shows one text. Every route on a linked recording reads and writes the
@@ -44,12 +51,15 @@
  * and taken out of the text it saves. Linking never covers lyrics: a
  * recording with lyrics of its own (in any language) is merged instead,
  * deliberately: its own text and history stay with it (hidden, "merged
- * into song N"), and a copy of its own brings them back.
+ * into song N"), and a copy of its own brings them back. A link is never
+ * two steps: songs that showed the linked song's text move to its source.
+ * A POST to an address without a POST route (such as /versions) answers
+ * 404; restoring is only /restore.
  *
  * The index: every shown text's words (no times, chords or details: what is
  * sung, plus an original title), for searching songs by a line of their
  * lyrics on the device, and for marking songs that have lyrics. With
- * since=0, all of it (edge cached until the next change); with a later
+ * since=0, all of it (edge cached, as below); with a later
  * since, what changed from then: texts shown, and those hidden ("gone").
  *
  * Myanmar text must be Unicode: text in the Zawgyi encoding is refused (422)
@@ -61,9 +71,11 @@
  * by restoring an earlier one, never lost. Hidden lyrics answer 404 to
  * listeners; only the Lyrics right edits them while hidden.
  *
- * Public answers are kept in the Worker's edge cache (caches.default) and
- * removed from it on every change, so reading lyrics costs no D1 query
- * after the first listener in a region.
+ * Public answers are kept in the Worker's edge cache (caches.default) for
+ * EDGE_S (a "no lyrics" answer EDGE_MISS_S) and removed from it on every
+ * change. A Cache API delete reaches only the data centre that ran the
+ * change, so elsewhere a change shows once the copy there ends. Reading
+ * lyrics costs no D1 query after the first listener in a region.
  */
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";

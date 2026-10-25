@@ -15,8 +15,9 @@
  * beside part (kept as this device's choice).
  *
  * Shared lyrics (ui/lyrics-share.js): a song without lyrics offers the same
- * song on other albums, to read and, signed in, to use; a shared text names
- * the other recordings it is shown on.
+ * song on other albums, to read; signed in, a member proposes that it is the
+ * same song, and the Lyrics right uses its lyrics. A shared text names the
+ * other recordings it is shown on.
  */
 import { AUTH_URL } from "../config.js";
 import { creditOf } from "../core/catalog.js";

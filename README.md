@@ -15,7 +15,7 @@ The catalog holds about 2,300 albums and 28,000 songs by 2,000 artists, in Zolai
 
 - **Free to listen**: no account, no ads, nothing for sale, no financial benefit.
 - **The music belongs to its artists**: Zaideih only keeps it available. Rights holders can [open an issue](https://github.com/khensolomon/zaideih/issues) to have a recording credited differently or removed.
-- **Private by design**: likes, playlists, history and downloads stay on the device. Usage statistics are collected only with consent; song plays are counted without anything that identifies the listener.
+- **Private by design**: no account is needed; signed in, liked songs and playlists follow the account, and history and downloads stay on the device. Usage statistics are collected only with consent; song plays are counted without anything that identifies the listener.
 
 Started in 2006 and launched in 2007, Zaideih has been rebuilt several times: ASP, Flash, PHP, Node.js, Python with Flutter, and now a static HTML5 app.
 
@@ -24,11 +24,12 @@ Started in 2006 and launched in 2007, Zaideih has been rebuilt several times: AS
 - One app for the web (installable PWA) and the desktop (Electron).
 - Offline first: the whole catalog is browsable offline, and downloaded songs play without a connection.
 - Search across Latin and Myanmar script, with spelling variants, close matches, "did you mean" and simple questions such as "most played Mizo gospel albums from the 1990s".
-- Library: liked songs, playlists, history, and a backup file to move it between devices.
+- Library: liked songs, playlists and history; signed in, liked songs and playlists follow the account across devices, and a backup file keeps the library without an account.
 - Player with a queue, shuffle and repeat, lock-screen and media-key controls, and animated backgrounds in Now playing that follow the music.
 - Sound for old recordings, applied while listening: skip silent tape at the start and end, clean up air blowing, rumble and hiss, even out volume between recordings, play one-sided recordings in both ears, and a ten-band equaliser with presets.
 - Generated artwork: album covers and artist pictures drawn from the catalog itself.
-- Your own music: signed in with Google or GitHub, upload music you own to a private library that only you can play, on any device. See [docs/library.md](docs/library.md).
+- Lyrics: added and corrected by listeners who sign in, with translations, chords, timing, and search by a line of the words. See [docs/lyrics.md](docs/lyrics.md).
+- Personal music: signed in with Google, GitHub or a passkey, upload music of one's own to a private library that only its owner can play, on any device. See [docs/library.md](docs/library.md).
 
 ## Development
 
@@ -65,7 +66,7 @@ node tools/version.mjs --note "What changed" --apply    # write it, with a CHANG
 git commit -am "release: web 26.10.20.6 What changed"   # on master: test, build, deploy
 ```
 
-A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, `web+audio`, `all`) is tested, deployed to Cloudflare, tagged and published as a GitHub release. See [docs/releasing.md](docs/releasing.md).
+A push to master whose first line, or whose merged pull request's title, starts with `release:` (`web`, `audio`, `d1`, `web+audio`, `all`) is tested, deployed to Cloudflare, tagged and published as a GitHub release. See [docs/releasing.md](docs/releasing.md).
 
 ### Layout
 
@@ -75,7 +76,7 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 | `src/` | Shared app: catalog, search, player, library, offline downloads, play counts, UI |
 | `platforms/web/` | PWA entry point, service worker, manifest, icons |
 | `platforms/desktop/` | Electron main process |
-| `worker/media/` | Cloudflare Worker (`media.zaideih.com`): streams audio from R2, counts plays and serves their totals, finishes the GitHub sign-in, and keeps personal libraries; D1 schema in `schema.sql` |
+| `worker/media/` | Cloudflare Worker (`media.zaideih.com`): streams audio from R2, counts plays and serves their totals, accounts and sign-in (GitHub, Google, passkeys), personal libraries and publish requests, synced likes and playlists, lyrics; D1 schema in `schema.sql` |
 | `tools/` | Catalog compiler, media paths, D1 schema and reset (`d1.mjs`), platform build, versions and release plan, playback diagnostics |
 | `wrangler.jsonc` | The site on Cloudflare (Workers static assets from `dist/web`) |
 | `.github/workflows/` | `ci.yml` checks every push; `release.yml` deploys `release:` pushes |
@@ -87,7 +88,10 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 - [docs/worker-audio.md](docs/worker-audio.md): the audio Worker: routes, deploying, checking, sign-in
 - [docs/accounts.md](docs/accounts.md): accounts, sign-ins and sessions
 - [docs/library.md](docs/library.md): personal libraries (uploads, signed streaming, moderation)
+- [docs/sync.md](docs/sync.md): liked songs and playlists synced across devices
+- [docs/lyrics.md](docs/lyrics.md): lyrics: rules, formats, the studio, shared lyrics, search
 - [docs/releasing.md](docs/releasing.md): one-time Cloudflare and GitHub setup, release targets, rollback
+- [docs/TODO.md](docs/TODO.md): work not yet done
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release
 
 ## Roadmap
@@ -96,8 +100,10 @@ A push to master whose first line starts with `release:` (`web`, `audio`, `d1`, 
 - [x] Hidden admin page to edit the catalog through GitHub
 - [x] Personal libraries: private uploads with moderation
 - [ ] Add albums from R2 folders to the catalog
-- [ ] Ask for an upload to be published; share links for rights holders
-- [ ] Lyrics from `assets/lyric/`
+- [x] Ask for an upload to be published
+- [x] Lyrics, added and edited in the app
+- [ ] Share links for rights holders
+- [ ] Import the lyrics in `assets/lyric/`
 - [ ] Desktop installers, and downloads saved as files
 
 ## Contributing

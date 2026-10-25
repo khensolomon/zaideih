@@ -1,8 +1,8 @@
 # Personal libraries
 
-Anyone signed in with GitHub can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
+Anyone signed in can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (this release). Still to come: asking to remove a published song, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5). Still to come: asking to remove a published song, and share links.
 
 ## Roles and rights
 
@@ -20,7 +20,7 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
-| Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version ([lyrics.md](lyrics.md)) |
+| Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version; links songs that are the same, merges and unlinks them, compares copies and declines proposals ([lyrics.md](lyrics.md)) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
 
@@ -45,7 +45,7 @@ R2:
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).
 
-`tools/d1.mjs reset` refuses while `members`, `uploads`, `member_rights`, `member_folders`, `publish_requests` or `published_tracks` hold rows: they cannot be rebuilt from git, and uploaded files would be left in R2 without an owner. `--drop-library` overrides it.
+`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (`LIBRARY_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics); uploaded files would also be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -65,7 +65,7 @@ An upload left `uploading` for an hour (a closed tab) is removed the next time i
 Music already in R2 (bought elsewhere, too large to upload, kept the way its owner organised it) is added where it is, without being moved or copied:
 
 - The owner and co-owners browse the whole bucket, except `users/` (members' uploads, theirs alone).
-- A member with the Storage right browses one folder: the one the owner or a co-owner set for them on the admin page (Members, Storage folder), or `private/<github id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
+- A member with the Storage right browses one folder: the one the owner or a co-owner set for them on the admin page (Members, Storage folder), or `private/<member id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
 
 Your uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
 
