@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.25.22
+
+- Songbooks: a shelf of covers, find and sort, New songbook as a dialog
+- Each book a cover: short name, spine, language imprint; title, edition and songs under it; Private and Editor/Reader quiet
+- Find a book, show All/Public/Private/Appointed, sort by title, most songs or language
+- Add pages: a small round button on the cover's corner, shown on hover
+- New songbook: a dialog with a live cover; short name from the title's initials; taken short names said as typed; edition, year and publisher folded away
+- A book's page: its cover beside the title; Add pages, Details and Collaborators as quiet tools
+
 ## v26.10.25.21
 
 - Songbooks: collaborators appointed to one book, as editor or reader

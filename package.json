@@ -1,6 +1,6 @@
 {
 	"name": "zaideih",
-	"version": "26.10.25.21",
+	"version": "26.10.25.22",
 	"private": true,
 	"description": "Zaideih Music Station: offline-first music app for web (PWA) and desktop (Electron).",
 	"type": "module",
