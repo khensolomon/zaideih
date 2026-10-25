@@ -1191,25 +1191,25 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 /* ---------- Workspace (src/workspace, #/workspace) ---------- */
 .workspace { min-width: 0; }
 /* Sign-in: one card in the middle of the page. */
-.admin .adm-gate { min-height: calc(var(--vvh, 100dvh) - var(--deck) - 160px); display: grid; place-items: center; }
-.admin .adm-card {
+.workspace .adm-gate { min-height: calc(var(--vvh, 100dvh) - var(--deck) - 160px); display: grid; place-items: center; }
+.workspace .adm-card {
 	width: min(440px, 100%); display: grid; gap: 14px; justify-items: center; text-align: center;
 	padding: 32px 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface);
 	box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
 }
-.admin .adm-card h1 { margin: 0; font-size: 24px; }
-.admin .adm-card p { margin: 0; }
-.admin .adm-logo { width: 56px; height: 56px; }
-.admin .adm-token { width: 100%; display: grid; gap: 10px; text-align: left; }
-.admin .adm-token .btn { justify-content: center; gap: 8px; }
-.admin .adm-token .btn svg { width: 18px; height: 18px; }
-.admin .adm-github { width: 100%; justify-content: center; gap: 10px; min-height: 48px; font-size: 16px; }
-.admin .adm-github svg { width: 20px; height: 20px; }
-.admin .adm-small { font-size: 13px; }
-.admin .adm-howto .adm-token { margin: 12px 0 4px; }
-.admin .adm-howto { width: 100%; text-align: left; font-size: 14px; color: var(--ink-2); }
-.admin .adm-howto summary { cursor: pointer; text-align: center; color: var(--ink-3); }
-.admin .adm-howto ol { padding-left: 20px; line-height: 1.5; }
+.workspace .adm-card h1 { margin: 0; font-size: 24px; }
+.workspace .adm-card p { margin: 0; }
+.workspace .adm-logo { width: 56px; height: 56px; }
+.workspace .adm-token { width: 100%; display: grid; gap: 10px; text-align: left; }
+.workspace .adm-token .btn { justify-content: center; gap: 8px; }
+.workspace .adm-token .btn svg { width: 18px; height: 18px; }
+.workspace .adm-github { width: 100%; justify-content: center; gap: 10px; min-height: 48px; font-size: 16px; }
+.workspace .adm-github svg { width: 20px; height: 20px; }
+.workspace .adm-small { font-size: 13px; }
+.workspace .adm-howto .adm-token { margin: 12px 0 4px; }
+.workspace .adm-howto { width: 100%; text-align: left; font-size: 14px; color: var(--ink-2); }
+.workspace .adm-howto summary { cursor: pointer; text-align: center; color: var(--ink-3); }
+.workspace .adm-howto ol { padding-left: 20px; line-height: 1.5; }
 .adm-gate label { display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); }
 .adm-gate input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; }
 /*
@@ -1218,9 +1218,9 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
  * find field, the sections as icons, the draft and the person's photo. The
  * page below is one column; requests add a list beside it on wide screens.
  */
-.admin .adm-loading { padding: 40px 0; }
-.admin .adm-head { z-index: 18; }
-.admin .adm-head .st-title b { font-size: 18px; }
+.workspace .adm-loading { padding: 40px 0; }
+.workspace .adm-head { z-index: 18; }
+.workspace .adm-head .st-title b { font-size: 18px; }
 /* Find: a real field in the header on wide screens (the Catalog page's own is hidden there), an icon below. */
 .adm-find {
 	flex: 0 1 300px; min-width: 0; display: inline-flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px 0 14px;
@@ -1278,9 +1278,9 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn, #f0c674); }
 .adm-tag { font-size: 11.5px; font-weight: 650; padding: 1px 7px; border-radius: 6px; background: rgb(255 255 255 / 0.12); color: var(--ink-2); vertical-align: 1px; }
 .adm-tag.danger { color: var(--danger-ink); }
-.admin .adm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 8px; }
-.admin .adm-error { color: var(--danger-ink); white-space: pre-line; }
-.admin .adm-busy { font-style: italic; }
+.workspace .adm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 8px; }
+.workspace .adm-error { color: var(--danger-ink); white-space: pre-line; }
+.workspace .adm-busy { font-style: italic; }
 .adm-two { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; }
 .adm-two > section { min-width: 0; }
 
@@ -1434,10 +1434,10 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-changes-full li .link-btn + .link-btn { margin-left: -2px; }
 .adm-panel { display: grid; gap: 8px; max-width: 720px; }
 .adm-panel p { margin: 0; }
-.admin .adm-checks { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 4px; }
-.admin .adm-checks li::before { content: "• "; }
-.admin .adm-checks li[data-state="success"]::before { content: "✓ "; color: var(--accent); }
-.admin .adm-checks li[data-state="failure"] { color: var(--danger-ink); }
+.workspace .adm-checks { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 4px; }
+.workspace .adm-checks li::before { content: "• "; }
+.workspace .adm-checks li[data-state="success"]::before { content: "✓ "; color: var(--accent); }
+.workspace .adm-checks li[data-state="failure"] { color: var(--danger-ink); }
 
 /* Requests: the list beside the one being reviewed. */
 .adm-split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: start; }
@@ -1482,7 +1482,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-rank li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); counter-increment: rank; }
 .adm-rank li::before { content: counter(rank); flex: none; width: 24px; color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
 .adm-rank .num { font-variant-numeric: tabular-nums; font-weight: 650; }
-.admin .adm-flash { animation: adm-flash 1.6s ease-out; }
+.workspace .adm-flash { animation: adm-flash 1.6s ease-out; }
 @keyframes adm-flash { from { background: rgb(255 255 255 / 0.18); } }
 
 @media (max-width: 1179px) {
@@ -1491,7 +1491,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 }
 /* Phones and narrow windows: the sections on a row of their own under the header's first line. */
 @media (max-width: 899px) {
-	.admin .adm-head { flex-wrap: wrap; row-gap: 10px; }
+	.workspace .adm-head { flex-wrap: wrap; row-gap: 10px; }
 	.adm-head .adm-modes { order: 5; flex: 1 1 100%; justify-content: space-between; }
 	.adm-head .adm-modes .st-mode { flex: 1; width: auto; }
 	.adm-draft-btn { padding: 0 6px 0 12px; }
@@ -1782,10 +1782,10 @@ body[data-studio] main { max-width: none; padding-top: 0; }
 .st-history { max-width: 44em; }
 .st-history h2 { font-size: 15px; color: var(--ink-3); margin: 22px 0 8px; }
 .st-reports ul { margin: 0 0 10px; padding-left: 1.2em; }
-.admin .adm-lyrics h2 { font-size: 15px; color: var(--ink-3); margin: 22px 0 8px; }
-.admin .adm-lyrics .adm-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.admin .adm-lyrics .adm-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
-.admin .adm-lyrics .adm-note { color: var(--ink-2); font-size: 0.92em; }
+.workspace .adm-lyrics h2 { font-size: 15px; color: var(--ink-3); margin: 22px 0 8px; }
+.workspace .adm-lyrics .adm-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.workspace .adm-lyrics .adm-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.workspace .adm-lyrics .adm-note { color: var(--ink-2); font-size: 0.92em; }
 /* Songs with lyrics: a small mark after the title (ui/parts.js trackRow). */
 .track .title .has-lyrics { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--ink-3); }
 .track .title .has-lyrics svg.i { width: 15px; height: 15px; stroke-width: 2; }

@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.7
+
+- Workspace: its styles back after the rename
+
 ## v26.10.25.6
 
 - Admin is now the Workspace
