@@ -1185,7 +1185,8 @@ export function mount(root, ctx) {
 	 */
 	const SECTIONS = {
 		overview: ["Overview", "grid", "Overview: what needs you"],
-		catalog: ["Catalog", "album", "Catalog: albums and artists (Ctrl+K)"],
+		// No icon of its own: the find field (an icon on phones) is the way into it.
+		catalog: ["Catalog", "album", ""],
 		requests: ["Requests", "inbox", "Requests to publish"],
 		lyrics: ["Lyrics", "lyrics", "Lyrics: reports and edits"],
 		members: ["Members", "people", "Members and rights"],
@@ -1240,16 +1241,27 @@ export function mount(root, ctx) {
 	 * find field, the sections as icons, the draft, and the person's photo,
 	 * which opens their menu.
 	 */
+	/**
+	 * Back, inside the admin: an album or artist to the results, a section to
+	 * Overview. From Overview, back to the app (phones; the sidebar is there
+	 * on wide screens).
+	 */
+	function backButton() {
+		if (s.tab === "catalog" && s.open) return html`<button class="st-icon adm-back" data-adm="close" aria-label="Back to the results" title="Back to the results">${icon("back")}</button>`;
+		if (s.tab !== "overview") return html`<button class="st-icon adm-back" data-adm="tab" data-tab="overview" aria-label="Back to Overview" title="Back to Overview">${icon("back")}</button>`;
+		return html`<a class="st-icon adm-back adm-back-app" href="#/" aria-label="Back to the app" title="Back to the app">${icon("back")}</a>`;
+	}
+
 	function header() {
 		const n = s.draft.changes.length;
 		const initials = (s.name || s.user || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 		const level = s.isOwner ? "Owner" : LEVELS[s.level]?.name ?? "";
 		const draftLabel = s.draft.pr ? `Your draft: ${s.draft.pr.suggestion ? "suggestion" : "pull request"} #${s.draft.pr.number}` : `Your draft: ${plural(n, "change")}`;
 		return html`<header class="st-head adm-head">
-			<a class="st-icon" href="#/" aria-label="Back to the app" title="Back to the app">${icon("back")}</a>
+			${backButton()}
 			<div class="st-title"><b>${SECTIONS[s.tab][0]}</b><span>${subtitle()}</span></div>
-			<label class="adm-find" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<input type="search" data-adm="search" data-where="head" value="${s.query}" placeholder="Find an album or artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></label>
-			<button class="adm-find-icon" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}</button>
+			<label class="adm-find${s.tab === "catalog" ? " on" : ""}" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<input type="search" data-adm="search" data-where="head" value="${s.query}" placeholder="Find an album or artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></label>
+			<button class="adm-find-icon${s.tab === "catalog" ? " on" : ""}" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}</button>
 			<div class="st-modes adm-modes" role="tablist" aria-label="Admin">
 				${Object.entries(SECTIONS).filter(([id, [, , hint]]) => hint && sectionShown(id)).map(([id, [, ic, hint]]) => {
 					const count = sectionCount(id);
@@ -1487,7 +1499,7 @@ export function mount(root, ctx) {
 				case "open": s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; await openSection("catalog"); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
 				case "reload": s.menu = false; s.health = null; await load(); break;
-				case "close": s.open = null; render(); root.querySelector("[data-adm=search]")?.focus(); break;
+				case "close": s.open = null; render(); [...root.querySelectorAll("[data-adm=search]")].find((el) => el.offsetParent)?.focus(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
 				case "discard": s.draft.changes = []; saveDraft(); render(); break;
 				case "merge": await mergeAndRelease(); break;

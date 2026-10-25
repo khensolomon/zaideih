@@ -1226,7 +1226,10 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	flex: 0 1 300px; min-width: 0; display: inline-flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px 0 14px;
 	border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-3); cursor: text;
 }
-.adm-find:focus-within { border-color: var(--ink-3); color: var(--ink); }
+.adm-find:focus-within, .adm-find.on { border-color: var(--ink-3); color: var(--ink); }
+.adm-find-icon.on { background: var(--raised); border-color: var(--ink-3); }
+/* Back to the app only where nothing else leads there: wide screens have the sidebar. */
+@media (min-width: 900px) { .adm-head .adm-back-app { display: none; } }
 .adm-find svg.i { flex: none; width: 18px; height: 18px; }
 .adm-find input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 14px; outline: none; }
 .adm-find input::placeholder { color: var(--ink-3); }
@@ -1489,8 +1492,8 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 /* Phones and narrow windows: the sections on a row of their own under the header's first line. */
 @media (max-width: 899px) {
 	.admin .adm-head { flex-wrap: wrap; row-gap: 10px; }
-	.adm-modes { order: 5; flex: 1 1 100%; justify-content: space-between; }
-	.adm-modes .st-mode { flex: 1; width: auto; }
+	.adm-head .adm-modes { order: 5; flex: 1 1 100%; justify-content: space-between; }
+	.adm-head .adm-modes .st-mode { flex: 1; width: auto; }
 	.adm-draft-btn { padding: 0 6px 0 12px; }
 	.adm-draft-btn .lbl { display: none; }
 	.adm-draft-btn > svg.i { display: block; }
@@ -1876,3 +1879,5 @@ img.acct-avatar { object-fit: cover; }
 .adm-proposals li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; border-radius: 12px; background: var(--surface); }
 .adm-proposals .adm-row-text > span small { margin-left: 6px; color: var(--ink-3); }
 .adm-proposals .adm-actions { margin: 0; }
+/* Admin header, medium widths: the line under the section name gives way to the sections. */
+@media (min-width: 900px) and (max-width: 1179px) { .adm-head .st-title span { display: none; } }
