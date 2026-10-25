@@ -43,6 +43,8 @@ export function parseTotals(data) {
 
 /** Sets every track's count to its catalog count plus its total, and recomputes the rankings. */
 export function applyTotals(catalog, totals) {
+	// Kept, so a catalog built again (core/holds.js) gets them back.
+	catalog.totals = totals;
 	for (const t of catalog.tracks.values()) {
 		const row = totals.map.get(t.id);
 		t.plays = t.base + (row?.total ?? 0);

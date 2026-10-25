@@ -39,6 +39,7 @@ export const RIGHTS = Object.freeze({
 	moderate: "Moderate members",
 	storage: "Storage",
 	lyrics: "Lyrics",
+	albums: "Albums",
 });
 
 /** True when the person may do what `right` covers. */

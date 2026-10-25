@@ -68,7 +68,7 @@ export function albumTile(album) {
 		${cover(album)}
 		<a class="tile-link" href="${href(`album/${album.id}`)}"><span class="t ${scriptClass(album.title)}">${myanmarBreaks(album.title)}</span></a>
 		<span class="s ${scriptClass(artist)}">${artist}</span>
-		<span class="m">${album.year ? html`<span>${album.year}</span>` : ""}<span>${songs}</span>${saved ? html`<span class="saved-mark" title="Downloaded">${icon("saved", "Downloaded")}</span>` : ""}</span>
+		<span class="m">${album.upload ? html`<span class="mine-mark" title="My music">${icon("lock", "My music")}</span>` : ""}${album.year ? html`<span>${album.year}</span>` : ""}<span>${songs}</span>${saved ? html`<span class="saved-mark" title="Downloaded">${icon("saved", "Downloaded")}</span>` : ""}</span>
 		<button class="tile-play" data-act="play-album" data-album="${album.id}" aria-label="Play ${album.title}">${icon("play")}</button>
 	</div>`;
 }
@@ -100,15 +100,17 @@ export function resetLists() { lists.clear(); }
 export function trackRow(t, listKey, index, opts = {}) {
 	const now = player.current()?.id === t.id;
 	const liked = library.isLiked(t.id);
-	const sub = opts.sub ?? (opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists));
+	// An album whose streaming is off (core/holds.js): its songs stay listed, greyed out, and say so.
+	const off = Boolean(t.album?.off);
+	const sub = off ? "Not available right now" : opts.sub ?? (opts.showAlbum ? html`${creditOf(t.artists)}, ${t.album.title}` : creditOf(t.artists));
 	// The lyrics mark opens the lyrics (app.js), so the row's play is not the only thing a tap on it can do.
 	const lyric = lyricsIndex.has(t.id) ? html`<span class="has-lyrics" data-lyrics="${t.id}" title="Lyrics">${icon("lyrics", "Lyrics")}</span>` : "";
 	// Lists from many albums (search) show each song's cover in place of its number.
 	const no = opts.thumb ? html`<span class="thumb">${cover(t.album, { label: false })}</span>` : html`<span>${opts.number ?? index + 1}</span>`;
-	return html`<li class="track${now ? " now" : ""}${opts.thumb ? " thumbed" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
+	return html`<li class="track${now ? " now" : ""}${opts.thumb ? " thumbed" : ""}${off ? " off" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
 		<span class="no">${no}<i class="eq" aria-hidden="true"><i></i><i></i><i></i></i></span>
 		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}" aria-label="Play ${t.title}">
-			<span class="title ${scriptClass(t.title)}">${t.title}${lyric}</span>
+			<span class="title ${scriptClass(t.title)}">${t.title}${lyric}${t.upload && opts.thumb ? html`<span class="mine-mark" title="My music">${icon("lock", "My music")}</span>` : ""}</span>
 			<span class="sub ${scriptClass(String(sub))}">${sub}</span>
 		</button>
 		<span class="saved" title="${offline.has(t.id) ? "Downloaded" : ""}">${offline.has(t.id) ? icon("saved", "Downloaded") : ""}</span>

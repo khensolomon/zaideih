@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.25.13
+
+- Album holds: streaming off or hidden from the public, without a release; search: My music
+- Set per album in the Workspace (Availability) by the owner, co-owners and the new Albums right; the audio Worker refuses held songs
+- Search: My music adds your own uploads to the results, marked with a lock (on by default)
+
 ## v26.10.25.12
 
 - Installed on a desktop: the sidebar's head fades into the title bar

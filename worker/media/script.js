@@ -17,6 +17,9 @@
  *                         (sync.js), asking to publish (requests.js).
  *   /lyrics/:id           Lyrics of catalog songs: public reading, editing signed in;
  *                         also /lyrics/recent and /lyrics/index (lyrics.js).
+ *   /holds, /holds/:album  Albums held back without a release: public list,
+ *                         set by the Albums right; held songs are refused
+ *                         here with 403 (holds.js).
  *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *   GET/HEAD /k/:key      A file in storage (private/), through a signed address (library.js).
  *
@@ -67,6 +70,7 @@
 import { handleAuth } from "./auth.js";
 import { handleLibrary, handleSignedAudio, handleSignedKey } from "./library.js";
 import { handleLyrics } from "./lyrics.js";
+import { handleHolds, heldTracks } from "./holds.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
@@ -99,6 +103,7 @@ export default {
 		if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return handleAuth(request, env);
 		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
 		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
+		if (url.pathname === "/holds" || url.pathname.startsWith("/holds/")) return handleHolds(request, env, ctx);
 		const signed = /^\/u\/(\d+)$/.exec(url.pathname);
 		if (signed) return handleSignedAudio(request, env, Number(signed[1]));
 		const stored = /^\/k\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
@@ -328,6 +333,14 @@ async function handlePlays(request, env, ctx) {
 async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	const range = request.headers.get("range");
 
+	// An album held back (holds.js): its songs do not play, whatever link they come from.
+	if ((await heldTracks(env)).has(trackId)) {
+		const h = new Headers(cors ?? undefined);
+		h.set("X-Zaideih-Reason", "held");
+		h.set("Cache-Control", "no-store");
+		h.set("Content-Type", "text/plain; charset=utf-8");
+		return new Response("This song is not available right now.", { status: 403, headers: h });
+	}
 	const { meta: track, source } = await getTrackMeta(trackId, env, ctx);
 	const diag = (reason) => {
 		const h = new Headers(cors ?? undefined);

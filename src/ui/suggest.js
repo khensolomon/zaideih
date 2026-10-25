@@ -13,7 +13,7 @@
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { answer, describe, parseIntent } from "../core/intent.js";
-import { didYouMean, namedArtist, SCOPES, suggestions } from "../core/search.js";
+import { didYouMean, namedArtist, SCOPES, suggestions, withMine } from "../core/search.js";
 import { avatar, cover, scriptClass } from "./parts.js";
 
 const RECENT_KEY = "zaideih.recent-searches";
@@ -57,6 +57,20 @@ let options = [];
 let active = -1;
 let scope = "all";
 let langName = (l) => l.name;
+
+const MINE_KEY = "zaideih.search.mine";
+/** "My music": search the signed-in person's own uploads too (on unless turned off on this device). */
+let mine = null;
+export function includeMine() {
+	if (mine === null) {
+		try { mine = localStorage.getItem(MINE_KEY) !== "0"; } catch { mine = true; }
+	}
+	return mine;
+}
+export function setIncludeMine(on) {
+	mine = Boolean(on);
+	try { localStorage.setItem(MINE_KEY, mine ? "1" : "0"); } catch { /* kept for this visit only */ }
+}
 
 /** The scope chips' current choice: "all", "artists", "albums", "tracks" or "lyrics". */
 export const getScope = () => scope;
@@ -144,7 +158,8 @@ function paint(input) {
 }
 
 /** Rebuilds the suggestions for the current input value. */
-export function updateSuggestions(catalog, input) {
+export function updateSuggestions(full, input) {
+	const catalog = includeMine() ? withMine(full) : full;
 	const q = input.value.trim();
 	active = -1;
 	if (!q) {

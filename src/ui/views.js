@@ -14,12 +14,12 @@ import { offline } from "../core/offline.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { decodeCode, explain } from "../core/diagnostic.js";
-import { closest, didYouMean, namedArtist, search } from "../core/search.js";
+import { closest, didYouMean, namedArtist, search, withMine } from "../core/search.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
 import { logoMark } from "./logo.js";
 import { careerOf, shadeOf } from "./art.js";
-import { getScope, recentSearches, setScope } from "./suggest.js";
+import { getScope, includeMine, recentSearches, setScope } from "./suggest.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass, trackRow } from "./parts.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 
@@ -193,10 +193,11 @@ export function album(c, { id }) {
 					</div>
 				</div>
 			</div>
+			${a.off ? html`<p class="held-note">${icon("info")} This album is not available to stream right now.</p>` : ""}
 			<div class="actions">
-				<button class="btn primary" data-page-play="${a.title}" data-act="play-all" data-list="${key}">${icon("play")} Play</button>
-				<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle</button>
-				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}">
+				<button class="btn primary" data-page-play="${a.title}" data-act="play-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("play")} Play</button>
+				<button class="btn" data-act="shuffle-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("shuffle")} Shuffle</button>
+				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}" ${a.off && !allSaved ? "disabled" : ""}>
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
 				</button>
 				${a.upload ? "" : editLink({ album: a.id })}
@@ -327,7 +328,7 @@ export function searchView(c, _params, query) {
 					role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
 				<button type="button" class="search-clear" data-act="search-clear" aria-label="Clear the search" title="Clear" ${q ? "" : "hidden"}>${icon("close")}</button>
 				<div class="sg-panel" id="sg-panel" hidden>
-					${scopeButtons(scope, "scopes")}
+					${scopeButtons(scope, "scopes", null, c)}
 					<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
 				</div>
 			</form>
@@ -340,12 +341,12 @@ export function searchView(c, _params, query) {
  * icon each, the name beside it (on phones only on the one chosen), and how
  * many were found.
  */
-function scopeButtons(scope, cls, counts = null) {
+function scopeButtons(scope, cls, counts = null, c = null) {
 	return html`<div class="${cls}" role="group" aria-label="Search in">${SCOPE_LABELS.map(([k, label, ic]) => {
 		const n = counts && k !== "all" ? counts[k] : null;
 		const count = n === null || n === undefined ? "" : typeof n === "string" ? n : n.toLocaleString();
 		return html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}" aria-label="${label}${count ? `, ${count}` : ""}" title="${label}">${icon(ic)}<span class="lbl">${label}</span>${count ? html`<span class="n">${count}</span>` : ""}</button>`;
-	})}</div>`;
+	})}${c?.extra?.tracks.size ? html`<button type="button" class="mine" data-act="search-mine" aria-pressed="${String(includeMine())}" title="My music: your own uploads in the results">${icon("lock")}<span class="lbl">My music</span></button>` : ""}</div>`;
 }
 
 const ASKS = ["most played mizo artists", "gospel albums from the 90s", "newest myanmar songs"];
@@ -368,7 +369,9 @@ function searchStart(c) {
 /** Search shows the best artist matches as pictures, the rest as name chips. */
 const ARTIST_CARDS = 8;
 
-export function searchResults(c, q, scope = getScope()) {
+export function searchResults(full, q, scope = getScope()) {
+	// "My music" on: the person's own uploads are searched too, and marked.
+	const c = includeMine() ? withMine(full) : full;
 	const r = search(c, q, SCOPE_LIMITS[scope]);
 	if (!r) return searchStart(c);
 	// Lines of lyrics, found on the device (at most 30 are listed).
@@ -376,7 +379,7 @@ export function searchResults(c, q, scope = getScope()) {
 	const countOf = { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total, lyrics: lyricCount >= 30 ? "30+" : lyricCount };
 	if (scope === "lyrics") {
 		const only = lyricHits(c, q);
-		return html`${scopeButtons(scope, "segmented scope-tabs", countOf)}${only || html`<div class="empty"><h2>No lyrics with “${q}”</h2><p>No song's lyrics have a line with these words. Lyrics are added by listeners: a song without them can be given its words in the lyrics studio.</p></div>`}`;
+		return html`${scopeButtons(scope, "segmented scope-tabs", countOf, full)}${only || html`<div class="empty"><h2>No lyrics with “${q}”</h2><p>No song's lyrics have a line with these words. Lyrics are added by listeners: a song without them can be given its words in the lyrics studio.</p></div>`}`;
 	}
 	const pick = (key) => (scope === "all" || scope === key ? r[key].items : []);
 	const exact = { artists: pick("artists"), albums: pick("albums"), tracks: pick("tracks") };
@@ -396,7 +399,7 @@ export function searchResults(c, q, scope = getScope()) {
 	}
 
 	// Counts describe title matches; for an answered question they would mislead.
-	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : countOf);
+	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : countOf, full);
 	const lyrics = scope === "all" || scope === "tracks" ? lyricHits(c, q) : "";
 	if (!total && !answered && !byArtist && lyrics) return html`${tabs}${lyrics}`;
 	if (!total && !answered && !byArtist) {

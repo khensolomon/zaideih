@@ -42,6 +42,20 @@ export function search(catalog, query, limits = { tracks: 50, albums: 24, artist
 	};
 }
 
+/**
+ * The catalog with the signed-in person's own music in it (catalog.extra,
+ * core/uploads.js), for searching with "My music" on; the catalog itself
+ * when there is none. Nothing leaves the device: uploads are already here.
+ */
+export function withMine(catalog) {
+	const extra = catalog.extra;
+	if (!extra?.tracks.size) return catalog;
+	return Object.assign(Object.create(catalog), {
+		albums: new Map([...catalog.albums, ...extra.albums]),
+		tracks: new Map([...catalog.tracks, ...extra.tracks]),
+	});
+}
+
 /** What a search looks in: everything, or one kind of record. */
 export const SCOPES = ["all", "artists", "albums", "tracks", "lyrics"];
 const SUGGEST = {

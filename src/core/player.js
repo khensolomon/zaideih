@@ -120,6 +120,8 @@ function releaseObjectUrl() {
 }
 
 async function sourceFor(track) {
+	// An album whose streaming is off (core/holds.js): not even its downloads play.
+	if (track.album?.off) throw new AudioSourceError(`"${track.title}" is not available right now.`);
 	if (offline.has(track.id)) {
 		const blob = await offline.blob(track.id);
 		if (!blob) throw new Error(`The download for "${track.title}" is missing. Download it again.`);
@@ -370,6 +372,14 @@ export const player = {
 
 	/** Replaces the queue with `ids` and starts at `startId` (or the first). */
 	async playList(ids, startId, context = "") {
+		// Songs of an album whose streaming is off are left out (core/holds.js).
+		const playable = ids.filter((id) => !catalog.track(id)?.album?.off);
+		if (ids.length && !playable.length) {
+			notify(ids.length === 1 ? "This song is not available right now." : "These songs are not available right now.");
+			return;
+		}
+		ids = playable;
+		if (!playable.includes(startId)) startId = undefined;
 		if (!ids.length) return;
 		state.original = [...ids];
 		state.context = context;

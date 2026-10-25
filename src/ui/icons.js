@@ -18,6 +18,8 @@ const paths = {
 	more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
 	chevron: '<path d="m9 6 6 6-6 6"/>',
 	clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+	info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+	lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
 	upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',
 	queue: '<path d="M4 6h12M4 12h12M4 18h8M17 15v6l4-3z"/>',
 	down: '<path d="m6 9 6 6 6-6"/>',

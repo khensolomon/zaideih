@@ -500,6 +500,11 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .track .main { min-width: 0; text-align: left; background: none; border: 0; padding: 4px 0; }
 .track .title { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track .sub { display: block; font-size: 14px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* An album whose streaming is off (core/holds.js): its songs greyed out. */
+.track.off .title, .track.off .no, .track.off .dur { opacity: 0.45; }
+.track.off .sub { font-style: italic; }
+.held-note { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 14px; border-radius: var(--radius-m); background: var(--surface); color: var(--ink-2); font-size: 15px; }
+.held-note svg.i { width: 18px; height: 18px; flex: none; }
 .track .dur { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 14px; }
 .track .saved { color: var(--ink-3); display: inline-grid; width: 18px; }
 .track .saved svg { width: 16px; height: 16px; }
@@ -665,6 +670,10 @@ body.search-open::before {
 .scope-tabs { margin: 0 0 22px; }
 .scope-tabs button, .scopes button { display: inline-flex; align-items: center; gap: 6px; }
 .scope-tabs svg.i, .scopes svg.i { width: 16px; height: 16px; flex: none; }
+/* "My music": the person's own uploads in search (core/search.js, withMine), and their mark in the results. */
+.scopes .mine, .scope-tabs .mine { margin-left: auto; }
+.mine-mark { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--ink-3); }
+.mine-mark svg.i { width: 14px; height: 14px; }
 .segmented button .lbl { margin: 0; color: inherit; font-weight: inherit; }
 /* Search before anything is typed. */
 .search-start .section { margin-top: 0; margin-bottom: 26px; }
@@ -1404,6 +1413,15 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-ly { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
 .adm-ly.on { color: var(--ink); }
 .adm-ly svg.i { width: 16px; height: 16px; }
+/* The album editor's Availability (docs/holds.md): applied to the live app, not the draft. */
+.adm-avail { display: grid; gap: 12px; margin: 0 0 22px; padding: 16px 18px; border-radius: var(--radius-m); background: var(--surface); }
+.adm-avail h2 { margin: 0; font-size: 16px; }
+.adm-avail-now { margin: 0; font-size: 14px; color: var(--ink-2); }
+.adm-avail-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
+.adm-avail-row > span:first-child { display: grid; gap: 2px; }
+.adm-avail-row small { font-size: 13px; color: var(--ink-3); }
+.adm-avail-row .adm-switch { flex: none; }
+.adm-avail .adm-actions { margin-top: 0; }
 .adm-switch { position: relative; display: inline-block; width: 40px; height: 24px; cursor: pointer; }
 .adm-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .adm-switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background 0.15s; pointer-events: none; }
