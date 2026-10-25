@@ -5,8 +5,10 @@
  * Reading needs no account. Lyrics once read are kept on the device (IndexedDB
  * `kv`, "lyrics.<song id>"), so they show offline; online, the Worker's copy
  * is asked for each time (it comes from its edge cache, not the database).
- * Adding and editing need a sign-in; the Lyrics right hides, shows and
- * restores earlier versions.
+ * Adding, editing, reporting and proposing that two songs are the same need
+ * a sign-in; the Lyrics right hides, shows and restores earlier versions,
+ * links, merges and unlinks songs, and compares copies. Recent edits and
+ * declining proposals are the admin page's own calls (src/admin/admin.js).
  */
 import { LIBRARY_URL } from "../config.js";
 import { db } from "./db.js";
@@ -110,12 +112,10 @@ export async function linkLyrics(id, to, { merge = false, keep: kept, proposal }
 export const proposeSameSong = (id, to, note = "") => call("POST", `/${id}/propose`, { to, note });
 /** The Lyrics right: both copies, `{ a, b }` with text, versions, people, updated, langs, reports. */
 export const compareLyrics = (id, other) => call("GET", `/${id}/compare?with=${other}`);
-/** The Lyrics right: a proposal declined, with the reason the member sees. */
-export const declineProposal = (id, proposal, reason) => call("POST", `/${id}/decline`, { proposal, reason });
 /** The Lyrics right: song `id` no longer shows another's lyrics; with `copy`, it keeps a copy as its own. */
 export const unlinkLyrics = (id, copy) => call("POST", `/${id}/unlink`, { copy: Boolean(copy) });
 
-/** The Lyrics right: { version, hidden, versions: [{version, text, at, note, by: {id, name}}] }. */
+/** The Lyrics right: { track, source, lang, version, hidden, versions, own, reports }; each version {version, text, at, note, by: {id, name}}; `own` is a merged song's earlier history. */
 export const lyricsVersions = (id, lang = "") => call("GET", `/${id}/versions${q(lang)}`);
 export const hideLyrics = (id, reason, lang = "") => call("POST", `/${id}/hide${q(lang)}`, { reason });
 export const showLyrics = (id, lang = "") => call("POST", `/${id}/show${q(lang)}`, {});
@@ -124,8 +124,6 @@ export const restoreLyrics = (id, version, base, lang = "") => call("POST", `/${
 export const reportLyrics = (id, reason, lang = "") => call("POST", `/${id}/report${q(lang)}`, { reason });
 /** The Lyrics right: song `id`'s open reports are dealt with, nothing changed. */
 export const resolveReports = (id, lang = "") => call("POST", `/${id}/resolve${q(lang)}`, {});
-/** The Lyrics right: { edits: [{track, version, at, note, hidden, by}], reports: [{track, latest, reasons: [{reason, at, by}]}] }. */
-export const recentLyrics = () => call("GET", "/recent");
 
 /*
  * Drafts (docs/lyrics.md, "Studio"): what is typed in the studio is kept on

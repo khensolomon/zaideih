@@ -14,17 +14,18 @@
  *            migrations recorded as run. Run by every `release: audio`.
  *   tracks   Load every track path from assets/data/media.json (upserts).
  *            --prune also deletes rows for tracks not in media.json.
- *   lyrics   Back up the lyrics: what is shown and every version, to
- *            --out (default build/d1/lyrics-<date>.json). Reads only;
+ *   lyrics   Back up the lyrics: what is shown and every version, which
+ *            songs share another's lyrics and each recording's timing
+ *            (format zaideih-lyrics/3), to --out (default build/d1/lyrics-<date>.json). Reads only;
  *            --apply writes the file.
  *   reset    Drop every table (Cloudflare's own _cf_* tables excepted),
  *            create the schema and load the track paths, in one D1 import
  *            that either completes or leaves the database as it was. When
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
- *            Refuses while personal libraries (members and their sign-ins,
- *            uploads, rights, folders, publish requests) hold rows, unless
- *            --drop-library: they cannot be rebuilt from git.
+ *            Refuses while any table that cannot be rebuilt from git holds
+ *            rows (LIBRARY_TABLES in tools/lib/d1.mjs: accounts, libraries,
+ *            synced likes and playlists, lyrics), unless --drop-library.
  *
  * Every command except status is a dry run unless --apply is given.
  *

@@ -8,9 +8,15 @@
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
- *   /auth/*               Sign in with GitHub for the admin page (auth.js).
- *   /library/*            Personal libraries: uploads and moderation (library.js).
- *   /lyrics/:id           Lyrics of catalog songs: public reading, editing signed in (lyrics.js).
+ *   /auth/*               Sign in with GitHub for the admin page and suggestions
+ *                         (auth.js, suggest.js); accounts: Zaideih sessions from
+ *                         GitHub, Google or passkey sign-ins (accounts.js,
+ *                         google.js, passkeys.js), all through auth.js.
+ *   /library/*            Personal libraries: uploads, storage, members and
+ *                         moderation (library.js), synced likes and playlists
+ *                         (sync.js), asking to publish (requests.js).
+ *   /lyrics/:id           Lyrics of catalog songs: public reading, editing signed in;
+ *                         also /lyrics/recent and /lyrics/index (lyrics.js).
  *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *   GET/HEAD /k/:key      A file in storage (private/), through a signed address (library.js).
  *

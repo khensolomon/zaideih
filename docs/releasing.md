@@ -3,15 +3,18 @@
 Two workflows in `.github/workflows/`:
 
 - **check** (`ci.yml`): every push and pull request. Runs `npm test` (unit tests, including the audio Worker against stand-ins for D1 and R2), checks that the versions agree (`tools/version.mjs --check`) and that every track has an audio path (`tools/media.mjs check`), builds the web app as a release does, builds the desktop renderer, and checks that the build carries its version.
-- **release** (`release.yml`): a push to `master` whose first line starts with `release:`, or "Run workflow" on the Actions tab. Plan, then the same checks as above, then the deploys, then a tag and a GitHub release.
+- **release** (`release.yml`): a push to `master` whose first line, or whose merged pull request's title, starts with `release:`, or "Run workflow" on the Actions tab. Plan, then the same checks as above, then the deploys, then a tag and a GitHub release.
 
 ```
-plan ──> test (ci.yml) ──┬──> web    build, wrangler deploy (wrangler.jsonc), check the live version
-                         ├──> audio  wrangler deploy (worker/media/wrangler.toml), check the live Worker
+plan ──> test (ci.yml) ──┬──> audio  wrangler deploy (worker/media/wrangler.toml), check the live Worker
+                         │      │
+                         ├──> web    build, wrangler deploy (wrangler.jsonc), check the live version
                          └──> d1     load track paths from media.json
                                      │
                                      └──> publish  tag v<version>, GitHub release from CHANGELOG.md
 ```
+
+When both web and audio are released, web waits for audio, since the new app may call routes only the new Worker answers; a failed audio deploy stops web.
 
 Nothing built is committed. Cloudflare receives files from wrangler and builds nothing itself.
 
@@ -38,7 +41,7 @@ The first line of the commit decides what is released:
 
 After the target, an optional version (`26.10.20.6` or `v26.10.20.6`) must equal `package.json`, and the rest of the line is the note Cloudflare shows next to the deployment.
 
-With **Squash and merge**, the head commit's first line is the pull request's title, so a pull request titled `release: web 26.10.20.6 Help page` releases when merged. A merge commit ("Merge pull request #…") releases nothing. To use pull-request titles, set Settings, General, Pull Requests, "Allow squash merging" with the default message "Pull request title".
+When the head commit's first line does not start with `release:`, the title of the merged pull request it came from is read instead, so a pull request titled `release: web 26.10.20.6 Help page` releases however it is merged. This covers a merge commit ("Merge pull request #…") and a squash under GitHub's default message, where a single-commit pull request is merged with that commit's message rather than the title. Setting the squash message to "Pull request title" (Settings, General, Pull Requests) is optional. A push whose first line and pull request title both lack `release:` releases nothing. Admin "Merge and release" sets the squash commit's first line itself (`commit_title`, see below), so it does not depend on either.
 
 To see what a push would do, without pushing:
 
@@ -85,7 +88,7 @@ Every address the app is served from must be in the audio Worker's `ALLOWED_ORIG
 
 ## Catalog edits from the admin page
 
-The admin page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge whose first line is `release: web <version> <note>`), so they go through the same checks and workflow as any release. People sign in with GitHub (or a fine-grained token, see [setup.md](setup.md)); usage statistics must be off on that device. See [architecture.md](architecture.md#admin-page).
+The admin page `#/admin` on the live site opens pull requests with catalog edits and the next version, and releases them with "Merge and release" (a squash merge that passes `commit_title`, so the first line is `release: web <version> <note>` whatever the repository's squash setting), so they go through the same checks and workflow as any release. People sign in with GitHub (or a fine-grained token, see [setup.md](setup.md)); usage statistics must be off on that device. See [architecture.md](architecture.md#admin-page).
 
 Suggestions from people without write access arrive as pull requests titled `Suggestion: …`. Merging one adds it to `master` without releasing; it ships with the next release.
 
@@ -103,6 +106,7 @@ Cloudflare's Deployments tab lists each version with the release tag and note. A
 
 | Step | Usual cause |
 |---|---|
+| nothing ran (plan only) | neither the first line on `master` nor the merged pull request's title starts with `release:`; the plan log shows the title it read. Release with Run workflow, or push an empty commit (`git commit --allow-empty -m "release: …"`) |
 | plan | the message names an unknown target, a version different from `package.json`, or a version without a `CHANGELOG.md` section; the reason is on the run's summary. After `tools/version.mjs --apply` the first line must carry the new version |
 | test | the same failure `check` would show on the branch |
 | web or audio, "secrets not set" | step 2 is missing |

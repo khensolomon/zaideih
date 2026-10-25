@@ -399,3 +399,43 @@ test("merging: members propose, the Lyrics right compares and merges, nothing is
 	assert.equal((await call("gh-mod", "POST", "/lyrics/101/decline", { proposal: p.id, reason: "Another song with the same title" })).status, 200);
 	assert.equal((await call("gh-mod", "POST", "/lyrics/101/decline", { proposal: p.id, reason: "again" })).status, 404);
 });
+
+test("audit: timing comes back when sharing ends; hidden texts are not copied; stray routes are refused", { skip }, async () => {
+	const { env, call, read, signIn, tick } = setup();
+	await seed(env);
+	await env.DB.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (103, 'a', 'd.mp3', 0), (104, 'a', 'e.mp3', 0), (105, 'a', 'f.mp3', 0)").run();
+	const mod = (await signIn("gh-mod")).member.id;
+	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
+	const timed = "[00:10.00]Line one\n[00:14.00]Line two";
+	await call("gh-ann", "POST", "/lyrics/101", { text: timed, base: 0 });
+	await call("gh-ann", "POST", "/lyrics/101?lang=en", { text: "Rude words", base: 0 });
+	await call("gh-mod", "POST", "/lyrics/101/hide?lang=en", { reason: "abusive" });
+	tick(10);
+	assert.equal((await call("gh-mod", "POST", "/lyrics/102/link", { to: 101 })).status, 200);
+
+	// A member without the right who links (older app builds) sends a proposal instead.
+	const asked = await call("gh-bo", "POST", "/lyrics/103/link", { to: 101 });
+	assert.equal(asked.status, 403);
+	assert.match(asked.body.error, /sent to them instead/);
+	assert.deepEqual((await call("gh-mod", "GET", "/lyrics/recent")).body.proposals.map((p) => [p.track, p.target]), [[103, 101]]);
+
+	// A copy of its own leaves the hidden translation behind.
+	tick(10);
+	assert.equal((await call("gh-mod", "POST", "/lyrics/102/unlink", { copy: true })).status, 200);
+	assert.equal((await call(null, "GET", "/lyrics/102?lang=en")).status, 404);
+	// The last recording gone, the source has its own timing again.
+	assert.equal((await read(101)).body.text, timed);
+	assert.equal((await read(101)).body.shared, undefined);
+
+	// Linked songs follow when their source is linked elsewhere: never two steps.
+	await call("gh-ann", "POST", "/lyrics/104", { text: "Other words", base: 0 });
+	assert.equal((await call("gh-mod", "POST", "/lyrics/105/link", { to: 101 })).status, 200);
+	await call("gh-mod", "POST", "/lyrics/101/hide", { reason: "wrong text" });
+	assert.equal((await call("gh-mod", "POST", "/lyrics/101/link", { to: 104 })).status, 200);
+	assert.equal((await read(105)).body.text, "Other words");
+
+	// Unmatched routes answer 404, never a restore; decline checks its proposal.
+	assert.equal((await call("gh-mod", "POST", "/lyrics/104/versions", { version: 1, base: 1 })).status, 404);
+	assert.equal((await call("gh-mod", "POST", "/lyrics/104/compare", { version: 1, base: 1 })).status, 404);
+	assert.equal((await call("gh-mod", "POST", "/lyrics/104/decline", { reason: "no" })).status, 400);
+});

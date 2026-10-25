@@ -7,7 +7,7 @@
  *
  * Without --message or --target, the message is read from RELEASE_MESSAGE
  * (set by the release workflow). Read-only. In GitHub Actions the plan is
- * also written to $GITHUB_OUTPUT: web, audio, d1 (true/false), version, tag,
+ * also written to $GITHUB_OUTPUT: release (true), web, audio, d1 (true/false), version, tag,
  * message (the note, or "v<version>") and notes (the CHANGELOG section).
  *
  * Exit status: 0 with a plan; 0 with "nothing to release" for a message
@@ -67,6 +67,7 @@ console.log(`notes      ${plan.notes.split("\n").length} line(s) from CHANGELOG.
 if (process.env.GITHUB_OUTPUT) {
 	const delimiter = `EOF_${randomUUID()}`;
 	const lines = [
+		"release=true",
 		...["web", "audio", "d1"].map((t) => `${t}=${plan.targets.includes(t)}`),
 		`version=${plan.version}`,
 		`tag=${plan.tag}`,

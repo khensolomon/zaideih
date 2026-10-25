@@ -25,6 +25,6 @@ export function on(topic, fn) {
  * Shows a notice. `code` is a playback diagnostic code shown under an error;
  * `help` adds a link to the help page.
  */
-export function notify(message, { kind = "info", action, code, help = false, playback = false } = {}) {
-	emit("notice", { message, kind, action, code, help, playback });
+export function notify(message, { kind = "info", action, code, help = false, playback = false, sticky = false } = {}) {
+	emit("notice", { message, kind, action, code, help, playback, sticky });
 }

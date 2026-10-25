@@ -11,10 +11,12 @@
 #   release: all        web and audio
 #   release: desktop    not set up yet; the plan stops with that reason
 #
-# Only the first line of the head commit of a push to master is read. With
-# "Squash and merge" that is the pull request's title, so a pull request
-# titled "release: web …" releases when it is merged; a merge commit
-# ("Merge pull request #…") releases nothing. The same choice is on the
+# The first line of the head commit of a push to master is read. When it does
+# not start with "release:", the title of the pull request that commit came
+# from is read instead, so a pull request titled "release: web …" releases
+# however it is merged: a merge commit, or a squash, where GitHub's default
+# message for a single-commit pull request is that commit's, not the title.
+# A push that is neither releases nothing. The same choice is on the
 # Actions tab as "Run workflow". tools/release-plan.mjs reads the message and
 # refuses a version that differs from package.json or has no CHANGELOG.md
 # section; run it locally to see what a push would do.
@@ -51,10 +53,13 @@ env:
 
 jobs:
   plan:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'release:')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
+      release: ${{ steps.plan.outputs.release }}
       web: ${{ steps.plan.outputs.web }}
       audio: ${{ steps.plan.outputs.audio }}
       d1: ${{ steps.plan.outputs.d1 }}
@@ -76,6 +81,8 @@ jobs:
           REF: ${{ github.ref }}
           TARGET: ${{ inputs.target }}
           RELEASE_MESSAGE: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           if [ "$REF" != "refs/heads/master" ]; then
             echo "::error::releases are made from master, not $REF"
@@ -83,21 +90,35 @@ jobs:
           fi
           if [ "$EVENT" = "workflow_dispatch" ]; then
             node tools/release-plan.mjs --target "$TARGET"
-          else
-            node tools/release-plan.mjs
+            exit 0
           fi
+          case "$RELEASE_MESSAGE" in
+            release:*) ;;
+            *)
+              # The pull request this commit came from, if any: its title asks for the release.
+              title=$(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)][0].title // ""')
+              echo "head commit does not start with release:; pull request title: ${title:-none}"
+              RELEASE_MESSAGE="$title"
+              export RELEASE_MESSAGE
+              ;;
+          esac
+          node tools/release-plan.mjs
 
   test:
     needs: plan
+    if: needs.plan.outputs.release == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       gate: true
 
   # ---------------------------------------------------------------- web ----
 
+  # After the Worker when both are released: the new app calls routes the new Worker answers.
   web:
-    needs: [plan, test]
-    if: needs.plan.outputs.web == 'true'
+    needs: [plan, test, audio]
+    if: >-
+      !cancelled() && needs.test.result == 'success' && needs.plan.outputs.web == 'true'
+      && (needs.audio.result == 'success' || needs.audio.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

@@ -1,17 +1,17 @@
 # Accounts
 
-A Zaideih account is one person, however they sign in. Personal libraries, rights, blocks and, later, synced likes and playlists and lyrics belong to the account, not to a GitHub account. GitHub stays what catalog editing runs on: the admin page edits the catalog with the person's GitHub sign-in, and GitHub decides what it may do.
+A Zaideih account is one person, however they sign in. Personal libraries, rights, blocks, synced likes and playlists, and lyrics belong to the account, not to a GitHub account. GitHub stays what catalog editing runs on: the admin page edits the catalog with the person's GitHub sign-in, and GitHub decides what it may do.
 
-Status: agreed 2026-10-24. Built: accounts, GitHub as their first sign-in, Zaideih sessions (v26.10.24.1); Google sign-in and Your account (this release). Passkeys (this release). Next: likes and playlists synced across devices; then lyrics.
+Status: agreed 2026-10-24. Built: accounts, GitHub as their first sign-in, Zaideih sessions (v26.10.24.1); Google sign-in and Your account (v26.10.24.2); passkeys (v26.10.24.12); likes and playlists synced across devices (v26.10.24.13); lyrics (v26.10.24.14).
 
 ## Sign-ins
 
-D1 `member_logins` holds one row per way a member signs in: the provider (`github`, `google`; later `passkey`), the provider's id for the person (GitHub's numeric user id, never the login, which can be renamed), the GitHub login, and the email the provider gives with whether the provider has verified it.
+D1 `member_logins` holds one row per way a member signs in: the provider (`github`, `google`, `passkey`), the provider's id for the person (GitHub's numeric user id, never the login, which can be renamed), the GitHub login, the email the provider gives with whether the provider has verified it, and the person's name and photo (`full_name`, `picture`) when the provider gives them.
 
 A sign-in finds its member (`worker/media/accounts.js`):
 
 1. A sign-in seen before belongs to its member.
-2. Adding a sign-in while signed in (`link`) joins the signed-in member. When that sign-in already belongs to another member, the two members become one: completing both sign-ins shows one person holds both. The older member stays (its id, so its R2 files keep their place) and takes the other's sign-ins, sessions, passkeys, uploads, publish requests, rights, storage folder, liked songs and playlists ([sync.md](sync.md)), lyrics versions ([lyrics.md](lyrics.md)), in one D1 batch; refused while either is blocked.
+2. Adding a sign-in while signed in (`link`) joins the signed-in member. When that sign-in already belongs to another member, the two members become one: completing both sign-ins shows one person holds both. The older member stays (its id, so its R2 files keep their place) and takes the other's sign-ins, sessions, passkeys, uploads, publish requests, rights, storage folder, liked songs and playlists ([sync.md](sync.md)), lyrics versions, reports, proposals, links and timing ([lyrics.md](lyrics.md)), in one D1 batch; refused while either is blocked.
 3. A sign-in whose provider vouches for an email that exactly one member already has verified joins that member. Every verified address counts (GitHub lists all of a person's addresses; `@users.noreply.github.com` ones are skipped). Two members with that email: neither is guessed; a new member is made.
 4. Otherwise a new member is made.
 
@@ -80,7 +80,7 @@ After a sign-in the Worker gives a session token (`zs_` and 43 base64url charact
 | `POST /auth/session/end` with `Authorization: Bearer <session>` | Signs that session out |
 | `POST /auth/wait` `{nonce}` | The code of a sign-in started with `wait=1`, once; 204 while it has not come back |
 | `POST /auth/google/token` `{code, verifier, link?}` | A Google sign-in for a session, answered like `/auth/session` |
-| `POST /auth/me` with the session | `{member, logins: [{provider, subject, login, email, emailVerified, added, used}]}` |
+| `POST /auth/me` with the session | `{member: {id, name, fullName, picture}, logins: [{provider, subject, login, email, emailVerified, added, used, fullName, picture}]}`; the member's name and photo are from the most recently used sign-in that gives them (passkeys give neither) |
 | `POST /auth/logins/remove` `{provider, subject}` with the session | Removes one of the member's sign-ins; never the last one, nor the owner's GitHub (409) |
 
 The app keeps the session with where it came from (`via`): `google`, or `github:<login>`. A GitHub-based one is got from the device's GitHub sign-in (or fine-grained token) the first time it is needed, and got again when another GitHub login signs in or the Worker refuses it; a Google one lasts until signing out or until the Worker refuses it.
@@ -97,4 +97,4 @@ Migrations are for changes `CREATE … IF NOT EXISTS` cannot make, such as renam
 
 ## Privacy
 
-Emails are stored only as the provider gives them, to recognise the same person. They are shown to nobody in the app. The privacy policy for people using Zaideih is `src/privacy.html`, served at `/privacy` as a page of its own (readable without script, as Google's sign-in review requires); the service worker serves it offline too. Deleting an account on request (the policy promises 30 days) is a manual step for now: the member's rows in `members`, `member_logins`, `member_sessions`, `member_rights`, `member_folders`, their uploads and `users/<id>/` in R2.
+Emails are stored only as the provider gives them, to recognise the same person. They are shown to nobody in the app. The privacy policy for people using Zaideih is `src/privacy.html`, served at `/privacy` as a page of its own (readable without script, as Google's sign-in review requires); the service worker serves it offline too. Deleting an account on request (the policy promises 30 days) is a manual step for now: the member's rows in `members`, `member_logins`, `member_sessions`, `passkeys`, `member_rights`, `member_folders`, `uploads`, `publish_requests`, `published_tracks`, `library_likes` and `library_playlists` (and `library_sync`), their member id in the lyrics tables (`lyrics`, `lyrics_versions`, `lyrics_reports`, `lyrics_proposals`, `lyrics_links`, `lyrics_times`), and `users/<id>/` in R2: every table in `LIBRARY_TABLES` (`tools/lib/d1.mjs`), plus `library_sync`.

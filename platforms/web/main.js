@@ -19,6 +19,7 @@ function registerServiceWorker() {
 	let updateAccepted = false;
 	navigator.serviceWorker.register("sw.js").then((reg) => {
 		const offerUpdate = (worker) => notify("A new version of Zaideih is ready.", {
+			sticky: true,
 			action: {
 				label: "Reload",
 				run: () => {

@@ -57,6 +57,8 @@ export function npLyricsPanel(t) {
 	</section>`;
 }
 
+const RETRY_MS = 5000;
+
 /**
  * After the sheet is drawn: reads the song's lyrics when not read yet (and
  * draws the sheet again, `redraw`), keeps the panel's scroll, and lights the
@@ -65,11 +67,13 @@ export function npLyricsPanel(t) {
 export function npLyricsMounted(sheet, t, redraw) {
 	const panel = sheet.querySelector(".np-lyrics");
 	if (!panel || !t || t.upload) return;
-	if (!read.has(t.id)) {
+	// A failed read is tried again when the sheet is next drawn online, not before RETRY_MS.
+	const before = read.get(t.id);
+	if (!before || (before.state === "error" && navigator.onLine && Date.now() - before.at > RETRY_MS)) {
 		read.set(t.id, { state: "loading" });
 		readLyrics(t.id).then(({ lyrics }) => {
 			read.set(t.id, lyrics ? { state: "ok", parsed: parseLyrics(lyrics.text) } : { state: "none" });
-		}, (err) => read.set(t.id, { state: "error", error: err.message })).finally(() => redraw());
+		}, (err) => read.set(t.id, { state: "error", error: err.message, at: Date.now() })).finally(() => redraw());
 		return;
 	}
 	if (scroll.id === t.id) panel.scrollTop = scroll.top;

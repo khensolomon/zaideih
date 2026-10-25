@@ -22,6 +22,7 @@
  *   POST   /library/members/<member id>     `moderate`: {blocked: true, reason} | {blocked: false};
  *                                           `manage`: {rights: {<right>: true|false, ...}},
  *                                           {folder: "<prefix>/" | null} (where Storage adds from)
+ *   /library/requests*                      asking to publish an album (requests.js)
  * Streaming (no sign-in; the address is the permission):
  *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload
  *   GET/HEAD /k/<key, base64url>?e&s               a file in storage, for reading its details
@@ -46,12 +47,12 @@ export { checkNewUpload, FORMATS };
 const SIGNED_FOR_S = 6 * 3600;
 /*
  * Storage: files already in R2 that join a library where they are. Uploads
- * are the only files a library owns (users/<github id>/…): they count
+ * are the only files a library owns (users/<member id>/…): they count
  * towards space and are deleted with their entry. Every other file was put
  * in R2 some other way, wherever its owner keeps it, and is left alone.
  */
 export const UPLOADS_ROOT = "users/";
-/** A member with the Storage right and no folder set adds from here: private/<github id>/. */
+/** A member with the Storage right and no folder set adds from here: private/<member id>/. */
 export const STORAGE_DEFAULT = "private/";
 export const isUpload = (key) => key.startsWith(UPLOADS_ROOT);
 const MAX_ADD = 200;
@@ -351,7 +352,7 @@ async function setMember(env, me, memberId, body, nowSeconds) {
 /**
  * Where in R2 a person may add files from: the whole bucket ("") for the
  * owner and co-owners, the folder the owner set for a member with the
- * Storage right (private/<github id>/ until one is set), or null.
+ * Storage right (private/<member id>/ until one is set), or null.
  */
 export function storageRootOf(me) {
 	if (can(me, "manage")) return "";
