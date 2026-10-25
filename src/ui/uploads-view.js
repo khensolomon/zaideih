@@ -1,5 +1,5 @@
 /**
- * Library, Your uploads: the signed-in person's own music (core/uploads.js,
+ * Library, Uploads: the signed-in person's own music (core/uploads.js,
  * docs/library.md). Music comes three ways:
  *
  *   Add music        files from the device, uploaded
@@ -114,14 +114,14 @@ function reviewList() {
 	</section>`;
 }
 
-/** The Your uploads page of Library: { body, mount }. */
+/** The Uploads page of Library: { body, mount }. */
 export function uploadsPanel() {
 	const st = uploads.state;
 	if (!uploads.available) {
 		return { body: html`<div class="empty"><h2>Your own music</h2><p>Sign in with Google or GitHub to keep music of your own here. Only you can play it.</p><p><a class="btn primary" href="#/account">Sign in</a></p></div>` };
 	}
 	if (st.error && !st.space) {
-		return { body: html`<div class="up-root"><div class="empty"><h2>Your uploads could not be read</h2><p>${st.error}</p><p><button class="btn" data-up="retry">Try again</button></p></div></div>`, mount };
+		return { body: html`<div class="up-root"><div class="empty"><h2>Uploads could not be read</h2><p>${st.error}</p><p><button class="btn" data-up="retry">Try again</button></p></div></div>`, mount };
 	}
 	const body = html`<div class="up-root"><section class="panel up-head">
 			<div><h3>Your own music</h3>${space(st)}</div>

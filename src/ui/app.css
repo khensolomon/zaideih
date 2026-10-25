@@ -1965,10 +1965,30 @@ img.acct-avatar { object-fit: cover; }
 	/* The lyrics studio and the Workspace: their own header, when they show one, is the bar. */
 	body[data-studio]:has(.st-head) .topbar { display: none; }
 	body[data-studio] main { padding-top: 0; }
+	/* Exactly the bar's height, its controls sized to it as the bar's own are. */
 	body[data-studio] .st-head {
-		padding-top: 4px; padding-bottom: 4px; min-height: var(--tb-h); box-sizing: border-box;
+		height: var(--tb-h); padding-top: 0; padding-bottom: 0; gap: 10px; box-sizing: border-box;
 		padding-right: calc(var(--tb-end) + 28px);
 		app-region: drag; -webkit-app-region: drag;
 	}
+	body[data-studio] .st-head .st-icon { width: 36px; height: 36px; }
+	body[data-studio] .st-head .st-icon svg.i { width: 20px; height: 20px; }
+	body[data-studio] .st-head .st-title b { font-size: 16px; }
+	body[data-studio] .st-head .st-title span { font-size: 12.5px; }
+	body[data-studio] .st-head .st-modes { padding: 2px; }
+	body[data-studio] .st-head .st-mode { width: 38px; height: 32px; }
+	body[data-studio] .st-head .st-mode svg.i { width: 18px; height: 18px; }
+	body[data-studio] .st-head .st-save { width: 36px; height: 36px; }
+	body[data-studio] .st-head .st-save svg.i { width: 19px; height: 19px; }
+	body[data-studio] .st-head .st-lang { min-height: 34px; }
+	body[data-studio] .adm-head .adm-find { min-height: 36px; height: 36px; }
+	body[data-studio] .adm-head .adm-find-icon { width: 36px; height: 36px; }
+	body[data-studio] .adm-head .adm-draft-btn { min-height: 36px; padding: 0 5px 0 14px; font-size: 14px; }
+	body[data-studio] .adm-head .adm-draft-btn .n { min-width: 26px; height: 26px; font-size: 12px; }
+	body[data-studio] .adm-head .adm-me-btn .adm-photo { width: 34px; height: 34px; }
+	body[data-studio] .adm-head .adm-mode-dot { top: 4px; right: 6px; }
+	/* Content scrolled under the bar: a soft shadow below it (body[data-scrolled], app.js). */
+	.topbar, body[data-studio] .st-head { transition: box-shadow 0.18s ease; }
+	body[data-scrolled] .topbar, body[data-scrolled][data-studio] .st-head { box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.45); }
 	body[data-studio] .st-head :is(a, button, input, select, label, summary, [tabindex]) { app-region: no-drag; -webkit-app-region: no-drag; }
 }

@@ -2,7 +2,7 @@
 
 Anyone signed in can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5). Still to come: asking to remove a published song, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5). Still to come: asking to remove a published song, and share links.
 
 ## Roles and rights
 
@@ -67,7 +67,7 @@ Music already in R2 (bought elsewhere, too large to upload, kept the way its own
 - The owner and co-owners browse the whole bucket, except `users/` (members' uploads, theirs alone).
 - A member with the Storage right browses one folder: the one the owner or a co-owner set for them in the Workspace (Members, Storage folder), or `private/<member id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
 
-Your uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
+Uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
 
 Uploads are the only files a library owns (`users/…`): only they count towards space and are deleted with their entry. Files go into R2 with rclone, `npx wrangler r2 object put "media/<folder>/<file>" --file <file> --remote` or the Cloudflare dashboard.
 
@@ -88,7 +88,7 @@ The owner, co-owners and reviewers do not ask anyone: on their own album the pag
 
 `GET /library` answers the member's uploads with a signed address for each: `/u/<id>?e=<expiry>&s=<signature>`, an HMAC-SHA256 of the id and expiry with the Worker secret `AUDIO_SIGNING_KEY`, valid for six hours. Audio elements cannot send a sign-in, so the address itself is the permission. `/u/<id>` streams from R2 with ranges like `/audio/<id>`, never cached publicly, and refuses an expired or wrong signature, an unknown upload and an upload whose owner is blocked. Uploads are never counted as plays.
 
-The app lists them in Library as Your uploads, grouped by album, and plays them in the normal player; their addresses are renewed whenever the list is read.
+The app lists them in Library as Uploads, grouped by album, and plays them in the normal player; their addresses are renewed whenever the list is read.
 
 ## Moderation
 

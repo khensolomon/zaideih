@@ -26,7 +26,7 @@ The page (`#/account`) shows the person's own name and photo as their sign-ins g
 `#/account` (`src/ui/account-view.js`), linked from the sidebar and the logo menu as "Sign in", or the person's name once signed in:
 
 - Signed out: Continue with Google first (most listeners have a Google account and have never heard of GitHub), then Continue with GitHub, for catalog editors. Inside another app's browser (Facebook, Messenger, Instagram, LINE, WeChat, Android web views) Google refuses to sign in, so the page says to open the site in Chrome or Safari first.
-- Signed in: the name, every sign-in with its email, Add Google or Add GitHub for the one not there yet, Remove (never the last sign-in, nor the owner's GitHub), Your uploads, and Sign out on this device, which ends the Zaideih session and revokes the GitHub sign-in.
+- Signed in: the name, every sign-in with its email, Add Google or Add GitHub for the one not there yet, Remove (never the last sign-in, nor the owner's GitHub), Uploads, and Sign out on this device, which ends the Zaideih session and revokes the GitHub sign-in.
 
 Both sign-ins return to this page, which finishes them and takes the code out of the address at once. A GitHub sign-in made here also signs in the Workspace, so editors get the Admin link.
 

@@ -464,7 +464,7 @@ const LIB_SECTIONS = {
 	playlists: "Playlists",
 	downloads: "Downloads",
 	history: "Recently played",
-	...(LIBRARY_URL ? { uploads: "Your uploads" } : {}),
+	...(LIBRARY_URL ? { uploads: "Uploads" } : {}),
 };
 
 const libFoot = html`<p class="page-foot"><a href="#/about">About Zaideih</a><a href="#/terms">Terms</a><a href="/privacy">Privacy</a><a href="#/help">Help</a></p>`;
@@ -502,7 +502,7 @@ async function libraryHome(c) {
 			<section class="section lib-rows">
 				${libRow("downloads", "download", "Downloads", usage.count ? `${plural(usage.count, "song")} on this device, ${formatBytes(usage.bytes)}` : "Nothing downloaded yet")}
 				${libRow("history", "clock", "Recently played", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
-				${LIBRARY_URL ? libRow("uploads", "upload", "Your uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in to keep music of your own") : ""}
+				${LIBRARY_URL ? libRow("uploads", "upload", "Uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in to keep music of your own") : ""}
 			</section>
 			<section class="section lib-backup">
 				<header><h2>Keep your library</h2></header>

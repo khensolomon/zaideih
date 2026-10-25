@@ -46,7 +46,7 @@ export function npLyricsPanel(t) {
 	const r = read.get(t.id);
 	const page = href(`lyrics/${t.id}`);
 	let body;
-	if (t.upload) body = html`<p class="muted">Your uploads have no lyrics.</p>`;
+	if (t.upload) body = html`<p class="muted">Uploads have no lyrics.</p>`;
 	else if (!r || r.state === "loading") body = html`<p class="muted" aria-busy="true">Reading the lyrics…</p>`;
 	else if (r.state === "error") body = html`<p class="muted">${r.error}</p>`;
 	else if (r.state === "none") body = html`<p class="muted">No lyrics yet.${AUTH_URL && account().signedIn ? html` <a class="text-link" href="${href(`lyrics/${t.id}/studio`)}" data-act="close-sheet">Add them</a>` : ""}</p>`;
