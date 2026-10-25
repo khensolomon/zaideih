@@ -1962,6 +1962,13 @@ img.acct-avatar { object-fit: cover; }
 	body[data-page="search"] .searchbox.open input { border-radius: 18px 18px 0 0; }
 	body[data-page="search"] .searchbox > svg { left: 14px; top: 18px; width: 17px; height: 17px; }
 	body[data-page="search"] .search-clear { top: 18px; right: 2px; width: 30px; height: 30px; }
+	/* Its scope buttons as icons only (each named in its label and tooltip): all five fit the bar's width. */
+	body[data-page="search"] .sg-panel .scopes { gap: 8px; }
+	body[data-page="search"] .sg-panel .scopes button { width: 44px; padding: 0; justify-content: center; }
+	body[data-page="search"] .sg-panel .scopes .lbl { display: none; }
+	body[data-page="search"] .sg-panel .scopes svg.i { width: 18px; height: 18px; }
+	/* Open suggestions blur the page below the bar only: the bar, the sidebar's head and the window's buttons stay one sharp strip. */
+	body.search-open::before { top: var(--tb-h); }
 	/* The lyrics studio and the Workspace: their own header, when they show one, is the bar. */
 	body[data-studio]:has(.st-head) .topbar { display: none; }
 	body[data-studio] main { padding-top: 0; }
