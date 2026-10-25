@@ -14,6 +14,7 @@ import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { answer, describe, parseIntent } from "../core/intent.js";
 import { didYouMean, namedArtist, SCOPES, suggestions, withMine } from "../core/search.js";
+import { findHymn, hymnHref } from "../core/songbooks.js";
 import { avatar, cover, scriptClass } from "./parts.js";
 
 const RECENT_KEY = "zaideih.recent-searches";
@@ -96,6 +97,9 @@ function optionRow(opt, i) {
 		const by = opt.via ? opt.via.name : creditOf(opt.item.artists, 1);
 		return html`<li class="sg" ${base}>${cover(opt.item.album, { label: false })}<span class="sg-text"><span class="sg-title ${scriptClass(opt.item.title)}">${opt.item.title}</span><span class="sg-sub">Song by ${by}</span></span><span class="sg-hint">Play</span></li>`;
 	}
+	if (opt.kind === "hymn") {
+		return html`<li class="sg sg-answer" ${base}><span class="sg-glyph" aria-hidden="true">♪</span><span class="sg-text"><span class="sg-title ${scriptClass(opt.label)}">${opt.label}</span><span class="sg-sub">${opt.sub}</span></span><span class="sg-hint">Open</span></li>`;
+	}
 	if (opt.kind === "answer") {
 		return html`<li class="sg sg-answer" ${base}><span class="sg-glyph" aria-hidden="true">✦</span><span class="sg-text"><span class="sg-title">${opt.label}</span><span class="sg-sub">${opt.sub}</span></span><span class="sg-hint">See all</span></li>`;
 	}
@@ -170,6 +174,9 @@ export function updateSuggestions(full, input) {
 	} else {
 		options = [];
 		const seen = new Set();
+		// "TL 145": that hymn first (docs/songbooks.md).
+		const hymn = findHymn(q);
+		if (hymn?.text) options.push({ kind: "hymn", label: `${hymn.book.short} ${hymn.number} · ${hymn.title}`, sub: hymn.book.title, href: hymnHref(hymn) });
 		const intent = parseIntent(catalog, q);
 		if (intent) {
 			const a = answer(catalog, intent, 4);

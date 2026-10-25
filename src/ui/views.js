@@ -15,6 +15,7 @@ import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { decodeCode, explain } from "../core/diagnostic.js";
 import { closest, didYouMean, namedArtist, search, withMine } from "../core/search.js";
+import { findHymn, hymnBooks, hymnHref, hymnOf } from "../core/songbooks.js";
 import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
 import { logoMark } from "./logo.js";
@@ -374,6 +375,21 @@ export function searchResults(full, q, scope = getScope()) {
 	const c = includeMine() ? withMine(full) : full;
 	const r = search(c, q, SCOPE_LIMITS[scope]);
 	if (!r) return searchStart(c);
+	return html`${songbookHits(q)}${searchBody(c, full, q, scope, r)}`;
+}
+
+/** "TL 145" goes to that hymn; a songbook's name, to the book (docs/songbooks.md). */
+function songbookHits(q) {
+	const hymn = findHymn(q);
+	if (hymn) {
+		return html`<a class="panel sb-jump" href="${hymn.text ? hymnHref(hymn) : href(`songbook/${hymn.book.id}`)}">${icon("lyrics")}<span><b>${hymn.book.short} ${hymn.number}${hymn.title ? html` · <span class="${scriptClass(hymn.title)}">${hymn.title}</span>` : ""}</b><small>${hymn.text ? hymn.book.title : `Not in ${hymn.book.title}: open the book`}</small></span></a>`;
+	}
+	const needle = q.trim().toLowerCase();
+	const books = needle.length >= 2 ? hymnBooks().filter((b) => b.short.toLowerCase() === needle || b.title.toLowerCase().includes(needle)) : [];
+	return books.length ? html`${books.map((b) => html`<a class="panel sb-jump" href="${href(`songbook/${b.id}`)}">${icon("lyrics")}<span><b>${b.title}</b><small>Songbook · ${b.short}</small></span></a>`)}` : "";
+}
+
+function searchBody(c, full, q, scope, r) {
 	// Lines of lyrics, found on the device (at most 30 are listed).
 	const lyricCount = lyricsIndex.search(q).length;
 	const countOf = { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total, lyrics: lyricCount >= 30 ? "30+" : lyricCount };
@@ -422,10 +438,15 @@ export function searchResults(full, q, scope = getScope()) {
 
 /** Songs with a line of lyrics matching the query (core/lyrics-index.js), with that line. */
 function lyricHits(c, q) {
-	const hits = lyricsIndex.search(q).map((h) => ({ ...h, t: c.track(h.track) })).filter((h) => h.t);
-	if (!hits.length) return "";
+	const all = lyricsIndex.search(q);
+	// Songbook hymns (docs/songbooks.md): named where they are printed, opening their page.
+	const hymns = all.map((h) => ({ ...h, hymn: hymnOf(h.track) })).filter((h) => h.hymn);
+	const hymnList = hymns.length ? html`<section class="section lyric-hits"><header><h2>In the songbooks</h2><span class="muted">${hymns.length}</span></header>
+		<ul class="sb-list">${hymns.map((h) => html`<li><a href="${hymnHref(h.hymn)}"><span class="sb-num">${h.hymn.book.short} ${h.hymn.number}</span> <b class="${scriptClass(h.hymn.title)}">${h.hymn.title}</b> <span class="lyric-line">“${h.line}”</span></a></li>`)}</ul></section>` : "";
+	const hits = all.map((h) => ({ ...h, t: c.track(h.track) })).filter((h) => h.t);
+	if (!hits.length) return hymnList;
 	const key = registerList(hits.map((h) => h.t.id), `Lyrics: ${q}`);
-	return html`<section class="section lyric-hits"><header><h2>In the lyrics</h2><span class="muted">${hits.length}</span></header>
+	return html`${hymnList}<section class="section lyric-hits"><header><h2>In the lyrics</h2><span class="muted">${hits.length}</span></header>
 		<ol class="tracks">${hits.map((h, i) => trackRow(h.t, key, i, { showAlbum: true, thumb: true, sub: html`<span class="lyric-line">“${h.line}”</span>${h.lang ? html` <span class="muted">(${LYRICS_LANGS[h.lang]})</span>` : ""}` }))}</ol></section>`;
 }
 

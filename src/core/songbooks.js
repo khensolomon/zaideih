@@ -63,3 +63,77 @@ export async function addHymns(bookId, hymns, { onStep = () => {} } = {}) {
 	}
 	return added;
 }
+
+export const readText = (id) => call("GET", `/texts/${id}`);
+export const updateText = (id, fields) => call("POST", `/texts/${id}`, fields);
+export const readPerson = (id) => call("GET", `/people/${id}`);
+export const findPeople = async (q) => (await call("GET", `/people?q=${encodeURIComponent(q)}`)).people;
+export const createPerson = (fields) => call("POST", "/people", fields);
+export const updatePerson = (id, fields) => call("POST", `/people/${id}`, fields);
+export const readWork = (id) => call("GET", `/works/${id}`);
+export const findWorks = async (q) => (await call("GET", `/works?q=${encodeURIComponent(q)}`)).works;
+export const createWork = (fields) => call("POST", "/works", fields);
+export const updateWork = (id, fields) => call("POST", `/works/${id}`, fields);
+/** Hymn `number` of book `bookId` prints another text, or (`remove`) is taken out. */
+export const setEntry = (bookId, number, change) => call("POST", `/${bookId}/entries/${number}`, change);
+
+/* ------------------------------------------------------------- index ---- */
+
+/*
+ * Every hymn of the books (GET /songbooks/index), for search and for naming
+ * a text where it is printed ("TL 145"). The public index is kept on the
+ * device (KEY) and read again after INDEX_MS; with the Songbooks right the
+ * private books come too, kept in memory only.
+ */
+const KEY = "zaideih.songbooks.index";
+const INDEX_MS = 10 * 60 * 1000;
+let index = { books: new Map(), byText: new Map(), at: 0, private: false };
+
+function build(data, at, isPrivate) {
+	const books = new Map(data.books.map((b) => [b.id, b]));
+	const byText = new Map();
+	for (const [text, book, number, title] of data.entries) {
+		const b = books.get(book);
+		if (b && !byText.has(text)) byText.set(text, { text, book: b, number, title });
+	}
+	return { books, byText, at, private: isPrivate };
+}
+
+try {
+	const saved = JSON.parse(localStorage.getItem(KEY) ?? "null");
+	if (saved?.data) index = build(saved.data, saved.at ?? 0, false);
+} catch { /* read again below */ }
+
+/** Reads the index again when it is older than INDEX_MS, or when `force`; `editor`: with private books. */
+export async function refreshHymnIndex({ force = false, editor = false } = {}) {
+	if (!SONGBOOKS_URL) return index;
+	if (!force && editor === index.private && Date.now() - index.at < INDEX_MS) return index;
+	const data = await call("GET", "/index");
+	index = build(data, Date.now(), editor);
+	if (!editor) {
+		try { localStorage.setItem(KEY, JSON.stringify({ at: index.at, data })); } catch { /* this visit only */ }
+	}
+	return index;
+}
+
+/** Where text `id` is printed first: { text, book, number, title }, or null. */
+export const hymnOf = (id) => index.byText.get(id) ?? null;
+export const hymnBooks = () => [...index.books.values()];
+
+/**
+ * "TL 145", "tl145", "Tedim Labu 145": the hymn it names, or null. The book
+ * by its short name or title (whole, case aside), the number at the end.
+ */
+export function findHymn(query) {
+	const m = /^\s*(.+?)\s*#?\s*(\d{1,5})\s*$/u.exec(String(query ?? ""));
+	if (!m) return null;
+	const name = m[1].toLowerCase();
+	const number = Number(m[2]);
+	const book = [...index.books.values()].find((b) => b.short.toLowerCase() === name || b.title.toLowerCase() === name);
+	if (!book) return null;
+	for (const h of index.byText.values()) if (h.book.id === book.id && h.number === number) return h;
+	return { text: null, book, number, title: "" };
+}
+
+/** The hymn's address: its book and number. */
+export const hymnHref = (h) => `#/songbook/${h.book.id}/${h.number}`;

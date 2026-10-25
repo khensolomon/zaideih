@@ -37,6 +37,8 @@ import * as V from "./ui/views.js";
 import { focusKey, refocus } from "./ui/focus.js";
 import { viz } from "./ui/viz.js";
 import { songbookImportView, songbooksView } from "./ui/songbooks-view.js";
+import { bookView, hymnView, personView, textView, workView } from "./ui/songbook-pages.js";
+import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -59,6 +61,29 @@ route("playlist/:id", V.playlist);
 route("about", V.about);
 route("songbooks", songbooksView);
 route("songbooks/import", songbookImportView);
+// Songbooks' pages (docs/songbooks.md): a book, a hymn, a text, a person, a work, and a text's words in the studio.
+route("songbook/:id", bookView);
+route("songbook/:id/:n", (c, p, q) => hymnView(c, p, q, { notify, confirmAction }));
+route("songbooks/text/:id", (c, p, q) => textView(c, p, q, { notify, confirmAction }));
+route("songbooks/person/:id", personView);
+route("songbooks/work/:id", workView);
+route("songbooks/text/:id/studio", async (c, { id }, query) => {
+	const textId = Number(id);
+	let t;
+	try {
+		t = await readText(textId);
+	} catch (err) {
+		return { title: "Lyrics studio", body: html`<div class="empty"><h2>This hymn could not be read</h2><p>${err.message}</p></div>` };
+	}
+	const where = t.books[0] ? `${t.books[0].short} ${t.books[0].number}` : "Songbook";
+	return lyricsStudio(c, textId, {
+		notify, promptText, confirmAction,
+		openMenu: (anchor, items) => setTimeout(() => openMenu(anchor, items)),
+		canModerate: () => uploads.canLyrics || uploads.canSongbooks,
+		song: { id: textId, title: t.title, album: { title: where, lang: { name: t.lang } }, artists: [], text: true },
+		path: `songbooks/text/${textId}`,
+	}, query.get("lang") ?? "");
+});
 route("account", () => accountView({ onChange: syncAccess, notify, desktop: document.documentElement.dataset.platform === "desktop", redrawn: watchLargeTitle }));
 route("lyrics/:id", (c, { id }, query) => lyricsView(c, Number(id), {
 	notify, promptText, confirmAction, redrawn: watchLargeTitle,
@@ -203,7 +228,7 @@ function syncAccess() {
 	}
 	const label = who ? (LEVELS[who.level].canWrite ? "Workspace" : "Suggest edits") : "";
 	// Songbooks: for the Songbooks right until books are public (docs/songbooks.md).
-	for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks;
+	for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
 	for (const a of $$(".rail-workspace, .am-workspace")) {
 		a.hidden = !who;
 		a.dataset.hint = label;
@@ -267,7 +292,7 @@ async function render({ keepScroll = false } = {}) {
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
 	// The lyrics studio and the Workspace are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
-	const studio = /^lyrics\/\d+\/studio$/.test(r.path) || r.path === "workspace";
+	const studio = /^(lyrics|songbooks\/text)\/\d+\/studio$/.test(r.path) || r.path === "workspace";
 	document.body.toggleAttribute("data-studio", studio);
 	if (studio) document.body.dataset.rail = "mini";
 	else applyRail();
@@ -319,7 +344,7 @@ function markNav(path) {
 	const browse = /^lang\/\d+/.exec(path)?.[0] ?? (path.startsWith("genre") ? "genres" : path === "top" ? "top" : null);
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path.startsWith("songbooks") ? "songbooks"
+		: path.startsWith("songbook") ? "songbooks"
 		: path === "about" || path === "terms" || path === "help" || path === "workspace" || path === "account" ? path
 		: browse ? null : "home";
 	for (const a of $$("[data-nav]")) {
@@ -1325,6 +1350,7 @@ async function chooseSuggestion(opt) {
 	if (!opt || !input) return;
 	const typed = input.value;
 	closeSuggestions(input);
+	if (opt.kind === "hymn") { rememberSearch(typed); location.hash = opt.href; return; }
 	if (opt.kind === "artist") { rememberSearch(typed); go(`artist/${opt.item.id}`); return; }
 	if (opt.kind === "album") { rememberSearch(typed); go(`album/${opt.item.id}`); return; }
 	if (opt.kind === "track") {
@@ -1802,11 +1828,15 @@ export async function boot(platform) {
 	}
 	startSync();
 	startLyricsIndex();
+	// The public songbooks' hymns (core/songbooks.js): Songbooks shows in the sidebar once there are any.
+	refreshHymnIndex().then(() => syncAccess(), (err) => console.warn("songbooks index", err.message));
 	// Uploads: read once someone is signed in (syncAccess), shown where they appear.
 	uploads.catalog = catalog;
 	syncAccess();
 	on("uploads", () => {
-		for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks;
+		for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
+		// The hymns of the books, for search and for naming them: private ones too with the Songbooks right.
+		refreshHymnIndex({ editor: uploads.canSongbooks }).catch((err) => console.warn("songbooks index", err.message));
 		const path = currentRoute?.path ?? "";
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-")) rerender();
 	});

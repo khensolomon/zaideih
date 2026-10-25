@@ -1,6 +1,6 @@
 # Songbooks
 
-Status: agreed 2026-10-25. Step 1 (data and Worker) built in v26.10.25.15, step 2 (import) in v26.10.25.16; steps 3 to 5 to come.
+Status: agreed 2026-10-25. Built: step 1 (data and Worker) in v26.10.25.15, step 2 (import) in v26.10.25.16, steps 3 to 5 (pages, search, joining recordings, editing) in v26.10.25.17.
 
 Hymnals and praise books (Tedim Labu, Galhiam and others) as lyrics collections of their own: texts with no recording in Zaideih, found by book and hymn number, searchable, and joined to the recordings that sing them. Built on the lyrics system (docs/lyrics.md), which already keeps versions, history, reports, translations and shared texts.
 
@@ -60,6 +60,23 @@ Person ── translated ──────────────────�
 - **An entry** (`#/book/<id>/<number>`): the lyrics page as today, headed "Tedim Labu 145", with the work's credits as links (a person's page lists everything they wrote or translated), other versions of the work, other books printing the same text, and Play when recordings are joined.
 - **A recording** joined to a text shows "Tedim Labu 145" under its title.
 - **Search**: a line of the words finds the entry as lyrics do now (the index on the device grows entries beside recordings); "Tedim Labu 145" or "TL 145" goes straight to it; people are found by name.
+
+## Built (steps 3 to 5)
+
+Pages (`src/ui/songbook-pages.js`):
+
+- **A book** (`#/songbook/<id>`): its hymns by number, title and first line, filtered as typed; Enter on a number opens that hymn. With the Songbooks right: Add pages, and Details and rights (title, short name, language, edition, year, publisher, rights and how they are settled; Public for the owner and co-owners).
+- **A hymn** (`#/songbook/<id>/<number>`, or `#/songbooks/text/<id>` wherever it is printed): the words as lyrics are shown (chips, parts, notes; meaning translations as language chips), About this hymn (the work, words, music, arrangement, translated by, tune, metre, year, scripture, topics, each person a link), other versions of the work, the recordings that sing it (Play), the previous and next hymn. A private book's hymn says so.
+- **A person** (`#/songbooks/person/<id>`) and **a work** (`#/songbooks/work/<id>`): what they wrote, composed or translated; the work's versions.
+- **Editing** (the Songbooks right), on the hymn: Edit the words opens the lyrics studio for the text (`#/songbooks/text/<id>/studio`: writing and preview; no timing or same-song offers, which are for recordings); Details edits the title, first line and language, translators and words in that language, the work (found by title or tune, or new) with its words, music and arrangement, and takes the number out of the book; recordings are found by title and joined (a recording with words of its own is joined only when asked, its own kept in its history), or unjoined.
+
+Search (`src/ui/views.js`, `src/ui/suggest.js`): "TL 145", "tl145" or "Tedim Labu 145" opens that hymn, first among the suggestions and above the results; a book's name or short name shows the book; a line of a public hymn's words finds it ("In the songbooks"), from the app's lyrics index, which takes public texts in and drops texts of a book made private. The hymns are named from `GET /songbooks/index` (`core/songbooks.js`, kept on the device, read again every 10 minutes; private books for the Songbooks right, in memory only).
+
+Recordings: a recording joined to a text shows its words (shared lyrics: the text is the source, each recording keeps its own timing) and says "Words from Tedim Labu 145" on its lyrics page. Joining needs the Lyrics or the Songbooks right. A recording joined to a private text shows no words.
+
+Step 5 was planned for the Workspace; it is in the app instead, on the book and hymn pages, because the Workspace needs a GitHub sign-in and the Songbooks right does not.
+
+Songbooks shows in the sidebar's Browse and the logo menu once a book is public, and always for the Songbooks right.
 
 ## Steps
 

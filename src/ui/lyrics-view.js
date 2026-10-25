@@ -34,6 +34,13 @@ import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySi
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { artistLinks, cover, scriptClass } from "./parts.js";
 import { sharedWithHtml, suggestionsHtml, wireFind } from "./lyrics-share.js";
+import { hymnHref, hymnOf } from "../core/songbooks.js";
+
+/** A recording joined to a songbook text (docs/songbooks.md): where its words are printed. */
+function hymnLink(source) {
+	const h = hymnOf(source);
+	return h ? html`<span class="ly-hymn">${icon("lyrics")} Words from <a class="text-link" href="${hymnHref(h)}">${h.book.title} ${h.number}</a>. </span>` : "";
+}
 
 const SIZE_KEY = "zaideih.lyrics.size";
 const SIZES = [16, 18, 21, 25];
@@ -183,7 +190,7 @@ function content() {
 		</div>
 		${p.timed ? html`<p class="acct-small ly-follow">${following ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : ""}
 		<div style="--ly-size:${SIZES[size]}px">${st.lang && sideShown() && st.original ? sideBySideHtml(st.original, p, { chords, transpose: st.transpose, flats }) : lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
-		${l.shared ? html`<p class="acct-small">${sharedWithHtml(st.catalog, l.shared)}.</p>` : ""}
+		${l.shared ? html`<p class="acct-small">${hymnLink(l.shared.source)}${sharedWithHtml(st.catalog, l.shared)}${l.shared.with.some((t) => st.catalog.track(t)) || hymnOf(l.shared.source) ? "." : ""}</p>` : ""}
 		<p class="acct-small">Version ${l.version}, ${when(l.updated)}${st.offline ? ", kept on this device (offline)" : ""}${signedIn && !st.offline ? html` · <button class="link-btn" data-ly="report">Report a problem</button>` : ""}${signedIn && !st.offline && !st.lang ? html` · <button class="link-btn" data-ly="same" aria-expanded="${String(Boolean(st.findOpen))}">Same song as another?</button>` : ""}.${!signedIn && AUTH_URL ? html` <a class="text-link" href="#/account">Sign in</a> to correct them.` : ""}</p>
 		${st.findOpen && !st.lang ? suggestionsHtml(st.catalog, st.track, sameOpts(st.ctx)) : ""}`;
 }
