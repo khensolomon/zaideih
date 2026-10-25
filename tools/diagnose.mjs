@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Playback diagnostics for the admin.
+ * Playback diagnostics, for those looking after the catalog.
  *
  * Commands:
  *   <code>          Decode a diagnostic code from a playback error in the app

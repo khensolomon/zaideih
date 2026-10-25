@@ -18,7 +18,7 @@
  *                       Default: /plays on the audio origin for production
  *                       builds, off for --dev builds; empty disables. Must be
  *                       on the audio origin, which the CSP already allows.
- *   ZAIDEIH_AUTH_URL    Sign in with GitHub on the admin page
+ *   ZAIDEIH_AUTH_URL    Sign in with GitHub in the Workspace
  *                       (worker/media/auth.js). Default: /auth on the audio
  *                       origin for web builds (local ones too: the Worker
  *                       accepts localhost:8080); empty disables. Must be on
@@ -112,7 +112,7 @@ if (playsUrl) {
 	if (origin !== audioOrigin) die(`ZAIDEIH_PLAYS_URL must be on the audio origin ${audioOrigin}, got ${playsUrl}`);
 }
 
-// Sign in with GitHub for the admin page: web builds only (src/admin/session.js).
+// Sign in with GitHub for the Workspace: web builds only (src/workspace/session.js).
 const authUrl = values.platform === "web" ? (process.env.ZAIDEIH_AUTH_URL ?? `${audioOrigin}/auth`).trim().replace(/\/+$/, "") : "";
 if (authUrl) {
 	let origin;
@@ -164,9 +164,9 @@ const worklet = await esbuild.build({
 const workletFile = Object.keys(worklet.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/sound-worklet\.[^/]+\.js$/.test(p));
 if (!workletFile) die(`unexpected esbuild output for the sound worklet: ${Object.keys(worklet.metafile.outputs).join(", ")}`);
 
-// 1b. The admin page (src/admin): its own file, loaded only when #/admin opens.
-const admin = values.platform === "web" ? await esbuild.build({
-	entryPoints: { admin: "src/admin/admin.js" },
+// 1b. The Workspace (src/workspace): its own file, loaded only when #/workspace opens.
+const workspace = values.platform === "web" ? await esbuild.build({
+	entryPoints: { workspace: "src/workspace/workspace.js" },
 	outdir: join(OUT, "assets"),
 	entryNames: "[name].[hash]",
 	bundle: true,
@@ -178,8 +178,8 @@ const admin = values.platform === "web" ? await esbuild.build({
 	metafile: true,
 	logLevel: "warning",
 }) : null;
-const adminFile = admin ? Object.keys(admin.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/admin\.[^/]+\.js$/.test(p)) : "";
-if (admin && !adminFile) die(`unexpected esbuild output for the admin page: ${Object.keys(admin.metafile.outputs).join(", ")}`);
+const workspaceFile = workspace ? Object.keys(workspace.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/workspace\.[^/]+\.js$/.test(p)) : "";
+if (workspace && !workspaceFile) die(`unexpected esbuild output for the Workspace: ${Object.keys(workspace.metafile.outputs).join(", ")}`);
 
 // 2. App bundle (JS + CSS + fonts), content-hashed.
 const app = await esbuild.build({
@@ -203,7 +203,7 @@ const app = await esbuild.build({
 		__GA_ID__: JSON.stringify(gaId),
 		__PLAYS_URL__: JSON.stringify(playsUrl),
 		__SOUND_WORKLET__: JSON.stringify(workletFile),
-		__ADMIN__: JSON.stringify(adminFile),
+		__WORKSPACE__: JSON.stringify(workspaceFile),
 		__AUTH_URL__: JSON.stringify(authUrl),
 		// Personal libraries live beside sign-in on the audio Worker.
 		__LIBRARY_URL__: JSON.stringify(authUrl ? `${audioOrigin}/library` : ""),
@@ -272,7 +272,7 @@ if (values.platform === "web") {
 	const media = ["'self'", "blob:", audioOrigin].join(" ");
 	// Google's documented hosts for GA4 (gtag.js), added only when analytics is built in.
 	const ga = gaId ? { script: " https://*.googletagmanager.com", img: " https://*.google-analytics.com https://*.googletagmanager.com", connect: " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" } : { script: "", img: "", connect: "" };
-	// api.github.com: the admin page (src/admin) commits catalog edits through GitHub;
+	// api.github.com: the Workspace (src/workspace) commits catalog edits through GitHub;
 	// avatars.githubusercontent.com: the signed-in person's photo in its header.
 	const connect = ["'self'", audioOrigin, "https://api.github.com"].join(" ") + ga.connect;
 	await writeFile(join(OUT, "_headers"), `/*

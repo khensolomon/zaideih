@@ -1,3 +1,5 @@
+// First: keys renamed on this device are moved before any module reads them.
+import "./core/moved-keys.js";
 import { analytics } from "./core/analytics.js";
 import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
 import { db, StorageError } from "./core/db.js";
@@ -8,7 +10,7 @@ import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
-import { ADMIN_URL, AUTH_URL, LIBRARY_URL } from "./config.js";
+import { AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
@@ -67,7 +69,7 @@ route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 	canModerate: () => uploads.canLyrics,
 	// From this song on, in its album, as a tap on the song in the album would.
 	playSong: (t) => player.playList(t.album.tracks.map((x) => x.id), t.id, t.album.title),
-	// From the admin's Waiting list or the lyrics page: comparing with another song, to merge (and the proposal it answers).
+	// From the Workspace's Waiting list or the lyrics page: comparing with another song, to merge (and the proposal it answers).
 	merge: Number(query.get("merge")) || null,
 	proposal: Number(query.get("proposal")) || null,
 }, query.get("lang") ?? ""));
@@ -81,25 +83,31 @@ route("viewport", () => {
 	return { title: "Viewport", body: html`<div class="about"><h1 class="page-title">Viewport readout</h1><p>The readout is <b>${on ? "on" : "off"}</b> on this device. Open <code>#/viewport</code> again to turn it ${on ? "off" : "on"}.</p><p><a class="btn" href="#/">Home</a> <a class="btn" href="#/account">Sign in page</a></p></div>` };
 });
 route("code/:code", V.codeView);
-// Hidden: the admin page (src/admin), its own bundle, loaded only here. Not linked anywhere.
-route("admin", () => ({
-	title: "Admin",
-	body: html`<div class="admin" id="admin-root"><p class="muted adm-loading">Loading…</p></div>`,
+// The Workspace's earlier address: links in older pull requests and bookmarks (#/admin?review=12) still arrive.
+route("admin", (_catalog, _params, query) => {
+	go("workspace", query.toString() ? query : undefined, { replace: true });
+	return { title: "Workspace", body: "" };
+});
+
+// The Workspace (src/workspace): its own bundle, loaded only here; linked for those signed in with GitHub.
+route("workspace", () => ({
+	title: "Workspace",
+	body: html`<div class="workspace" id="workspace-root"><p class="muted adm-loading">Loading…</p></div>`,
 	mount: async (view) => {
-		const root = $("#admin-root", view);
-		if (!ADMIN_URL) { root.innerHTML = html`<p>The admin page works in the web app only.</p>`; return; }
+		const root = $("#workspace-root", view);
+		if (!WORKSPACE_URL) { root.innerHTML = html`<p>The Workspace works in the web app only.</p>`; return; }
 		try {
-			const mod = await import(new URL(ADMIN_URL, document.baseURI).href);
+			const mod = await import(new URL(WORKSPACE_URL, document.baseURI).href);
 			mod.mount(root, {
 				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
-				// The app's own player, lyrics index and covers: the admin bundle has no copies of its own.
+				// The app's own player, lyrics index and covers: the Workspace bundle has no copies of its own.
 				player, onPlayer: (fn) => on("player", fn),
 				lyrics: { has: (id) => lyricsIndex.has(id), get size() { return lyricsIndex.size; } },
 				cover: (albumId) => { const al = catalog.album(albumId); return al ? cover(al, { label: false }) : ""; },
 			});
 		} catch (err) {
 			console.error(err);
-			root.innerHTML = html`<p class="adm-error">The admin page could not load: ${err.message}</p>`;
+			root.innerHTML = html`<p class="adm-error">The Workspace could not load: ${err.message}</p>`;
 		}
 	},
 }));
@@ -152,7 +160,7 @@ function renderAppMenu() {
 			<a href="#/">${icon("home")}Home</a>
 			<a href="#/search">${icon("search")}Search</a>
 			<a href="#/library">${icon("library")}Library</a>
-			<a href="#/admin" class="am-admin" hidden>${icon("edit")}<span class="lbl">Admin</span></a>
+			<a href="#/workspace" class="am-workspace" hidden>${icon("edit")}<span class="lbl">Workspace</span></a>
 			<a href="#/account" class="am-account">${icon("person")}<span class="lbl">Sign in</span></a>
 		</div>
 		<h2>Languages</h2>
@@ -167,11 +175,11 @@ function renderAppMenu() {
 /*
  * Who is signed in on this device: "Sign in", or their name, opens Your
  * account; with a GitHub sign-in (src/core/access.js) editors and admins
- * also get a link to the admin page, contributors and guests "Suggest edits".
+ * also get a link to the Workspace, contributors and guests "Suggest edits".
  */
 let accessKey = null;
 function syncAccess() {
-	const who = ADMIN_URL ? readWho(localStorage) : null;
+	const who = WORKSPACE_URL ? readWho(localStorage) : null;
 	const acct = AUTH_URL ? account() : null;
 	// Someone signed in or out (here or in another tab): their own uploads and their library follow.
 	const key = acct?.key ?? "";
@@ -188,8 +196,8 @@ function syncAccess() {
 		$(".lbl", a).textContent = name || "Sign in";
 		a.title = name ? "Account" : "";
 	}
-	const label = who ? (LEVELS[who.level].canWrite ? "Admin" : "Suggest edits") : "";
-	for (const a of $$(".rail-admin, .am-admin")) {
+	const label = who ? (LEVELS[who.level].canWrite ? "Workspace" : "Suggest edits") : "";
+	for (const a of $$(".rail-workspace, .am-workspace")) {
 		a.hidden = !who;
 		a.dataset.hint = label;
 		$(".lbl", a).textContent = label;
@@ -251,8 +259,8 @@ async function render({ keepScroll = false } = {}) {
 	if (!r) { go("", undefined, { replace: true }); return; }
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
-	// The lyrics studio and the admin page are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
-	const studio = /^lyrics\/\d+\/studio$/.test(r.path) || r.path === "admin";
+	// The lyrics studio and the Workspace are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
+	const studio = /^lyrics\/\d+\/studio$/.test(r.path) || r.path === "workspace";
 	document.body.toggleAttribute("data-studio", studio);
 	if (studio) document.body.dataset.rail = "mini";
 	else applyRail();
@@ -274,7 +282,7 @@ async function render({ keepScroll = false } = {}) {
 	updateNavbar(r.path, out.title);
 	// The address without its query: search text never leaves the device, and
 	// a diagnostic code is reported as the bare "code" page.
-	if (!keepScroll && r.path !== "admin") analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
+	if (!keepScroll && r.path !== "workspace") analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
 	scrollTo(0, scroll);
 	out.mount?.(view);
 	// The player's Play, while nothing plays, offers this page's own.
@@ -304,7 +312,7 @@ function markNav(path) {
 	const browse = /^lang\/\d+/.exec(path)?.[0] ?? (path.startsWith("genre") ? "genres" : path === "top" ? "top" : null);
 	const section = path.startsWith("search") ? "search"
 		: path.startsWith("library") || path.startsWith("playlist") ? "library"
-		: path === "about" || path === "terms" || path === "help" || path === "admin" || path === "account" ? path
+		: path === "about" || path === "terms" || path === "help" || path === "workspace" || path === "account" ? path
 		: browse ? null : "home";
 	for (const a of $$("[data-nav]")) {
 		if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
@@ -841,14 +849,14 @@ function editUpload(track) {
 
 /**
  * The owner's switch (and every reviewer's): on asks and opens the approval
- * form on the admin page at once; off withdraws a request still waiting.
+ * form in the Workspace at once; off withdraws a request still waiting.
  */
 async function publishToggle(el) {
 	const album = catalog.album(el.dataset.album);
 	try {
 		if (el.checked) {
 			const id = album.request?.status === "open" ? album.request.id : (await uploads.askPublish(album.title)).id;
-			location.hash = `#/admin?review=${id}`;
+			location.hash = `#/workspace?review=${id}`;
 		} else if (album.request?.status === "open") {
 			await uploads.withdrawPublish(album.request.id);
 			notify("Withdrawn; only you can play it");
@@ -976,8 +984,8 @@ function barMenu(anchor, track) {
 		...(track.upload ? [] : [{ label: "Share…", run: () => shareSong(track) }]),
 		{ label: sleepText() ? `Sleep timer (${sleepText()})…` : "Sleep timer…", run: () => setTimeout(() => sleepMenu(anchor)) },
 	];
-	const who = ADMIN_URL && !track.upload ? readWho(localStorage) : null;
-	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
+	const who = WORKSPACE_URL && !track.upload ? readWho(localStorage) : null;
+	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("workspace", { album: track.album.id, track: track.id }); } });
 	openMenu(anchor, items);
 }
 
@@ -1006,9 +1014,9 @@ function trackMenu(anchor, track, extra) {
 		openMenu(anchor, items);
 		return;
 	}
-	// Signed in to the admin page: straight to this song in its album's editor.
-	const who = ADMIN_URL ? readWho(localStorage) : null;
-	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("admin", { album: track.album.id, track: track.id }); } });
+	// Signed in to the Workspace: straight to this song in its album's editor.
+	const who = WORKSPACE_URL ? readWho(localStorage) : null;
+	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("workspace", { album: track.album.id, track: track.id }); } });
 	if (extra === "queue") {
 		items.push("-", { label: "Remove from queue", run: () => player.removeAt(player.state.queue.indexOf(track.id)) });
 	} else if (extra?.startsWith("playlist:")) {
@@ -1773,7 +1781,7 @@ export async function boot(platform) {
 	renderRail();
 	syncAccess();
 	// A sign-in or sign-out in another tab.
-	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.admin.") || e.key === "zaideih.account") syncAccess(); });
+	addEventListener("storage", (e) => { if (e.key === null || e.key.startsWith("zaideih.workspace.") || e.key === "zaideih.account") syncAccess(); });
 	$("#bar-now").addEventListener("click", openSheet);
 	$("#bar-more").addEventListener("click", (e) => { e.stopPropagation(); const t = player.current(); if (t) barMenu(e.currentTarget, t); });
 	$("#bar-like").addEventListener("click", async (e) => {

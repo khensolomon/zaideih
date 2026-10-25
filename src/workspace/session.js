@@ -1,23 +1,23 @@
 /**
- * Sign in with GitHub for the admin page, finished by the audio Worker's
+ * Sign in with GitHub for the Workspace, finished by the audio Worker's
  * /auth routes (worker/media/auth.js), which hold the GitHub App's secret.
  *
  *   1. start(): a PKCE verifier and a nonce are kept for this tab
  *      (sessionStorage), and the page goes to <auth>/login, which sends the
  *      browser on to GitHub.
- *   2. GitHub returns to the Worker, which returns to #/admin?signin=<code>&nonce=<n>.
+ *   2. GitHub returns to the Worker, which returns to #/workspace?signin=<code>&nonce=<n>.
  *   3. finish(): the nonce must match this tab's; the code and verifier are
  *      exchanged at <auth>/token for an access token (8 hours) and a refresh
  *      token (6 months), kept on this device (localStorage).
  *   4. token(): the access token, renewed at <auth>/refresh when it has less
  *      than RENEW_MS left.
  *
- * Pure apart from the injected fetch and storage: tested in Node (tests/admin.test.mjs).
+ * Pure apart from the injected fetch and storage: tested in Node (tests/workspace.test.mjs).
  */
 import { SESSION_KEY } from "../core/access.js";
 
 export { SESSION_KEY };
-export const PENDING_KEY = "zaideih.admin.signin";
+export const PENDING_KEY = "zaideih.workspace.signin";
 const RENEW_MS = 5 * 60_000;
 
 export class SignInError extends Error {}
@@ -74,15 +74,15 @@ export function createSession({ authUrl, local, tab, fetchImpl = (...a) => fetch
 
 		/**
 		 * The address to go to for signing in (also keeps this tab's verifier
-		 * and nonce); GitHub returns to #/<to> (admin, or account), or with
+		 * and nonce); GitHub returns to #/<to> (workspace, or account), or with
 		 * `wait`, leaves the code at the Worker for this page to take (core/account.js waitForSignIn).
 		 */
-		async start(returnTo, { to = "admin", wait = false } = {}) {
+		async start(returnTo, { to = "workspace", wait = false } = {}) {
 			if (!authUrl) throw new SignInError("sign-in with GitHub is not built into this version");
 			const verifier = random();
 			const nonce = random();
 			write(tab, PENDING_KEY, { verifier, nonce });
-			const q = new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier), ...(to === "admin" ? {} : { to }), ...(wait ? { wait: "1" } : {}) });
+			const q = new URLSearchParams({ return: returnTo, nonce, challenge: await challengeOf(verifier), to, ...(wait ? { wait: "1" } : {}) });
 			return `${authUrl}/login?${q}`;
 		},
 

@@ -23,14 +23,14 @@ const post = (path, body, origin = "https://zaideih.com") => new Request(`${W}${
 
 test("returnUrl allows only the listed origins and drops query and fragment", () => {
 	const origins = new Set(["https://zaideih.com"]);
-	assert.equal(returnUrl("https://zaideih.com/?x=1#/admin", origins), "https://zaideih.com/");
+	assert.equal(returnUrl("https://zaideih.com/?x=1#/workspace", origins), "https://zaideih.com/");
 	assert.throws(() => returnUrl("https://evil.example/", origins), /may not sign in/);
 	assert.throws(() => returnUrl("javascript:alert(1)", origins), /may not sign in/);
-	assert.throws(() => returnUrl(null, origins), /admin page's URL/);
+	assert.throws(() => returnUrl(null, origins), /Workspace's URL/);
 });
 
 test("login redirects to GitHub with PKCE and a state naming the page", async () => {
-	const res = await handleAuth(new Request(`${W}/auth/login?return=${encodeURIComponent("https://zaideih.com/")}&nonce=${NONCE}&challenge=${CHALLENGE}`), env);
+	const res = await handleAuth(new Request(`${W}/auth/login?return=${encodeURIComponent("https://zaideih.com/")}&nonce=${NONCE}&challenge=${CHALLENGE}&to=workspace`), env);
 	assert.equal(res.status, 302);
 	const to = new URL(res.headers.get("location"));
 	assert.equal(to.origin + to.pathname, "https://github.com/login/oauth/authorize");
@@ -42,7 +42,7 @@ test("login redirects to GitHub with PKCE and a state naming the page", async ()
 
 	const back = await handleAuth(new Request(`${W}/auth/callback?code=abc123&state=${to.searchParams.get("state")}`), env);
 	assert.equal(back.status, 302);
-	assert.equal(back.headers.get("location"), `https://zaideih.com/#/admin?signin=abc123&nonce=${NONCE}`);
+	assert.equal(back.headers.get("location"), `https://zaideih.com/#/workspace?signin=abc123&nonce=${NONCE}`);
 	assert.equal(back.headers.get("referrer-policy"), "no-referrer");
 });
 

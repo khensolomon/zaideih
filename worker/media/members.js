@@ -10,7 +10,7 @@
  *   member  everyone else
  * Rights the owner gives (D1 `member_rights`) and blocks (D1 `members`) are
  * Zaideih's own. Catalog editing follows the repository permission instead,
- * which GitHub decides on every request (src/admin).
+ * which GitHub decides on every request (src/workspace).
  */
 export class MemberError extends Error {
 	constructor(message, status = 400) {

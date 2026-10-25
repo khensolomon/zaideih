@@ -1,5 +1,5 @@
 /**
- * Sign in with GitHub for the admin page (src/admin), through the GitHub App
+ * Sign in with GitHub for the Workspace (src/workspace), through the GitHub App
  * "Zaideih" (client id GITHUB_CLIENT_ID). GitHub's token endpoint needs the
  * App's client secret, which cannot live in a public page, so these routes
  * finish the sign-in. The GitHub tokens stay on the device; a GitHub token
@@ -11,8 +11,8 @@
  *                        Redirects to GitHub's authorize page.
  *   GET  /auth/callback  GitHub returns here with ?code&state (or ?error).
  *                        Redirects to <page URL>#/<to>?signin=<code>&nonce=<n>,
- *                        or #/<to>?signin-error=<message>; <to> is admin
- *                        (the default) or account.
+ *                        or #/<to>?signin-error=<message>; <to> is workspace
+ *                        or account ("admin", the default, for older app builds).
  *   POST /auth/token     {"code", "verifier"}  -> tokens (see tokenAnswer)
  *   POST /auth/refresh   {"refresh_token"}     -> tokens
  *   POST /auth/signout   {"access_token"}      -> 204; revokes the token at GitHub
@@ -55,7 +55,8 @@ const USER_AGENT = "zaideih-media-worker";
 const MAX_BODY = 4096;
 const MAX_SUGGEST_BODY = 20 * 1024 * 1024;
 // Pages a sign-in may return to (#/<to>).
-const RETURN_ROUTES = new Set(["admin", "account"]);
+// "admin": the Workspace's earlier address, still asked for by app builds before 26.10.25.6 (the app forwards it).
+const RETURN_ROUTES = new Set(["workspace", "admin", "account"]);
 // Base64url, 43 to 128 characters (RFC 7636 for the challenge; the nonce uses the same shape).
 const TOKENISH = /^[A-Za-z0-9_-]{43,128}$/;
 
@@ -80,7 +81,7 @@ export function returnUrl(value, origins) {
 	try {
 		url = new URL(value);
 	} catch {
-		throw new AuthError("return must be the admin page's URL");
+		throw new AuthError("return must be the Workspace's URL");
 	}
 	if (!origins.has(url.origin)) throw new AuthError(`${url.origin} may not sign in here (AUTH_ORIGINS)`, 403);
 	return `${url.origin}${url.pathname}`;
@@ -242,7 +243,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 		if (request.method !== "POST" || !["/auth/token", "/auth/refresh", "/auth/signout", "/auth/suggest", "/auth/session", "/auth/session/end", "/auth/me", "/auth/logins/remove", "/auth/google/token", "/auth/wait", "/auth/passkey/options", "/auth/passkey/register", "/auth/passkey/signin"].includes(route)) {
 			return new Response("Not Found", { status: 404 });
 		}
-		// Tokens are answered to the admin page's origins only.
+		// Tokens are answered to the Workspace's origins only.
 		if (!cors) throw new AuthError("this origin may not use sign-in (AUTH_ORIGINS)", 403);
 		const body = await readJson(request, route === "/auth/suggest" ? MAX_SUGGEST_BODY : MAX_BODY);
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
@@ -310,7 +311,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 			console.error("auth failed", { route, err });
 			return json(500, { error: "sign-in failed on the Worker" }, cors);
 		}
-		// Browser navigations get a readable page; the admin page's calls get JSON.
+		// Browser navigations get a readable page; the Workspace's calls get JSON.
 		if (request.method === "GET") return new Response(`Sign-in: ${err.message}`, { status: err.status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 		return json(err.status, { error: err.message }, cors);
 	}

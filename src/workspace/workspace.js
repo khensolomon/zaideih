@@ -1,7 +1,7 @@
 /**
- * The hidden admin page (#/admin): edit the catalog through GitHub.
+ * The Workspace (#/workspace): edit the catalog through GitHub.
  *
- *   Connect      Sign in with GitHub (src/admin/session.js, finished by the
+ *   Connect      Sign in with GitHub (src/workspace/session.js, finished by the
  *                audio Worker), or a fine-grained GitHub token for
  *                khensolomon/zaideih; either is kept on this device only
  *                (localStorage). Refused while Google Analytics is on here,
@@ -17,7 +17,7 @@
  *   Overview     what waits for this person (requests, lyrics proposals and
  *                reports, suggestions, data checks), the draft, lyrics lately, plays.
  *   Catalog      find an album or artist; its page keeps every change in the
- *                draft as it is made (src/admin/draft.js): titles, year,
+ *                draft as it is made (src/workspace/draft.js): titles, year,
  *                language, genres, song credits, hiding, artist names and
  *                spellings. Songs play in the app's player.
  *   Draft        the changes, one line each; publish them as one pull request
@@ -32,12 +32,12 @@
  *   Requests     members' albums asked to be published (worker/media/requests.js),
  *                for Review publishing: listen, then approve (the Worker copies
  *                the songs into music/, and a pull request adds the album to
- *                the catalog, src/admin/publish.js) or decline with a reason.
+ *                the catalog, src/workspace/publish.js) or decline with a reason.
  *   Lyrics       for the Lyrics right: proposals that two songs are the same
  *                (Compare opens the studio's merge, Decline keeps a reason
  *                with the proposal), reports, and the latest edits.
  *   Members      rights, blocking and uploads in personal libraries.
- *   Checks       catalog checks (src/admin/health.js).
+ *   Checks       catalog checks (src/workspace/health.js).
  *   Statistics   counted plays from the audio Worker (GET /plays).
  *
  * Levels (src/core/access.js) come from the person's repository permission;
@@ -59,7 +59,7 @@ import { createSession, PENDING_KEY, SESSION_KEY, SignInError } from "./session.
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
 import { AccountError, createAccount, homeScreenApp, waitForSignIn } from "../core/account.js";
 
-const DRAFT_KEY = "zaideih.admin.draft";
+const DRAFT_KEY = "zaideih.workspace.draft";
 const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json", media: "assets/data/media.json" };
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
@@ -70,7 +70,7 @@ const store = {
 			if (value === null) localStorage.removeItem(key);
 			else localStorage.setItem(key, JSON.stringify(value));
 		} catch (err) {
-			throw new Error(`this device could not keep the admin data (${err.message})`);
+			throw new Error(`this device could not keep the Workspace's data (${err.message})`);
 		}
 	},
 };
@@ -105,7 +105,7 @@ export function mount(root, ctx) {
 		totals: null,
 		requests: null,   // GET /library/requests: { reviewer, requests }
 		reviewing: null,  // the request whose approval form is open
-		jumpReview: null, // #/admin?review=<id>, from "Public in the catalog"
+		jumpReview: null, // #/workspace?review=<id>, from "Public in the catalog"
 	};
 	let poll = 0;
 	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
@@ -202,7 +202,7 @@ export function mount(root, ctx) {
 		}
 	}
 
-	/** Goes to GitHub to sign in; GitHub comes back to #/admin?signin=… through the Worker. */
+	/** Goes to GitHub to sign in; GitHub comes back to #/workspace?signin=… through the Worker. */
 	async function signInWithGitHub() {
 		s.busy = "Opening GitHub…";
 		render();
@@ -212,7 +212,7 @@ export function mount(root, ctx) {
 	/** Back from GitHub: exchange the code, then connect. */
 	async function finishSignIn(query) {
 		// The code is single-use; take it out of the address and history right away.
-		history.replaceState(history.state, "", "#/admin");
+		history.replaceState(history.state, "", "#/workspace");
 		if (query.get("signin-error")) throw new SignInError(`GitHub did not sign you in: ${query.get("signin-error")}`);
 		s.busy = "Finishing the GitHub sign-in…";
 		render();
@@ -220,7 +220,7 @@ export function mount(root, ctx) {
 		await connect("github");
 	}
 
-	/** A listener page's Edit link (#/admin?album=…&track=… or ?artist=…): open that editor. */
+	/** A listener page's Edit link (#/workspace?album=…&track=… or ?artist=…): open that editor. */
 	function openJump() {
 		const { kind, id } = s.jump;
 		const known = kind === "album" ? s.data.index.album.has(id) : s.data.index.artist.has(id);
@@ -518,9 +518,9 @@ export function mount(root, ctx) {
 			b.innerHTML = String(icon(on ? "pause" : "play"));
 		}
 	}
-	// Leaving the admin page stops a preview: it has no control anywhere else.
+	// Leaving the Workspace stops a preview: it has no control anywhere else.
 	const leave = () => {
-		if (/^#\/admin(?:[/?]|$)/.test(location.hash) && root.isConnected) return;
+		if (/^#\/workspace(?:[/?]|$)/.test(location.hash) && root.isConnected) return;
 		removeEventListener("hashchange", leave);
 		preview.pause();
 		preview.removeAttribute("src");
@@ -555,7 +555,7 @@ export function mount(root, ctx) {
 		if (s.draft.changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
 		if (s.draft.changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
 		const title = `release: web ${next} ${note.trim()}`;
-		const body = `Catalog changes from the admin page, by ${s.user}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nMerging with "Merge and release" on the admin page releases v${next}.`;
+		const body = `Catalog changes from the Workspace, by ${s.user}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nMerging with "Merge and release" in the Workspace releases v${next}.`;
 		s.busy = "Opening the pull request…";
 		render();
 		// One flat name: a branch under a folder ("admin/…") cannot be created
@@ -812,7 +812,7 @@ export function mount(root, ctx) {
 			Object.assign(files, releaseFiles(fetched, next, [`${note} (${out.approve.tracks.length} songs, from @${req.login}'s library)`]));
 			// The title is the release line, so merging here or on GitHub releases the site and the track paths.
 			const title = `release: web+d1 ${next} ${note}`;
-			const body = `Publishing request #${id}, approved by ${s.user} on the admin page.\n\n${out.lines.map((l) => `- ${l}`).join("\n")}\n\nThe songs are already copied to ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/. Merging releases v${next}; the member's uploaded copies are removed once the track paths are loaded.`;
+			const body = `Publishing request #${id}, approved by ${s.user} in the Workspace.\n\n${out.lines.map((l) => `- ${l}`).join("\n")}\n\nThe songs are already copied to ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/. Merging releases v${next}; the member's uploaded copies are removed once the track paths are loaded.`;
 			url = (await s.gh.propose({ parent: head, files, branch: `publish-${id}-${Date.now().toString(36)}`, title, body })).url;
 		} else {
 			url = await suggest({ base: head, note, lines: out.lines, files });
@@ -1164,7 +1164,7 @@ export function mount(root, ctx) {
 	function signIn(message = null) {
 		return html`<div class="adm-gate"><div class="adm-card">
 			<span class="adm-logo logo-tile">${raw(logoMark())}</span>
-			<h1>Admin</h1>
+			<h1>Workspace</h1>
 			${message ?? html`
 				<p class="muted">Edit the catalog through GitHub: every change becomes a pull request on <b>${REPO}</b>, released when merged.</p>
 				${s.busy ? html`<p class="adm-busy">${s.busy}</p>` : ""}
@@ -1255,7 +1255,7 @@ export function mount(root, ctx) {
 	 * which opens their menu.
 	 */
 	/**
-	 * Back, inside the admin: an album or artist to the results, a section to
+	 * Back, inside the Workspace: an album or artist to the results, a section to
 	 * Overview. From Overview, back to the app (phones; the sidebar is there
 	 * on wide screens).
 	 */
@@ -1340,13 +1340,13 @@ export function mount(root, ctx) {
 	function render() {
 		if (!root.isConnected) return;
 		// A render replaces the page; the field being typed in keeps the focus.
-		const active = document.activeElement?.closest?.(".admin") ? document.activeElement : null;
+		const active = document.activeElement?.closest?.(".workspace") ? document.activeElement : null;
 		const focusName = active?.dataset.adm ?? null;
 		const focusWhere = active?.dataset.where ?? null;
 		const caret = focusName === "search" ? [active.selectionStart, active.selectionEnd] : null;
 		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
-		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Admin` : "Admin";
-		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
+		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Workspace` : "Workspace";
+		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The Workspace works in the web app only.</p>`); return; }
 		if (ctx.analyticsOn()) {
 			root.innerHTML = signIn(html`<p><b>Turn off usage statistics first.</b></p><p class="muted">The GitHub token is kept on this device, and Google's statistics script on the page could read it. Turn statistics off on the <a class="text-link" href="#/about">About</a> page, then come back.</p>`);
 			return;
@@ -1540,8 +1540,8 @@ export function mount(root, ctx) {
 	if (query.has("album")) s.jump = { kind: "album", id: query.get("album"), track: Number(query.get("track")) || null };
 	else if (query.has("artist")) s.jump = { kind: "artist", id: Number(query.get("artist")) };
 	if (query.has("review")) s.jumpReview = Number(query.get("review"));
-	// The link has done its work; Back and reloads land on the plain admin page.
-	if (s.jump || s.jumpReview) history.replaceState(history.state, "", "#/admin");
+	// The link has done its work; Back and reloads land on the plain Workspace.
+	if (s.jump || s.jumpReview) history.replaceState(history.state, "", "#/workspace");
 	const saved = store.get(TOKEN_KEY);
 	if (ctx.analyticsOn() || ctx.desktop) render();
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);

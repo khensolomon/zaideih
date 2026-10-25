@@ -17,9 +17,9 @@ import { html } from "../core/html.js";
 import { saveWho, TOKEN_KEY } from "../core/access.js";
 import { account, githubSession } from "../core/signin.js";
 import { GOOGLE_PENDING_KEY, homeScreenApp, waitForSignIn } from "../core/account.js";
-import { PENDING_KEY } from "../admin/session.js";
+import { PENDING_KEY } from "../workspace/session.js";
 import { makePasskey, passkeysAvailable, usePasskey } from "../core/passkey.js";
-import { createGitHub } from "../admin/github.js";
+import { createGitHub } from "../workspace/github.js";
 import { icon } from "./icons.js";
 
 const GITHUB_LINK_KEY = "zaideih.account.github-link";

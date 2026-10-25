@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "../src/admin/draft.js";
-import { healthChecks, tidyText } from "../src/admin/health.js";
-import { challengeOf, createSession, PENDING_KEY, SESSION_KEY } from "../src/admin/session.js";
+import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "../src/workspace/draft.js";
+import { healthChecks, tidyText } from "../src/workspace/health.js";
+import { challengeOf, createSession, PENDING_KEY, SESSION_KEY } from "../src/workspace/session.js";
 import { LEVELS, levelOf, readWho, saveWho, WHO_KEY } from "../src/core/access.js";
 import { releaseFiles } from "../tools/lib/version.mjs";
 
@@ -220,10 +220,25 @@ test("the level shown on every page lasts only as long as the sign-in it came fr
 	assert.equal(readWho(st, 2000), null, "run out");
 	saveWho(st, { login: "kh", level: "editor", via: "token" });
 	assert.equal(readWho(st), null, "token gone");
-	st.setItem("zaideih.admin.token", JSON.stringify("github_pat_x"));
+	st.setItem("zaideih.workspace.token", JSON.stringify("github_pat_x"));
 	assert.equal(readWho(st).level, "editor");
 	st.setItem(WHO_KEY, JSON.stringify({ login: "x", level: "owner", via: "token" }));
 	assert.equal(readWho(st), null, "unknown level");
 	saveWho(st, null);
 	assert.equal(st.getItem(WHO_KEY), null);
+});
+
+test("the admin page's keys move to the Workspace's once; a key already moved is kept", async () => {
+	const { moveKeys } = await import("../src/core/moved-keys.js");
+	const map = new Map([["zaideih.admin.draft", "D"], ["zaideih.admin.token", "old"], ["zaideih.workspace.token", "new"], ["zaideih.rail", "R"]]);
+	const storage = {
+		get length() { return map.size; },
+		key: (i) => [...map.keys()][i] ?? null,
+		getItem: (k) => (map.has(k) ? map.get(k) : null),
+		setItem: (k, v) => map.set(k, String(v)),
+		removeItem: (k) => map.delete(k),
+	};
+	assert.equal(moveKeys(storage), 2);
+	assert.deepEqual(Object.fromEntries(map), { "zaideih.workspace.token": "new", "zaideih.rail": "R", "zaideih.workspace.draft": "D" });
+	assert.equal(moveKeys(storage), 0);
 });

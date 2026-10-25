@@ -8,7 +8,7 @@
  * Adding, editing, reporting and proposing that two songs are the same need
  * a sign-in; the Lyrics right hides, shows and restores earlier versions,
  * links, merges and unlinks songs, and compares copies. Recent edits and
- * declining proposals are the admin page's own calls (src/admin/admin.js).
+ * declining proposals are the Workspace's own calls (src/workspace/workspace.js).
  */
 import { LIBRARY_URL } from "../config.js";
 import { db } from "./db.js";

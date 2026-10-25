@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPublish, segment } from "../src/admin/publish.js";
+import { buildPublish, segment } from "../src/workspace/publish.js";
 import { validateMedia, checkCoverage } from "../tools/lib/media.mjs";
 
 const data = () => ({

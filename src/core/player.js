@@ -172,7 +172,7 @@ async function load(autoplay, startAt = 0) {
 
 /**
  * Stops with a message, then probes the failure and attaches a diagnostic
- * code to the state and the notice, for the admin to decode
+ * code to the state and the notice, for those looking after the catalog to decode
  * (tools/diagnose.mjs or the hidden #/code/<code> page).
  */
 function stopWithError(message, kind = "unknown", extra = {}) {

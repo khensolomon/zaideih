@@ -12,7 +12,7 @@ Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Your uploads in
 | Member | Anyone signed in ([accounts.md](accounts.md)) | Their own library: upload, add from storage (with the right), play, edit, delete; suggest catalog edits |
 | Listener | Not signed in | The public app |
 
-The owner trusts members with rights, one by one, on the admin page (Members); each is a row in D1 `member_rights` with who gave it and when:
+The owner trusts members with rights, one by one, in the Workspace (Members); each is a row in D1 `member_rights` with who gave it and when:
 
 | Right | Allows |
 |---|---|
@@ -22,7 +22,7 @@ The owner trusts members with rights, one by one, on the admin page (Members); e
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
 | Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version; links songs that are the same, merges and unlinks them, compares copies and declines proposals ([lyrics.md](lyrics.md)) |
 
-A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing on the admin page is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#admin-page).
+A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing in the Workspace is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#workspace).
 
 Library requests carry a Zaideih session ([accounts.md](accounts.md#sessions)), checked in D1 on every request (`worker/media/members.js`). Rights and blocks are Zaideih's own and live in D1.
 
@@ -65,7 +65,7 @@ An upload left `uploading` for an hour (a closed tab) is removed the next time i
 Music already in R2 (bought elsewhere, too large to upload, kept the way its owner organised it) is added where it is, without being moved or copied:
 
 - The owner and co-owners browse the whole bucket, except `users/` (members' uploads, theirs alone).
-- A member with the Storage right browses one folder: the one the owner or a co-owner set for them on the admin page (Members, Storage folder), or `private/<member id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
+- A member with the Storage right browses one folder: the one the owner or a co-owner set for them in the Workspace (Members, Storage folder), or `private/<member id>/` until one is set. A member's folder can be anywhere except `users/`, but never the whole bucket.
 
 Your uploads, Add from storage (`GET /library/storage?prefix=…`) opens where the last visit on that device left off, or any folder typed in. It lists a folder's folders and audio files, each file with a signed address (`/k/<key>?e&s`, six hours) through which the app reads its length and tags, as for an upload. "Add" (`POST /library/storage/add`) checks every file first (inside the person's storage, present, a supported format, a length, not already in a library) and then adds all of them or none. The library row names the file where it is, so it uses no space allowance and has no size limit, and taking it out of the library leaves the file in R2.
 
@@ -76,13 +76,13 @@ Uploads are the only files a library owns (`users/…`): only they count towards
 A member can ask for an album of their uploads to join the public catalog. The catalog stays in git and is changed only by a reviewed, released pull request; publishing is that, prepared from the member's files.
 
 1. **Ask** (the album's page in the app, Ask to publish): the whole album, with its language, a note for the reviewer (who made it, why it may be shared) and a statement that they may share it. Only MP3 can be published, since the catalog streams MP3 (`media.json`, `/audio`); an album with other formats is refused naming the files, to be uploaded again as MP3. While asked, its songs cannot be edited or deleted; the member can withdraw the request.
-2. **Review** (admin page, Requests, with Review publishing): every song can be listened to. **Reject** needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
-3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. The admin page then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, on the admin page (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
+2. **Review** (Workspace, Requests, with Review publishing): every song can be listened to. **Reject** needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
+3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. The Workspace then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, in the Workspace (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
 4. **Released**: once D1 `tracks` holds every song of the request, the next library read settles it: the member's uploaded copies (`users/…`) are deleted and their library entries point at the catalog's files, so they play as before and no longer use the member's space. A song added from storage keeps its file. The album page says "In the catalog, published by you" with a link to the catalog album.
 
-The member stays credited: published songs stay in their library and cannot be deleted from it by them (the owner and co-owners can); corrections go through Suggest on the admin page like any catalog edit.
+The member stays credited: published songs stay in their library and cannot be deleted from it by them (the owner and co-owners can); corrections go through Suggest in the Workspace like any catalog edit.
 
-The owner, co-owners and reviewers do not ask anyone: on their own album the page has a **Public in the catalog** switch. Turning it on asks and opens the approval form at once (`#/admin?review=<id>`); turning it off while still waiting withdraws.
+The owner, co-owners and reviewers do not ask anyone: on their own album the page has a **Public in the catalog** switch. Turning it on asks and opens the approval form at once (`#/workspace?review=<id>`); turning it off while still waiting withdraws.
 
 ## Listening
 
@@ -92,7 +92,7 @@ The app lists them in Library as Your uploads, grouped by album, and plays them 
 
 ## Moderation
 
-Spam is expected. Anyone holding a right sees every member (login, rights, space used, uploads, last seen) on the admin page, Members. With Moderate members:
+Spam is expected. Anyone holding a right sees every member (login, rights, space used, uploads, last seen) in the Workspace, Members. With Moderate members:
 
 - block a member, with a reason: their uploads stop playing at once, and every library request answers 403 with the reason; unblocking restores everything;
 - delete any upload (the R2 object and the row; a file added from storage stays in R2).
