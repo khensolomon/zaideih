@@ -25,11 +25,12 @@ const challengeOf = async (verifier) => b64url(new Uint8Array(await crypto.subtl
 export class AccountError extends Error {}
 
 /**
- * True in an app added to the home screen. Its sign-in opens in a browser
- * sheet that cannot hand the result back to the app, so the app takes the
- * code from the Worker instead (waitForSignIn).
+ * True in an installed app (added to the home screen, or installed on a
+ * desktop, with or without its own title bar). Its sign-in opens in a
+ * browser sheet that cannot hand the result back to the app, so the app
+ * takes the code from the Worker instead (waitForSignIn).
  */
-export const homeScreenApp = () => globalThis.matchMedia?.("(display-mode: standalone)").matches === true || globalThis.navigator?.standalone === true;
+export const homeScreenApp = () => globalThis.matchMedia?.("(display-mode: standalone), (display-mode: window-controls-overlay)").matches === true || globalThis.navigator?.standalone === true;
 
 /**
  * Waits for a sign-in started with `wait` to come back: asks the Worker
