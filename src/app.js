@@ -10,6 +10,7 @@ import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
+import { startHolds } from "./core/holds.js";
 import { AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
@@ -31,7 +32,7 @@ import { initTips } from "./ui/tips.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
-import { clearRecent, closeSuggestions, forgetSearch, forgetSearches, getScope, moveSelection, pickOption, rememberSearch, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
+import { clearRecent, closeSuggestions, forgetSearch, forgetSearches, getScope, includeMine, moveSelection, pickOption, rememberSearch, setIncludeMine, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
 import * as V from "./ui/views.js";
 import { focusKey, refocus } from "./ui/focus.js";
 import { viz } from "./ui/viz.js";
@@ -1122,6 +1123,14 @@ const actions = {
 		if (currentRoute?.path === "about") rerender();
 		else if (el.dataset.value === "granted") analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
 	},
+	/** "My music" in search: the person's own uploads searched too, or not (kept per device). */
+	"search-mine"() {
+		setIncludeMine(!includeMine());
+		for (const b of $$("[data-act=search-mine]")) b.setAttribute("aria-pressed", String(includeMine()));
+		const input = $("#q");
+		runSearch(input.value);
+		if (document.activeElement === input) updateSuggestions(catalog, input);
+	},
 	scope(el) {
 		setScope(el.dataset.scope);
 		const input = $("#q");
@@ -1799,6 +1808,14 @@ export async function boot(platform) {
 			clearArtCaches();
 			const path = currentRoute?.path ?? "";
 			if ((path === "" || /^(top|genres|lang\/|artist\/|album\/|genre\/)/.test(path)) && !document.body.classList.contains("search-open")) rerender();
+		},
+	});
+	// Albums held back without a release (docs/holds.md): the last known ones at once, fresh ones when they arrive.
+	startHolds(catalog, {
+		onChange: () => {
+			clearArtCaches();
+			renderRail();
+			if (!document.body.classList.contains("search-open")) rerender();
 		},
 	});
 	clearArtCaches();

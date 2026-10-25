@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile } from "../tools/catalog.mjs";
-import { buildModel } from "../src/core/catalog.js";
+import { applyHolds, buildModel } from "../src/core/catalog.js";
 import { closest, correction, didYouMean, editDistance, search, suggestions } from "../src/core/search.js";
 import { normalize } from "../src/core/text.js";
 
@@ -159,4 +159,45 @@ test("hidden tracks stay in the source but are not shipped; an album with only h
 	assert.deepEqual(catalog.artists.map((a) => a[0]), [10], "an artist only on hidden tracks is not shipped");
 	assert.equal(stats.hidden, 2);
 	assert.throws(() => compile({ albums: [{ ...albums[0], tk: [{ ...albums[0].tk[0], h: "yes" }] }], artists, category }), /hidden \(h\) must be true or false/);
+});
+
+test("holds: an album not listed leaves the catalog with its songs and lonely artists; streaming off marks it; given back, it returns", () => {
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "test" });
+	model.extra.tracks.set("u1", { id: "u1" });
+	const zamnu = [...model.artists.values()].find((a) => a.name === "Zamnu").id;
+	assert.equal(applyHolds(model, { at: 1, albums: { a1: { streaming: false, listed: true } } }), false, "streaming off: no rebuild");
+	assert.equal(model.album("a1").off, true);
+	assert.equal(model.album("a2").off, false);
+
+	assert.equal(applyHolds(model, { at: 2, albums: { a1: { streaming: true, listed: false } } }), true);
+	assert.equal(model.album("a1"), undefined);
+	assert.equal(model.track(1), undefined);
+	assert.deepEqual([...model.langs.values()].map((l) => l.albums.length), [0, 1]);
+	assert.equal(model.artists.get(zamnu).tracks.length, 1, "Zamnu keeps the song of the other album");
+	assert.equal(model.track("u1")?.id, "u1", "uploads stay");
+
+	assert.equal(applyHolds(model, { at: 3, albums: { a1: { streaming: true, listed: false }, a2: { streaming: true, listed: false } } }), true);
+	assert.equal(model.artists.has(zamnu), false, "an artist with no song left is left out");
+
+	assert.equal(applyHolds(model, { at: 4, albums: {} }), true);
+	assert.equal(model.album("a1").tracks.length, 2);
+	assert.equal(model.album("a1").off, false);
+	assert.equal(model.artists.get(zamnu).tracks.length, 2);
+});
+
+test("My music: the person's own uploads are searched only when asked, the catalog itself untouched", async () => {
+	const { withMine } = await import("../src/core/search.js");
+	const { shapeUploads } = await import("../src/core/uploads.js");
+	const { catalog } = compile({ albums, artists, category });
+	const model = buildModel(catalog, { version: "test" });
+	assert.equal(withMine(model), model, "no uploads: the catalog itself");
+	const { tracks: ut, albums: ua } = shapeUploads([{ id: 5, title: "Hong lungdam", album: "Home songs", artist: "Me", duration: 100 }]);
+	for (const t of ut) model.extra.tracks.set(t.id, t);
+	for (const a of ua) model.extra.albums.set(a.id, a);
+	assert.deepEqual(search(model, "lungdam").tracks.items.map((t) => t.id), []);
+	const mine = withMine(model);
+	assert.deepEqual(search(mine, "lungdam").tracks.items.map((t) => t.id), ["u5"]);
+	assert.deepEqual(search(mine, "home songs").albums.items.map((a) => a.id), ["u-album-1"]);
+	assert.equal(model.tracks.has("u5"), false, "the catalog's own lists are untouched");
 });

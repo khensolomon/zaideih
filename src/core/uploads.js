@@ -18,6 +18,7 @@ import { account } from "./signin.js";
 import { emit } from "./store.js";
 import { checkFile, detailsFromName, formatOf, FORMATS, UploadRuleError } from "./upload-rules.js";
 import { readTags, TAG_BYTES } from "./tags.js";
+import { compact, normalize } from "./text.js";
 
 const REFRESH_MS = 4 * 3600_000;
 const LENGTH_TIMEOUT_MS = 15_000;
@@ -64,7 +65,7 @@ export function shapeUploads(list, requests = []) {
 		if (!albums.has(albumName)) {
 			albums.set(albumName, {
 				id: `u-album-${albums.size + 1}`, title: albumName, lang: UPLOADS_LANG, year: null, genres: [],
-				tracks: [], duration: 0, plays: 0, artists: [], search: "", searchCompact: "", upload: true,
+				tracks: [], duration: 0, plays: 0, artists: [], search: normalize(albumName), searchCompact: compact(normalize(albumName)), upload: true,
 				named: Boolean(u.album), request: null, publish: "private",
 			});
 		}
@@ -73,6 +74,8 @@ export function shapeUploads(list, requests = []) {
 		const t = {
 			id: `u${u.id}`, uploadId: u.id, title: u.title, album, n: 0, duration: u.duration, plays: 0, base: 0, recent: 0,
 			artists: [artist], url: u.url, upload: true, format: u.format, size: u.size, year: u.year, track: u.track, fileName: u.fileName, status: u.status,
+			// Searched with "My music" on (core/search.js, withMine).
+			search: normalize(u.title), searchCompact: compact(normalize(u.title)),
 		};
 		album.tracks.push(t);
 		album.duration += u.duration;

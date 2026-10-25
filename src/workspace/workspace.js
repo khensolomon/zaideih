@@ -161,6 +161,7 @@ export function mount(root, ctx) {
 				s.isOwner = lib.member?.role === "owner";
 				if (may("review")) loadRequests().catch(fail);
 				if (may("lyrics")) loadLyrics().catch(fail);
+				if (may("albums")) loadHolds().catch(fail);
 				render();
 			}, (err) => console.warn("library", err.message));
 			ctx.onWho?.();
@@ -343,6 +344,7 @@ export function mount(root, ctx) {
 					</div>
 				</div>
 			</div>
+			${availability(al)}
 			<div class="adm-songs" role="table" aria-label="Songs">
 				<div class="adm-song adm-song-head" role="row"><span role="columnheader"><span class="sr">Listen</span></span><span role="columnheader">Title</span><span role="columnheader">Artists</span><span role="columnheader" class="num">Plays</span><span role="columnheader">Lyrics</span><span role="columnheader" class="end">Shown</span></div>
 				${al.tk.map((t) => {
@@ -388,7 +390,7 @@ export function mount(root, ctx) {
 		</div>`;
 	}
 
-	const albumRow = (al) => html`<li><button data-adm="open" data-kind="album" data-id="${al.ui}"><span class="adm-thumb">${coverOf(al.ui)}</span><span class="adm-row-text"><b>${draftValue("album", al.ui, "ab", al.ab)}</b><small>${[al.yr?.[0], plural(al.tk.length, "song")].filter(Boolean).join(" · ")}</small></span>${changed("album", al.ui) || al.tk.some((t) => changed("track", t.i)) ? html`<span class="adm-dot" title="Changed in your draft"></span>` : ""}</button></li>`;
+	const albumRow = (al) => html`<li><button data-adm="open" data-kind="album" data-id="${al.ui}"><span class="adm-thumb">${coverOf(al.ui)}</span><span class="adm-row-text"><b>${draftValue("album", al.ui, "ab", al.ab)}</b><small>${[al.yr?.[0], plural(al.tk.length, "song"), s.holds?.has(al.ui) ? (s.holds.get(al.ui).listed ? "streaming off" : "hidden from the public") : ""].filter(Boolean).join(" · ")}</small></span>${changed("album", al.ui) || al.tk.some((t) => changed("track", t.i)) ? html`<span class="adm-dot" title="Changed in your draft"></span>` : ""}</button></li>`;
 
 	function catalogView() {
 		const open = s.open && (s.open.kind === "album" ? s.data.index.album.get(s.open.id) : s.data.index.artist.get(s.open.id));
@@ -683,6 +685,74 @@ export function mount(root, ctx) {
 		return answer;
 	}
 
+	/* -------------------------------------------------------------- holds ---- */
+
+	/*
+	 * Albums held back without a release (docs/holds.md), for the Albums
+	 * right: the album editor's Availability, applied at once to the live
+	 * app, not part of the draft.
+	 */
+	async function holdsCall(method, path, body) {
+		const base = ctx.libraryUrl ? ctx.libraryUrl.replace(/\/library$/, "/holds") : "";
+		if (!base) throw new Error("album holds are not built into this version");
+		let res;
+		try {
+			res = await account.send((token) => fetch(`${base}${path}`, {
+				method,
+				headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+				body: body ? JSON.stringify(body) : undefined,
+				cache: "no-store",
+			}));
+		} catch (err) {
+			if (err instanceof AccountError) throw new SignInError(err.message);
+			throw new SignInError(`the holds could not be reached (${err.message})`);
+		}
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(answer?.error ?? `the holds answered HTTP ${res.status}`);
+		return answer;
+	}
+
+	async function loadHolds() {
+		const d = await holdsCall("GET", "/detail");
+		s.holds = new Map(d.holds.map((h) => [h.album, h]));
+		s.holdLog = d.log;
+		render();
+	}
+
+	/** The album editor's Availability form: applied to the live app at once. */
+	async function setHold(form) {
+		const al = s.data.albums.find((a) => a.ui === form.dataset.id);
+		if (!al) throw new Error(`album ${form.dataset.id} is not in the catalog`);
+		const streaming = form.querySelector("[data-hold=streaming]").checked;
+		const listed = form.querySelector("[data-hold=listed]").checked;
+		const reason = form.querySelector("[data-hold=reason]").value;
+		s.busy = "Applying…";
+		render();
+		try {
+			await holdsCall("POST", `/${encodeURIComponent(al.ui)}`, { streaming, listed, reason, tracks: al.tk.map((t) => t.i) });
+		} finally {
+			s.busy = "";
+		}
+		ctx.notify(streaming && listed ? "Available again; listeners get it within a few minutes" : "Held back; listeners see it within a few minutes");
+		await loadHolds();
+	}
+
+	function availability(al) {
+		if (!may("albums")) return "";
+		if (!s.holds) return html`<section class="adm-avail" aria-busy="true"><h2>Availability</h2><p class="muted">Reading…</p></section>`;
+		const h = s.holds.get(al.ui);
+		const streaming = h ? h.streaming : true;
+		const listed = h ? h.listed : true;
+		return html`<form class="adm-avail" data-form="hold" data-id="${al.ui}">
+			<h2>Availability</h2>
+			<p class="adm-avail-now">${h ? html`<b>Held back</b> since ${when(h.at)} by ${h.by}: ${h.reason}` : html`<b>Available</b> to everyone.`}</p>
+			<label class="adm-avail-row"><span><b>Streaming</b><small>Off: the album stays listed, greyed out; its songs do not play, downloads included.</small></span><span class="adm-switch"><input type="checkbox" data-hold="streaming" role="switch" ${streaming ? "checked" : ""}><span aria-hidden="true"></span></span></label>
+			<label class="adm-avail-row"><span><b>Shown to the public</b><small>Off: the album and its songs are hidden from listeners, and do not play.</small></span><span class="adm-switch"><input type="checkbox" data-hold="listed" role="switch" ${listed ? "checked" : ""}><span aria-hidden="true"></span></span></label>
+			<label class="adm-field"><span>Reason <small>(kept with the change; needed to hold it back)</small></span><input data-hold="reason" maxlength="300" autocomplete="off" placeholder="For example: rights being checked"></label>
+			<div class="adm-actions"><button class="btn primary" type="submit" ${s.busy ? "disabled" : ""}>Apply now</button><small class="muted">No release: listeners get it within a few minutes. Nothing is deleted.</small></div>
+		</form>`;
+	}
+
 	/* ------------------------------------------------------------- lyrics ---- */
 
 	/*
@@ -750,6 +820,7 @@ export function mount(root, ctx) {
 		moderate: ["Moderate members", "blocks members and deletes uploads"],
 		storage: ["Storage", "adds files from a folder in storage the owner sets"],
 		lyrics: ["Lyrics", "hides lyrics, shows them again, and restores earlier versions"],
+		albums: ["Albums", "holds albums back from listeners without a release, and gives them back"],
 	};
 
 	/* ----------------------------------------------------------- requests ---- */
@@ -1459,6 +1530,7 @@ export function mount(root, ctx) {
 				s.reviewing = null;
 				await loadRequests();
 			}
+			else if (form.dataset.form === "hold") await setHold(form);
 			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
 		} catch (err) {
 			fail(err);

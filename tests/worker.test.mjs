@@ -20,6 +20,8 @@ function makeEnv({ rows = { 7: { folder_path: "zola/Agape/Agape No.1", mp3: "Hon
 	const db = {
 		prepare(sql) {
 			return {
+				// No album is held (holds.js reads album_hold_tracks).
+				all: async () => ({ results: [] }),
 				bind: (...args) => ({
 					first: async () => rows[args[0]] ?? null,
 					run: async () => { statusWrites.push({ sql, args }); },

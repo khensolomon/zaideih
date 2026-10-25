@@ -34,7 +34,12 @@ export async function loadCatalog(base = "catalog/") {
 	return buildModel(raw, meta);
 }
 
-export function buildModel(raw, meta) {
+/**
+ * The catalog's model. `hidden`: ids of albums held back from the public
+ * (src/core/holds.js), left out with their songs; artists left with no song
+ * are left out too.
+ */
+export function buildModel(raw, meta, hidden = new Set()) {
 	const langs = new Map(raw.lang.map(([id, name]) => [id, { id, name, albums: [] }]));
 	const genres = new Map(raw.genre.map(([id, name]) => [id, { id, name, albums: [] }]));
 	const artistTypes = new Map(raw.artistType);
@@ -52,6 +57,7 @@ export function buildModel(raw, meta) {
 	const albums = new Map();
 	const tracks = new Map();
 	for (const [ui, title, lg, gr, year, rows] of raw.albums) {
+		if (hidden.has(ui)) continue;
 		const lang = langs.get(lg);
 		const album = {
 			id: ui, title, lang, year,
@@ -87,8 +93,9 @@ export function buildModel(raw, meta) {
 	}
 
 	for (const a of artists.values()) a.albums = [...a.albums].sort((x, y) => (y.year || 0) - (x.year || 0));
+	if (hidden.size) for (const [id, a] of artists) if (!a.tracks.length) artists.delete(id);
 
-	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [] };
+	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [], raw, meta, hidden };
 	/*
 	 * Songs and albums outside the public catalog (the signed-in person's own
 	 * uploads, src/core/uploads.js): found by id like catalog ones, but never
@@ -99,6 +106,26 @@ export function buildModel(raw, meta) {
 	model.album = (id) => albums.get(id) ?? model.extra.albums.get(id);
 	recount(model);
 	return model;
+}
+
+/**
+ * Applies the albums held back (src/core/holds.js, docs/holds.md) to the
+ * model, in place: albums not listed are left out (the model is built again
+ * when that set changes, keeping its uploads), and the songs of albums whose
+ * streaming is off are marked (`album.off`). Answers true when the model was
+ * built again, so counts and pages are refreshed.
+ */
+export function applyHolds(model, holds) {
+	const albums = holds?.albums ?? {};
+	const hidden = new Set(Object.keys(albums).filter((id) => albums[id].listed === false));
+	const rebuilt = hidden.size !== model.hidden.size || [...hidden].some((id) => !model.hidden.has(id));
+	if (rebuilt) {
+		const fresh = buildModel(model.raw, model.meta, hidden);
+		fresh.extra = model.extra;
+		Object.assign(model, fresh);
+	}
+	for (const album of model.albums.values()) album.off = albums[album.id]?.streaming === false;
+	return rebuilt;
 }
 
 const TOP_TRACKS = 100;

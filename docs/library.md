@@ -20,6 +20,7 @@ The owner trusts members with rights, one by one, in the Workspace (Members); ea
 | Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
+| Albums (`albums`) | Holds albums back from listeners without a release, and gives them back: streaming off, or hidden from the public ([holds.md](holds.md)) |
 | Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version; links songs that are the same, merges and unlinks them, compares copies and declines proposals ([lyrics.md](lyrics.md)) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing in the Workspace is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#workspace).
