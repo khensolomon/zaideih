@@ -119,12 +119,12 @@ button, .btn, nav, .navbar, .rail, .bar, .sheet .ctl, .menu, .app-menu, .segment
  * min() caps it where the status bar is opaque (inset 0, 100lvh the full
  * screen), so no page scrolls by the status bar's height.
  */
-@media (display-mode: standalone) {
+@media (display-mode: standalone), (display-mode: window-controls-overlay) {
 	html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); }
 }
 
 /* Phones and installed apps: the page and the menus scroll as before, without a scroll bar. */
-@media (pointer: coarse), (display-mode: standalone) {
+@media (pointer: coarse), (display-mode: standalone), (display-mode: window-controls-overlay) {
 	html, .app-menu, .menu, .sg-panel { scrollbar-width: none; }
 	html::-webkit-scrollbar, body::-webkit-scrollbar, .app-menu::-webkit-scrollbar, .menu::-webkit-scrollbar, .sg-panel::-webkit-scrollbar { display: none; }
 }
@@ -1881,3 +1881,94 @@ img.acct-avatar { object-fit: cover; }
 .adm-proposals .adm-actions { margin: 0; }
 /* Workspace header, medium widths: the line under the section name gives way to the sections. */
 @media (min-width: 900px) and (max-width: 1179px) { .adm-head .st-title span { display: none; } }
+
+/* =================================================================== the installed app's own title bar */
+/*
+ * Installed on a desktop (Chrome, Edge), the app draws its own title bar
+ * (manifest display_override: window-controls-overlay): the system strip is
+ * gone and only the window's buttons stay, over the corner the browser names
+ * with env(titlebar-area-*). Empty parts of the bar move the window
+ * (app-region: drag); its buttons and fields take clicks (no-drag). Anywhere
+ * else (a browser tab, phones, Safari, Firefox, or the system title bar
+ * switched back on) none of this applies.
+ *
+ *   --tb-sys  the height of the window's buttons
+ *   --tb-end  the width they take at the right edge (Windows, Linux); 0 on macOS,
+ *             where they sit on the left, over the sidebar (body[data-tb-left], app.js)
+ */
+.topbar { display: none; }
+@media (display-mode: window-controls-overlay) {
+	:root {
+		--tb-sys: env(titlebar-area-height, 33px);
+		--tb-end: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+	}
+	.topbar {
+		display: block; position: fixed; z-index: 21; top: 0; left: 0; right: 0; height: var(--tb-sys);
+		background: var(--mist); app-region: drag; -webkit-app-region: drag;
+	}
+	.topbar > * { display: none; }
+	.topbar :is(a, button) { app-region: no-drag; -webkit-app-region: no-drag; }
+	/* A narrow window: the strip to move it by, the floating controls under it. */
+	.navbar { top: calc(var(--tb-sys) + 6px); }
+	.shell { padding-top: calc(var(--tb-sys) + 54px); }
+	body[data-studio] .st-head { padding-top: calc(var(--tb-sys) + 10px); }
+	/* Now playing covers the bar: its own empty space moves the window, and its top row starts below the buttons. */
+	.sheet { padding-top: calc(var(--tb-sys) + 8px); app-region: drag; -webkit-app-region: drag; }
+	.sheet * { app-region: no-drag; -webkit-app-region: no-drag; }
+}
+@media (display-mode: window-controls-overlay) and (min-width: 900px) {
+	:root { --tb-h: 52px; }
+	.shell { padding-top: 0; }
+	.topbar {
+		left: var(--rail); height: var(--tb-h);
+		display: grid; grid-template-columns: 1fr minmax(0, 440px) 1fr; align-items: center; gap: 12px;
+		padding: 0 calc(var(--tb-end) + 12px) 0 16px; box-sizing: border-box;
+		transition: left 0.2s ease;
+	}
+	.tb-nav { display: flex; gap: 6px; }
+	.tb-btn {
+		display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%;
+		background: var(--surface); color: var(--ink); cursor: pointer;
+	}
+	.tb-btn:hover { background: var(--raised); }
+	.tb-btn svg.i { width: 18px; height: 18px; stroke-width: 2.2; }
+	.tb-search {
+		display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; box-sizing: border-box;
+		border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2);
+		color: var(--ink-3); font-size: 14px; white-space: nowrap; overflow: hidden;
+	}
+	.tb-search:hover { text-decoration: none; border-color: var(--search-edge); color: var(--ink-2); }
+	.tb-search svg.i { width: 17px; height: 17px; }
+	.tb-search span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	.tb-search kbd { font: inherit; font-size: 12px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 5px; }
+	main { padding-top: calc(var(--tb-h) + 8px); }
+	/* The sidebar's head lines up with the bar, and moves the window too. */
+	.rail { padding-top: 4px; }
+	.rail .brand { min-height: 48px; app-region: drag; -webkit-app-region: drag; }
+	.rail .brand :is(a, button) { app-region: no-drag; -webkit-app-region: no-drag; }
+	body[data-rail="mini"] .rail { padding-top: 4px; }
+	body[data-tb-left] .rail, body[data-tb-left][data-rail="mini"] .rail { padding-top: calc(var(--tb-sys) + 6px); }
+	/* Search is always in the bar. */
+	.rail nav a[data-nav="search"] { display: none; }
+	/* The search page's own field takes the bar's place. */
+	body[data-page="search"] .tb-search { visibility: hidden; }
+	body[data-page="search"] .searchbox {
+		position: fixed; z-index: 30; top: calc((var(--tb-h) - 36px) / 2); margin: 0;
+		left: calc(var(--rail) + 16px + (100vw - var(--rail) - 28px - var(--tb-end)) / 2);
+		width: min(440px, calc(100vw - var(--rail) - var(--tb-end) - 200px)); transform: translateX(-50%);
+		app-region: no-drag; -webkit-app-region: no-drag;
+	}
+	body[data-page="search"] .searchbox input { min-height: 36px; height: 36px; padding-left: 40px; border-radius: 999px; font-size: 14px; }
+	body[data-page="search"] .searchbox.open input { border-radius: 18px 18px 0 0; }
+	body[data-page="search"] .searchbox > svg { left: 14px; top: 18px; width: 17px; height: 17px; }
+	body[data-page="search"] .search-clear { top: 18px; right: 2px; width: 30px; height: 30px; }
+	/* The lyrics studio and the Workspace: their own header, when they show one, is the bar. */
+	body[data-studio]:has(.st-head) .topbar { display: none; }
+	body[data-studio] main { padding-top: 0; }
+	body[data-studio] .st-head {
+		padding-top: 4px; padding-bottom: 4px; min-height: var(--tb-h); box-sizing: border-box;
+		padding-right: calc(var(--tb-end) + 28px);
+		app-region: drag; -webkit-app-region: drag;
+	}
+	body[data-studio] .st-head :is(a, button, input, select, label, summary, [tabindex]) { app-region: no-drag; -webkit-app-region: no-drag; }
+}

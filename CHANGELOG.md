@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.25.8
+
+- Installed on a desktop: the app's own title bar
+- Back, Forward and Search in the bar; the lyrics studio and the Workspace put their header there
+- The window's buttons keep their corner on Windows and macOS; the arrow in the bar brings the system title bar back
+
 ## v26.10.25.7
 
 - Workspace: its styles back after the rename

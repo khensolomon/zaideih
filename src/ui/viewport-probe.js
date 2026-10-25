@@ -45,7 +45,7 @@ export function startProbe() {
 	const show = () => {
 		frame = 0;
 		const bar = document.getElementById("bar")?.getBoundingClientRect();
-		const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+		const standalone = matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches || navigator.standalone === true;
 		const line = `win ${innerWidth}x${innerHeight}  vv ${vv ? `${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : "-"}  safe ${safe.offsetHeight}`;
 		if (log[0] !== line) { log.unshift(line); log.length = Math.min(log.length, 6); }
 		// Text only: textContent never reads markup.

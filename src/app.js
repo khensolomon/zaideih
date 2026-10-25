@@ -1070,6 +1070,10 @@ const actions = {
 		if (navDepth > 1) history.back();
 		else go("", undefined, { replace: true });
 	},
+	/** The installed app's title bar: forward again after Back (nothing happens when there is no page ahead). */
+	forward() {
+		history.forward();
+	},
 	"more-artists"(el) {
 		const rest = el.parentElement.querySelector("[data-more-artists]");
 		rest.hidden = false;
@@ -1739,6 +1743,19 @@ async function retryStart() {
  * @param {string} platform.catalogBase   URL prefix of meta.json and the catalog file
  * @param {() => void} [platform.onReady] called once the first view has rendered
  */
+/**
+ * The installed app's own title bar (window-controls-overlay, app.css): where
+ * the window's buttons are. On macOS they are on the left, over the sidebar,
+ * which then starts below them (body[data-tb-left]).
+ */
+function watchTitleBar() {
+	const wco = navigator.windowControlsOverlay;
+	if (!wco) return;
+	const place = () => document.body.toggleAttribute("data-tb-left", wco.visible && wco.getTitlebarAreaRect().x > 0);
+	wco.addEventListener("geometrychange", place);
+	place();
+}
+
 export async function boot(platform) {
 	if (!platform?.name || typeof platform.catalogBase !== "string") {
 		throw new TypeError("boot() requires a platform with a name and catalogBase");
@@ -1746,6 +1763,7 @@ export async function boot(platform) {
 	document.documentElement.dataset.platform = platform.name;
 	for (const el of $$("[data-logo]")) el.innerHTML = logoMark();
 	setOnline();
+	watchTitleBar();
 	if (probeOn()) startProbe();
 	// A start that never finishes: the loading screen offers a reload by itself (index.html, .splash-late),
 	// and a part still not ready after START_LIMIT_MS is named in the error.
