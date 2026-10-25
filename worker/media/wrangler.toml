@@ -1,9 +1,11 @@
 # Audio Worker: serves https://media.zaideih.com/audio/:id from R2.
 #
-# Deploy from the repository root:
+# Released by .github/workflows/release.yml ("release: audio"), which applies
+# the schema before deploying. By hand, from the repository root, in this order:
+#   node tools/d1.mjs schema --apply
 #   npx wrangler deploy --config worker/media/wrangler.toml
 #
-# The D1 database (schema in schema.sql, no migrations), from the repository root:
+# The D1 database (schema.sql, plus migrations/ for columns added later):
 #   node tools/d1.mjs status                       tables and row counts
 #   node tools/d1.mjs schema --apply               create what is missing, keep data
 #   node tools/d1.mjs tracks --apply               load track paths from assets/data/media.json

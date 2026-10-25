@@ -31,6 +31,7 @@ import { cover, getList, registerList, resetLists, resetPending, scriptClass, sh
 import { logoMark } from "./ui/logo.js";
 import { clearRecent, closeSuggestions, forgetSearch, forgetSearches, getScope, moveSelection, pickOption, rememberSearch, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
 import * as V from "./ui/views.js";
+import { focusKey, refocus } from "./ui/focus.js";
 import { viz } from "./ui/viz.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -236,7 +237,13 @@ function closeAppMenu({ restoreFocus = false, restoreScroll = true } = {}) {
 	if (restoreFocus) $(".nav-logo").focus();
 }
 
+// The search typed but not yet run, and the latest render: an older one finishing late is dropped.
+let searchTimer = 0;
+let renderSeq = 0;
+
 async function render({ keepScroll = false } = {}) {
+	const seq = ++renderSeq;
+	if (!keepScroll) clearTimeout(searchTimer);
 	// A page change can remove the search box while its suggestions are open.
 	closeSuggestions();
 	const r = parse();
@@ -260,7 +267,7 @@ async function render({ keepScroll = false } = {}) {
 		console.error(err);
 		out = { title: "Error", body: html`<div class="empty"><h2>This page couldn't be shown</h2><p>${err.message}</p></div>` };
 	}
-	if (parse()?.path !== r.path && !keepScroll) return; // navigated away while rendering
+	if (seq !== renderSeq || parse()?.path !== r.path) return; // navigated away, or rendered again, meanwhile
 	view.innerHTML = out.body;
 	document.title = out.title === "Home" ? "Zaideih" : `${out.title} | Zaideih`;
 	markNav(r.path);
@@ -452,7 +459,7 @@ function renderSheet() {
 	const queue = s.queue.map((id) => catalog.track(id)).filter(Boolean);
 	const upcoming = queue.slice(s.index + 1);
 	const key = registerList(s.queue, s.context);
-	const focusedCtl = sheet.contains(document.activeElement) ? document.activeElement.dataset.ctl : null;
+	const focused = focusKey(sheet);
 	sheet.classList.toggle("paused", !s.playing);
 	sheet.classList.toggle("lyrics-on", npLyrics.on && !t.upload);
 	sheet.innerHTML = html`
@@ -508,7 +515,7 @@ function renderSheet() {
 	renderTime({ position: player.audio.currentTime || 0, duration: player.audio.duration || t.duration });
 	viz.refresh();
 	updateScene();
-	if (focusedCtl) $(`[data-ctl=${focusedCtl}]`, sheet)?.focus();
+	refocus(sheet, focused);
 	npLyricsMounted(sheet, t, () => { if (!$("#sheet").hidden) renderSheet(); });
 }
 
@@ -1271,10 +1278,9 @@ document.addEventListener("change", async (e) => {
 	}
 });
 
-let searchTimer = 0;
-
 /** Re-renders the full results below the search box and updates the URL. */
 function runSearch(value) {
+	if (!$("#results")) return; // search was left before the timer ran
 	resetLists();
 	resetPending();
 	$("#results").innerHTML = V.searchResults(catalog, value, getScope());
@@ -1446,22 +1452,26 @@ async function copyCode(code, button) {
 	}
 }
 
-on("notice", ({ message, kind, action, code, help, playback }) => {
+on("notice", ({ message, kind, action, code, help, playback, sticky }) => {
 	// A song that cannot play: Now playing already says so, with its code, when it is open.
 	if (playback && !$("#sheet").hidden) return;
 	const box = $("#toasts");
 	const el = document.createElement("div");
 	el.className = `toast toast-in ${kind === "error" ? "error" : ""}`;
+	// A sticky notice (an update ready) stays until acted on or dismissed: it is offered once.
+	if (sticky) el.dataset.sticky = "";
 	el.setAttribute("role", kind === "error" ? "alert" : "status");
 	// A diagnostic code rides along quietly: small, selectable, with a copy button.
 	el.innerHTML = html`<span>${message}${code ? html`<small class="diag">Code <code>${code}</code></small>` : ""}</span>
-		<span class="toast-actions">${help ? html`<a href="#/help">Help</a>` : ""}${code ? html`<button data-copy>Copy code</button>` : action ? html`<button>${action.label}</button>` : ""}</span>`;
+		<span class="toast-actions">${help ? html`<a href="#/help">Help</a>` : ""}${code ? html`<button data-copy>Copy code</button>` : action ? html`<button>${action.label}</button>` : ""}${sticky ? html`<button data-later>Later</button>` : ""}</span>`;
 	if (code) $("[data-copy]", el).addEventListener("click", (e) => copyCode(code, e.currentTarget));
 	else if (action) $(".toast-actions button", el).addEventListener("click", () => { action.run(); el.remove(); });
+	$("[data-later]", el)?.addEventListener("click", () => el.remove());
 	$(".toast-actions a", el)?.addEventListener("click", () => el.remove());
 	box.append(el);
-	while (box.children.length > 3) box.firstChild.remove();
-	setTimeout(() => el.remove(), action || code || help ? 12000 : kind === "error" ? 7000 : 3200);
+	const passing = () => [...box.children].filter((t) => !t.hasAttribute("data-sticky"));
+	while (passing().length > 3) passing()[0].remove();
+	if (!sticky) setTimeout(() => el.remove(), action || code || help ? 12000 : kind === "error" ? 7000 : 3200);
 });
 
 /* =================================================================== live updates */
@@ -1693,7 +1703,24 @@ function fatal(err) {
 		<p>${known ? err.message : `Unexpected error: ${err.message}`}</p>
 		<p><button class="btn primary" id="retry">Try again</button></p>
 	</div>`;
-	$("#retry").addEventListener("click", () => location.reload());
+	$("#retry").addEventListener("click", retryStart);
+}
+
+/**
+ * "Try again" from the start error. A release that changed the catalog format
+ * leaves the old app unable to read it; a reload alone starts the same cached
+ * app again, so a waiting new version is let in first.
+ */
+async function retryStart() {
+	const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration().catch(() => null) : null;
+	const waiting = reg?.waiting ?? (reg && (await reg.update().then(() => reg.waiting ?? reg.installing, () => null)));
+	if (!waiting) { location.reload(); return; }
+	navigator.serviceWorker.addEventListener("controllerchange", () => location.reload(), { once: true });
+	const send = () => waiting.postMessage({ type: "skip-waiting" });
+	if (waiting.state === "installed") send();
+	else waiting.addEventListener("statechange", () => { if (waiting.state === "installed") send(); });
+	// A worker that never takes over still ends in a reload.
+	setTimeout(() => location.reload(), 8000);
 }
 
 /**

@@ -1,5 +1,15 @@
 # Version
 
+## v26.10.25.4
+
+- Audit fixes: releases from pull request titles, lyrics sharing edge cases, studio typing, updates
+- Releases: a pull request titled "release: …" releases however it is merged; the site waits for the audio Worker
+- Lyrics: edge answers kept 10 minutes; timing returns to a song when sharing ends; hidden texts are not copied; older apps' "Use these lyrics" becomes a proposal
+- Studio: typing no longer drops the notices or repeats panels; late answers stay on their own page
+- An update stays offered until taken; "Try again" after a start error takes the new version
+- Focus stays on the button pressed when a page is drawn again
+- First release of 26.10.24.31 to 26.10.25.3 (they were merged without releasing)
+
 ## v26.10.25.3
 
 - Admin header: back inside the admin, no Catalog icon

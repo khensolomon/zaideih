@@ -27,6 +27,7 @@ import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
+import { focusKey, refocus } from "./focus.js";
 import { icon } from "./icons.js";
 import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
@@ -193,7 +194,9 @@ function mount(root, ctx) {
 	wireFind(root, st.catalog, st.track, () => sameOpts(ctx));
 	const draw = () => {
 		if (st !== mine || !root.isConnected) return;
+		const focused = focusKey(root);
 		root.innerHTML = content();
+		refocus(root, focused);
 		st.lit = -2; // drawn again: the line being sung is lit again at the next tick
 		ctx.redrawn?.();
 	};
@@ -204,9 +207,10 @@ function mount(root, ctx) {
 				// A translation is shown beside the song's own words.
 				st.lang ? readLyrics(st.id).catch(() => ({ lyrics: null })) : null,
 			]);
-			Object.assign(st, { lyrics, offline, error: "", original: original?.lyrics ? parseLyrics(original.lyrics.text) : null });
+			// Written to this page's state: another page may be showing by the time they arrive.
+			Object.assign(mine, { lyrics, offline, error: "", original: original?.lyrics ? parseLyrics(original.lyrics.text) : null });
 		} catch (err) {
-			Object.assign(st, { lyrics: null, error: err.message });
+			Object.assign(mine, { lyrics: null, error: err.message });
 		}
 		draw();
 	})();

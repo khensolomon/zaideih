@@ -17,13 +17,14 @@
  * Text in Zawgyi cannot be saved (the Worker refuses it too).
  */
 import { AUTH_URL } from "../config.js";
-import { html } from "../core/html.js";
+import { html, raw } from "../core/html.js";
 import { compareLyrics, dropDraft, hideLyrics, keepDraft, linkLyrics, proposeSameSong, LYRICS_URL, lyricsVersions, readDraft, readLyrics, resolveReports, restoreLyrics, saveLyrics, showLyrics, unlinkLyrics } from "../core/lyrics.js";
 import { clearTimes, DETAILS, hasSheetSyllables, joinSyllables, looksZawgyi, lrcTime, parseLyrics, setDetail, setLineTimes, splitDetails } from "../core/lyrics-format.js";
 import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
+import { focusKey, refocus } from "./focus.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { forgetNpLyrics } from "./np-lyrics.js";
 import { icon } from "./icons.js";
@@ -90,7 +91,8 @@ function frame(ctx) {
 	}
 	if (st.loading) return html`${head(ctx)}<p class="muted st-pad" aria-busy="true">Reading the lyrics…</p>`;
 	const body = { write, preview, timing, history }[st.mode](ctx);
-	return html`${head(ctx)}<div class="st-page">${banners(ctx)}${body}</div>`;
+	st.bannersHtml = html`${banners(ctx)}`.toString();
+	return html`${head(ctx)}<div class="st-page">${raw(st.bannersHtml)}${body}</div>`;
 }
 
 function head(ctx) {
@@ -347,7 +349,9 @@ function mount(root, ctx) {
 		const area = root.querySelector("#st-text");
 		const caret = area && document.activeElement === area ? [area.selectionStart, area.selectionEnd] : null;
 		const scroll = scrollY;
+		const focused = caret ? null : focusKey(root);
 		root.innerHTML = frame(ctx);
+		refocus(root, focused);
 		const again = root.querySelector("#st-text");
 		if (again) {
 			// Set, not only written in the markup: HTML drops a newline at the very start of a textarea.
@@ -394,9 +398,12 @@ function mount(root, ctx) {
 		const headNow = root.querySelector(".st-head");
 		if (headNow) headNow.outerHTML = head(ctx).toString();
 		const ban = root.querySelector(".st-page");
-		if (ban) {
-			for (const b of ban.querySelectorAll(":scope > .st-banner, :scope > .error")) b.remove();
-			ban.insertAdjacentHTML("afterbegin", html`${banners()}`.toString());
+		// Rebuilt only when they change: alerts are not announced again on each key, a merge panel keeps its choice.
+		const next = html`${banners(ctx)}`.toString();
+		if (ban && next !== st.bannersHtml) {
+			for (const b of ban.querySelectorAll(":scope > .st-banner, :scope > .error, :scope > .st-merge, :scope > .ly-same")) b.remove();
+			ban.insertAdjacentHTML("afterbegin", next);
+			st.bannersHtml = next;
 		}
 		const det = root.querySelector(".st-details");
 		if (det) det.outerHTML = chips().toString();
@@ -793,11 +800,12 @@ function mount(root, ctx) {
 			// Translating: the song's own words beside, for reference.
 			st.lang ? readLyrics(st.id).catch(() => ({ lyrics: null })) : null,
 		]);
-		if (original?.lyrics) st.original = parseLyrics(original.lyrics.text);
 		if (!alive()) return;
+		if (original?.lyrics) st.original = parseLyrics(original.lyrics.text);
 		if (server.error) st.error = server.error.message;
 		st.server = server.lyrics ?? null;
 		await loadHistory();
+		if (!alive()) return; // another song or language opened meanwhile
 		// Hidden lyrics are not public; the Lyrics right edits the latest version.
 		if (!st.server && st.history?.version) {
 			const v = st.history.versions[0];

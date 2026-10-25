@@ -7,12 +7,15 @@
  *                (localStorage). Refused while Google Analytics is on here,
  *                since a third-party script on the page could read it.
  *
- * A page of its own, laid out like the lyrics studio: one header with the
- * section, a find field (Ctrl+K), the sections as icons with hints, the
- * draft and the person's photo; the app's own player stays below.
+ * A page of its own, laid out like the lyrics studio: one header with Back
+ * (an album or artist to the results, a section to Overview, Overview to
+ * the app on phones), the section, a find field (Ctrl+K; an icon on phones),
+ * the sections as icons with hints, the draft and the person's photo; the
+ * app's own player stays below. Catalog has no icon of its own: the find
+ * field is the way into it.
  *
- *   Overview     what waits for this person (requests, lyrics reports,
- *                suggestions, data checks), the draft, lyrics lately, plays.
+ *   Overview     what waits for this person (requests, lyrics proposals and
+ *                reports, suggestions, data checks), the draft, lyrics lately, plays.
  *   Catalog      find an album or artist; its page keeps every change in the
  *                draft as it is made (src/admin/draft.js): titles, year,
  *                language, genres, song credits, hiding, artist names and
@@ -30,7 +33,9 @@
  *                for Review publishing: listen, then approve (the Worker copies
  *                the songs into music/, and a pull request adds the album to
  *                the catalog, src/admin/publish.js) or decline with a reason.
- *   Lyrics       reports and the latest edits, for the Lyrics right.
+ *   Lyrics       for the Lyrics right: proposals that two songs are the same
+ *                (Compare opens the studio's merge, Decline keeps a reason
+ *                with the proposal), reports, and the latest edits.
  *   Members      rights, blocking and uploads in personal libraries.
  *   Checks       catalog checks (src/admin/health.js).
  *   Statistics   counted plays from the audio Worker (GET /plays).
@@ -513,6 +518,14 @@ export function mount(root, ctx) {
 			b.innerHTML = String(icon(on ? "pause" : "play"));
 		}
 	}
+	// Leaving the admin page stops a preview: it has no control anywhere else.
+	const leave = () => {
+		if (/^#\/admin(?:[/?]|$)/.test(location.hash) && root.isConnected) return;
+		removeEventListener("hashchange", leave);
+		preview.pause();
+		preview.removeAttribute("src");
+	};
+	addEventListener("hashchange", leave);
 	const offPlayer = ctx.onPlayer?.((st) => {
 		if (!root.isConnected) { offPlayer?.(); preview.pause(); return; }
 		if (st.playing && !preview.paused) preview.pause();
@@ -1330,6 +1343,7 @@ export function mount(root, ctx) {
 		const active = document.activeElement?.closest?.(".admin") ? document.activeElement : null;
 		const focusName = active?.dataset.adm ?? null;
 		const focusWhere = active?.dataset.where ?? null;
+		const caret = focusName === "search" ? [active.selectionStart, active.selectionEnd] : null;
 		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
 		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Admin` : "Admin";
 		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The admin page works in the web app only.</p>`); return; }
@@ -1344,7 +1358,8 @@ export function mount(root, ctx) {
 		if (focusName === "search") {
 			const el = root.querySelector(`[data-adm=search][data-where="${focusWhere}"]`);
 			el?.focus();
-			el?.setSelectionRange(el.value.length, el.value.length);
+			// The caret where it was: editing inside the query does not jump to its end.
+			el?.setSelectionRange(...(caret ?? [el.value.length, el.value.length]));
 		} else if (focusField) {
 			const scope = focusField.track ? root.querySelector(`[data-track="${focusField.track}"]`) : root;
 			scope?.querySelector(`[name="${focusField.name}"]`)?.focus({ preventScroll: true });
@@ -1395,6 +1410,10 @@ export function mount(root, ctx) {
 	}, true);
 	root.addEventListener("input", (e) => {
 		// Typing in the header's field shows the results in Catalog, wherever the page was.
+		// Not while a keyboard is composing (Myanmar and other input methods): the page is drawn when it ends.
+		if (e.target.dataset.adm === "search" && !e.isComposing) { s.query = e.target.value; s.open = null; s.tab = "catalog"; render(); }
+	});
+	root.addEventListener("compositionend", (e) => {
 		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; s.tab = "catalog"; render(); }
 	});
 	// The album and artist pages keep each field as it changes.
@@ -1479,7 +1498,7 @@ export function mount(root, ctx) {
 				case "members-reload": s.members = null; render(); await loadMembers(); break;
 				case "lyrics-reload": s.lyrics = null; render(); await loadLyrics(); break;
 				case "proposal-decline": {
-					const reason = await ctx.promptText("Why are these not the same song? The member sees it.", "", "Decline");
+					const reason = await ctx.promptText("Why are these not the same song? The reason is kept with the proposal.", "", "Decline");
 					if (!reason) break;
 					await lyricsCall("POST", `/${b.dataset.track}/decline`, { proposal: Number(b.dataset.id), reason });
 					ctx.notify("Declined");

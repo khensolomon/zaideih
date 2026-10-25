@@ -121,6 +121,8 @@ git push
 
 `release: all` deploys the site and the Worker (and applies the D1 schema); `release: d1` loads track paths. Check afterwards: the site shows its version on About, a song plays, and `#/admin` signs in. [releasing.md](releasing.md) covers targets, failures and rollback.
 
+A pull request titled `release: …` releases when merged, by merge commit or by squash: when the first line on `master` does not start with `release:`, the workflow reads the merged pull request's title. No repository setting is needed for this; setting the squash message to "Pull request title" (Settings, General, Pull Requests) is optional.
+
 ## Checklist
 
 - [ ] `npm test` passes locally
