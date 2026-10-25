@@ -2125,3 +2125,10 @@ a.sb-book-text:hover { text-decoration: none; }
 .sb-jump small { color: var(--ink-3); }
 .ly-hymn { display: inline-flex; align-items: center; gap: 6px; }
 .ly-hymn svg.i { width: 16px; height: 16px; }
+.sb-join h3 { margin: 18px 0 4px; }
+.sb-join p { margin: 0 0 8px; }
+.sb-join-hint { color: var(--ink-3); font-size: 14px; }
+.sb-join .sb-list { margin-bottom: 10px; }
+.sb-renumber { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.sb-renumber .sb-field { max-width: 220px; }
+.btn.danger { color: var(--danger-ink); }

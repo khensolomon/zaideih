@@ -28,9 +28,13 @@
  *   POST /songbooks/:book/entries {number, text | title, lang, firstLine, work}
  *                                          Songbooks right: hymn `number` prints text
  *                                          `text`, or a new text made from the rest
- *   POST /songbooks/:book/entries/:number {text | remove}
- *                                          Songbooks right: the number prints another
- *                                          text, or is taken out (the text stays)
+ *   POST /songbooks/:book/entries/:number {number | text | remove | delete}
+ *                                          Songbooks right: another number; another
+ *                                          text; taken out (the text stays); deleted:
+ *                                          the number, and the text with its words and
+ *                                          history when no other book prints it (refused
+ *                                          while recordings are joined to it; in a
+ *                                          public book, the owner and co-owners only)
  *   GET  /songbooks/texts/:id              a text: its work and credits, the books
  *                                          printing it, its words (private: the right)
  *   POST /songbooks/texts/:id {title, lang, firstLine, work, from, credits}
@@ -419,9 +423,41 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 			await env.DB.prepare("INSERT INTO songbook_entries (book_id, number, text_id, at) VALUES (?1, ?2, ?3, ?4)").bind(bookId, number, textId, nowSeconds).run();
 			return answer(201, { book: bookId, number, text: textId }, cors);
 		}
-		// POST /songbooks/:book/entries/:number: another text, or taken out.
+		// POST /songbooks/:book/entries/:number: another number, another text, taken out, or deleted.
 		const number = Number(parts[2]);
-		if (!(await env.DB.prepare("SELECT 1 AS yes FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).first())) throw new MemberError(`there is no ${b.short} ${parts[2]}`, 404);
+		const entry = await env.DB.prepare("SELECT text_id FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).first();
+		if (!entry) throw new MemberError(`there is no ${b.short} ${parts[2]}`, 404);
+		if (body.number !== undefined) {
+			const to = body.number;
+			if (!Number.isSafeInteger(to) || to < 1 || to > MAX_NUMBER) throw new MemberError(`number must be 1 to ${MAX_NUMBER}`);
+			if (to !== number && await env.DB.prepare("SELECT 1 AS yes FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, to).first()) throw new MemberError(`${b.short} ${to} is already there`, 409);
+			await env.DB.prepare("UPDATE songbook_entries SET number = ?3, at = ?4 WHERE book_id = ?1 AND number = ?2").bind(bookId, number, to, nowSeconds).run();
+			return answer(200, { book: bookId, number: to, text: entry.text_id }, cors);
+		}
+		if (body.delete === true) {
+			// Deleting from a public book is for the owner and co-owners; a recording joined to the text is unjoined first.
+			if (b.public && me.role !== "owner" && !me.rights.has("manage")) throw new MemberError("deleting from a public songbook is for the owner and co-owners", 403);
+			const textId = entry.text_id;
+			const others = (await env.DB.prepare("SELECT COUNT(*) AS n FROM songbook_entries WHERE text_id = ?1 AND NOT (book_id = ?2 AND number = ?3)").bind(textId, bookId, number).first())?.n ?? 0;
+			if (others) {
+				// Printed elsewhere too: only this number goes.
+				await env.DB.prepare("DELETE FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).run();
+				return answer(200, { book: bookId, number, deleted: "number" }, cors);
+			}
+			const joined = (await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics_links WHERE source = ?1 AND unlinked_at IS NULL").bind(textId).first())?.n ?? 0;
+			if (joined) throw new MemberError(`${joined} recording${joined === 1 ? " shows" : "s show"} these words; unjoin ${joined === 1 ? "it" : "them"} first`, 409);
+			await env.DB.batch([
+				env.DB.prepare("DELETE FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number),
+				env.DB.prepare("DELETE FROM song_credits WHERE subject = 'text' AND subject_id = ?1").bind(textId),
+				env.DB.prepare("UPDATE song_texts SET from_text = NULL WHERE from_text = ?1").bind(textId),
+				env.DB.prepare("DELETE FROM song_texts WHERE id = ?1").bind(textId),
+				env.DB.prepare("DELETE FROM lyrics WHERE track = ?1").bind(textId),
+				env.DB.prepare("DELETE FROM lyrics_versions WHERE track = ?1").bind(textId),
+				env.DB.prepare("DELETE FROM lyrics_reports WHERE track = ?1").bind(textId),
+				env.DB.prepare("DELETE FROM lyrics_links WHERE source = ?1 OR track = ?1").bind(textId),
+			]);
+			return answer(200, { book: bookId, number, deleted: "text" }, cors);
+		}
 		if (body.remove === true) {
 			await env.DB.prepare("DELETE FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).run();
 			return answer(200, { book: bookId, number, removed: true }, cors);

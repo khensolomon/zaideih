@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.25.19
+
+- Songbooks: change a number, delete a song, find recordings to join
+- Song details: Number in the book, with Change the number (a number already used is refused)
+- Delete: only this number when another book prints the words; otherwise the song, its words and their history; refused while recordings are joined
+- Recordings: Join a recording lists Zaideih songs with a close title, each with Join, above a search by title
+- Audio Worker: `POST /songbooks/:book/entries/:number` takes `number` and `delete`
+
 ## v26.10.25.18
 
 - Songbooks: a book opens from its row; editing shows on a first visit; songs, not only hymns
