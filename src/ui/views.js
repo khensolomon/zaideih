@@ -19,7 +19,7 @@ import { formatBytes, formatTotal } from "../core/text.js";
 import { icon } from "./icons.js";
 import { logoMark } from "./logo.js";
 import { careerOf, shadeOf } from "./art.js";
-import { getScope, setScope } from "./suggest.js";
+import { getScope, recentSearches, setScope } from "./suggest.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass, trackRow } from "./parts.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 
@@ -303,12 +303,13 @@ export function genre(c, { id }, query) {
 }
 
 /* ---------- search ---------- */
-const SCOPE_LABELS = [["all", "All"], ["artists", "Artists"], ["albums", "Albums"], ["tracks", "Songs"]];
+const SCOPE_LABELS = [["all", "All", "grid"], ["artists", "Artists", "person"], ["albums", "Albums", "album"], ["tracks", "Songs", "song"], ["lyrics", "Lyrics", "lyrics"]];
 const SCOPE_LIMITS = {
 	all: undefined,
 	artists: { artists: 60, albums: 0, tracks: 0 },
 	albums: { artists: 0, albums: 60, tracks: 0 },
 	tracks: { artists: 0, albums: 0, tracks: 100 },
+	lyrics: { artists: 0, albums: 0, tracks: 0 },
 };
 
 export function searchView(c, _params, query) {
@@ -317,12 +318,14 @@ export function searchView(c, _params, query) {
 	const scope = getScope();
 	return {
 		title: q ? `Search: ${q}` : "Search",
+		// Phones: one bar, the way back on its left (away from where the bar's Library button comes back), clearing on its right.
 		body: html`<form class="searchbox" role="search" data-act="search-form">
+				<button type="button" class="search-back" data-act="search-back" aria-label="Back" title="Back">${icon("back")}</button>
 				${icon("search")}
-				<label class="sr" for="q">Search songs, albums and artists, or ask, for example “most played Mizo artists”</label>
-				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists, or ask: most played Mizo artists" autocomplete="off" enterkeyhint="search" autofocus
+				<label class="sr" for="q">Search songs, albums, artists and lyrics, or ask, for example “most played Mizo artists”</label>
+				<input id="q" name="q" type="search" value="${q}" placeholder="Songs, albums, artists, lyrics" autocomplete="off" enterkeyhint="search" autofocus
 					role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
-				<button type="button" class="search-cancel glass" data-act="search-cancel" aria-label="Clear search, or leave search when empty">${icon("close")}</button>
+				<button type="button" class="search-clear" data-act="search-clear" aria-label="Clear the search" title="Clear" ${q ? "" : "hidden"}>${icon("close")}</button>
 				<div class="sg-panel" id="sg-panel" hidden>
 					${scopeButtons(scope, "scopes")}
 					<ul class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></ul>
@@ -332,10 +335,34 @@ export function searchView(c, _params, query) {
 	};
 }
 
-/** Scope buttons, shared by the suggestions panel and the results page. */
+/**
+ * Scope buttons, shared by the suggestions panel and the results page: an
+ * icon each, the name beside it (on phones only on the one chosen), and how
+ * many were found.
+ */
 function scopeButtons(scope, cls, counts = null) {
-	return html`<div class="${cls}" role="group" aria-label="Search in">${SCOPE_LABELS.map(([k, label]) =>
-		html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}">${label}${counts && k !== "all" ? html`<span>${counts[k].toLocaleString()}</span>` : ""}</button>`)}</div>`;
+	return html`<div class="${cls}" role="group" aria-label="Search in">${SCOPE_LABELS.map(([k, label, ic]) => {
+		const n = counts && k !== "all" ? counts[k] : null;
+		const count = n === null || n === undefined ? "" : typeof n === "string" ? n : n.toLocaleString();
+		return html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}" aria-label="${label}${count ? `, ${count}` : ""}" title="${label}">${icon(ic)}<span class="lbl">${label}</span>${count ? html`<span class="n">${count}</span>` : ""}</button>`;
+	})}</div>`;
+}
+
+const ASKS = ["most played mizo artists", "gospel albums from the 90s", "newest myanmar songs"];
+
+/** Search before anything is typed: the searches kept on this device, questions to ask, the languages. */
+function searchStart(c) {
+	const recent = recentSearches();
+	const langs = [...c.langs.values()].filter((l) => l.albums.length).sort((a, b) => b.albums.length - a.albums.length);
+	return html`<div class="search-start">
+		${recent.length ? html`<section class="section search-recent"><header><h2>Recent</h2><button class="link-btn" data-act="recent-clear">Clear</button></header>
+			<ul class="recent-list">${recent.map((r) => html`<li><button class="recent-q" data-act="search-for" data-q="${r}">${icon("clock")}<span class="${scriptClass(r)}">${r}</span></button><button class="icon-btn" data-act="recent-forget" data-q="${r}" aria-label="Forget “${r}”" title="Forget">${icon("close")}</button></li>`)}</ul></section>` : ""}
+		<section class="section"><header><h2>Try asking</h2></header>
+			<div class="ask-chips">${ASKS.map((a) => html`<button class="chip" data-act="search-for" data-q="${a}">${a}</button>`)}</div></section>
+		<section class="section"><header><h2>Languages</h2></header>
+			<div class="ask-chips">${langs.map((l) => html`<a class="chip" href="${href(`lang/${l.id}`)}">${langLabel(l)} <span class="muted">${l.albums.length.toLocaleString()}</span></a>`)}</div></section>
+		<p class="muted search-tip">Search in any script, by a line of the words too. Other spellings of names work: “zam nu” finds Zamnu, and small typos still find the closest names.</p>
+	</div>`;
 }
 
 /** Search shows the best artist matches as pictures, the rest as name chips. */
@@ -343,9 +370,13 @@ const ARTIST_CARDS = 8;
 
 export function searchResults(c, q, scope = getScope()) {
 	const r = search(c, q, SCOPE_LIMITS[scope]);
-	if (!r) {
-		return html`<div class="empty"><h2>Find something to play</h2><p>Search in any script. Alternative spellings of artist names work too, so “zam nu” finds Zamnu, and small typos still find the closest names.</p>
-			<p>You can also ask: <button class="link-btn" data-act="search-for" data-q="most played mizo artists">most played Mizo artists</button>, <button class="link-btn" data-act="search-for" data-q="gospel albums from the 90s">gospel albums from the 90s</button>, <button class="link-btn" data-act="search-for" data-q="newest myanmar songs">newest Myanmar songs</button>.</p></div>`;
+	if (!r) return searchStart(c);
+	// Lines of lyrics, found on the device (at most 30 are listed).
+	const lyricCount = lyricsIndex.search(q).length;
+	const countOf = { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total, lyrics: lyricCount >= 30 ? "30+" : lyricCount };
+	if (scope === "lyrics") {
+		const only = lyricHits(c, q);
+		return html`${scopeButtons(scope, "segmented scope-tabs", countOf)}${only || html`<div class="empty"><h2>No lyrics with “${q}”</h2><p>No song's lyrics have a line with these words. Lyrics are added by listeners: a song without them can be given its words in the lyrics studio.</p></div>`}`;
 	}
 	const pick = (key) => (scope === "all" || scope === key ? r[key].items : []);
 	const exact = { artists: pick("artists"), albums: pick("albums"), tracks: pick("tracks") };
@@ -365,7 +396,7 @@ export function searchResults(c, q, scope = getScope()) {
 	}
 
 	// Counts describe title matches; for an answered question they would mislead.
-	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : { artists: r.artists.total, albums: r.albums.total, tracks: r.tracks.total });
+	const tabs = scopeButtons(scope, "segmented scope-tabs", answered ? null : countOf);
 	const lyrics = scope === "all" || scope === "tracks" ? lyricHits(c, q) : "";
 	if (!total && !answered && !byArtist && lyrics) return html`${tabs}${lyrics}`;
 	if (!total && !answered && !byArtist) {

@@ -35,6 +35,17 @@ function writeRecent(list) {
 	} catch { /* not remembered on this device */ }
 }
 
+/** The searches kept on this device, newest first. */
+export const recentSearches = () => readRecent();
+
+/** Forgets every kept search. */
+export function forgetSearches() { writeRecent([]); }
+
+/** Forgets one kept search. */
+export function forgetSearch(query) {
+	writeRecent(readRecent().filter((s) => s !== query));
+}
+
 export function rememberSearch(query) {
 	const q = query.trim();
 	if (q.length < 2) return;
@@ -47,7 +58,7 @@ let active = -1;
 let scope = "all";
 let langName = (l) => l.name;
 
-/** The scope chips' current choice: "all", "artists", "albums" or "tracks". */
+/** The scope chips' current choice: "all", "artists", "albums", "tracks" or "lyrics". */
 export const getScope = () => scope;
 export function setScope(value) { scope = SCOPES.includes(value) ? value : "all"; }
 /** Labels languages in answer titles ("Mizo" rather than "mizo"). */

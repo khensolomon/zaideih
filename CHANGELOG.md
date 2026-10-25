@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.1
+
+- Search on phones: one bar, chips with icons, Lyrics; About folded in the sidebar
+
 ## v26.10.24.32
 
 - Lyrics: same-song proposals, compare and merge
