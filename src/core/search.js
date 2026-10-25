@@ -43,12 +43,14 @@ export function search(catalog, query, limits = { tracks: 50, albums: 24, artist
 }
 
 /** What a search looks in: everything, or one kind of record. */
-export const SCOPES = ["all", "artists", "albums", "tracks"];
+export const SCOPES = ["all", "artists", "albums", "tracks", "lyrics"];
 const SUGGEST = {
 	all: { artists: 3, albums: 3, tracks: 5 },
 	artists: { artists: 10, albums: 0, tracks: 0 },
 	albums: { artists: 0, albums: 8, tracks: 0 },
 	tracks: { artists: 0, albums: 0, tracks: 10 },
+	// Lyrics are matched line by line on the device (core/lyrics-index.js); while typing, songs by title.
+	lyrics: { artists: 0, albums: 0, tracks: 10 },
 };
 const KIND_OF = { artists: "artist", albums: "album", tracks: "track" };
 

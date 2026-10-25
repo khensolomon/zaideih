@@ -29,7 +29,7 @@ import { initTips } from "./ui/tips.js";
 import { icon } from "./ui/icons.js";
 import { cover, getList, registerList, resetLists, resetPending, scriptClass, showMore, trackRow } from "./ui/parts.js";
 import { logoMark } from "./ui/logo.js";
-import { clearRecent, closeSuggestions, getScope, moveSelection, pickOption, rememberSearch, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
+import { clearRecent, closeSuggestions, forgetSearch, forgetSearches, getScope, moveSelection, pickOption, rememberSearch, setLangName, setScope, updateSuggestions } from "./ui/suggest.js";
 import * as V from "./ui/views.js";
 import { viz } from "./ui/viz.js";
 
@@ -323,25 +323,30 @@ function renderRail() {
  * listener left them (kept on this device).
  */
 const RAIL_KEY = "zaideih.rail";
+/** Sections folded until opened (the rest are open until folded): `opened` keeps the choice for these. */
+const FOLDED_FIRST = ["more"];
 function railState() {
 	try {
 		const v = JSON.parse(localStorage.getItem(RAIL_KEY) ?? "{}");
-		return { mini: v.mini === true, closed: Array.isArray(v.closed) ? v.closed : [] };
+		const list = (x) => (Array.isArray(x) ? x.filter((id) => typeof id === "string") : []);
+		return { mini: v.mini === true, closed: list(v.closed), opened: list(v.opened) };
 	} catch {
-		return { mini: false, closed: [] };
+		return { mini: false, closed: [], opened: [] };
 	}
 }
+const isFolded = ({ closed, opened = [] }, id) => (FOLDED_FIRST.includes(id) ? !opened.includes(id) : closed.includes(id));
 function saveRail(state) {
 	try { localStorage.setItem(RAIL_KEY, JSON.stringify(state)); } catch { /* lasts this visit only */ }
 	applyRail(state);
 }
-function applyRail({ mini, closed } = railState()) {
+function applyRail(state = railState()) {
+	const { mini } = state;
 	document.body.dataset.rail = mini ? "mini" : "full";
 	const toggle = $(".rail-toggle");
 	toggle.setAttribute("aria-expanded", String(!mini));
 	toggle.setAttribute("aria-label", mini ? "Expand the sidebar" : "Collapse the sidebar");
 	for (const sec of document.querySelectorAll(".rail-sec")) {
-		const open = !closed.includes(sec.dataset.sec);
+		const open = !isFolded(state, sec.dataset.sec);
 		sec.dataset.open = String(open);
 		sec.querySelector("h2 button").setAttribute("aria-expanded", String(open));
 	}
@@ -1057,14 +1062,34 @@ const actions = {
 	},
 	"copy-code"(el) { copyCode(el.dataset.code, el); },
 	// Phones: the round button beside the search field clears it first, then leaves search.
-	"search-cancel"() {
+	"search-clear"() {
 		const q = $("#q");
-		if (q?.value) {
-			q.value = "";
-			runSearch("");
-			q.focus();
-			updateSuggestions(catalog, q);
-		} else actions.back();
+		if (!q) return;
+		q.value = "";
+		$(".search-clear").hidden = true;
+		runSearch("");
+		q.focus();
+		updateSuggestions(catalog, q);
+	},
+	/*
+	 * Leaving search. The bar that comes back puts its buttons where the finger
+	 * was: it takes no taps for a moment, so the same tap cannot land on one.
+	 */
+	"search-back"() {
+		const nav = $(".navbar");
+		nav.inert = true;
+		setTimeout(() => { nav.inert = false; }, 450);
+		closeSuggestions($("#q"));
+		$("#q")?.blur();
+		actions.back();
+	},
+	"recent-forget"(el) {
+		forgetSearch(el.dataset.q);
+		runSearch($("#q")?.value ?? "");
+	},
+	"recent-clear"() {
+		forgetSearches();
+		runSearch($("#q")?.value ?? "");
 	},
 	"app-menu"() {
 		if ($("#app-menu").hidden) openAppMenu();
@@ -1088,9 +1113,11 @@ const actions = {
 	"search-for"(el) {
 		const input = $("#q");
 		input.value = el.dataset.q;
+		$(".search-clear").hidden = false;
 		rememberSearch(el.dataset.q);
 		runSearch(el.dataset.q);
-		input.focus();
+		// On a touch screen the results are what was asked for, not the keyboard.
+		if (matchMedia("(pointer: coarse)").matches) { input.blur(); closeSuggestions(input); } else input.focus();
 	},
 	"artist-lang"(el) {
 		const section = el.closest("[data-artist-tabs]");
@@ -1168,7 +1195,8 @@ const actions = {
 	"rail-sec"(el) {
 		const state = railState();
 		const id = el.closest(".rail-sec").dataset.sec;
-		saveRail({ ...state, closed: state.closed.includes(id) ? state.closed.filter((x) => x !== id) : [...state.closed, id] });
+		const toggle = (list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+		saveRail(FOLDED_FIRST.includes(id) ? { ...state, opened: toggle(state.opened) } : { ...state, closed: toggle(state.closed) });
 	},
 	"stats-on"() {
 		analytics.setChoice("granted");
@@ -1277,9 +1305,16 @@ async function chooseSuggestion(opt) {
 	input.focus();
 }
 
+// The search bar's own buttons: tapping them must not first close the keyboard and move the page under the finger.
+document.addEventListener("pointerdown", (e) => {
+	if (e.target.closest?.(".search-back, .search-clear")) e.preventDefault();
+});
+
 document.addEventListener("input", (e) => {
 	const el = e.target;
 	if (el.id === "q") {
+		const clear = $(".search-clear");
+		if (clear) clear.hidden = !el.value;
 		updateSuggestions(catalog, el);
 		clearTimeout(searchTimer);
 		searchTimer = setTimeout(() => runSearch(el.value), 140);
