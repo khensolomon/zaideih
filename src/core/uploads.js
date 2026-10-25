@@ -74,8 +74,6 @@ export function shapeUploads(list, requests = []) {
 		const t = {
 			id: `u${u.id}`, uploadId: u.id, title: u.title, album, n: 0, duration: u.duration, plays: 0, base: 0, recent: 0,
 			artists: [artist], url: u.url, upload: true, format: u.format, size: u.size, year: u.year, track: u.track, fileName: u.fileName, status: u.status,
-			// Searched with "My music" on (core/search.js, withMine).
-			search: normalize(u.title), searchCompact: compact(normalize(u.title)),
 		};
 		album.tracks.push(t);
 		album.duration += u.duration;
@@ -85,6 +83,14 @@ export function shapeUploads(list, requests = []) {
 		artist.albums.add(album);
 		tracks.push(t);
 	}
+	// Searched with "My music" on (core/search.js, withMine): uploads have no artist pages, so a
+	// song or album is found by its title and by its artists' names.
+	const searchable = (r, title, people) => {
+		r.search = normalize([title, ...people.map((a) => a.name)].join(" "));
+		r.searchCompact = compact(r.search);
+	};
+	for (const t of tracks) searchable(t, t.title, t.artists);
+	for (const album of albums.values()) searchable(album, album.title, album.artists);
 	for (const album of albums.values()) {
 		// Where the album is in asking to publish (worker/media/requests.js): the furthest any of its songs got.
 		const st = new Set(album.tracks.map((t) => t.status));

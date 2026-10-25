@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.14
+
+- My music: your songs and albums found by artist name too
+
 ## v26.10.25.13
 
 - Album holds: streaming off or hidden from the public, without a release; search: My music
