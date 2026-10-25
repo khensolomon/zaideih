@@ -79,6 +79,7 @@
  */
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
+import { isText, TEXT_BASE, textExists, textIsPublic } from "./songbooks.js";
 import { applyTimes, clearTimes, extractTimes, looksZawgyi, lyricsWords } from "../../src/core/lyrics-format.js";
 
 export const MAX_LYRICS = 20_000;
@@ -236,7 +237,8 @@ async function index(env, since, ctx, nowSeconds) {
 		const hit = await cache.match(INDEX_KEY);
 		if (hit) return answer(200, await hit.json(), "*", headers);
 	}
-	const rows = (await env.DB.prepare(`SELECT track, lang, version, text, words, hidden_at, changed_at FROM lyrics WHERE changed_at >= ?1 ${since ? "" : "AND hidden_at IS NULL"} ORDER BY track, lang`).bind(since).all()).results ?? [];
+	// Songbook texts are not in the app's index yet (docs/songbooks.md, step 4).
+	const rows = (await env.DB.prepare(`SELECT track, lang, version, text, words, hidden_at, changed_at FROM lyrics WHERE changed_at >= ?1 AND track < ?2 ${since ? "" : "AND hidden_at IS NULL"} ORDER BY track, lang`).bind(since, TEXT_BASE).all()).results ?? [];
 	const missing = rows.filter((r) => r.words === null);
 	if (missing.length) {
 		for (const r of missing) r.words = lyricsWords(r.text);
@@ -293,6 +295,11 @@ async function write(env, track, lang, text, base, memberId, note, nowSeconds) {
 }
 
 async function checkTrack(env, track) {
+	// A songbook text (songbooks.js) is checked there.
+	if (isText(track)) {
+		if (!(await textExists(env, track))) throw new MemberError(`there is no songbook text ${track}`, 404);
+		return;
+	}
 	const row = await env.DB.prepare("SELECT id FROM tracks WHERE id = ?1").bind(track).first();
 	if (!row) throw new MemberError(`there is no song ${track} in the catalog`, 404);
 }
@@ -338,8 +345,9 @@ async function signedIn(env, request, nowSeconds) {
 	return me;
 }
 
-function mayModerate(me) {
-	if (!can(me, "lyrics")) throw new MemberError("this needs the Lyrics right", 403);
+function mayModerate(me, track = 0) {
+	// A songbook text is looked after by the Songbooks right too.
+	if (!can(me, "lyrics") && !(isText(track) && can(me, "songbooks"))) throw new MemberError("this needs the Lyrics right", 403);
 }
 
 const nameOf = (r) => r.name ?? "a member no longer here";
@@ -368,9 +376,19 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			if (!Number.isSafeInteger(since) || since < 0) throw new MemberError("since must be the `at` of the last index (0 for all of it)");
 			return await index(env, since, ctx, nowSeconds);
 		}
-		if (!action && (m === "GET" || m === "HEAD")) return await read(env, track, lang, ctx);
+		// A songbook text in a private book (songbooks.js) is not there for the public.
+		const privateText = isText(track) && !(await textIsPublic(env, track));
+		if (!action && (m === "GET" || m === "HEAD")) {
+			if (privateText) return answer(404, { error: "no lyrics for this song yet", track, lang }, "*", { "Cache-Control": "no-store" });
+			return await read(env, track, lang, ctx);
+		}
 		if (!cors) throw new MemberError("this origin may not edit lyrics (AUTH_ORIGINS)", 403);
 		const me = await signedIn(env, request, nowSeconds);
+		if (isText(track)) {
+			if (privateText && !can(me, "songbooks")) throw new MemberError(`there is no songbook text ${track}`, 404);
+			// Joining texts and recordings comes later (docs/songbooks.md, step 4).
+			if (["link", "unlink", "propose", "compare", "decline"].includes(action)) throw new MemberError("songbook texts are not joined to recordings yet", 400);
+		}
 
 		if (!action && m === "POST") {
 			const body = await readBody(request);
@@ -419,7 +437,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			return answer(201, { reported: true }, cors);
 		}
 
-		mayModerate(me);
+		mayModerate(me, track);
 		if (action === "link" && m === "POST") {
 			const body = await readBody(request);
 			if (!Number.isSafeInteger(body.to) || body.to <= 0) throw new MemberError("to must be the song whose lyrics to show");

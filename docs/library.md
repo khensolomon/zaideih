@@ -20,6 +20,7 @@ The owner trusts members with rights, one by one, in the Workspace (Members); ea
 | Review publishing (`review`) | Listens to albums asked to be published, approves (copying them into the catalog) or rejects them with a reason |
 | Moderate members (`moderate`) | Blocks and unblocks members, deletes uploads (never the owner's) |
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
+| Songbooks (`songbooks`) | Makes songbooks, their hymn numbers and texts, people and works, and looks after their texts' versions; texts of private books are seen only with it ([songbooks.md](songbooks.md)) |
 | Albums (`albums`) | Holds albums back from listeners without a release, and gives them back: streaming off, or hidden from the public ([holds.md](holds.md)) |
 | Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version; links songs that are the same, merges and unlinks them, compares copies and declines proposals ([lyrics.md](lyrics.md)) |
 
