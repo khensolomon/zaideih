@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.25.12
+
+- Installed on a desktop: the sidebar's head fades into the title bar
+
 ## v26.10.25.11
 
 - Title bar at the system's own height; the Workspace and studio headers sized to it
