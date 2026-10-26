@@ -279,7 +279,7 @@ audio.addEventListener("error", () => {
 	stopWithError(MEDIA_ERRORS[code] ?? "Playback failed.", KIND_OF_MEDIA_ERROR[code] ?? "unknown", { retried: retriedFor === track?.id });
 });
 
-/** Optional (track) => Promise<url> supplying lock-screen artwork; see player.setArtwork. */
+/** Optional (track) => url, or Promise<url>, supplying lock-screen artwork; see player.setArtwork. */
 let artworkFor = null;
 
 /*
@@ -294,14 +294,35 @@ let artworkFor = null;
 const drawn = new Map();
 const DRAWN_KEEP = 10;
 
+function keep(track, src) {
+	if (!src) return;
+	drawn.set(track.id, src);
+	while (drawn.size > DRAWN_KEEP) drawn.delete(drawn.keys().next().value);
+}
+
 async function artworkOf(track) {
 	if (drawn.has(track.id)) return drawn.get(track.id);
 	const src = await artworkFor(track);
-	if (src) {
-		drawn.set(track.id, src);
-		while (drawn.size > DRAWN_KEEP) drawn.delete(drawn.keys().next().value);
-	}
+	keep(track, src);
 	return src;
+}
+
+/**
+ * The artwork now, when it can be had without waiting: drawn ahead, or drawn
+ * at once by a provider that answers a URL (now-art.js does); else null.
+ */
+function artworkNow(track) {
+	if (drawn.has(track.id)) return drawn.get(track.id);
+	if (!artworkFor) return null;
+	try {
+		const src = artworkFor(track);
+		if (typeof src !== "string") return null;
+		keep(track, src);
+		return src;
+	} catch (err) {
+		console.warn("Cover artwork could not be drawn; the app icon is shown instead.", err);
+		return null;
+	}
 }
 
 /** Draws the covers of the songs next to the playing one: one back, three ahead (around the end with repeat all). */
@@ -328,7 +349,7 @@ function metadataFor(track, src) {
 
 function updateMediaSession(track) {
 	if (!("mediaSession" in navigator)) return;
-	const ready = drawn.get(track.id);
+	const ready = artworkNow(track);
 	navigator.mediaSession.metadata = metadataFor(track, ready);
 	if (ready || !artworkFor) return;
 	artworkOf(track).then((src) => {
@@ -379,6 +400,12 @@ audio.addEventListener("volumechange", () => {
 export const player = {
 	/** Sets the provider of lock-screen and media-key artwork for the playing track. */
 	setArtwork(fn) { artworkFor = fn; },
+	/** Draws the artwork again (fonts have arrived, say): the drawn ones are forgotten, the playing song's is set anew. */
+	refreshArtwork() {
+		drawn.clear();
+		const t = current();
+		if (t) updateMediaSession(t);
+	},
 	state,
 	audio,
 	current,
