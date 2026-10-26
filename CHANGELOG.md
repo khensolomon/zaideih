@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.26.8
+
+- Wide screens: covers grow with the screen, browse pages use the whole width, song lists in columns
+- Home, languages, genres, search and the songbooks take the whole width beside the sidebar instead of 1120px
+- Album covers, artist pictures and songbook covers grow with the room (148 to 236px for albums), with larger gaps and margins: at 3440px wide, 11 albums a row at 253px, instead of 6 at 174px in the middle
+- Song lists on home and search fall into two or three columns from 1900px wide
+- Album, artist, lyrics and text pages keep a reading width, 1280px from 1700px wide
+
 ## v26.10.26.7
 
 - Lyrics page: tools as icons, chords smaller and softer with a choice per device, Play only for another song
