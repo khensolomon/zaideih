@@ -1638,6 +1638,38 @@ function trackVisibleHeight() {
 trackVisibleHeight();
 
 /*
+ * Typing on a touch screen (a text field has the focus): body[data-typing],
+ * so the player steps aside (app.css); above the keyboard there is no room
+ * for it. The lyrics studio keeps it, lifted above the keyboard, to play
+ * while writing. Dragging the page while the search field has the keyboard
+ * closes the keyboard, as native apps do: with it open, iPhone pans the page
+ * under the fixed field, which follows only once Safari reports the pan
+ * (--vvt), so the field seemed to scroll with the page.
+ */
+const NOT_TYPED = /^(button|checkbox|radio|range|color|file|submit|reset|image|hidden)$/;
+const DRAG_PX = 10;
+function watchTyping() {
+	const touch = matchMedia("(pointer: coarse)");
+	const typing = (el) => el instanceof HTMLElement && (el.isContentEditable || el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !NOT_TYPED.test(el.type)));
+	const set = () => document.body.toggleAttribute("data-typing", touch.matches && typing(document.activeElement));
+	document.addEventListener("focusin", set);
+	// Focus moving from one field to the next passes through the body: look once it has landed.
+	document.addEventListener("focusout", () => setTimeout(set, 0));
+	let startY = null;
+	document.addEventListener("touchstart", (e) => { startY = e.touches[0]?.clientY ?? null; }, { passive: true });
+	document.addEventListener("touchmove", (e) => {
+		const q = document.activeElement;
+		if (startY === null || q?.id !== "q" || !touch.matches) return;
+		// The field itself, its buttons and the suggestions list scroll as they are.
+		if (e.target instanceof Element && e.target.closest(".searchbox, .suggest")) return;
+		if (Math.abs((e.touches[0]?.clientY ?? startY) - startY) < DRAG_PX) return;
+		startY = null;
+		q.blur();
+	}, { passive: true });
+}
+watchTyping();
+
+/*
  * Home on phones: once a scroll has come to rest by itself, a section's title
  * within SETTLE_PX of the bar glides the rest of the way to sit just under
  * it. The scroll itself is never touched while it moves (CSS scroll

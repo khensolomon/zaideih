@@ -2228,3 +2228,8 @@ img.acct-avatar { object-fit: cover; }
 /* .st-title b's own span (more of the title) is inherited from the b, not the line under it. */
 .st-head.sb-studio-head .st-title b .sb-head-more { font-size: inherit; color: inherit; }
 @media (max-width: 560px) { .sb-studio-head .st-title > span, .sb-studio-head .sb-head-more { display: none; } }
+
+/* Typing on a touch screen (body[data-typing], app.js): the player and its fade step aside; the lyrics studio keeps the player above the keyboard. */
+.bar { transition: transform 0.2s ease, opacity 0.2s ease; }
+body[data-typing]:not([data-studio]) .bar { transform: translateY(calc(100% + 2 * var(--deck-gap))); opacity: 0; pointer-events: none; }
+body[data-typing]:not([data-studio])::after { opacity: 0; }
