@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.26.3
+
+- Phones: the player steps aside while typing; dragging the page closes the search keyboard
+- `body[data-typing]` while a text field has the focus on a touch screen; the player and its fade slide away, back when typing ends (the lyrics studio keeps the player above the keyboard)
+- Search: a drag on the page (not the field or the suggestions list) closes the keyboard, so the fixed search bar no longer pans with the page
+
 ## v26.10.26.2
 
 - Songbooks: a studio header for editors; undici patched in the Worker's tools
