@@ -131,7 +131,7 @@ export function applyHolds(model, holds) {
 const TOP_TRACKS = 100;
 const TOP_ARTISTS = 40;
 // Ids 0 ("Unknown") and 1 ("Various Artists") are catch-all credits, not artists.
-const NOT_ARTISTS = new Set([0, 1]);
+export const NOT_ARTISTS = new Set([0, 1]);
 
 /**
  * Recomputes everything derived from the tracks' play counts: album and

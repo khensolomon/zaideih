@@ -2241,3 +2241,36 @@ body[data-typing]:not([data-studio])::after { opacity: 0; }
 	body[data-page="search"] .sg-panel .scopes .lbl, body[data-page="search"] .mine .lbl { display: none; }
 	body[data-page="search"] .scope-tabs .mine { width: 40px; padding: 0; justify-content: center; }
 }
+
+/* The artist page (ui/views.js artist). Phones: Shuffle and Radio as icons beside Play popular; those they sing with and artists like them as one row to swipe. */
+.artist-act { gap: 8px; }
+@media (max-width: 480px) {
+	.artist-act { width: 48px; padding: 0; justify-content: center; }
+	.artist-act .lbl { display: none; }
+	.artist-row { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 30%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; scroll-padding: 0 16px; scroll-snap-type: x proximity; }
+	.artist-row::-webkit-scrollbar { display: none; }
+	.artist-row > * { scroll-snap-align: start; }
+}
+
+/* The artist's header: the numbers as labelled stats, and the years as a strip (ui/views.js careerHtml). */
+.artist-stats { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 14px 0 0; }
+.artist-stats > div { display: grid; gap: 2px; }
+.artist-stats dt { order: 2; font-size: 12.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+.artist-stats dd { order: 1; margin: 0; white-space: nowrap; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.artist-stats dd small { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-left: 4px; }
+.career { margin: 18px 0 8px; max-width: 720px; }
+.career-bars { display: flex; align-items: flex-end; gap: 2px; height: 44px; }
+.career-bars span { position: relative; flex: 1; min-width: 2px; height: var(--h); border-radius: 2px 2px 0 0; background: rgb(255 255 255 / 0.28); }
+.career-bars span:hover { background: rgb(255 255 255 / 0.5); }
+.career-bars span.best { background: var(--accent); }
+.career-bars span.album::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: var(--ink-3); }
+.career-axis { position: relative; display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.career-best { color: var(--ink-2); }
+.career-at { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+@media (max-width: 699px) {
+	.artist-stats { justify-content: center; gap: 12px 0; text-align: center; }
+	.artist-stats dd { font-size: 18px; }
+	/* Three a row, the rest centred under them: never one stat alone on a line. */
+	.artist-stats > div { flex: 0 0 30%; }
+	.career { margin: 18px auto 8px; }
+}

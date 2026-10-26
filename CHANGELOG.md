@@ -1,5 +1,17 @@
 # Version
 
+## v26.10.26.5
+
+- Artist page: a clearer header; sings with, with others, appears on, similar artists and a radio
+- Sings with: the artists they share songs with, most songs together first, with how many
+- With others: their duets and featured songs, in a section of their own
+- Albums apart from Appears on (compilations and others' albums with a song or two of theirs)
+- Similar artists: same language; albums shared, genres in common and years active; each says what they share
+- Radio: their most played songs shuffled with those of the artists around them; held albums left out
+- Phones: Shuffle and Radio as icons beside Play popular; the artist rows swipe sideways
+- A clearer header: years, songs, albums (+ those on others), plays and how many they sing with, as labelled numbers; under the buttons, their years as a strip, a bar a year as tall as its songs, the most played year lit and named under it, a dot under the years of their own albums, each bar naming its year, songs and plays
+- All worked out on the device from the catalog (`src/core/artist-links.js`), no server change
+
 ## v26.10.26.4
 
 - Phones: search chips as icons in the suggestions, so all fit a small screen
