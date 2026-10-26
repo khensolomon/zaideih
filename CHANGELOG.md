@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.26.1
+
+- Lock screen and car stereos: the cover comes with the song on next and previous
+- The covers of the songs around the playing one (one back, three ahead) are drawn ahead, while the app is in front; a change from the car, CarPlay, headphones or the lock screen sets title, artist, album and cover at once instead of the app icon followed by the cover
+- The metadata is set again when the new song starts sounding
+- Lock-screen covers are JPEG, a fraction of the PNG's size, for accessories on slow links
+
 ## v26.10.25.23
 
 - add album & spelling (catalog, 1 change)
