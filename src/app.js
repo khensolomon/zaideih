@@ -42,7 +42,7 @@ import { bookView, hymnView, personView, textView, workView } from "./ui/songboo
 import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
 import { applyChordStyle } from "./ui/chord-style.js";
 import { renderBarExtras, startBarLyrics } from "./ui/bar-extras.js";
-import { audioStudio } from "./ui/audio-studio.js";
+import { audioStudio, studioWaiting } from "./ui/audio-studio.js";
 import { startEdits } from "./core/audio-edits.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -109,7 +109,7 @@ route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 }, query.get("lang") ?? ""));
 // The audio studio (ui/audio-studio.js); a saved cut is read back at once (core/audio-edits.js).
 let editsCtl = null;
-route("audio/:id", (c, { id }) => audioStudio(c, Number(id), { notify, confirmAction, canAudio: () => uploads.canAudio, refreshEdits: () => editsCtl?.refresh({ force: true }) }));
+route("audio/:id", (c, { id }) => audioStudio(c, Number(id), { notify, confirmAction, canAudio: () => uploads.canAudio, rightsKnown: () => !uploads.available || Boolean(uploads.state.member) || (Boolean(uploads.state.error) && !uploads.state.loading), refreshEdits: () => editsCtl?.refresh({ force: true }) }));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -1904,6 +1904,8 @@ export async function boot(platform) {
 		const path = currentRoute?.path ?? "";
 		// Songbook pages show editing to the Songbooks right, known once the member is read.
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();
+		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.
+		else if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
@@ -1915,10 +1917,12 @@ export async function boot(platform) {
 	});
 	// Albums held back without a release (docs/holds.md): the last known ones at once, fresh ones when they arrive.
 	// Songs trimmed in the audio studio (core/audio-edits.js): their versions and lengths; downloads of other versions fetched again.
+	// The audio studio keeps its own state (cuts, a listen, what was just saved) and reads the song itself: it is not drawn again.
+	const inStudio = () => (currentRoute?.path ?? "").startsWith("audio/");
 	const edits = editsCtl = startEdits(catalog, {
 		onChange: () => {
 			offline.refreshVersions(catalog).catch((err) => console.warn("downloads of trimmed songs", err.message));
-			if (!document.body.classList.contains("search-open")) rerender();
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
 		},
 	});
 	startHolds(catalog, {
@@ -1927,7 +1931,7 @@ export async function boot(platform) {
 			edits.reapply();
 			clearArtCaches();
 			renderRail();
-			if (!document.body.classList.contains("search-open")) rerender();
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
 		},
 	});
 	clearArtCaches();

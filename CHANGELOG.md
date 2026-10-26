@@ -1,5 +1,15 @@
 # Version
 
+## v26.10.26.12
+
+- Audio studio, guided: a cautious suggestion, one picture with the ends close up, checks of the joins, Undo
+- The suggestion cuts only steady tape noise, keeping 1 s before the first sound and 2 s after the last, and says what it found: Safe to cut, Check this one (a quiet sound apart from the music, or noise that is not steady, kept and marked), or Nothing to cut
+- The tape's noise floor is measured at the recording's ends (and its quietest 2 %), not from its quieter tenth, which on most songs fell inside the music
+- One picture: the first and last seconds close up, the middle folded; what is cut striped and labelled, the tape kept for safety and a quiet sound kept shown apart; a cut reaching sound louder than the tape outlined and said in words
+- Check the start / Check the end play the join: what is cut, a tone, what stays
+- Save without a further question, then Listen to the saved file, Undo and Next song in the album; Fine-tune (times, steps, snapping, a note, keys) and the History folded away
+- Fixed: the studio opened from a link or a reload said the Audio studio right was missing before the member's rights were read; the studio was drawn again from the start (its cuts lost, the recording read again) when the list of trimmed songs was read again, after a save and every five minutes
+
 ## v26.10.26.11
 
 - Audio studio: trim a song's start and end without loss, as versions, the original kept
