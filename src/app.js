@@ -42,6 +42,8 @@ import { bookView, hymnView, personView, textView, workView } from "./ui/songboo
 import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
 import { applyChordStyle } from "./ui/chord-style.js";
 import { renderBarExtras, startBarLyrics } from "./ui/bar-extras.js";
+import { audioStudio } from "./ui/audio-studio.js";
+import { startEdits } from "./core/audio-edits.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -105,6 +107,9 @@ route("lyrics/:id/studio", (c, { id }, query) => lyricsStudio(c, Number(id), {
 	merge: Number(query.get("merge")) || null,
 	proposal: Number(query.get("proposal")) || null,
 }, query.get("lang") ?? ""));
+// The audio studio (ui/audio-studio.js); a saved cut is read back at once (core/audio-edits.js).
+let editsCtl = null;
+route("audio/:id", (c, { id }) => audioStudio(c, Number(id), { notify, confirmAction, canAudio: () => uploads.canAudio, refreshEdits: () => editsCtl?.refresh({ force: true }) }));
 route("terms", V.terms);
 route("help", V.help);
 // Hidden: decodes a playback diagnostic code. Not linked anywhere.
@@ -295,7 +300,7 @@ async function render({ keepScroll = false } = {}) {
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
 	// The lyrics studio and the Workspace are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
-	const studio = /^(lyrics|songbooks\/text)\/\d+\/studio$/.test(r.path) || r.path === "workspace";
+	const studio = /^(lyrics|songbooks\/text)\/\d+\/studio$/.test(r.path) || /^audio\/\d+$/.test(r.path) || r.path === "workspace";
 	document.body.toggleAttribute("data-studio", studio);
 	if (studio) document.body.dataset.rail = "mini";
 	else applyRail();
@@ -1057,6 +1062,8 @@ function trackMenu(anchor, track, extra) {
 	// Signed in to the Workspace: straight to this song in its album's editor.
 	const who = WORKSPACE_URL ? readWho(localStorage) : null;
 	if (who) items.push("-", { label: LEVELS[who.level].canWrite ? "Edit song details" : "Suggest a correction", run: () => { closeSheet(); go("workspace", { album: track.album.id, track: track.id }); } });
+	// The audio studio (docs/audio-studio.md): trimming the recording's start and end.
+	if (uploads.canAudio) items.push(...(who ? [] : ["-"]), { label: "Trim in the audio studio", run: () => { closeSheet(); go(`audio/${track.id}`); } });
 	if (extra === "queue") {
 		items.push("-", { label: "Remove from queue", run: () => player.removeAt(player.state.queue.indexOf(track.id)) });
 	} else if (extra?.startsWith("playlist:")) {
@@ -1907,8 +1914,17 @@ export async function boot(platform) {
 		},
 	});
 	// Albums held back without a release (docs/holds.md): the last known ones at once, fresh ones when they arrive.
+	// Songs trimmed in the audio studio (core/audio-edits.js): their versions and lengths; downloads of other versions fetched again.
+	const edits = editsCtl = startEdits(catalog, {
+		onChange: () => {
+			offline.refreshVersions(catalog).catch((err) => console.warn("downloads of trimmed songs", err.message));
+			if (!document.body.classList.contains("search-open")) rerender();
+		},
+	});
 	startHolds(catalog, {
 		onChange: () => {
+			// The catalog was built again: the trimmed songs' lengths go back on.
+			edits.reapply();
 			clearArtCaches();
 			renderRail();
 			if (!document.body.classList.contains("search-open")) rerender();

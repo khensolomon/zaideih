@@ -821,6 +821,8 @@ export function mount(root, ctx) {
 		storage: ["Storage", "adds files from a folder in storage the owner sets"],
 		lyrics: ["Lyrics", "hides lyrics, shows them again, and restores earlier versions"],
 		albums: ["Albums", "holds albums back from listeners without a release, and gives them back"],
+		songbooks: ["Songbooks", "adds songbooks, edits every one of them, and appoints their editors and readers"],
+		audio: ["Audio studio", "trims the start and end of songs' recordings (the originals are kept and can be restored)"],
 	};
 
 	/* ----------------------------------------------------------- requests ---- */

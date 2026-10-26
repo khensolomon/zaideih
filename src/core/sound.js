@@ -30,6 +30,7 @@
  * locks, which would stop playback, so the element plays directly there.
  * Settings are kept per device in localStorage.
  */
+import { versionOf } from "./audio-edits.js";
 import { SOUND_WORKLET_URL } from "../config.js";
 
 export const SETTINGS_KEY = "zaideih.sound";
@@ -234,6 +235,12 @@ function memory() {
 		return {};
 	}
 }
+/**
+ * What is remembered of a song is of the recording heard: a song trimmed in
+ * the audio studio (core/audio-edits.js) starts elsewhere, so each version
+ * has its own (the original keeps the song's id alone).
+ */
+const memoryKey = (t) => (versionOf(t.id) ? `${t.id}v${versionOf(t.id)}` : String(t.id));
 function remember(id, patch) {
 	try {
 		const m = memory();
@@ -417,7 +424,7 @@ function onMeter(l, r) {
 	if (skipper.state === "play" || !settings.skip) {
 		leveler.update(level, step, skipper.quiet === null ? -45 : skipper.quiet + 10);
 		if (settings.level) applyLevel();
-		if (leveler.settled && t) remember(t.id, { loud: Math.round(leveler.loudness * 10) / 10 });
+		if (leveler.settled && t) remember(memoryKey(t), { loud: Math.round(leveler.loudness * 10) / 10 });
 	}
 	if (!settings.skip) return;
 	const action = skipper.update(level, audio.currentTime, audio.duration, step);
@@ -431,7 +438,7 @@ function onMeter(l, r) {
 		audio.preservesPitch = true;
 		if (action.seek !== null) {
 			status.skipped = Math.round(action.seek);
-			if (t && action.seek > 1.5) remember(t.id, { start: Math.round(action.seek * 10) / 10 });
+			if (t && action.seek > 1.5) remember(memoryKey(t), { start: Math.round(action.seek * 10) / 10 });
 			// Step back to just before the music began, when that part can be played again
 			// (a server without range requests makes a stream unseekable: play on from here).
 			if (seekable(audio, action.seek)) audio.currentTime = action.seek;
@@ -483,7 +490,7 @@ function unmuteWhenSettled(audio, fade) {
 /** The next song's remembered loudness, applied at once so it does not start at the last song's volume. */
 function prepareSong() {
 	const t = player?.current();
-	const known = t ? memory()[String(t.id)] : null;
+	const known = t ? memory()[memoryKey(t)] : null;
 	leveler.reset(typeof known?.loud === "number" ? known.loud : null);
 	balance.reset();
 	if (!nodes) return known;

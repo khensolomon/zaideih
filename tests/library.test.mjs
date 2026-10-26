@@ -206,7 +206,7 @@ test("rights: the owner and co-owners give and take them; each right allows its 
 	const members = (await (await call("tok-mod", "GET", "/library/members")).json()).members;
 	const row = (login) => members.find((m) => m.login === login);
 	assert.equal(row("khensolomon").owner, true);
-	assert.deepEqual(row("khensolomon").rights, ["manage", "review", "moderate", "storage", "lyrics", "albums", "songbooks"]);
+	assert.deepEqual(row("khensolomon").rights, ["manage", "review", "moderate", "storage", "lyrics", "albums", "songbooks", "audio"]);
 	assert.deepEqual([row("spammer").uploads, row("spammer").used], [1, 600]);
 	assert.equal((await call("tok-mod", "GET", "/library/members/1")).status, 403, "the owner's library is private");
 	assert.equal((await (await call("tok-mod", "GET", "/library/members/99")).json()).uploads[0].title, "BUY NOW");

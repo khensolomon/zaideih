@@ -41,6 +41,7 @@ export const RIGHTS = Object.freeze({
 	lyrics: "Lyrics",
 	albums: "Albums",
 	songbooks: "Songbooks",
+	audio: "Audio studio",
 });
 
 /** True when the person may do what `right` covers. */

@@ -9,6 +9,7 @@
  * (Access-Control-Allow-Origin) for this site's origin.
  */
 import { audioUrl } from "../config.js";
+import { versionOf } from "./audio-edits.js";
 import { db } from "./db.js";
 import { emit, notify } from "./store.js";
 
@@ -63,6 +64,21 @@ export const offline = {
 			state.downloaded.delete(id);
 		}
 		emit("downloads");
+	},
+
+	/**
+	 * Downloads again the songs whose downloaded version is not the one now
+	 * played (trimmed in the audio studio, or made the original again). The
+	 * copy kept plays until the new one has arrived.
+	 */
+	async refreshVersions(catalog) {
+		const rows = await db.all("audio");
+		const stale = rows.filter((r) => (r.v ?? 0) !== (versionOf(r.id) ?? 0)).map((r) => catalog.track(r.id)).filter(Boolean);
+		if (!stale.length) return 0;
+		state.queue.push(...stale.filter((t) => !this.isPending(t.id)));
+		emit("downloads");
+		pump();
+		return stale.length;
 	},
 
 	async usage() {
@@ -140,7 +156,8 @@ async function download(track) {
 	if (total && received !== total) throw new Error(`download was incomplete (${received} of ${total} bytes).`);
 	const blob = new Blob(chunks, { type });
 	try {
-		await db.put("audio", { id: track.id, blob, size: blob.size, type, at: Date.now() });
+		// The version downloaded (core/audio-edits.js), to download it again when another becomes the one played.
+		await db.put("audio", { id: track.id, blob, size: blob.size, type, at: Date.now(), v: versionOf(track.id) ?? 0 });
 	} catch (err) {
 		const quota = err?.name === "QuotaExceededError";
 		const e = new Error(quota ? "the device is out of storage space for downloads." : `saving failed (${err.message}).`);

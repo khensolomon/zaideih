@@ -532,3 +532,35 @@ CREATE TABLE IF NOT EXISTS song_credits (
     PRIMARY KEY (subject, subject_id, person_id, role)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_song_credits_person ON song_credits (person_id);
+
+-- =============================================================================
+-- The audio studio: trimmed versions of songs' recordings (audio-edits.js)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS audio_versions (
+    track_id     INTEGER NOT NULL,
+    version      INTEGER NOT NULL,              -- 1, 2, ...; 0 is the original, not stored
+    object_key   TEXT    NOT NULL,              -- the R2 object
+    start_ms     INTEGER NOT NULL,              -- the cut, in the original's time
+    end_ms       INTEGER NOT NULL,
+    duration_ms  INTEGER NOT NULL,
+    bytes        INTEGER NOT NULL,
+    note         TEXT    NOT NULL DEFAULT '',
+    made_by      TEXT    NOT NULL,
+    at           INTEGER NOT NULL,
+    PRIMARY KEY (track_id, version)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS audio_current (
+    track_id     INTEGER PRIMARY KEY,
+    version      INTEGER NOT NULL,              -- 0: the original again
+    set_by       TEXT    NOT NULL,
+    at           INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audio_log (
+    id           INTEGER PRIMARY KEY,
+    track_id     INTEGER NOT NULL,
+    version      INTEGER NOT NULL,
+    action       TEXT    NOT NULL,              -- cut | restore
+    by_name      TEXT    NOT NULL,
+    at           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_log_track ON audio_log (track_id, at);

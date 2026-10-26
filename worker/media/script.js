@@ -3,7 +3,10 @@
  *
  * Routes:
  *   GET/HEAD /audio/:id   Stream an MP3 from R2. The object key is
- *                         `music/{folder_path}/{mp3}`, looked up in D1 by track id.
+ *                         `music/{folder_path}/{mp3}`, looked up in D1 by track id;
+ *                         a song trimmed in the audio studio plays its current
+ *                         version, and `?v=<version>` asks for one (0: the
+ *                         original), see audio-edits.js.
  *   OPTIONS  /audio/:id   CORS preflight for allowed origins.
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
@@ -22,6 +25,8 @@
  *                         here with 403 (holds.js).
  *   /songbooks/*          Songbooks: books, hymn numbers, texts, works, people and
  *                         credits; texts' words are lyrics (songbooks.js).
+ *   /edits, /edits/:track  The audio studio: songs trimmed at the start and end,
+ *                         as versions, the originals kept (audio-edits.js).
  *   GET/HEAD /u/:id       An upload, through a signed address (library.js).
  *   GET/HEAD /k/:key      A file in storage (private/), through a signed address (library.js).
  *
@@ -74,6 +79,8 @@ import { handleLibrary, handleSignedAudio, handleSignedKey } from "./library.js"
 import { handleLyrics } from "./lyrics.js";
 import { handleHolds, heldTracks } from "./holds.js";
 import { handleSongbooks } from "./songbooks.js";
+import { currentVersions, keyOfVersion, originalKey } from "./audio-edits.js";
+import { handleEdits } from "./audio-edits.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
@@ -85,7 +92,7 @@ const MAX_PER_TRACK = 3;
 const MAX_PLAYS_BODY = 8192;
 const PLAY_MAX_AGE_SECONDS = 30 * 86400;
 const PLAY_MAX_AHEAD_SECONDS = 3600;
-const EXPOSED_HEADERS = "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, X-Zaideih-Meta, X-Zaideih-Reason";
+const EXPOSED_HEADERS = "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, X-Zaideih-Meta, X-Zaideih-Reason, X-Zaideih-Version";
 
 /** @type {Map<string, { value: object | null, expiresAt: number }>} keyed "<META_CACHE_VERSION>:<id>" */
 const memoryCache = new Map();
@@ -108,6 +115,7 @@ export default {
 		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
 		if (url.pathname === "/holds" || url.pathname.startsWith("/holds/")) return handleHolds(request, env, ctx);
 		if (url.pathname === "/songbooks" || url.pathname.startsWith("/songbooks/")) return handleSongbooks(request, env, ctx);
+		if (url.pathname === "/edits" || url.pathname.startsWith("/edits/")) return handleEdits(request, env, ctx);
 		const signed = /^\/u\/(\d+)$/.exec(url.pathname);
 		if (signed) return handleSignedAudio(request, env, Number(signed[1]));
 		const stored = /^\/k\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
@@ -354,7 +362,25 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	};
 	if (!track) return new Response("Not Found", { status: 404, headers: diag("no-track") });
 
-	const objectKey = `music/${track.folder_path}/${track.mp3}`;
+	// The version to play (audio-edits.js): the one asked for (`?v=`, 0 the original), else the current one.
+	const asked = new URL(request.url).searchParams.get("v");
+	let objectKey = originalKey(track);
+	let edited = false;
+	let version = 0;
+	if (asked !== null) {
+		version = Number(asked);
+		if (!Number.isSafeInteger(version) || version < 0) return new Response("v must be a version of the song, 0 for the original", { status: 400, headers: diag("bad-version") });
+		const key = await keyOfVersion(env, trackId, version);
+		if (key === undefined) return new Response("Not Found", { status: 404, headers: diag("no-version") });
+		if (key) objectKey = key;
+	} else {
+		const cur = (await currentVersions(env)).get(trackId);
+		if (cur) {
+			edited = true;
+			version = cur.version;
+			if (cur.key) objectKey = cur.key;
+		}
+	}
 
 	let object;
 	try {
@@ -379,9 +405,11 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	headers.set("X-Content-Type-Options", "nosniff");
 	headers.set("Vary", "Origin");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
+	headers.set("X-Zaideih-Version", String(version));
+	// A version asked for never changes; the current one of an edited song can, so it is kept only briefly.
 	headers.set(
 		"Cache-Control",
-		range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable` : "private, max-age=60",
+		edited ? "private, max-age=300" : range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable` : "private, max-age=60",
 	);
 
 	let status = 200;
