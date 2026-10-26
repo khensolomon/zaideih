@@ -4,6 +4,8 @@
  * controls; wider, it also offers:
  *
  *   from 1280px  Lyrics (the playing song's page), Sound, Sleep timer
+ *   from 1440px  beside the song, out of its More menu: Go to album, Add to playlist
+ *   from 1760px  … and Share, Download
  *   from 1600px  Up next: the next song in the queue, to play now
  *   from 1900px  the line being sung, for songs with timed lyrics
  *   from 2300px  Up next: the next three
@@ -20,6 +22,7 @@ import { href } from "../core/router.js";
 import { on } from "../core/store.js";
 import { creditOf } from "../core/catalog.js";
 import { icon } from "./icons.js";
+import { offline } from "../core/offline.js";
 import { cover, scriptClass } from "./parts.js";
 
 /** Songs shown under Up next (CSS shows one, or all from 2300px). */
@@ -33,6 +36,15 @@ const $ = (s) => document.querySelector(s);
 export function renderBarExtras(catalog, sleep) {
 	const t = player.current();
 	const s = player.state;
+	// Out of the More menu, beside the song, as the bar has room (the menu keeps them all).
+	const quick = $("#bar-quick");
+	if (quick) {
+		const saved = t ? offline.has(t.id) : false;
+		quick.innerHTML = t ? html`<a class="icon-btn q1" href="${href(`album/${t.album.id}`)}" aria-label="Go to album: ${t.album.title}" title="Go to album: ${t.album.title}">${icon("album")}</a>
+			<button class="icon-btn q1" data-act="bar-playlist" aria-label="Add to playlist" title="Add to playlist" aria-haspopup="menu">${icon("plus")}</button>
+			${t.upload ? "" : html`<button class="icon-btn q2" data-act="bar-share" aria-label="Share this song" title="Share this song">${icon("share")}</button>`}
+			<button class="icon-btn q2" data-act="bar-download" aria-pressed="${String(saved)}" aria-label="${saved ? "Downloaded: remove from this device" : "Download this song"}" title="${saved ? "Downloaded: remove from this device" : "Download this song"}">${icon(saved ? "saved" : "download")}</button>`.toString() : "";
+	}
 	const tools = $("#bar-tools");
 	if (tools) {
 		tools.innerHTML = t ? html`${LYRICS_URL && !t.upload ? html`<a class="icon-btn" href="${href(`lyrics/${t.id}`)}" aria-label="${lyricsIndex.has(t.id) ? "Lyrics" : "Lyrics (none yet)"}" title="${lyricsIndex.has(t.id) ? "Lyrics" : "Lyrics (none yet)"}">${icon("lyrics")}</a>` : ""}

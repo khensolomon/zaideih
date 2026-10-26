@@ -175,9 +175,12 @@ export function album(c, { id }) {
 	const key = registerList(ids, a.title);
 	const saved = ids.filter((tid) => offline.has(tid)).length;
 	const allSaved = saved === ids.length;
+	// More of the album's first artist: their own other albums, newest first.
+	const first = a.upload ? null : a.artists.find((x) => x.id > 1) ?? null;
+	const more = first ? albumsOf(first).own.filter((al) => al !== a).slice(0, MORE_BY) : [];
 	return {
 		title: a.title,
-		body: html`<div class="hero">
+		body: html`<div class="page-split"><div class="page-side"><div class="hero">
 				${cover(a, { current: player.current()?.album === a ? player.current().n - 1 : -1 })}
 				<div>
 					<div class="kind">${a.tracks.length === 1 ? "Single" : "Album"} in ${langLabel(a.lang)}</div>
@@ -206,9 +209,17 @@ export function album(c, { id }) {
 				<button class="icon-btn" data-act="list-menu" data-list="${key}" ${a.upload ? "" : html`data-share="album/${a.id}" data-share-title="${a.title}"`} aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
 			${a.upload && a.named ? publishRow(c, a) : ""}
-			${chunkedTracks(a.tracks, a.title)}`,
+			</div><div class="page-main">
+			${chunkedTracks(a.tracks, a.title)}
+			${more.length ? html`<section class="section">
+				<header><h2>More by <a href="${href(`artist/${first.id}`)}">${first.name}</a></h2></header>
+				<div class="grid">${more.map((al) => albumTile(al))}</div>
+			</section>` : ""}
+			</div></div>`,
 	};
 }
+/** Albums shown under "More by" on an album's page. */
+const MORE_BY = 12;
 
 /**
  * Asking to publish an album of one's uploads (docs/library.md). Reviewers
@@ -259,7 +270,7 @@ export function artist(c, { id }) {
 	const radioKey = radio.length ? registerList(radio, `${a.name} radio`) : "";
 	return {
 		title: a.name,
-		body: html`<div class="hero artist-hero">
+		body: html`<div class="page-split"><div class="page-side"><div class="hero artist-hero">
 				${avatar(a)}
 				<div>
 					<div class="kind">${a.type === 1 ? "Group or various artists" : "Artist"}${langs.length ? html` in ${langs.map(langLabel).join(", ")}` : ""}</div>
@@ -282,6 +293,7 @@ export function artist(c, { id }) {
 				${editLink({ artist: a.id })}
 			</div>
 			${careerHtml(career, best, own)}
+			</div><div class="page-main">
 			<section class="section" style="margin-top:12px">
 				<header><h2>Popular</h2></header>
 				${chunkedTracks(popular, a.name, { step: 10, showAlbum: true })}
@@ -294,6 +306,7 @@ export function artist(c, { id }) {
 				<header><h2>With others</h2><span class="muted">${plural(duets.length, "song")}</span></header>
 				${chunkedTracks(duets, `${a.name} with others`, { step: 10, showAlbum: true })}
 			</section>` : ""}
+			</div></div>
 			${own.length ? html`<section class="section">
 				<header><h2>Albums</h2></header>
 				${chunkedAlbums(own, { step: 30 })}
