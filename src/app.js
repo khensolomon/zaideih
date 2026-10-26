@@ -309,6 +309,8 @@ async function render({ keepScroll = false } = {}) {
 	}
 	if (seq !== renderSeq || parse()?.path !== r.path) return; // navigated away, or rendered again, meanwhile
 	view.innerHTML = out.body;
+	// A page that is a studio for the person (songbook pages for their editors) says so itself.
+	if (out.studio && !studio) document.body.toggleAttribute("data-studio", true);
 	document.title = out.title === "Home" ? "Zaideih" : `${out.title} | Zaideih`;
 	markNav(r.path);
 	updateNavbar(r.path, out.title);
