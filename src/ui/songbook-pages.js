@@ -43,6 +43,23 @@ export const own = (body, mount) => ({ body: html`<div class="sb-root">${body}</
 const people = (credits, role) => credits.filter((c) => c.role === role);
 const personLinks = (list) => list.map((c, i) => html`${i ? ", " : ""}<a class="text-link" href="${href(`songbooks/person/${c.person}`)}">${c.name}</a>`);
 
+const ROLE_OF = { manage: "", edit: "Editor", read: "Reader" };
+
+/**
+ * The studio's header (as the lyrics studio's, .st-head) for those who edit
+ * the page: back, the title and a line under it, the tools as icons. With it
+ * the page is a studio page (body[data-studio]: no floating bar on phones,
+ * the title bar in the installed desktop app).
+ */
+function studioHead({ back, title, more = "", sub, tools, after = "" }) {
+	return html`<header class="st-head sb-studio-head">
+		<a class="st-icon" href="${back[0]}" aria-label="Back to ${back[1]}" title="Back to ${back[1]}">${icon("back")}</a>
+		<div class="st-title"><b class="${scriptClass(title)}">${title}${more ? html`<span class="sb-head-more ${scriptClass(more)}"> · ${more}</span>` : ""}</b><span>${sub.filter(Boolean).join(" · ")}</span></div>
+		<div class="st-modes" role="toolbar" aria-label="Edit">${tools}</div>
+		${after}
+	</header>`;
+}
+
 /* -------------------------------------------------------------- book ---- */
 
 export async function bookView(_c, { id }) {
@@ -54,11 +71,19 @@ export async function bookView(_c, { id }) {
 	}
 	const ed = mayEdit(book.may);
 	const facts = [book.lang, book.edition && `edition ${book.edition}`, book.year, book.publisher].filter(Boolean).join(" · ");
-	const body = html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>
+	const songs = `${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}`;
+	const head = ed ? studioHead({
+		back: ["#/songbooks", "Songbooks"],
+		title: book.title,
+		sub: [book.short, book.public ? "" : "Private", songs, ROLE_OF[book.may]],
+		tools: html`<a class="st-mode" href="${href("songbooks/import", { book: book.id })}" aria-label="Add pages" title="Add pages">${icon("upload")}</a>
+			<button class="st-mode" data-hy="book-edit" aria-expanded="false" aria-label="Details and rights" title="Details and rights">${icon("edit")}</button>
+			${book.may === "manage" ? html`<button class="st-mode" data-hy="team" aria-expanded="false" aria-label="Collaborators" title="Collaborators">${icon("people")}</button>` : ""}`,
+	}) : html`<p class="kind"><a class="text-link" href="#/songbooks">Songbooks</a></p>`;
+	const body = html`${head}
 		<div class="sb-head sb-book-head">
 			${coverHtml(book, "sb-cover-head")}
-			<div class="sb-book-head-text"><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${book.entries.length.toLocaleString()} ${book.entries.length === 1 ? "song" : "songs"}</p>
-			${ed ? html`<div class="sb-tools"><a class="btn" href="${href("songbooks/import", { book: book.id })}">${icon("upload")} Add pages</a><button class="btn" data-hy="book-edit" aria-expanded="false">${icon("edit")} Details</button>${book.may === "manage" ? html`<button class="btn" data-hy="team" aria-expanded="false">${icon("people")} Collaborators</button>` : ""}</div>` : ""}</div>
+			<div class="sb-book-head-text"><h1 class="${scriptClass(book.title)}">${book.title}</h1><p class="muted">${facts}${facts ? " · " : ""}${songs}</p></div>
 		</div>
 		${book.public ? "" : html`<p class="held-note">${icon("lock")} ${PRIVATE}</p>`}
 		${book.may === "edit" || book.may === "read" ? html`<p class="muted sb-appointed">${icon("info")} You are ${book.may === "edit" ? "an editor" : "a reader"} of this book${book.may === "edit" ? ": you change its details, numbers and songs" : ""}.</p>` : ""}
@@ -67,7 +92,7 @@ export async function bookView(_c, { id }) {
 		${book.entries.length ? html`<ol class="sb-index">${book.entries.map((e) => html`<li data-n="${e.number}" data-find="${`${e.number} ${e.title} ${e.firstLine}`.toLowerCase()}">
 			<a href="${href(`songbook/${book.id}/${e.number}`)}"><span class="sb-num">${e.number}</span><span class="sb-hymn-text"><b class="${scriptClass(e.title)}">${e.title}</b>${e.firstLine && e.firstLine !== e.title ? html`<small class="${scriptClass(e.firstLine)}">${e.firstLine}</small>` : ""}</span></a>
 		</li>`)}</ol><p class="muted sb-none" hidden>No song matches.</p>` : html`<div class="empty"><h2>No songs yet</h2>${ed ? html`<p><a class="btn primary" href="${href("songbooks/import", { book: book.id })}">Add pages</a></p>` : ""}</div>`}`;
-	return { title: book.title, ...own(body, (root) => mountBook(root, book)) };
+	return { title: book.title, studio: ed, ...own(body, (root) => mountBook(root, book)) };
 }
 
 function bookForm(book) {
@@ -251,7 +276,16 @@ async function textPage(c, textId, query, where, ctx) {
 	const listKey = recordings.length ? registerList(recordings.map((r) => r.id), t.title) : "";
 	const pagePath = book ? `songbook/${book.id}/${entry.number}` : `songbooks/text/${t.id}`;
 	const ed = mayEdit(t.may);
-	const body = html`<p class="kind">${book ? html`<a class="text-link" href="${href(`songbook/${book.id}`)}">${book.title}</a>` : html`<a class="text-link" href="#/songbooks">Songbooks</a>`}</p>
+	const head = ed ? studioHead({
+		back: book ? [href(`songbook/${book.id}`), book.title] : ["#/songbooks", "Songbooks"],
+		title: label || t.title,
+		more: label ? t.title : "",
+		sub: [book?.title ?? "", book && !book.public ? "Private" : "", parsed ? "" : "No words yet"],
+		tools: html`<a class="st-mode" href="${href(`songbooks/text/${t.id}/studio`, lang ? { lang } : undefined)}" aria-label="Edit the words" title="Edit the words">${icon("edit")}</a>
+			<button class="st-mode" data-hy="details" aria-expanded="false" aria-label="Details: title, number, credits, work" title="Details: title, number, credits, work">${icon("tools")}</button>`,
+		after: book ? html`<span class="st-modes sb-steps">${prev ? html`<a class="st-mode" href="${href(`songbook/${book.id}/${prev.number}`)}" aria-label="${book.short} ${prev.number}" title="${book.short} ${prev.number}">${icon("back")}</a>` : html`<span class="st-mode" aria-hidden="true"></span>`}${next ? html`<a class="st-mode" href="${href(`songbook/${book.id}/${next.number}`)}" aria-label="${book.short} ${next.number}" title="${book.short} ${next.number}">${icon("chevron")}</a>` : html`<span class="st-mode" aria-hidden="true"></span>`}</span>` : "",
+	}) : html`<p class="kind">${book ? html`<a class="text-link" href="${href(`songbook/${book.id}`)}">${book.title}</a>` : html`<a class="text-link" href="#/songbooks">Songbooks</a>`}</p>`;
+	const body = html`${head}
 		<div class="sb-head">
 			${label ? html`<span class="sb-short sb-short-big sb-label">${label}</span>` : ""}
 			<div><h1 class="${scriptClass(t.title)}">${t.title}</h1>
@@ -261,7 +295,6 @@ async function textPage(c, textId, query, where, ctx) {
 		<div class="actions">
 			${recordings.length ? html`<button class="btn primary" data-act="play-all" data-list="${listKey}">${icon("play")} Play</button>` : ""}
 			${t.lyrics.length > 1 || lang ? html`<span class="sb-langs">${t.lyrics.map((l) => html`<a class="chip${l.lang === lang ? " on" : ""}" href="${href(pagePath, l.lang ? { lang: l.lang } : undefined)}">${LYRICS_LANGS[l.lang] ?? l.lang}</a>`)}</span>` : ""}
-			${ed ? html`<a class="btn" href="${href(`songbooks/text/${t.id}/studio`, lang ? { lang } : undefined)}">${icon("edit")} Edit the words</a><button class="btn" data-hy="details">${icon("tools")} Details</button>` : ""}
 		</div>
 		${ed ? html`<div id="sb-details"></div>` : ""}
 		${parsed ? html`${detailChips(parsed)}<div class="ly-text-wrap">${lyricsHtml(parsed)}</div>${creditsHtml(parsed)}` : html`<div class="empty"><h2>No words yet</h2>${ed ? html`<p><a class="btn primary" href="${href(`songbooks/text/${t.id}/studio`)}">Write them</a></p>` : ""}</div>`}
@@ -281,7 +314,7 @@ async function textPage(c, textId, query, where, ctx) {
 			${ed ? joinPanel(c, t) : ""}
 		</section>
 		${book ? html`<nav class="sb-prevnext" aria-label="Songs">${prev ? html`<a class="btn" href="${href(`songbook/${book.id}/${prev.number}`)}">${icon("back")} ${prev.number}</a>` : html`<span></span>`}${next ? html`<a class="btn" href="${href(`songbook/${book.id}/${next.number}`)}">${next.number} ${icon("chevron")}</a>` : ""}</nav>` : ""}`;
-	return { title: label ? `${label} ${t.title}` : t.title, ...own(body, ed ? (root) => mountHymn(root, c, t, where, ctx) : null) };
+	return { title: label ? `${label} ${t.title}` : t.title, studio: ed, ...own(body, ed ? (root) => mountHymn(root, c, t, where, ctx) : null) };
 }
 
 /* ---------------------------------------------------- editing a hymn ---- */
@@ -390,6 +423,7 @@ function mountHymn(root, c, t, where, ctx) {
 				case "details": {
 					const box = root.querySelector("#sb-details");
 					box.innerHTML = box.innerHTML ? "" : detailsForm(t, where, c).toString();
+					b.setAttribute("aria-expanded", String(Boolean(box.innerHTML)));
 					break;
 				}
 				case "person-pick":

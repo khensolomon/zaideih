@@ -2216,10 +2216,15 @@ img.acct-avatar { object-fit: cover; }
 .sb-book-head { align-items: flex-end; gap: 20px; margin-bottom: 18px; }
 .sb-cover-head { flex: none; width: 104px; }
 .sb-book-head-text { min-width: 0; }
-.sb-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.sb-tools .btn { min-height: 34px; padding: 0 12px; font-size: 14px; gap: 6px; }
-.sb-tools .btn svg.i { width: 16px; height: 16px; }
-.sb-tools .btn[aria-expanded="true"] { background: var(--raised); border-color: var(--ink-3); }
 @media (max-width: 560px) { .sb-cover-head { width: 76px; } .sb-book-head { gap: 14px; } }
 .sb-field select { box-sizing: border-box; width: 100%; min-height: 42px; padding: 0 10px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 16px; }
 @media (max-width: 560px) { .sb-book-head { align-items: flex-start; } }
+
+/* Songbook pages as a studio, for their editors (ui/songbook-pages.js studioHead). */
+.sb-studio-head { margin-bottom: 18px; }
+.sb-studio-head a.st-mode:hover { text-decoration: none; }
+.st-mode[aria-expanded="true"] { background: var(--raised); color: var(--ink); }
+.sb-steps span.st-mode { pointer-events: none; }
+/* .st-title b's own span (more of the title) is inherited from the b, not the line under it. */
+.st-head.sb-studio-head .st-title b .sb-head-more { font-size: inherit; color: inherit; }
+@media (max-width: 560px) { .sb-studio-head .st-title > span, .sb-studio-head .sb-head-more { display: none; } }
