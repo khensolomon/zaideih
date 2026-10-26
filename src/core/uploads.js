@@ -204,6 +204,12 @@ export const uploads = {
 		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage") || m.rights?.includes("songbooks")));
 	},
 
+	/** True for the owner, co-owners and the Audio studio right: trimming songs' recordings (docs/audio-studio.md). */
+	get canAudio() {
+		const m = this.state.member;
+		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage") || m.rights?.includes("audio")));
+	},
+
 	/** True for the owner and co-owners: making a songbook public, or private again. */
 	get canPublishBooks() {
 		const m = this.state.member;

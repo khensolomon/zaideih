@@ -2411,3 +2411,33 @@ body[data-typing]:not([data-studio])::after { opacity: 0; }
 	.bar .bar-quick .q2 { display: none; }
 }
 @media (min-width: 1760px) { .bar .bar-quick .q2 { display: inline-grid; } }
+
+/* ---------- the audio studio (ui/audio-studio.js) ---------- */
+.as-page { max-width: 1280px; }
+.as-facts { margin: 0 0 12px; }
+.as-canvas { display: block; width: 100%; height: 120px; border-radius: 10px; background: var(--surface); cursor: ew-resize; touch-action: none; }
+.as-whole .as-canvas { height: 120px; cursor: pointer; }
+.as-near { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.as-edge { display: grid; gap: 10px; margin: 0; align-content: start; }
+.as-edge header { display: flex; align-items: center; gap: 10px; }
+.as-edge header b { min-width: 3.5em; }
+.as-edge .as-canvas { height: 110px; }
+.as-time input { width: 7.5ch; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; text-align: center; }
+.as-nudge { display: inline-flex; margin-left: auto; }
+.as-nudge .icon-btn { width: 36px; height: 36px; font-size: 18px; }
+.as-plays { display: flex; flex-wrap: wrap; gap: 8px; }
+.as-plays .btn { min-height: 34px; font-size: 14px; gap: 6px; }
+.as-plays svg.i { width: 15px; height: 15px; }
+.as-sum { display: grid; gap: 12px; margin: 8px 0 24px; }
+.as-sum p { margin: 0; }
+.as-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.as-note { max-width: 560px; }
+.as-versions li { align-items: center; }
+.as-versions li.on { box-shadow: inset 3px 0 0 var(--accent); }
+.as-versions li > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.as-versions small { color: var(--ink-3); font-size: 13px; }
+.as-near > .panel { margin: 0; }
+.as-v-title { display: flex; align-items: center; gap: 8px; }
+.as-now { font-size: 12px; font-weight: 650; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
+.as-row-do { display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+@media (max-width: 760px) { .as-near { grid-template-columns: minmax(0, 1fr); } }

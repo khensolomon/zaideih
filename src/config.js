@@ -31,6 +31,14 @@ export const AUTH_URL = typeof __AUTH_URL__ === "string" ? __AUTH_URL__ : "";
 
 export class AudioSourceError extends Error {}
 
+/*
+ * The version of a song to play (core/audio-edits.js: songs trimmed in the
+ * audio studio), or undefined for the one the Worker plays by default. Set
+ * once by the app; asked for each address.
+ */
+let versionOf = () => undefined;
+export function setAudioVersions(lookup) { versionOf = lookup; }
+
 /** Resolves the network URL for a track, or throws when no template is configured. */
 export function audioUrl(track) {
 	// An upload carries its own signed address (core/uploads.js).
@@ -47,5 +55,8 @@ export function audioUrl(track) {
 		lang: track.album.lang.name,
 		n: track.n,
 	};
-	return AUDIO_URL_TEMPLATE.replace(/\{(id|album|lang|n)\}/g, (_, key) => encodeURIComponent(String(values[key])));
+	const url = AUDIO_URL_TEMPLATE.replace(/\{(id|album|lang|n)\}/g, (_, key) => encodeURIComponent(String(values[key])));
+	// A trimmed song: the version asked for by number, so a cached copy of another version is never played.
+	const v = versionOf(track.id);
+	return v === undefined ? url : `${url}${url.includes("?") ? "&" : "?"}v=${v}`;
 }

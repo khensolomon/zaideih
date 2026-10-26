@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.26.11
+
+- Audio studio: trim a song's start and end without loss, as versions, the original kept
+- `#/audio/<track>` (song menu, Trim in the audio studio) for the owner, co-owners and the new Audio studio right: the original drawn whole and close up at each end, on a level scale so the tape's hiss shows; where the music starts and ends suggested from the tape's own noise floor; handles, typed times and 0.1 s steps; each cut moved to the quietest moment nearby; the edges played before saving; a confirmation with the times and the new length
+- Audio Worker: `GET/POST /edits…`; a cut keeps the original's MP3 frames byte for byte (no decoding, no loss), with its ID3 tags and a new Xing/Info frame; versions in `edits/<track>/<n>.mp3`, the original never changed; D1 `audio_versions`, `audio_current`, `audio_log` (migration 0009); `/audio/:id?v=<n>`
+- Versions: listen to the saved file itself; make any version, or the original, the one played again
+- App: trimmed songs play by version (no stale copy), show their new length, and downloads of another version are fetched again; no release needed for an edit
+- Skip silence and Even volume remember each version on its own
+
 ## v26.10.26.10
 
 - Wide screens: album and artist pages in two columns, library and workspace wider, quick actions in the player
