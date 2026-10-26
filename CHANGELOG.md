@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.26.10
+
+- Wide screens: album and artist pages in two columns, library and workspace wider, quick actions in the player
+- Album and artist pages from 1400px: cover or picture, title, facts and buttons on the left, kept in view while the songs scroll on the right
+- An album's page ends with More by its first artist
+- Library: the whole width, its rows side by side, song lists in columns from 1900px
+- Workspace: pages up to 1680px (2100px from 2200px), tiles and the list beside the editor wider
+- Player bar: Go to album and Add to playlist beside the song from 1440px, Share and Download from 1760px; the More menu keeps them all
+
 ## v26.10.26.9
 
 - Player bar on wide windows: lyrics, sound and sleep, up next, and the line being sung

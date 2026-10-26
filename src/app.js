@@ -1208,6 +1208,15 @@ const actions = {
 	sleep: (el) => sleepMenu(el),
 	// The bar's Up next (wide windows): that song now.
 	"bar-next": (el) => player.jump(Number(el.dataset.index)),
+	// The bar's quick actions (wide windows), out of its More menu.
+	"bar-playlist": (el) => { const t = player.current(); if (t) addToPlaylistMenu(el, [t.id]); },
+	"bar-share": () => { const t = player.current(); if (t) shareSong(t); },
+	"bar-download": () => {
+		const t = player.current();
+		if (!t) return;
+		if (offline.has(t.id)) offline.remove([t.id]);
+		else startDownload([t]);
+	},
 	"ask-publish": (el) => askPublish(catalog.album(el.dataset.album)),
 	async "withdraw-publish"(el) {
 		if (!(await confirmAction("Withdraw the request to publish?", "Withdraw"))) return;
@@ -1568,6 +1577,7 @@ function refreshDownloadMarks() {
 let downloadsRerender = 0;
 on("downloads", () => {
 	refreshDownloadMarks();
+	renderBarExtras(catalog, sleepText());
 	if (currentRoute?.path === "library/downloads") {
 		clearTimeout(downloadsRerender);
 		downloadsRerender = setTimeout(rerender, 400);

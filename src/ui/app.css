@@ -2355,3 +2355,59 @@ body[data-typing]:not([data-studio])::after { opacity: 0; }
 @media (min-width: 2300px) {
 	.bar-next-item + .bar-next-item { display: flex; }
 }
+
+/* ---------- an album's and an artist's page on wide screens ----------
+ * Two columns from 1400px: the cover or picture, the title, facts and
+ * buttons on the left, kept in view while the songs scroll on the right;
+ * what follows (albums, artists like them) under both, across the page.
+ * Narrower, one column as before.
+ */
+.page-split, .page-side, .page-main { min-width: 0; }
+@media (min-width: 1400px) {
+	body:is([data-page="album"], [data-page="artist"]) main { max-width: 2200px; padding-left: clamp(40px, 3vw, 72px); padding-right: clamp(40px, 3vw, 72px); }
+	.page-split { display: grid; grid-template-columns: clamp(300px, 22vw, 420px) minmax(0, 1fr); gap: clamp(32px, 3.2vw, 72px); align-items: start; margin-bottom: 12px; }
+	.page-side { position: sticky; top: 24px; }
+	.page-side .hero { grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; margin-bottom: 18px; }
+	.page-side .hero .cover, .page-side .artist-hero .avatar { width: 100%; }
+	.page-side .hero h1 { font-size: clamp(28px, 2.3vw, 44px); }
+	.page-side .actions { flex-wrap: wrap; }
+	.page-side .career { margin-top: 22px; }
+	.page-side .artist-stats { gap: 12px 22px; }
+	.page-main > .section:first-child, .page-main > .tracks:first-child { margin-top: 0 !important; }
+	.page-main .section:first-child > header { margin-top: 0; }
+}
+@media (min-width: 1400px) and (display-mode: window-controls-overlay) { .page-side { top: calc(var(--tb-h, 0px) + 16px); } }
+
+/* Library: its lists of songs in columns on wide screens, like home and search; its rows side by side. */
+@media (min-width: 900px) {
+	body[data-page="library"] main { max-width: none; padding-left: clamp(40px, 3vw, 72px); padding-right: clamp(40px, 3vw, 72px); }
+}
+@media (min-width: 1400px) {
+	body[data-page="library"] .lib-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+}
+@media (min-width: 1900px) {
+	body[data-page="library"] .tracks { columns: 3 560px; column-gap: clamp(32px, 3vw, 64px); }
+	body[data-page="library"] .tracks > li { break-inside: avoid; }
+}
+
+/* The Workspace: wider pages on wide screens; its tiles and splits use the room. */
+@media (min-width: 1600px) {
+	.adm-page, .adm-tray { max-width: min(1680px, 100%); }
+	.adm-tiles { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+	.adm-split { grid-template-columns: 360px minmax(0, 1fr); }
+}
+@media (min-width: 2200px) {
+	.adm-page, .adm-tray { max-width: min(2100px, 100%); }
+	.adm-split { grid-template-columns: 420px minmax(0, 1fr); }
+}
+
+/* The bar's quick actions beside the song (ui/bar-extras.js): Go to album and Add to playlist from 1440px, Share and Download from 1760px. */
+.bar-quick { display: none; }
+@media (min-width: 1440px) {
+	.bar .bar-quick { display: inline-flex; align-items: center; gap: 0; flex: none; }
+	.bar .bar-quick .icon-btn { width: 38px; height: 38px; }
+	.bar .bar-quick svg.i { width: 18px; height: 18px; }
+	.bar .bar-quick a.icon-btn:hover { text-decoration: none; }
+	.bar .bar-quick .q2 { display: none; }
+}
+@media (min-width: 1760px) { .bar .bar-quick .q2 { display: inline-grid; } }
