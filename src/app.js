@@ -41,6 +41,7 @@ import { songbookImportView, songbooksView } from "./ui/songbooks-view.js";
 import { bookView, hymnView, personView, textView, workView } from "./ui/songbook-pages.js";
 import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
 import { applyChordStyle } from "./ui/chord-style.js";
+import { renderBarExtras, startBarLyrics } from "./ui/bar-extras.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -440,6 +441,8 @@ function renderBar() {
 	bar.classList.toggle("paused", !!t && !s.playing);
 	if (!$("#sheet").hidden) renderSheet();
 	renderWatch();
+	// What the bar adds as the window widens (ui/bar-extras.js).
+	renderBarExtras(catalog, sleepText());
 }
 
 function setLikeState(btn, liked, { animate = false } = {}) {
@@ -1203,6 +1206,8 @@ const actions = {
 	},
 	share: (el) => shareLink(el.dataset.share, el.dataset.shareTitle ?? ""),
 	sleep: (el) => sleepMenu(el),
+	// The bar's Up next (wide windows): that song now.
+	"bar-next": (el) => player.jump(Number(el.dataset.index)),
 	"ask-publish": (el) => askPublish(catalog.album(el.dataset.album)),
 	async "withdraw-publish"(el) {
 		if (!(await confirmAction("Withdraw the request to publish?", "Withdraw"))) return;
@@ -1866,6 +1871,8 @@ export async function boot(platform) {
 	}
 	startSync();
 	startLyricsIndex();
+	// The line being sung in the bar, on wide windows.
+	startBarLyrics();
 	// The public songbooks' hymns (core/songbooks.js): Songbooks shows in the sidebar once there are any.
 	refreshHymnIndex().then(() => syncAccess(), (err) => console.warn("songbooks index", err.message));
 	// Uploads: read once someone is signed in (syncAccess), shown where they appear.
