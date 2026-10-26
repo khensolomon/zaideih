@@ -78,12 +78,12 @@ Chord names: a root A to G with `#`, `b`, `♯` or `♭`; a quality (`m`, `maj`,
 
 - Each part is labelled in small capitals. The chorus has a bar down its side and stronger weight; the pre-chorus a dashed bar; the bridge a shaded box; intro, outro, interlude and spoken parts are in italics. A repeat shows as `×2`.
 - Key, capo, tempo and time are chips under the title.
-- Chords are hidden until **Show chords** (the choice is kept on the device, `zaideih.lyrics.chords`). Shown, each chord sits over the syllable it starts on, and **−** / **+** transpose by a semitone (from −5 to +6), the key chip following ("A (from G)"). A song written with flats keeps to flats.
+- Chords are hidden until **Show chords** (an icon; the choice is kept on the device, `zaideih.lyrics.chords`). They sit smaller than the words and softer by default; **Text size and chords** (the Aa icon) sets their size (Small, Medium, As the words) and brightness (Dim, Soft, Bright), kept on the device only (`zaideih.lyrics.chordStyle`, never sent), and followed wherever lyrics show chords (`src/ui/chord-style.js`, CSS `--chord-scale` and `--chord-alpha`). Shown, each chord sits over the syllable it starts on, and **−** / **+** transpose by a semitone (from −5 to +6), the key chip following ("A (from G)"). A song written with flats keeps to flats.
 - Timed lyrics (LRC) show without their times. While that song plays, the line being sung is lit and kept in view (not while the listener has scrolled by hand in the last 4 seconds), and tapping a line goes there.
 
 The page's head: the album cover (to the album), the title, and on the line under it Play (a round icon) with whether this song is the one playing: moving bars and "Playing", or "Paused"; then the artists and the album, as links. Play starts this song, from it on in its album; on the song playing, it pauses and resumes. When the song ends and another plays while the page is open, a line says what plays now, with the way to its lyrics. **Share** gives the page's link (the device's share sheet, or the link copied).
 
-Credits show as a line under the title ("Hymn 167 · *Waiting on the Lord* · Words and music: … · Luk. 24:49"). The text size (A− / A+, four steps) is kept on the device (`zaideih.lyrics.size`).
+Credits show as a line under the title ("Hymn 167 · *Waiting on the Lord* · Words and music: … · Luk. 24:49"). The text size (Small to Larger, in the same panel; Medium until chosen) is kept on the device (`zaideih.lyrics.size`). The tools beside the details are icons: chords, transpose (with them), text size and chords, share, edit. Play under the title shows only while another song (or none) is in the player; for the song in the player the player's own controls serve, and the page says Playing or Paused.
 
 ## Studio
 
