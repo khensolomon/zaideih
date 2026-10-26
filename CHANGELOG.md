@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.26.9
+
+- Player bar on wide windows: lyrics, sound and sleep, up next, and the line being sung
+- From 1280px: Lyrics (the playing song's page), Sound and the Sleep timer beside the volume
+- From 1600px: Up next, the next song in the queue, a tap playing it now; from 2300px, the next three
+- From 1900px: the line being sung beside the song, for songs with timed lyrics (read only while the window is that wide)
+
 ## v26.10.26.8
 
 - Wide screens: covers grow with the screen, browse pages use the whole width, song lists in columns
