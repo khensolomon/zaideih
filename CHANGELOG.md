@@ -1,5 +1,12 @@
 # Version
 
+## v26.10.26.6
+
+- Lock screen and car stereos: the song as a picture, its title, artists and album readable on any screen
+- For car stereos and accessories that show Myanmar (or any non-Latin) text unreadably: the picture carries the song's title (as large as fits in two lines), up to four artists and how many more, and the album with its year, drawn with the app's fonts; the album's motif and strip above and below
+- Drawn at once, never waiting on image decoding: a song changed from the car in the background gets its picture in the same moment (the old cover waited on decoding the motif, which iOS can hold back in the background)
+- Fonts loaded once in front; a picture drawn before they arrive is drawn again
+
 ## v26.10.26.5
 
 - Artist page: a clearer header; sings with, with others, appears on, similar artists and a radio

@@ -25,7 +25,8 @@ import { probeOn, startProbe, toggleProbe } from "./ui/viewport-probe.js";
 import { go, href, parse, route } from "./core/router.js";
 import { emit, notify, on } from "./core/store.js";
 import { formatDuration } from "./core/text.js";
-import { clearArtCaches, coverImage, patternOf } from "./ui/art.js";
+import { clearArtCaches, patternOf } from "./ui/art.js";
+import { nowPlayingImage, prepareNowArt } from "./ui/now-art.js";
 import { createStage, SceneBuildError, sceneChoice, SCENES, sceneFor, ScenesUnavailableError, setSceneChoice } from "./ui/scenes.js";
 import { openSoundPanel } from "./ui/sound-panel.js";
 import { initTips } from "./ui/tips.js";
@@ -1907,7 +1908,10 @@ export async function boot(platform) {
 	analytics.init();
 	viz.init($("#bar"));
 	setLangName(V.langLabel);
-	player.setArtwork((t) => coverImage(t.album, t.n - 1));
+	// The playing song as a picture (title, artists, album) for the lock screen and car stereos, drawn at once (ui/now-art.js).
+	player.setArtwork((t) => nowPlayingImage(t));
+	// Fonts that arrive after a picture was drawn with a stand-in: drawn again with them.
+	prepareNowArt()?.then(() => player.refreshArtwork());
 	renderVolume();
 	await player.init(catalog);
 	startPlayCounting(player.audio, () => player.current());
