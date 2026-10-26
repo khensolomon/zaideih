@@ -6,6 +6,7 @@ import { uploadsPanel } from "./uploads-view.js";
 import { uploads } from "../core/uploads.js";
 import { LEVELS, readWho } from "../core/access.js";
 import { analytics } from "../core/analytics.js";
+import { albumsOf, radioOf, similarArtists, singsWith, withOthers } from "../core/artist-links.js";
 import { creditOf } from "../core/catalog.js";
 import { html } from "../core/html.js";
 import { answer, describe, parseIntent } from "../core/intent.js";
@@ -93,11 +94,11 @@ export async function home(c) {
 export function reshuffle() { discover = null; }
 
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-function artistCard({ artist, plays }) {
+function artistCard({ artist, plays, line }) {
 	return html`<a class="artist-card" href="${href(`artist/${artist.id}`)}">
 		${avatar(artist)}
 		<span class="name ${scriptClass(artist.name)}">${artist.name}</span>
-		<span class="plays">${compact.format(plays)} plays</span>
+		<span class="plays">${line ?? `${compact.format(plays)} plays`}</span>
 	</a>`;
 }
 
@@ -248,6 +249,14 @@ export function artist(c, { id }) {
 	const career = careerOf(a);
 	const best = career.plays.length ? career.from + career.plays.indexOf(Math.max(...career.plays)) : 0;
 	const langs = [...new Set(a.albums.map((al) => al.lang))];
+	// Around the artist (core/artist-links.js): who they sing with, their songs with others, their albums apart from those they appear on, artists like them.
+	const partners = singsWith(a);
+	const shownPartners = partners.slice(0, PARTNERS_SHOWN);
+	const duets = withOthers(a);
+	const { own, appearsOn } = albumsOf(a);
+	const similar = similarArtists(c, a, { exclude: new Set(shownPartners.map((p) => p.artist)) });
+	const radio = radioOf(a, [...partners.slice(0, 6).map((p) => p.artist), ...similar.slice(0, 6).map((x) => x.artist)]);
+	const radioKey = radio.length ? registerList(radio, `${a.name} radio`) : "";
 	return {
 		title: a.name,
 		body: html`<div class="hero artist-hero">
@@ -266,7 +275,8 @@ export function artist(c, { id }) {
 			</div>
 			<div class="actions">
 				<button class="btn primary" data-page-play="${a.name}" data-act="play-all" data-list="${key}">${icon("play")} Play popular</button>
-				<button class="btn" data-act="shuffle-all" data-list="${key}">${icon("shuffle")} Shuffle all</button>
+				<button class="btn artist-act" data-act="shuffle-all" data-list="${key}" aria-label="Shuffle all" title="Shuffle all">${icon("shuffle")}<span class="lbl">Shuffle all</span></button>
+				${radioKey ? html`<button class="btn artist-act" data-page-play="${a.name} radio" data-act="play-all" data-list="${radioKey}" aria-label="Radio: ${a.name} with the artists they sing with and artists like them" title="Radio: ${a.name} with the artists they sing with and artists like them">${icon("radio")}<span class="lbl">Radio</span></button>` : ""}
 				<button class="icon-btn" data-act="share" data-share="artist/${a.id}" data-share-title="${a.name}" aria-label="Share" title="Share">${icon("share")}</button>
 				${editLink({ artist: a.id })}
 			</div>
@@ -274,12 +284,30 @@ export function artist(c, { id }) {
 				<header><h2>Popular</h2></header>
 				${chunkedTracks(popular, a.name, { step: 10, showAlbum: true })}
 			</section>
-			<section class="section">
+			${shownPartners.length ? html`<section class="section">
+				<header><h2>Sings with</h2>${partners.length > shownPartners.length ? html`<span class="muted">${plural(partners.length, "artist")}</span>` : ""}</header>
+				<div class="artist-grid artist-row">${shownPartners.map((p) => artistCard({ artist: p.artist, line: `${plural(p.songs, "song")} together` }))}</div>
+			</section>` : ""}
+			${duets.length ? html`<section class="section">
+				<header><h2>With others</h2><span class="muted">${plural(duets.length, "song")}</span></header>
+				${chunkedTracks(duets, `${a.name} with others`, { step: 10, showAlbum: true })}
+			</section>` : ""}
+			${own.length ? html`<section class="section">
 				<header><h2>Albums</h2></header>
-				${chunkedAlbums(a.albums, { step: 30 })}
-			</section>`,
+				${chunkedAlbums(own, { step: 30 })}
+			</section>` : ""}
+			${appearsOn.length ? html`<section class="section">
+				<header><h2>Appears on</h2></header>
+				${chunkedAlbums(appearsOn, { step: 30 })}
+			</section>` : ""}
+			${similar.length ? html`<section class="section">
+				<header><h2>Similar artists</h2></header>
+				<div class="artist-grid artist-row">${similar.map((x) => artistCard({ artist: x.artist, line: x.why }))}</div>
+			</section>` : ""}`,
 	};
 }
+/** How many of those an artist sings with are shown as cards. */
+const PARTNERS_SHOWN = 12;
 
 /* ---------- genres ---------- */
 export function genres(c) {

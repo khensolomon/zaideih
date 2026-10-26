@@ -2241,3 +2241,13 @@ body[data-typing]:not([data-studio])::after { opacity: 0; }
 	body[data-page="search"] .sg-panel .scopes .lbl, body[data-page="search"] .mine .lbl { display: none; }
 	body[data-page="search"] .scope-tabs .mine { width: 40px; padding: 0; justify-content: center; }
 }
+
+/* The artist page (ui/views.js artist). Phones: Shuffle and Radio as icons beside Play popular; those they sing with and artists like them as one row to swipe. */
+.artist-act { gap: 8px; }
+@media (max-width: 480px) {
+	.artist-act { width: 48px; padding: 0; justify-content: center; }
+	.artist-act .lbl { display: none; }
+	.artist-row { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 30%; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; scroll-padding: 0 16px; scroll-snap-type: x proximity; }
+	.artist-row::-webkit-scrollbar { display: none; }
+	.artist-row > * { scroll-snap-align: start; }
+}
