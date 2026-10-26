@@ -1,5 +1,10 @@
 # Version
 
+## v26.10.26.4
+
+- Phones: search chips as icons in the suggestions, so all fit a small screen
+- The chosen chip is filled rather than named; My music is its lock everywhere on phones, named in its label and tooltip (it had no accessible name when its label was hidden)
+
 ## v26.10.26.3
 
 - Phones: the player steps aside while typing; dragging the page closes the search keyboard
