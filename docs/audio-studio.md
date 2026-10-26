@@ -8,15 +8,27 @@ The owner and co-owners, and members given the **Audio studio** right (Workspace
 
 ## The page (`#/audio/<track>`, `src/ui/audio-studio.js`)
 
-From a song's menu, **Trim in the audio studio** (shown to those with the right). The page is a studio page (no floating bar on phones; the title bar in the installed desktop app).
+From a song's menu, **Trim in the audio studio** (shown to those with the right). The page is a studio page (the sidebar narrowed to icons; the title bar in the installed desktop app). It is one guided card, with Fine-tune and the History folded under it.
 
-- It reads the original recording (version 0) and draws it: the whole song, and close up around the start and the end (six seconds on each side). The drawing is on a level scale (−60 dB to full), so the tape's hiss before and after the music shows, not only the music.
-- It suggests where the music starts and ends (`src/core/trim.js`): the recording's level in 20 ms windows; its noise floor from the quieter tenth of them (tape is never digitally silent); the music where the level stays 12 dB above the floor for most of 0.6 s; 0.25 s kept before it and 0.7 s after it (a note dying away). **Use the suggestion** goes back to it; **Back to the whole recording** cuts nothing.
-- The cuts are moved by dragging the handles (on the whole recording or a close-up; a close-up holds still while its cut is dragged), by typing the times (minutes:seconds), or by 0.1 s steps. With **Move each cut to the quietest moment nearby** (on), each cut lands on the quietest 20 ms within 0.15 s, where a cut is not heard.
-- **What is cut** and **How it starts** / **How it ends** play the edges from the decoded original, before anything is saved. A tap on the whole recording, away from the handles, plays six seconds from there.
-- The line under them says what changes: how much is cut at each end, and the song's length after (and now).
-- **Save as a new version** asks once more, with the times and the length, then the audio Worker makes the version. An optional note goes into the history.
-- **Versions** lists every version and the original, which one plays now, who made each and when. **Listen** plays the file itself as the Worker serves it (the saved result, not a preview); **Make it the one played** makes any version, or the original, current again.
+- **The verdict.** The page reads the original recording (version 0) and says what it found, in a chip and a sentence: **Safe to cut** (only steady tape noise is cut), **Check this one** (a quiet sound apart from the music is kept: listen first), or **Nothing to cut**. A cut set by hand says **Set by hand**; a song already trimmed opens on the cut that plays, **Version *n* plays**.
+- **One picture.** The first and the last seconds are drawn close up (12 s, or more to hold the cut), and the middle is folded into a short strip, so a few seconds of hiss on a song of minutes can be seen. What is cut is striped and labelled (`Cut · 4.0 s · tape noise`); the tape kept for safety is grey (`1.0 s kept`); a quiet sound kept is outlined in blue (`Quiet sound · kept`). The drawing is on a level scale (−60 dB to full), so the hiss shows, not only the music. On a phone the labels are said in lines under the picture. A recording of 40 s or less is drawn whole.
+- **Moving a cut.** Each end's cut is dragged on its part of the picture; a tap on the folded middle listens from there. Where a cut holds sound clearly louder than the tape, that part is outlined and the page says so (**The cut at the start goes into the sound**), with **Back to the suggestion**; saving still works (**Save anyway**).
+- **Checking.** **Check the start** plays the last 2 s that are cut, a short tone, then the first 3 s that stay: the join as it will be heard. **Check the end** plays the last 3 s that stay, the tone, then what is cut. They play the decoded original, before anything is saved.
+- **Saving.** One button, **Save · cut 7.1 s**, without a further question: the saved state follows at once, with **Listen to the saved file** (the file as the Worker serves it, not a preview), **Undo** (the version played before plays again; the new version stays in the history; the page keeps the cut, to be changed and saved again) and **Next song in the album**.
+- **Fine-tune** (folded): each cut's time typed (minutes:seconds), steps of 0.1 s and 1 s, **Play across the cut** (3 s either side, nothing left out), **Move each cut to the quietest moment within 0.15 s** (on: each cut lands on the quietest 20 ms nearby, where a cut is not heard), a note for the history, **Back to the suggestion** and **Cut nothing**. Keys, while nothing is being typed: ← → move the cut 0.1 s (Shift: 1 s), `[` `]` choose the start or the end, Space checks it, Ctrl+S (⌘S) saves.
+- **History** (folded): every version and the original, which one plays now, who made each and when. **Listen** plays the file itself; **Play this one** makes any version, or the original, the one everyone hears.
+
+The page keeps its state while the app reads the list of trimmed songs again (after a save, and every five minutes): it is not drawn again from the start.
+
+## The suggestion (`src/core/trim.js`)
+
+Cautious by design: a cut that takes music away is worse than a second of hiss left in.
+
+- **Levels** in 20 ms windows. **The tape's floor**: the quieter of the median levels of the recording's first and last 3 s (where the tape runs) and of its quietest 2 %, digital silence left out. A share of the whole recording alone would find quiet music: hiss is usually a few seconds of a song of minutes.
+- **Sound**: 6 dB above the floor for 0.2 s or more (the median of 7 windows, so a click does not count). **The music**: 12 dB above the floor and no more than 20 dB under the recording's loud parts (its ninetieth percentile), for most of 0.6 s.
+- **The cut** keeps 1 s of tape before the first sound and 2 s after the last; a cut under 0.3 s is not made.
+- **Check**: sound that starts more than 1 s before the music, or goes on more than 3 s after it, is a quiet sound apart from the music (a hum, a count-in, a voice, a long fade): it is kept and marked. What would be cut but is not steady, as tape noise is (its levels spread more than 9 dB), is not cut and is marked too.
+- **Nothing to cut**: no steady noise long enough at either end, or no music found above the tape.
 
 ## The audio Worker (`worker/media/audio-edits.js`, `worker/media/mp3.js`)
 
