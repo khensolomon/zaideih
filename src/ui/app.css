@@ -2233,3 +2233,11 @@ img.acct-avatar { object-fit: cover; }
 .bar { transition: transform 0.2s ease, opacity 0.2s ease; }
 body[data-typing]:not([data-studio]) .bar { transform: translateY(calc(100% + 2 * var(--deck-gap))); opacity: 0; pointer-events: none; }
 body[data-typing]:not([data-studio])::after { opacity: 0; }
+
+/* Phones: the suggestions panel's chips as icons only, the chosen one filled, so all six fit a small screen; My music is its lock everywhere. Each is named in its label and tooltip. */
+@media (max-width: 899px) {
+	body[data-page="search"] .sg-panel .scopes { gap: 6px; }
+	body[data-page="search"] .sg-panel .scopes button { width: 44px; min-height: 40px; padding: 0; justify-content: center; }
+	body[data-page="search"] .sg-panel .scopes .lbl, body[data-page="search"] .mine .lbl { display: none; }
+	body[data-page="search"] .scope-tabs .mine { width: 40px; padding: 0; justify-content: center; }
+}
