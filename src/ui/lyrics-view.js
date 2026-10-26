@@ -30,6 +30,7 @@ import { account } from "../core/signin.js";
 import { on } from "../core/store.js";
 import { focusKey, refocus } from "./focus.js";
 import { icon } from "./icons.js";
+import { CHORD_SIZES, CHORD_TONES, chordStyle, setChordStyle } from "./chord-style.js";
 import { chordsShown, creditsHtml, detailChips, lyricsHtml, showChords, sideBySideHtml } from "./lyrics-render.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 import { artistLinks, cover, scriptClass } from "./parts.js";
@@ -44,9 +45,12 @@ function hymnLink(source) {
 
 const SIZE_KEY = "zaideih.lyrics.size";
 const SIZES = [16, 18, 21, 25];
+const SIZE_NAMES = ["Small", "Medium", "Large", "Larger"];
 const sizeIndex = () => {
 	try {
-		const n = Number(localStorage.getItem(SIZE_KEY));
+		// Not chosen yet: Medium (Number(null) would be 0, the smallest).
+		const saved = localStorage.getItem(SIZE_KEY);
+		const n = saved === null ? NaN : Number(saved);
 		return Number.isInteger(n) && n >= 0 && n < SIZES.length ? n : 1;
 	} catch {
 		return 1;
@@ -96,18 +100,31 @@ function langSwitch() {
 }
 
 /**
- * Play, as an icon on the line under the title: this song (from it on, in its
- * album), or pause and resume when it is the one playing. Beside it, whether
- * it is: bars moving while it plays, "Paused" while it waits.
+ * Play, as an icon on the line under the title, while another song (or none)
+ * is in the player: this song, from it on in its album. When this song is the
+ * one in the player, the player's own controls are for it: only whether it
+ * plays is said here, bars moving while it plays, "Paused" while it waits.
  */
 function playButton() {
 	const now = player.current()?.id === st.id;
 	const playing = now && player.state.playing;
-	const label = playing ? "Pause" : now ? "Resume" : "Play this song";
 	return html`<span class="ly-play-wrap" data-state="${playing ? "playing" : now ? "paused" : "other"}">
-		<button class="play-btn ly-play" data-ly="play" data-page-play="${st.track.title}" aria-label="${label}" title="${label}">${icon(playing ? "pause" : "play")}</button>
+		${now ? "" : html`<button class="play-btn ly-play" data-ly="play" data-page-play="${st.track.title}" aria-label="Play this song" title="Play this song">${icon("play")}</button>`}
 		${now ? html`<span class="ly-state" aria-live="polite">${playing ? html`<i class="eq" aria-hidden="true"><i></i><i></i><i></i></i>Playing` : "Paused"}</span>` : ""}
 	</span>`;
+}
+
+/** Reading: the words' size and how chords look, kept on this device only. */
+function readingPanel(hasChords) {
+	const size = sizeIndex();
+	const style = chordStyle();
+	const seg = (label, attr, entries, current) => html`<div class="ly-read-row"><span>${label}</span><div class="segmented" role="group" aria-label="${label}">${entries.map(([v, l]) => html`<button data-ly="${attr}" data-v="${v}" aria-pressed="${String(v === current)}">${l}</button>`)}</div></div>`;
+	return html`<div class="panel ly-read" id="ly-read">
+		${seg("Text", "size", SIZE_NAMES.map((l, i) => [String(i), l]), String(size))}
+		${hasChords ? html`${seg("Chord size", "chord-size", Object.entries(CHORD_SIZES).map(([k, [l]]) => [k, l]), style.size)}
+		${seg("Chords", "chord-tone", Object.entries(CHORD_TONES).map(([k, [l]]) => [k, l]), style.tone)}` : ""}
+		<p class="muted">Kept on this device only.</p>
+	</div>`;
 }
 
 function header() {
@@ -176,18 +193,18 @@ function content() {
 		<div class="ly-bar">
 			${detailChips(p, { transpose: chords ? st.transpose : 0, flats })}
 			<span class="ly-bar-end">
-				${p.chords ? html`<button class="btn ly-small" data-ly="chords" aria-pressed="${String(chords)}">${chords ? "Hide chords" : "Show chords"}</button>` : ""}
+				${p.chords ? html`<button class="icon-btn" data-ly="chords" aria-pressed="${String(chords)}" aria-label="${chords ? "Hide chords" : "Show chords"}" title="${chords ? "Hide chords" : "Show chords"}">${icon("chords")}</button>` : ""}
 				${chords ? html`<span class="ly-transpose" role="group" aria-label="Transpose">
 					<button class="icon-btn" data-ly="down" aria-label="Down a semitone" title="Down a semitone">−</button>
 					<span aria-live="polite">${st.transpose ? `${st.transpose > 0 ? "+" : ""}${st.transpose}` : "Key"}</span>
 					<button class="icon-btn" data-ly="up" aria-label="Up a semitone" title="Up a semitone">+</button>
 				</span>` : ""}
-				<button class="icon-btn ly-size" data-ly="smaller" aria-label="Smaller text" title="Smaller text" ${size === 0 ? "disabled" : ""}>A−</button>
-				<button class="icon-btn ly-size" data-ly="larger" aria-label="Larger text" title="Larger text" ${size === SIZES.length - 1 ? "disabled" : ""}>A+</button>
+				<button class="icon-btn" data-ly="reading" aria-expanded="${String(Boolean(st.readingOpen))}" aria-controls="ly-read" aria-label="Text size and chords" title="Text size and chords">${icon("type")}</button>
 				<button class="icon-btn" data-act="share" data-share="lyrics/${st.id}${st.lang ? `?lang=${st.lang}` : ""}" data-share-title="${st.track.title}" aria-label="Share these lyrics" title="Share these lyrics">${icon("share")}</button>
 				${signedIn && !st.offline ? html`<a class="icon-btn" href="${studio}" aria-label="Edit in the lyrics studio" title="Edit in the lyrics studio">${icon("edit")}</a>` : ""}
 			</span>
 		</div>
+		${st.readingOpen ? readingPanel(p.chords) : ""}
 		${p.timed ? html`<p class="acct-small ly-follow">${following ? "The line being sung is lit; tap a line to go there." : "Timed lyrics: play this song to follow along."}</p>` : ""}
 		<div style="--ly-size:${SIZES[size]}px">${st.lang && sideShown() && st.original ? sideBySideHtml(st.original, p, { chords, transpose: st.transpose, flats }) : lyricsHtml(p, { chords, transpose: st.transpose, flats })}</div>
 		${l.shared ? html`<p class="acct-small">${hymnLink(l.shared.source)}${sharedWithHtml(st.catalog, l.shared)}${l.shared.with.some((t) => st.catalog.track(t)) || hymnOf(l.shared.source) ? "." : ""}</p>` : ""}
@@ -234,8 +251,7 @@ function mount(root, ctx) {
 		if (!b || !root.contains(b)) return;
 		const what = b.dataset.ly;
 		if (what === "play") {
-			if (player.current()?.id === st.id) player.toggle();
-			else await ctx.playSong(st.track);
+			await ctx.playSong(st.track);
 		} else if (what === "chords") {
 			showChords(!chordsShown());
 			draw();
@@ -247,8 +263,14 @@ function mount(root, ctx) {
 		} else if (what === "side") {
 			setSide(!sideShown());
 			draw();
-		} else if (what === "smaller" || what === "larger") {
-			setSize(Math.min(SIZES.length - 1, Math.max(0, sizeIndex() + (what === "larger" ? 1 : -1))));
+		} else if (what === "reading") {
+			st.readingOpen = !st.readingOpen;
+			draw();
+		} else if (what === "size") {
+			setSize(Number(b.dataset.v));
+			draw();
+		} else if (what === "chord-size" || what === "chord-tone") {
+			setChordStyle(what === "chord-size" ? { size: b.dataset.v } : { tone: b.dataset.v });
 			draw();
 		} else if (what === "same") {
 			st.findOpen = !st.findOpen;

@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.26.7
+
+- Lyrics page: tools as icons, chords smaller and softer with a choice per device, Play only for another song
+- Play under the title only while another song (or none) is in the player; for this song the page says Playing or Paused
+- Chords (show, hide), text size and chords, share and edit as icons; A− and A+ move into the Text size and chords panel (Small, Medium, Large, Larger)
+- Chords smaller than the words and softer by default; their size and brightness chosen per device, kept only there (`zaideih.lyrics.chordStyle`), followed wherever chords show
+- Fixed: the text size started at Small instead of Medium on a device that had not chosen one
+
 ## v26.10.26.6
 
 - Lock screen and car stereos: the song as a picture, its title, artists and album readable on any screen

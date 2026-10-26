@@ -40,6 +40,7 @@ import { viz } from "./ui/viz.js";
 import { songbookImportView, songbooksView } from "./ui/songbooks-view.js";
 import { bookView, hymnView, personView, textView, workView } from "./ui/songbook-pages.js";
 import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
+import { applyChordStyle } from "./ui/chord-style.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1637,6 +1638,8 @@ function trackVisibleHeight() {
 	set();
 }
 trackVisibleHeight();
+// How chords look, as chosen on this device (ui/chord-style.js).
+applyChordStyle();
 
 /*
  * Typing on a touch screen (a text field has the focus): body[data-typing],

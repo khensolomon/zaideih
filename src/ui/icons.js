@@ -35,6 +35,8 @@ const paths = {
 	exitWatch: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
 	trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
 	plus: '<path d="M12 5v14M5 12h14"/>',
+	chords: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M6 8h12M6 13h12M10 3v18M14 3v18"/><circle cx="12" cy="10.5" r="1.2" fill="currentColor"/>',
+	type: '<path d="M3 18 8 6l5 12M4.6 14h6.8M14.5 18l3.25-7.5L21 18M15.6 15.5h4.3"/>',
 	radio: '<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/>',
 	up: '<path d="m6 15 6-6 6 6"/>',
 	album: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
