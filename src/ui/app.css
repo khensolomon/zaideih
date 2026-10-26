@@ -384,7 +384,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .cover.small .c-in { padding: 14cqi; justify-content: flex-start; }
 .cover.small .mark { width: 30cqi; height: max(2px, 5cqi); }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 20px 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile, 148px), 1fr)); gap: var(--gap-y, 20px) var(--gap-x, 16px); }
 @media (max-width: 480px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 18px 12px; } }
 .tile { position: relative; display: grid; gap: 6px; min-width: 0; container-type: inline-size; }
 .tile .cover { margin-bottom: 4px; transition: filter 0.2s ease; }
@@ -411,18 +411,18 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .tile:hover .tile-play, .tile-play:focus-visible, .tile:focus-within .tile-play { opacity: 1; transform: none; }
 .tile-play:hover { filter: brightness(1.12); }
 @media (hover: none) { .tile-play { display: none; } }
-.row-scroll { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 168px); gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: thin; }
+.row-scroll { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, var(--tile-row, 168px)); gap: var(--gap-x, 16px); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: thin; }
 .row-scroll > * { scroll-snap-align: start; }
 
 /* ---------- top artists by language ---------- */
 .lang-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px; border-radius: 999px; background: var(--surface-2); max-width: 100%; overflow-x: auto; }
 .lang-tabs button { border: 0; background: none; padding: 7px 16px; border-radius: 999px; color: var(--ink-2); font-weight: 600; white-space: nowrap; }
 .lang-tabs button[aria-selected="true"] { background: var(--tab-active); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); }
-.artist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 18px 14px; }
+.artist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--person, 116px), 1fr)); gap: 18px var(--gap-x, 14px); }
 @media (max-width: 480px) { .artist-grid { grid-template-columns: repeat(3, 1fr); gap: 16px 10px; } }
 .artist-card { display: grid; justify-items: center; gap: 8px; text-align: center; min-width: 0; }
 .artist-card:hover { text-decoration: none; }
-.artist-card .avatar { width: 100%; max-width: 112px; }
+.artist-card .avatar { width: 100%; max-width: calc(var(--person, 116px) - 4px); }
 .artist-card:hover .avatar { filter: brightness(1.12); }
 .artist-card .name { font-weight: 650; font-size: 15px; line-height: 1.3; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .artist-card .plays { font-size: 13px; color: var(--ink-3); margin-top: -4px; }
@@ -2153,7 +2153,7 @@ img.acct-avatar { object-fit: cover; }
 .sb-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .sb-sort select { min-height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 14px; }
 
-.sb-shelf { list-style: none; margin: 0 0 28px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 26px 18px; }
+.sb-shelf { list-style: none; margin: 0 0 28px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--book, 168px), 1fr)); gap: 26px var(--gap-x, 18px); }
 .sb-card { position: relative; min-width: 0; }
 .sb-card-open { display: grid; gap: 10px; color: inherit; }
 .sb-card-open:hover { text-decoration: none; }
@@ -2283,3 +2283,37 @@ body[data-typing]:not([data-studio])::after { opacity: 0; }
 .ly-read .segmented button { padding: 5px 12px; font-size: 14px; }
 .ly-read p { margin: 0; font-size: 13px; }
 .ly-bar-end .icon-btn[aria-pressed="true"], .ly-bar-end .icon-btn[aria-expanded="true"] { background: var(--raised); color: var(--ink); }
+
+/* ---------- wide screens ----------
+ * Pages of covers and cards (home, a language, genres, search, the
+ * songbooks) take the whole width beside the sidebar: their tiles grow too (from
+ * the room beside the sidebar), so a wide screen shows larger covers and a
+ * few more in a row, never a crowd of small ones. Pages read top to bottom
+ * (an album, an artist, lyrics, a list of songs, text) keep a reading width,
+ * a little wider on large screens.
+ */
+@media (min-width: 900px) {
+	:root {
+		--room: calc(100vw - var(--rail));
+		--tile: clamp(148px, calc(var(--room) / 12.5), 236px);
+		--tile-row: clamp(168px, calc(var(--room) / 11), 250px);
+		--person: clamp(116px, calc(var(--room) / 15), 176px);
+		--book: clamp(168px, calc(var(--room) / 11), 240px);
+		--gap-x: clamp(16px, calc(var(--room) / 110), 28px);
+		--gap-y: clamp(20px, calc(var(--room) / 90), 34px);
+	}
+	body:is([data-page="home"], [data-page="lang"], [data-page="genre"], [data-page="genres"], [data-page="search"], [data-page="songbooks"]) main {
+		max-width: none;
+		padding-left: clamp(40px, 3vw, 72px); padding-right: clamp(40px, 3vw, 72px);
+	}
+}
+@media (min-width: 1700px) {
+	main { max-width: 1280px; }
+	/* Covers on a large screen: the title and its facts a step larger, to match. */
+	.grid .tile .t, .row-scroll .tile .t { font-size: 16px; }
+}
+/* Lists of songs on the wide pages: two or three columns once there is room, read down the first, then the next. */
+@media (min-width: 1900px) {
+	body:is([data-page="home"], [data-page="search"]) .tracks { columns: 3 560px; column-gap: clamp(32px, 3vw, 64px); }
+	body:is([data-page="home"], [data-page="search"]) .tracks > li { break-inside: avoid; }
+}
