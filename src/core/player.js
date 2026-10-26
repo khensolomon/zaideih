@@ -282,20 +282,70 @@ audio.addEventListener("error", () => {
 /** Optional (track) => Promise<url> supplying lock-screen artwork; see player.setArtwork. */
 let artworkFor = null;
 
+/*
+ * Covers drawn for the lock screen, by track id, the newest last. A car
+ * stereo, CarPlay or an iPod connector reads the artwork once, when the song
+ * changes; a change made from there (next, previous) happens with the page
+ * in the background, where drawing a cover can be slow or held back. So the
+ * songs around the playing one are drawn ahead, while the page is in front,
+ * and a change sets the metadata once, with its cover, instead of the app
+ * icon followed by the cover a moment later (which such devices miss).
+ */
+const drawn = new Map();
+const DRAWN_KEEP = 10;
+
+async function artworkOf(track) {
+	if (drawn.has(track.id)) return drawn.get(track.id);
+	const src = await artworkFor(track);
+	if (src) {
+		drawn.set(track.id, src);
+		while (drawn.size > DRAWN_KEEP) drawn.delete(drawn.keys().next().value);
+	}
+	return src;
+}
+
+/** Draws the covers of the songs next to the playing one: one back, three ahead (around the end with repeat all). */
+function drawAhead() {
+	if (!artworkFor || !state.queue.length) return;
+	const n = state.queue.length;
+	for (const step of [1, -1, 2, 3]) {
+		let i = state.index + step;
+		if (i < 0 || i >= n) {
+			if (state.repeat !== "all") continue;
+			i = (i + n) % n;
+		}
+		const t = catalog?.track(state.queue[i]);
+		if (t && !drawn.has(t.id)) artworkOf(t).catch(() => { /* drawn when it plays */ });
+	}
+}
+
+function metadataFor(track, src) {
+	const art = src
+		? [{ src, sizes: "512x512", type: src.startsWith("data:image/jpeg") ? "image/jpeg" : "image/png" }]
+		: [{ src: new URL("icons/icon-512.png", document.baseURI).href, sizes: "512x512", type: "image/png" }];
+	return new MediaMetadata({ title: track.title, artist: creditOf(track.artists), album: track.album.title, artwork: art });
+}
+
 function updateMediaSession(track) {
 	if (!("mediaSession" in navigator)) return;
-	const meta = (src) => new MediaMetadata({
-		title: track.title,
-		artist: creditOf(track.artists),
-		album: track.album.title,
-		artwork: [{ src, sizes: "512x512", type: "image/png" }],
-	});
-	navigator.mediaSession.metadata = meta("icons/icon-512.png");
-	if (!artworkFor) return;
-	artworkFor(track).then((src) => {
-		if (src && state.queue[state.index] === track.id) navigator.mediaSession.metadata = meta(src);
+	const ready = drawn.get(track.id);
+	navigator.mediaSession.metadata = metadataFor(track, ready);
+	if (ready || !artworkFor) return;
+	artworkOf(track).then((src) => {
+		if (src && state.queue[state.index] === track.id) navigator.mediaSession.metadata = metadataFor(track, src);
 	}, (err) => console.warn("Cover artwork could not be drawn; the app icon is shown instead.", err));
 }
+
+// Back in front: the covers ahead are drawn while drawing is quick.
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") drawAhead(); });
+// Playing: the metadata again (some devices read it only once the new song sounds), and the next covers drawn.
+audio.addEventListener("playing", () => {
+	const t = current();
+	if (!t || !("mediaSession" in navigator)) return;
+	const ready = drawn.get(t.id);
+	if (ready) navigator.mediaSession.metadata = metadataFor(t, ready);
+	drawAhead();
+});
 
 function bindMediaSession() {
 	if (!("mediaSession" in navigator)) return;

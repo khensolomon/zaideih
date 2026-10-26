@@ -321,8 +321,10 @@ export function clearArtCaches() {
 
 /**
  * Draws the cover on a canvas and returns it as a data URL, for Media
- * Session artwork (lock screen, media keys). A data URL rather than a blob
- * URL, since the operating system loads artwork outside the page.
+ * Session artwork (lock screen, media keys, car stereos). A data URL rather
+ * than a blob URL, since the operating system loads artwork outside the
+ * page; a JPEG (the cover is opaque), a fraction of the PNG's size, for
+ * accessories that take artwork over a slow link.
  */
 export async function coverImage(album, current = -1, size = 512) {
 	if (typeof document === "undefined") return null;
@@ -371,7 +373,7 @@ export async function coverImage(album, current = -1, size = 512) {
 		const bh = (h / 100) * 12 * s;
 		g.fillRect(8 * s + i * (bw + gap), 92 * s - bh, bw, bh);
 	});
-	return canvas.toDataURL("image/png");
+	return canvas.toDataURL("image/jpeg", 0.9);
 }
 
 function wrapText(g, text, x, y, maxWidth, lineHeight, maxLines) {
