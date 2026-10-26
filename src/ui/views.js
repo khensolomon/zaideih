@@ -264,13 +264,14 @@ export function artist(c, { id }) {
 				<div>
 					<div class="kind">${a.type === 1 ? "Group or various artists" : "Artist"}${langs.length ? html` in ${langs.map(langLabel).join(", ")}` : ""}</div>
 					<h1 class="${scriptClass(a.name)}">${a.name}</h1>
-					<div class="facts">
-						${a.aka ? html`<span class="${scriptClass(a.aka)}">Also known as ${a.aka}</span>` : ""}
-						${career.from ? html`<span>${career.to > career.from ? `${career.from}–${career.to}` : career.from}</span>` : ""}
-						<span>${plural(a.tracks.length, "song")} on ${plural(a.albums.length, "album")}</span>
-						<span>${compact.format(a.plays)} plays</span>
-						${best && career.to > career.from ? html`<span>Most played year ${best}</span>` : ""}
-					</div>
+					${a.aka ? html`<div class="facts"><span class="${scriptClass(a.aka)}">Also known as ${a.aka}</span></div>` : ""}
+					<dl class="artist-stats">
+						${career.from ? html`<div><dt>${career.to > career.from ? "Years" : "Year"}</dt><dd>${career.to > career.from ? `${career.from}–${career.to}` : career.from}</dd></div>` : ""}
+						<div><dt>Songs</dt><dd>${a.tracks.length.toLocaleString()}</dd></div>
+						<div><dt>Albums</dt><dd>${own.length.toLocaleString()}${appearsOn.length ? html`<small title="And on ${plural(appearsOn.length, "album")} of others">+${appearsOn.length}</small>` : ""}</dd></div>
+						<div><dt>Plays</dt><dd>${compact.format(a.plays)}</dd></div>
+						${partners.length ? html`<div><dt>Sings with</dt><dd>${partners.length.toLocaleString()}</dd></div>` : ""}
+					</dl>
 				</div>
 			</div>
 			<div class="actions">
@@ -280,6 +281,7 @@ export function artist(c, { id }) {
 				<button class="icon-btn" data-act="share" data-share="artist/${a.id}" data-share-title="${a.name}" aria-label="Share" title="Share">${icon("share")}</button>
 				${editLink({ artist: a.id })}
 			</div>
+			${careerHtml(career, best, own)}
 			<section class="section" style="margin-top:12px">
 				<header><h2>Popular</h2></header>
 				${chunkedTracks(popular, a.name, { step: 10, showAlbum: true })}
@@ -306,6 +308,38 @@ export function artist(c, { id }) {
 			</section>` : ""}`,
 	};
 }
+/**
+ * The artist's years as a strip: a bar a year, as tall as the songs of that
+ * year, the most played year lit, a dot under the years of their own albums;
+ * each bar names its year, songs and plays. Nothing for a single year.
+ */
+function careerHtml(career, best, own) {
+	if (!career.from || career.to <= career.from) return "";
+	const most = Math.max(1, ...career.songs);
+	const albumYears = new Set(own.map((al) => al.year).filter(Boolean));
+	const active = career.songs.filter(Boolean).length;
+	return html`<figure class="career" aria-label="Songs by year, ${career.from} to ${career.to}: ${plural(active, "year")} with songs${best ? `, the most played ${best}` : ""}">
+		<div class="career-bars" aria-hidden="true">${career.songs.map((n, i) => {
+			const y = career.from + i;
+			return html`<span class="${[y === best ? "best" : "", albumYears.has(y) ? "album" : ""].filter(Boolean).join(" ")}" style="--h:${n ? Math.max(6, Math.round((n / most) * 100)) : 0}%" title="${y}: ${n ? `${plural(n, "song")}, ${compact.format(career.plays[i])} plays` : "no songs"}${albumYears.has(y) ? " · an album" : ""}"></span>`;
+		})}</div>
+		${axisHtml(career, best)}
+	</figure>`;
+}
+
+/**
+ * The strip's years: the first and the last at the ends, the most played
+ * under its bar; next to an end, it is named there instead, so the labels
+ * never run into each other.
+ */
+function axisHtml(career, best) {
+	const n = career.to - career.from + 1;
+	const at = best ? (best - career.from + 0.5) / n : -1;
+	const end = (y) => html`<span${y === best ? html` class="career-best"` : ""}>${y}${y === best ? " · most played" : ""}</span>`;
+	const middle = best && at > 0.18 && at < 0.82;
+	return html`<figcaption class="career-axis">${end(career.from)}${middle ? html`<span class="career-best career-at" style="left:${(at * 100).toFixed(1)}%">Most played ${best}</span>` : ""}${end(career.to)}</figcaption>`;
+}
+
 /** How many of those an artist sings with are shown as cards. */
 const PARTNERS_SHOWN = 12;
 
