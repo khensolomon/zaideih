@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.27.8
+
+- Published Chin Famine Concert (29 songs, from @khensolomon's library)
+
 ## v26.10.27.7
 
 - Smoother song rows: the playing bars pause in place, starting a song no longer holds the page up, and a page loads with one redraw
