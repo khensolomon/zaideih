@@ -111,6 +111,18 @@ export function mount(root, ctx) {
 		requests: null,   // GET /library/requests: { reviewer, requests }
 		reviewing: null,  // the request whose approval form is open
 		jumpReview: null, // #/workspace?review=<id>, from "Public in the catalog"
+		jumpMember: null, // #/workspace?member=<id>
+		// Members: the search, filter and sort; the page of the list; the member open, their page, tab and uploads.
+		mq: { q: "", filter: "all", sort: "seen" },
+		mlist: null,
+		member: null,
+		mpage: null,
+		mtab: "overview",
+		mup: null,
+		mpick: new Set(),
+		blocking: false,
+		signingOut: null,
+		confirmDelete: false,
 	};
 	let poll = 0;
 	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
@@ -168,6 +180,13 @@ export function mount(root, ctx) {
 				if (may("lyrics")) loadLyrics().catch(fail);
 				if (may("albums")) loadHolds().catch(fail);
 				if (may("catalog")) loadLive().catch(fail);
+				// #/workspace?member=<id>: that member's page in Members.
+				if (s.jumpMember !== null && s.rights.size) {
+					const id = s.jumpMember;
+					s.jumpMember = null;
+					openSection("members").then(() => openMember(id, "overview")).catch(fail);
+					return;
+				}
 				render();
 			}, (err) => console.warn("library", err.message));
 			ctx.onWho?.();
@@ -251,7 +270,7 @@ export function mount(root, ctx) {
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
-		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.members = null; s.requests = null; s.reviewing = null;
+		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.mlist = null; s.member = null; s.mpage = null; s.mup = null; s.requests = null; s.reviewing = null;
 		render();
 		await account.signOut().catch((err) => console.warn("the Zaideih session could not be signed out", err));
 		if (via === "github") await session.signOut();
@@ -946,28 +965,107 @@ export function mount(root, ctx) {
 		render();
 	}
 
-	async function loadMembers() {
-		s.members = (await libraryCall("GET", "/members")).members;
+	/*
+	 * Members (docs/library.md#members): the list a page at a time from the
+	 * Worker (found by name, @login, #id, and email for co-owners; filtered
+	 * and sorted there), and one member's page beside it, with tabs.
+	 */
+	const MEMBER_FILTERS = [["all", "All"], ["rights", "With rights"], ["uploading", "Uploading"], ["new", "New, 30 days"], ["blocked", "Blocked"]];
+	const MEMBER_SORTS = [["seen", "Last seen"], ["joined", "Joined"], ["space", "Space used"], ["name", "Name"]];
+	const MEMBER_TABS = [["overview", "Overview"], ["library", "Library"], ["signins", "Sign-ins"], ["history", "History"]];
+	const SEARCH_MS = 250;
+	let memberSearch = 0;
+	let memberAsk = 0;
+
+	const memberQuery = (offset = 0) => {
+		const p = new URLSearchParams();
+		if (s.mq.q) p.set("q", s.mq.q);
+		if (s.mq.filter !== "all") p.set("filter", s.mq.filter);
+		if (s.mq.sort !== "seen") p.set("sort", s.mq.sort);
+		if (offset) p.set("offset", String(offset));
+		const text = p.toString();
+		return text ? `?${text}` : "";
+	};
+
+	/** The first page of members for the search, filter and sort; `more` adds the next page. */
+	async function loadMembers({ more = false } = {}) {
+		const ask = ++memberAsk;
+		const offset = more && s.mlist ? s.mlist.members.length : 0;
+		const page = await libraryCall("GET", `/members${memberQuery(offset)}`);
+		// A newer search has been asked for meanwhile: its answer wins.
+		if (ask !== memberAsk) return;
+		s.mlist = more && s.mlist ? { ...page, members: [...s.mlist.members, ...page.members] } : page;
 		render();
 	}
 
-	async function loadMemberUploads(id) {
-		s.memberUploads = (await libraryCall("GET", `/members/${id}`)).uploads;
+	let uploadSearch = 0;
+	function searchUploads(text) {
+		s.mup = { ...(s.mup ?? { uploads: null, total: 0 }), q: text.trim() };
+		clearTimeout(uploadSearch);
+		uploadSearch = setTimeout(() => { s.mpick = new Set(); loadMemberUploads().catch(fail); }, SEARCH_MS);
+	}
+
+	/** A search typed: asked for once typing pauses. */
+	function searchMembers(text) {
+		s.mq.q = text.trim();
+		clearTimeout(memberSearch);
+		memberSearch = setTimeout(() => loadMembers().catch(fail), SEARCH_MS);
+	}
+
+	async function openMember(id, tab = s.mtab) {
+		s.member = id;
+		s.mtab = tab;
+		s.mpage = null;
+		s.mup = null;
+		s.mpick = new Set();
+		s.blocking = false;
+		render();
+		await loadMember();
+	}
+
+	async function loadMember() {
+		const id = s.member;
+		const page = await libraryCall("GET", `/members/${id}`);
+		if (s.member !== id) return;
+		s.mpage = page;
+		render();
+		if (s.mtab === "library" && page.uploads && may("moderate")) await loadMemberUploads();
+	}
+
+	async function loadMemberUploads({ more = false } = {}) {
+		const id = s.member;
+		const q = s.mup?.q ?? "";
+		const offset = more && s.mup?.uploads ? s.mup.uploads.length : 0;
+		const p = new URLSearchParams();
+		if (q) p.set("q", q);
+		if (offset) p.set("offset", String(offset));
+		const page = await libraryCall("GET", `/members/${id}/uploads${p.size ? `?${p}` : ""}`);
+		if (s.member !== id || (s.mup?.q ?? "") !== q) return;
+		s.mup = more && s.mup?.uploads ? { ...page, uploads: [...s.mup.uploads, ...page.uploads] } : page;
 		render();
 	}
 
+	/** A change to the member open (rights, folder, block, sign-out): their page and the list again. */
 	async function setMember(id, change, done) {
-		await libraryCall("POST", `/members/${id}`, change);
+		const { member } = await libraryCall("POST", `/members/${id}`, change);
 		ctx.notify(done);
-		await loadMembers();
+		if (s.mlist) s.mlist = { ...s.mlist, members: s.mlist.members.map((m) => (m.id === id && member ? member : m)) };
+		if (s.member === id) await loadMember();
+		else render();
 	}
 
-	async function deleteMemberUpload(id, title) {
-		await libraryCall("DELETE", `/uploads/${id}`);
-		ctx.notify(`Deleted “${title}”`);
-		await Promise.all([loadMembers(), s.memberOpen ? loadMemberUploads(s.memberOpen) : null]);
+	async function deleteUploads(ids) {
+		const out = await libraryCall("POST", `/members/${s.member}/uploads/delete`, { ids });
+		s.mpick = new Set();
+		const refused = out.refused.length ? `; ${plural(out.refused.length, "was", "were")} kept: ${out.refused[0].error}` : "";
+		ctx.notify(`${plural(out.deleted.length, "upload")} deleted${refused}`, out.deleted.length ? undefined : { kind: "error" });
+		s.mup = null;
+		await Promise.all([loadMember(), loadMembers()]);
+		if (s.mtab === "library") await loadMemberUploads();
 	}
 
+	/** Bytes as MB, or GB from a thousand MB (a quota reads "2 GB"). */
+	const space = (n) => (n >= 1e9 ? `${(n / 1e9).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB` : mb(n));
 	const mb = (n) => `${(n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
 	const ago = (t) => new Date(t * 1000).toLocaleDateString();
 
@@ -1366,31 +1464,215 @@ export function mount(root, ctx) {
 	}
 
 	/**
-	 * Members of personal libraries, for anyone the owner has given a right:
-	 * space and uploads; blocking and deleting with Moderate members; giving
-	 * and taking rights for the owner and co-owners.
+	 * Members: the list (search, filters with counts, sort, a page at a time)
+	 * beside the member open, whose page has Overview (rights, storage
+	 * folder, block, sign-out), Library (uploads, Moderate members),
+	 * Sign-ins and History. On phones the list and a member take the page in turn.
 	 */
 	function membersView() {
-		if (!s.members) return html`<p class="adm-hint">Reading the members…</p>`;
-		return html`<p class="adm-lead">People who have used their own library. Blocking stops their uploads playing at once and can be undone; deleting an upload cannot. The owner's library is private, and nobody can block the owner or change the owner's rights.</p>
-			<ul class="adm-members">${s.members.map((m) => html`<li data-blocked="${String(Boolean(m.blocked))}">
-				<div class="adm-member">
-					<span class="adm-thumb adm-thumb-artist">${m.login.slice(0, 1).toUpperCase()}</span>
-					<span class="adm-row-text"><b>${m.login}${m.owner ? html` <span class="adm-tag">owner</span>` : m.rights.map((r) => html` <span class="adm-tag">${RIGHT_NAMES[r]?.[0] ?? r}</span>`)}${m.blocked ? html` <span class="adm-tag danger">blocked</span>` : ""}</b>
-					<small>${plural(m.uploads, "upload")} · ${mb(m.used)} · last seen ${ago(m.lastSeen)}${m.blocked ? ` · blocked by ${m.blocked.by}: ${m.blocked.reason}` : ""}</small></span>
-				</div>
-				${m.owner ? "" : html`<div class="adm-actions">
-					${m.uploads && may("moderate") ? html`<button class="btn" data-adm="member-open" data-id="${m.id}" aria-expanded="${String(s.memberOpen === m.id)}">${s.memberOpen === m.id ? "Hide uploads" : "Uploads"}</button>` : ""}
-					${!may("moderate") ? "" : m.blocked
-						? html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`
-						: html`<form class="adm-inline" data-form="block" data-id="${m.id}"><input name="reason" required maxlength="200" placeholder="Reason, e.g. spam" aria-label="Reason for blocking ${m.login}"><button class="btn danger" type="submit">Block</button></form>`}
-				</div>`}
-				${!m.owner && may("manage") ? html`<fieldset class="adm-rights"><legend>Rights of ${m.login}</legend>${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => html`<label class="adm-chip-check" title="${what}"><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${m.rights.includes(r) ? "checked" : ""}>${name}</label>`)}</fieldset>` : ""}
-				${!m.owner && may("manage") && m.rights.includes("storage") && !m.rights.includes("manage") ? html`<form class="adm-folder" data-form="folder" data-id="${m.id}"><label class="adm-field"><span>Storage folder</span><input name="folder" value="${m.folder}" spellcheck="false" autocomplete="off" aria-describedby="folder-help-${m.id}"></label><button class="btn" type="submit">Save</button><small id="folder-help-${m.id}">Where in R2 ${m.login} adds files from, e.g. <code>shared/${m.login}/</code>. Empty: <code>private/${m.id}/</code>.</small></form>` : ""}
-				${s.memberOpen === m.id ? (s.memberUploads ? html`<ol class="adm-member-uploads">${s.memberUploads.map((u) => html`<li><span>${u.title}<small>${[u.artist, u.album, u.fileName, mb(u.size)].filter(Boolean).join(" · ")}</small></span><button class="link-btn danger" data-adm="upload-delete" data-id="${u.id}" data-title="${u.title}">Delete</button></li>`)}</ol>` : html`<p class="adm-hint">Reading…</p>`) : ""}
-			</li>`)}</ul>
-			<p><button class="link-btn" data-adm="members-reload">Check again</button></p>`;
+		if (!s.mlist) return html`<p class="adm-hint">Reading the members…</p>`;
+		const l = s.mlist;
+		const open = s.member !== null;
+		return html`<div class="adm-split adm-mstudio" data-open="${String(open)}">
+			<aside class="adm-split-list adm-mlist" aria-label="Members">
+				<label class="adm-msearch">${icon("search")}<input type="search" name="mq" data-adm="member-q" value="${s.mq.q}" placeholder="${may("manage") ? "Name, @login, email or #id" : "Name, @login or #id"}" aria-label="Find a member" autocomplete="off" spellcheck="false"></label>
+				<div class="adm-mfilters" role="group" aria-label="Show">${MEMBER_FILTERS.map(([id, label]) => html`<button class="adm-mchip" data-adm="member-filter" data-filter="${id}" aria-pressed="${String(s.mq.filter === id)}">${label} <span>${(l.counts[id] ?? 0).toLocaleString()}</span></button>`)}</div>
+				<div class="adm-mbar"><span>${l.total ? `${Math.min(l.members.length, l.total).toLocaleString()} of ${l.total.toLocaleString()}` : "No member matches"}</span>
+					<label>Sort <select data-adm="member-sort" aria-label="Sort members">${MEMBER_SORTS.map(([id, label]) => html`<option value="${id}" ${s.mq.sort === id ? "selected" : ""}>${label}</option>`)}</select></label></div>
+				<ul class="adm-mrows">${l.members.map((m) => html`<li><button data-adm="member-pick" data-id="${m.id}" aria-current="${String(s.member === m.id)}">
+					${memberPhoto(m, 40)}
+					<span class="adm-row-text"><b>${m.name || m.login}</b><small>${memberLine(m)}</small></span>
+					${memberTag(m)}
+				</button></li>`)}</ul>
+				${l.members.length < l.total ? html`<button class="btn adm-more" data-adm="members-more">Show ${Math.min(50, l.total - l.members.length).toLocaleString()} more</button>` : ""}
+			</aside>
+			<div class="adm-split-main">${open ? memberPane() : html`<p class="adm-lead">Pick a member to see their rights, library, sign-ins and history. Blocking stops their uploads playing at once and can be undone; deleting an upload cannot. Nobody can block the owner, change the owner's rights or see the owner's library.</p>`}</div>
+		</div>`;
 	}
+
+	const photoOf = (url) => (/^https:\/\/avatars\.githubusercontent\.com\//.test(url) ? sized(url) : url);
+	function memberPhoto(m, size) {
+		const letter = (m.name || m.login || "?").trim().slice(0, 1).toUpperCase();
+		return m.picture
+			? html`<img class="adm-mphoto" src="${photoOf(m.picture)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer" style="--size:${size}px">`
+			: html`<span class="adm-mphoto blank" style="--size:${size}px" aria-hidden="true">${letter}</span>`;
+	}
+	function memberTag(m) {
+		if (m.blocked) return html`<span class="adm-tag danger">Blocked</span>`;
+		if (m.owner) return html`<span class="adm-tag">Owner</span>`;
+		if (m.rights.includes("manage")) return html`<span class="adm-tag">Co-owner</span>`;
+		if (m.rights.length) return html`<span class="adm-tag" title="${m.rights.map((r) => RIGHT_NAMES[r]?.[0] ?? r).join(", ")}">${RIGHT_NAMES[m.rights[0]]?.[0] ?? m.rights[0]}${m.rights.length > 1 ? ` +${m.rights.length - 1}` : ""}</span>`;
+		return "";
+	}
+	const memberLine = (m) => [m.name && m.login !== m.name ? `@${m.login}` : "", m.uploads ? plural(m.uploads, "upload") : "", `seen ${since(m.lastSeen)}`].filter(Boolean).join(" · ");
+
+	/** How long ago, in words: "2 h ago", "yesterday", "3 days ago", or the date. */
+	function since(t) {
+		const sec = Math.max(0, Date.now() / 1000 - t);
+		if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))} min ago`;
+		if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
+		if (sec < 2 * 86400) return "yesterday";
+		if (sec < 14 * 86400) return `${Math.round(sec / 86400)} days ago`;
+		return new Date(t * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	}
+	const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	const PROVIDERS = { github: "GitHub", google: "Google", email: "email", passkey: "a passkey" };
+
+	function memberPane() {
+		const p = s.mpage;
+		const fromList = s.mlist?.members.find((m) => m.id === s.member);
+		const m = p?.member ?? fromList;
+		if (!m) return html`<p class="adm-hint">Reading the member…</p>`;
+		const ways = p ? [...new Set(p.logins.map((l) => PROVIDERS[l.provider] ?? l.provider))].concat(p.passkeys.count ? ["a passkey"] : []) : [];
+		const tabs = MEMBER_TABS.filter(([id]) => id !== "library" || (p?.uploads?.count && may("moderate")));
+		const tab = tabs.some(([id]) => id === s.mtab) ? s.mtab : "overview";
+		return html`<div class="adm-mpane">
+			<div class="adm-mhead">
+				${memberPhoto(m, 84)}
+				<div class="adm-mwho">
+					<span class="adm-kicker">Member #${m.id}${ways.length ? ` · signs in with ${ways.join(" and ")}` : ""}</span>
+					<h1>${m.name || m.login}</h1>
+					<span>@${m.login} · joined ${day(m.firstSeen)} · last seen ${since(m.lastSeen)}</span>
+				</div>
+				${memberActions(m)}
+			</div>
+			${m.blocked ? html`<p class="adm-mblocked">Blocked by ${m.blocked.by} on ${day(m.blocked.at)}: “${m.blocked.reason}”. Their uploads do not play for anyone and their library is closed to them.</p>` : ""}
+			${s.blocking ? html`<form class="adm-mblock" data-form="block" data-id="${m.id}"><label class="adm-field"><span>Why (they see this)</span><input name="reason" required maxlength="200" placeholder="e.g. uploads other people's albums" autocomplete="off"></label><button class="btn danger" type="submit">Block ${m.name || m.login}</button><button class="link-btn" type="button" data-adm="member-block-cancel">Cancel</button></form>` : ""}
+			${p ? memberTiles(p) : html`<p class="adm-hint">Reading…</p>`}
+			<div class="adm-seg" role="tablist" aria-label="${m.login}">${tabs.map(([id, label]) => html`<button role="tab" data-adm="member-tab" data-tab="${id}" aria-selected="${String(id === tab)}">${label}${id === "library" && p?.uploads ? html` <span>${p.uploads.count.toLocaleString()}</span>` : ""}</button>`)}</div>
+			${!p ? "" : tab === "library" ? memberLibrary(m) : tab === "signins" ? memberSignIns(p) : tab === "history" ? memberHistory(p, "all") : memberOverview(m, p)}
+		</div>`;
+	}
+
+	function memberActions(m) {
+		if (m.owner || !may("moderate")) return "";
+		// A member who holds rights answers to the owner and co-owners.
+		if (m.rights.length && !may("manage")) return "";
+		if (m.blocked) return html`<button class="btn" data-adm="member-unblock" data-id="${m.id}">Unblock</button>`;
+		return s.blocking ? "" : html`<button class="btn danger" data-adm="member-block" data-id="${m.id}">Block…</button>`;
+	}
+
+	function memberTiles(p) {
+		const u = p.uploads;
+		const c = p.contributions;
+		const req = Object.values(c.requests).reduce((a, n) => a + n, 0);
+		const share = u?.quota ? Math.min(100, Math.round((u.used / u.quota) * 100)) : 0;
+		return html`<div class="adm-tiles adm-mtiles">
+			${u ? html`<div class="adm-tile"><span>Uploads</span><b>${u.count.toLocaleString()}</b><small>${u.published ? `${u.published.toLocaleString()} published` : "none published"}</small></div>
+			<div class="adm-tile"><span>Space</span><b>${space(u.used)}</b>${u.quota ? html`<span class="adm-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${share}" aria-label="${share}% of the space"><span style="width:${share}%"></span></span><small>of ${space(u.quota)}</small>` : ""}</div>` : ""}
+			${p.library ? html`<div class="adm-tile"><span>Library</span><b>${p.library.liked.toLocaleString()}</b><small>liked · ${plural(p.library.playlists, "playlist")}${p.library.sharesGiven || p.library.sharesReceived ? ` · ${plural(p.library.sharesGiven + p.library.sharesReceived, "share")}` : ""}</small></div>` : ""}
+			<div class="adm-tile"><span>Contributions</span><b>${c.lyrics.toLocaleString()}</b><small>lyrics versions · ${plural(req, "request")}${c.songbooks ? ` · ${plural(c.songbooks, "songbook")}` : ""}</small></div>
+			<div class="adm-tile"><span>Devices</span><b>${p.sessions.count.toLocaleString()}</b><small>${p.sessions.count ? `signed in, last ${since(p.sessions.lastUsed)}` : "signed in nowhere"}</small></div>
+		</div>`;
+	}
+
+	function memberOverview(m, p) {
+		const given = new Map(p.rights.map((r) => [r.kind, r]));
+		const editable = !m.owner && may("manage");
+		const rights = html`<section aria-label="Rights">
+			<div class="adm-h-row"><h2 class="adm-h">Rights</h2><span class="adm-hint">${m.owner ? "the owner holds all" : `${given.size} of ${Object.keys(RIGHT_NAMES).length}`}</span></div>
+			<ul class="adm-mrights">${Object.entries(RIGHT_NAMES).map(([r, [name, what]]) => {
+				const g = given.get(r);
+				return html`<li><label><input type="checkbox" data-adm="member-right" data-id="${m.id}" data-right="${r}" ${g || m.owner ? "checked" : ""} ${editable ? "" : "disabled"}><span class="adm-row-text"><b>${name}</b><small>${what}</small></span>${g?.by ? html`<small class="adm-mby">by ${g.by} · ${day(g.at)}</small>` : ""}</label></li>`;
+			})}</ul>
+			${editable ? "" : html`<p class="adm-hint">${m.owner ? "Nobody changes the owner's rights." : "Only the owner and co-owners give or take rights."}</p>`}
+			${editable && m.rights.includes("storage") && !m.rights.includes("manage") ? html`<form class="adm-folder" data-form="folder" data-id="${m.id}"><label class="adm-field"><span>Storage folder</span><input name="folder" value="${m.folder}" spellcheck="false" autocomplete="off" aria-describedby="folder-help"></label><button class="btn" type="submit">Save</button><small id="folder-help">Where in R2 ${m.login} adds files from, e.g. <code>shared/${m.login}/</code>. Empty: <code>private/${m.id}/</code>.</small></form>` : ""}
+		</section>`;
+		const outCan = !m.owner && may("moderate") && (!m.rights.length || may("manage"));
+		return html`<div class="adm-two">
+			${rights}
+			<section aria-label="Lately">
+				<div class="adm-h-row"><h2 class="adm-h">Lately</h2><button class="link-btn" data-adm="member-tab" data-tab="history">All history</button></div>
+				${memberHistory(p, 6)}
+				${outCan && p.sessions.count ? html`<div class="adm-mout">
+					<b>Sign out everywhere</b>
+					<small>Ends ${m.login}'s ${plural(p.sessions.count, "session")} at once; they sign in again on each device. For a lost phone, a shared computer or a taken account.</small>
+					${s.signingOut === m.id
+						? html`<div class="adm-actions"><button class="btn danger" data-adm="member-signout" data-id="${m.id}">Sign out ${plural(p.sessions.count, "device")}</button><button class="link-btn" data-adm="member-signout-cancel">Cancel</button></div>`
+						: html`<div class="adm-actions"><button class="btn" data-adm="member-signout-ask" data-id="${m.id}">Sign out everywhere…</button></div>`}
+				</div>` : ""}
+			</section>
+		</div>`;
+	}
+
+	const HISTORY_LINES = {
+		joined: (e) => `Joined${e.detail.provider ? ` with ${PROVIDERS[e.detail.provider] ?? e.detail.provider}` : ""}`,
+		"sign-in-added": (e) => `Added signing in with ${PROVIDERS[e.detail.provider] ?? e.detail.provider}`,
+		"passkey-added": (e) => (e.detail.count > 1 ? `Added the first of ${e.detail.count} passkeys` : "Added a passkey"),
+		"right-given": (e) => html`Given <b>${RIGHT_NAMES[e.detail.right]?.[0] ?? e.detail.right}</b>`,
+		"right-taken": (e) => html`<b>${RIGHT_NAMES[e.detail.right]?.[0] ?? e.detail.right}</b> taken away`,
+		folder: (e) => (e.detail.folder ? html`Storage folder set to <code>${e.detail.folder}</code>` : "Storage folder set back to the default"),
+		blocked: (e) => `Blocked: “${e.detail.reason}”`,
+		unblocked: () => "Unblocked",
+		"signed-out": (e) => `Signed out everywhere (${plural(e.detail.sessions ?? 0, "session")})`,
+		"uploads-deleted": (e) => `${plural(e.detail.count ?? 0, "upload")} deleted${e.detail.titles?.length ? `: ${e.detail.titles.slice(0, 3).join(", ")}${e.detail.count > 3 ? "…" : ""}` : ""}`,
+		"asked-to-publish": (e) => html`Asked to publish <b>${e.detail.album}</b>`,
+		"request-approved": (e) => html`<b>${e.detail.album}</b> approved`,
+		"request-published": (e) => html`<b>${e.detail.album}</b> published`,
+		"request-rejected": (e) => html`<b>${e.detail.album}</b> declined`,
+		"request-withdrawn": (e) => html`Withdrew <b>${e.detail.album}</b>`,
+		"lyrics-saved": (e) => html`Saved version ${e.detail.version} of the lyrics of <a href="#/lyrics/${e.detail.track}${e.detail.lang ? `?lang=${e.detail.lang}` : ""}">${ctx.catalog.track(e.detail.track)?.title ?? `song ${e.detail.track}`}</a>`,
+	};
+
+	function memberHistory(p, n) {
+		const list = n === "all" ? p.history : p.history.slice(0, n);
+		if (!list.length) return html`<p class="adm-hint">Nothing yet.</p>`;
+		return html`<ol class="adm-mhistory">${list.map((e) => html`<li><span>${(HISTORY_LINES[e.action] ?? ((x) => x.action.replace(/-/g, " ")))(e)}</span><small>${day(e.at)}${e.by ? ` · by ${e.by}` : ""}</small></li>`)}</ol>`;
+	}
+
+	function memberSignIns(p) {
+		return html`<div class="adm-two">
+			<section aria-label="Ways to sign in">
+				<h2 class="adm-h">Ways to sign in</h2>
+				<ul class="adm-rows adm-mlogins">${p.logins.map((l) => html`<li><div class="adm-mlogin">${l.picture ? html`<img class="adm-mphoto" src="${photoOf(l.picture)}" alt="" width="36" height="36" referrerpolicy="no-referrer" style="--size:36px">` : html`<span class="adm-mphoto blank" style="--size:36px" aria-hidden="true">${(PROVIDERS[l.provider] ?? l.provider).slice(0, 1).toUpperCase()}</span>`}
+					<span class="adm-row-text"><b>${PROVIDERS[l.provider] ?? l.provider}${l.login ? ` · @${l.login}` : ""}</b><small>${[l.name, l.email, `since ${day(l.created)}`, `last used ${since(l.lastUsed)}`].filter(Boolean).join(" · ")}</small></span></div></li>`)}
+					${p.passkeys.count ? html`<li><div class="adm-mlogin"><span class="adm-mphoto blank" style="--size:36px" aria-hidden="true">${icon("lock")}</span><span class="adm-row-text"><b>${plural(p.passkeys.count, "passkey")}</b><small>${p.passkeys.lastUsed ? `last used ${since(p.passkeys.lastUsed)}` : ""}</small></span></div></li>` : ""}
+				</ul>
+				${may("manage") ? "" : html`<p class="adm-hint">Email addresses are shown to the owner and co-owners only.</p>`}
+			</section>
+			<section aria-label="Devices">
+				<h2 class="adm-h">Devices</h2>
+				<p>${p.sessions.count ? html`Signed in on <b>${plural(p.sessions.count, "device")}</b>, last used ${since(p.sessions.lastUsed)}.` : "Signed in nowhere at the moment."}</p>
+				<p class="adm-hint">Each device signed in holds a session that ends 90 days after it was last used. Sessions carry nothing the Workspace shows: no addresses or device names are kept.</p>
+			</section>
+		</div>`;
+	}
+
+	function memberLibrary(m) {
+		const u = s.mup;
+		const picked = s.mpick;
+		const head = html`<div class="adm-mtools">
+			<label class="adm-msearch small">${icon("search")}<input type="search" name="uq" data-adm="upload-q" value="${u?.q ?? ""}" placeholder="Title, artist, album or file" aria-label="Find an upload" autocomplete="off" spellcheck="false"></label>
+			<span class="adm-hint">${u ? (u.q ? `${u.total.toLocaleString()} found` : plural(u.total, "upload")) : ""}</span>
+			<span class="adm-grow"></span>
+			${picked.size ? html`<b>${plural(picked.size, "chosen", "chosen")}</b>${s.confirmDelete
+				? html`<button class="btn danger" data-adm="uploads-delete">Delete ${plural(picked.size, "upload")} for good</button><button class="link-btn" data-adm="uploads-delete-cancel">Cancel</button>`
+				: html`<button class="btn danger" data-adm="uploads-delete-ask">Delete…</button>`}` : ""}
+		</div>`;
+		if (!u) return html`${head}<p class="adm-hint">Reading the uploads…</p>`;
+		if (!u.uploads.length) return html`${head}<p class="adm-hint">${u.q ? "No upload matches." : `${m.login} has no uploads.`}</p>`;
+		const all = u.uploads.filter(pickable).every((x) => picked.has(x.id));
+		return html`${head}
+			<div class="adm-utable" role="table" aria-label="Uploads of ${m.login}">
+				<div class="adm-urow adm-uhead" role="row"><span role="columnheader"><input type="checkbox" data-adm="uploads-pick-all" aria-label="Choose all shown" ${all ? "checked" : ""}></span><span role="columnheader">Title</span><span role="columnheader">Album · artist</span><span role="columnheader" class="num">Length</span><span role="columnheader" class="num">Size</span><span role="columnheader">Added</span></div>
+				${u.uploads.map((x) => {
+					const kept = x.status === "published" || x.status === "released" || x.status === "requested";
+					return html`<div class="adm-urow" role="row" data-kept="${String(kept)}">
+						<span role="cell"><input type="checkbox" data-adm="upload-pick" data-id="${x.id}" ${picked.has(x.id) ? "checked" : ""} ${x.status === "requested" || (kept && !may("manage")) ? "disabled" : ""} aria-label="Choose ${x.title}"></span>
+						<span role="cell" class="adm-ucell"><b>${x.title}</b><small>${[x.fileName, x.status === "private" ? "" : STATUS_UPLOAD[x.status] ?? x.status].filter(Boolean).join(" · ")}</small></span>
+						<span role="cell" class="adm-ucell"><small>${[x.album, x.artist].filter(Boolean).join(" · ") || "—"}</small></span>
+						<span role="cell" class="num">${duration(x.duration)}</span>
+						<span role="cell" class="num">${mb(x.size)}</span>
+						<span role="cell"><small>${day(x.created)}</small></span>
+					</div>`;
+				})}
+			</div>
+			${u.uploads.length < u.total ? html`<p><button class="btn" data-adm="uploads-more">Show ${Math.min(50, u.total - u.uploads.length).toLocaleString()} more</button></p>` : ""}
+			<p class="adm-hint">A song waiting for review, or published in the catalog, is not deleted here${may("manage") ? " (the owner and co-owners may delete a published one; its catalog entry stays)" : ""}. Uploads have no address here, so they cannot be played from this page.</p>`;
+	}
+	/** An upload that can be chosen for deleting: not waiting for review, and published only for the owner and co-owners. */
+	const pickable = (x) => x.status !== "requested" && (!["published", "released"].includes(x.status) || may("manage"));
+	const STATUS_UPLOAD = { uploading: "still uploading", requested: "waiting for review", published: "published", released: "released" };
 
 	/* The request being looked at: the chosen one, or the first waiting. */
 	function requestShown() {
@@ -1611,6 +1893,10 @@ export function mount(root, ctx) {
 	function subtitle() {
 		if (s.busy) return s.busy;
 		if (s.tab === "catalog" && s.open) return s.open.kind === "album" ? "Album" : "Artist";
+		if (s.tab === "members" && s.mlist) {
+			const m = s.member !== null ? (s.mpage?.member ?? s.mlist.members.find((x) => x.id === s.member)) : null;
+			return m ? `@${m.login}` : `${plural(s.mlist.counts.all, "member")} · ${s.mlist.counts.rights.toLocaleString()} with rights`;
+		}
 		if (s.tab === "draft") {
 			const n = s.draft.changes.length;
 			return s.draft.pr ? `${s.draft.pr.suggestion ? "Suggestion" : "Pull request"} #${s.draft.pr.number}` : n ? plural(n, "change") : "Empty";
@@ -1632,6 +1918,7 @@ export function mount(root, ctx) {
 	 */
 	function backButton() {
 		if (s.tab === "catalog" && s.open) return html`<button class="st-icon adm-back" data-adm="close" aria-label="Back to the results" title="Back to the results">${icon("back")}</button>`;
+		if (s.tab === "members" && s.member !== null) return html`<button class="st-icon adm-back" data-adm="member-close" aria-label="Back to the members" title="Back to the members">${icon("back")}</button>`;
 		if (s.tab !== "overview") return html`<button class="st-icon adm-back" data-adm="tab" data-tab="overview" aria-label="Back to Overview" title="Back to Overview">${icon("back")}</button>`;
 		return html`<a class="st-icon adm-back adm-back-app" href="#/" aria-label="Back to the app" title="Back to the app">${icon("back")}</a>`;
 	}
@@ -1717,7 +2004,7 @@ export function mount(root, ctx) {
 	 * the page's other actions wait, so a second click starts nothing. Moving
 	 * around (sections, opening an album, the find field) never waits.
 	 */
-	const QUICK = new Set(["github", "tab", "find", "open", "close", "menu", "search", "req-filter", "req-open", "reject-open", "reject-cancel", "genre-drop", "req-genre-drop", "member-open", "dismiss", "undo", "play", "preview", "stats-period", "stats-kind", "stats-more", "fix-one", "fix-undo", "artist-delete", "read-lengths", "lengths-stop"]);
+	const QUICK = new Set(["github", "tab", "find", "open", "close", "menu", "search", "req-filter", "req-open", "reject-open", "reject-cancel", "genre-drop", "req-genre-drop", "member-open", "dismiss", "undo", "play", "preview", "stats-period", "stats-kind", "stats-more", "fix-one", "fix-undo", "artist-delete", "read-lengths", "lengths-stop", "member-pick", "member-close", "member-filter", "members-more", "member-tab", "member-block", "member-block-cancel", "member-signout-ask", "member-signout-cancel", "upload-pick", "uploads-pick-all", "uploads-delete-ask", "uploads-delete-cancel", "uploads-more", "member-q", "upload-q", "member-sort"]);
 	let working = null; // { key, label }
 
 	/** What identifies a button across renders: its action and the record it acts on, or its form's. */
@@ -1774,7 +2061,8 @@ export function mount(root, ctx) {
 		const active = document.activeElement?.closest?.(".workspace") ? document.activeElement : null;
 		const focusName = active?.dataset.adm ?? null;
 		const focusWhere = active?.dataset.where ?? null;
-		const caret = focusName === "search" ? [active.selectionStart, active.selectionEnd] : null;
+		// The caret where it was in a typed field (search fields are drawn again as their results come).
+		const caret = active && (active.type === "search" || active.type === "text") ? [active.selectionStart, active.selectionEnd] : null;
 		const focusField = active?.name ? { name: active.name, track: active.closest("[data-track]")?.dataset.track } : null;
 		document.title = s.gh && s.data ? `${SECTIONS[s.tab][0]} · Workspace` : "Workspace";
 		if (ctx.desktop) { root.innerHTML = signIn(html`<p>The Workspace works in the web app only.</p>`); return; }
@@ -1793,7 +2081,9 @@ export function mount(root, ctx) {
 			el?.setSelectionRange(...(caret ?? [el.value.length, el.value.length]));
 		} else if (focusField) {
 			const scope = focusField.track ? root.querySelector(`[data-track="${focusField.track}"]`) : root;
-			scope?.querySelector(`[name="${focusField.name}"]`)?.focus({ preventScroll: true });
+			const el = scope?.querySelector(`[name="${focusField.name}"]`);
+			el?.focus({ preventScroll: true });
+			if (caret && el && (el.type === "search" || el.type === "text")) el.setSelectionRange(...caret);
 		}
 	}
 
@@ -1843,13 +2133,18 @@ export function mount(root, ctx) {
 		// Typing in the header's field shows the results in Catalog, wherever the page was.
 		// Not while a keyboard is composing (Myanmar and other input methods): the page is drawn when it ends.
 		if (e.target.dataset.adm === "search" && !e.isComposing) { s.query = e.target.value; s.open = null; s.tab = "catalog"; render(); }
+		if (e.target.dataset.adm === "member-q" && !e.isComposing) searchMembers(e.target.value);
+		if (e.target.dataset.adm === "upload-q" && !e.isComposing) searchUploads(e.target.value);
 	});
 	root.addEventListener("compositionend", (e) => {
 		if (e.target.dataset.adm === "search") { s.query = e.target.value; s.open = null; s.tab = "catalog"; render(); }
+		if (e.target.dataset.adm === "member-q") searchMembers(e.target.value);
+		if (e.target.dataset.adm === "upload-q") searchUploads(e.target.value);
 	});
 	// The album and artist pages keep each field as it changes.
 	root.addEventListener("change", (e) => {
 		const el = e.target;
+		if (el.dataset.adm === "member-sort") { s.mq.sort = el.value; loadMembers().catch(fail); return; }
 		// A request's genres: a chip each, carrying the value for the approval form.
 		if (el.matches("[data-adm-genre-add]")) {
 			const opt = el.selectedOptions[0];
@@ -1899,7 +2194,7 @@ export function mount(root, ctx) {
 				await loadRequests();
 			}
 			else if (form.dataset.form === "hold") await setHold(form);
-			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
+			else if (form.dataset.form === "block") { await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked"); s.blocking = false; render(); }
 		}
 	}
 	root.addEventListener("click", async (e) => {
@@ -1944,7 +2239,7 @@ export function mount(root, ctx) {
 				case "reject-cancel": s.rejecting = null; render(); break;
 				case "req-merge": await mergePublished(b.dataset.url); break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
-				case "members-reload": s.members = null; render(); await loadMembers(); break;
+				case "members-reload": s.mlist = null; render(); await loadMembers(); break;
 				case "lyrics-reload": s.lyrics = null; render(); await loadLyrics(); break;
 				case "proposal-decline": {
 					const reason = await ctx.promptText("Why are these not the same song? The reason is kept with the proposal.", "", "Decline");
@@ -1954,7 +2249,25 @@ export function mount(root, ctx) {
 					await loadLyrics();
 					break;
 				}
-				case "member-open": s.memberOpen = s.memberOpen === Number(b.dataset.id) ? null : Number(b.dataset.id); s.memberUploads = null; render(); if (s.memberOpen) await loadMemberUploads(s.memberOpen); break;
+				case "member-pick": await openMember(Number(b.dataset.id)); break;
+				case "member-close": s.member = null; s.mpage = null; render(); break;
+				case "member-filter": s.mq.filter = b.dataset.filter; await loadMembers(); break;
+				case "members-more": await loadMembers({ more: true }); break;
+				case "member-tab":
+					s.mtab = b.dataset.tab; s.confirmDelete = false; render();
+					if (s.mtab === "library" && !s.mup) await loadMemberUploads();
+					break;
+				case "member-block": s.blocking = true; render(); root.querySelector("[data-form=block] input")?.focus(); break;
+				case "member-block-cancel": s.blocking = false; render(); break;
+				case "member-signout-ask": s.signingOut = Number(b.dataset.id); render(); break;
+				case "member-signout-cancel": s.signingOut = null; render(); break;
+				case "member-signout": s.signingOut = null; await setMember(Number(b.dataset.id), { signOut: true }, "Signed out everywhere"); break;
+				case "upload-pick": b.checked ? s.mpick.add(Number(b.dataset.id)) : s.mpick.delete(Number(b.dataset.id)); s.confirmDelete = false; render(); break;
+				case "uploads-pick-all": for (const x of s.mup?.uploads ?? []) if (pickable(x)) b.checked ? s.mpick.add(x.id) : s.mpick.delete(x.id); s.confirmDelete = false; render(); break;
+				case "uploads-delete-ask": s.confirmDelete = true; render(); break;
+				case "uploads-delete-cancel": s.confirmDelete = false; render(); break;
+				case "uploads-delete": s.confirmDelete = false; await deleteUploads([...s.mpick]); break;
+				case "uploads-more": await loadMemberUploads({ more: true }); break;
 				case "member-unblock": await setMember(Number(b.dataset.id), { blocked: false }, "Unblocked"); break;
 				case "member-right": {
 					const on = b.checked;
@@ -1962,7 +2275,6 @@ export function mount(root, ctx) {
 					await setMember(Number(b.dataset.id), { rights: { [b.dataset.right]: on } }, `${name} ${on ? "given" : "taken"}`);
 					break;
 				}
-				case "upload-delete": await deleteMemberUpload(Number(b.dataset.id), b.dataset.title); break;
 				case "menu": s.menu = !s.menu; refreshChrome(); break;
 				case "open": s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; await openSection("catalog"); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
@@ -2014,8 +2326,9 @@ export function mount(root, ctx) {
 	if (query.has("album")) s.jump = { kind: "album", id: query.get("album"), track: Number(query.get("track")) || null };
 	else if (query.has("artist")) s.jump = { kind: "artist", id: Number(query.get("artist")) };
 	if (query.has("review")) s.jumpReview = Number(query.get("review"));
+	if (/^\d+$/.test(query.get("member") ?? "")) s.jumpMember = Number(query.get("member"));
 	// The link has done its work; Back and reloads land on the plain Workspace.
-	if (s.jump || s.jumpReview) history.replaceState(history.state, "", "#/workspace");
+	if (s.jump || s.jumpReview || s.jumpMember !== null) history.replaceState(history.state, "", "#/workspace");
 	const saved = store.get(TOKEN_KEY);
 	if (ctx.analyticsOn() || ctx.desktop) render();
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);

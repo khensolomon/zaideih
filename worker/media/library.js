@@ -17,11 +17,18 @@
  *                                           address to read it
  *   POST   /library/storage/add             {items: [{key, title, artist?, album?, year?, track?, duration}]}
  *                                           files already in storage, added to the library without copying
- *   GET    /library/members                 any right: every member with space, uploads and rights
- *   GET    /library/members/<member id>     `moderate`: one member's uploads (titles only, no addresses)
- *   POST   /library/members/<member id>     `moderate`: {blocked: true, reason} | {blocked: false};
+ *   GET    /library/members?q&filter&sort&offset&limit
+ *                                           any right: a page of members (members-admin.js)
+ *   GET    /library/members/<member id>     any right: a member's page (rights, sign-ins, history)
+ *   GET    /library/members/<id>/uploads?q&offset&limit
+ *                                           `moderate`: a member's uploads (titles only, no addresses)
+ *   POST   /library/members/<id>/uploads/delete {ids}
+ *                                           `moderate`: several of them at once
+ *   POST   /library/members/<member id>     `moderate`: {blocked: true, reason} | {blocked: false} |
+ *                                           {signOut: true} (every session ends);
  *                                           `manage`: {rights: {<right>: true|false, ...}},
- *                                           {folder: "<prefix>/" | null} (where Storage adds from)
+ *                                           {folder: "<prefix>/" | null} (where Storage adds from);
+ *                                           each change kept in member_log
  *   /library/requests*                      asking to publish an album (requests.js)
  *   /library/shares*                        sharing an album, or all of a library, with members (shares.js)
  * Streaming (no sign-in; the address is the permission):
@@ -40,6 +47,7 @@
  */
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
 import { can, MemberError, memberRow, ownerId, RIGHTS, rightsOf } from "./members.js";
+import { AdminError, listPage, logStatement, memberPage, memberSummary, uploadsPage } from "./members-admin.js";
 import { sessionMember } from "./accounts.js";
 import { handleSync } from "./sync.js";
 import { formatOf } from "../../src/core/upload-rules.js";
@@ -273,7 +281,7 @@ async function editUpload(env, me, id, body, nowSeconds) {
 	return publicUpload({ ...row, ...d });
 }
 
-async function deleteUpload(env, me, id) {
+async function deleteUpload(env, me, id, nowSeconds = Math.floor(Date.now() / 1000), { log = true } = {}) {
 	const row = await uploadRow(env, id);
 	// Moderators may delete anyone's uploads except the owner's.
 	const isOwnersUpload = row ? row.owner_id === (await ownerId(env)) : false;
@@ -287,42 +295,44 @@ async function deleteUpload(env, me, id) {
 	// A file added from storage was put there by hand and stays; only uploads are deleted.
 	if (isUpload(row.r2_key)) await env.BUCKET.delete(row.r2_key);
 	await env.DB.prepare("DELETE FROM uploads WHERE id = ?1").bind(id).run();
-	return null;
+	// Deleting another member's upload is moderation, kept in their history.
+	if (!mine && log) await logStatement(env, row.owner_id, "uploads-deleted", { count: 1, titles: [row.title] }, me.login, nowSeconds).run();
+	return row;
 }
 
-async function listMembers(env) {
-	const rows = await env.DB.prepare(
-		`SELECT m.id, m.name, m.blocked_at, m.blocked_by, m.blocked_reason, m.first_seen, m.last_seen,
-			COUNT(u.id) AS uploads, COALESCE(SUM(CASE WHEN u.r2_key LIKE '${UPLOADS_ROOT}%' THEN u.size ELSE 0 END), 0) AS used
-		FROM members m LEFT JOIN uploads u ON u.owner_id = m.id
-		GROUP BY m.id ORDER BY used DESC, m.last_seen DESC`,
-	).all();
-	const rights = await rightsOf(env);
-	const folders = new Map(((await env.DB.prepare("SELECT member_id, prefix FROM member_folders").all()).results ?? []).map((f) => [f.member_id, f.prefix]));
-	const owner = await ownerId(env);
-	return (rows.results ?? []).map((r) => ({
-		id: r.id, login: r.name, owner: r.id === owner,
-		folder: folders.get(r.id) ?? `${STORAGE_DEFAULT}${r.id}/`,
-		rights: r.id === owner ? Object.keys(RIGHTS) : [...(rights.get(r.id) ?? [])],
-		uploads: r.uploads, used: r.used,
-		blocked: r.blocked_at ? { at: r.blocked_at, by: r.blocked_by, reason: r.blocked_reason ?? "" } : null,
-		firstSeen: r.first_seen, lastSeen: r.last_seen,
-	}));
-}
+const MAX_DELETE = 100;
 
-
-async function memberUploads(env, memberId) {
-	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
-	if (!m) throw new LibraryError("no such member", 404);
-	// The owner's library is the owner's alone.
-	if (m.id === (await ownerId(env))) throw new LibraryError("the owner's library is private", 403);
-	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(memberId).all();
-	return { login: m.name, uploads: (rows.results ?? []).map(publicUpload) };
+/**
+ * POST /library/members/<id>/uploads/delete {ids}: several of a member's
+ * uploads at once, each as DELETE /library/uploads/<id> would (a published
+ * or requested one is refused, with why). { deleted: [id], refused: [{ id, error }] }.
+ */
+async function deleteMemberUploads(env, me, memberId, body, nowSeconds) {
+	if (!can(me, "moderate")) throw new LibraryError("deleting a member's uploads needs the Moderate members right", 403);
+	const ids = body.ids;
+	if (!Array.isArray(ids) || !ids.length || ids.length > MAX_DELETE || !ids.every((x) => Number.isSafeInteger(x) && x > 0)) throw new LibraryError(`ids must list 1 to ${MAX_DELETE} upload ids`);
+	const deleted = [];
+	const titles = [];
+	const refused = [];
+	for (const id of [...new Set(ids)]) {
+		const row = await uploadRow(env, id);
+		if (!row || row.owner_id !== memberId) { refused.push({ id, error: "not one of this member's uploads" }); continue; }
+		try {
+			await deleteUpload(env, me, id, nowSeconds, { log: false });
+			deleted.push(id);
+			titles.push(row.title);
+		} catch (err) {
+			if (!(err instanceof LibraryError)) throw err;
+			refused.push({ id, error: err.message });
+		}
+	}
+	if (deleted.length && memberId !== me.id) await logStatement(env, memberId, "uploads-deleted", { count: deleted.length, titles: titles.slice(0, 20) }, me.login, nowSeconds).run();
+	return { deleted, refused };
 }
 
 async function setMember(env, me, memberId, body, nowSeconds) {
 	if (("rights" in body || "folder" in body) && !can(me, "manage")) throw new LibraryError("only the owner and co-owners give or take rights", 403);
-	if ("blocked" in body && !can(me, "moderate")) throw new LibraryError("blocking needs the Moderate members right", 403);
+	if (("blocked" in body || "signOut" in body) && !can(me, "moderate")) throw new LibraryError(`${"blocked" in body ? "blocking" : "signing a member out"} needs the Moderate members right`, 403);
 	const m = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?1").bind(memberId).first();
 	if (!m) throw new LibraryError("no such member", 404);
 	if (m.id === (await ownerId(env))) throw new LibraryError("the owner cannot be blocked or changed", 403);
@@ -335,6 +345,8 @@ async function setMember(env, me, memberId, body, nowSeconds) {
 			if (typeof on !== "boolean") throw new LibraryError(`${kind} must be true or false`);
 		}
 		for (const [kind, on] of Object.entries(change)) {
+			// Only a change is logged: giving a right already held, or taking one not held, does nothing.
+			if (on === held.has(kind)) continue;
 			if (on) {
 				await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING").bind(memberId, kind, me.login, nowSeconds).run();
 			} else {
@@ -342,16 +354,19 @@ async function setMember(env, me, memberId, body, nowSeconds) {
 				// The flag from before rights existed goes with Moderate members.
 				if (kind === "moderate") await env.DB.prepare("UPDATE members SET moderator = 0 WHERE id = ?1").bind(memberId).run();
 			}
+			await logStatement(env, memberId, on ? "right-given" : "right-taken", { right: kind }, me.login, nowSeconds).run();
 		}
 	}
 	if ("folder" in body) {
 		if (body.folder === null || body.folder === "") {
 			await env.DB.prepare("DELETE FROM member_folders WHERE member_id = ?1").bind(memberId).run();
+			await logStatement(env, memberId, "folder", { folder: null }, me.login, nowSeconds).run();
 		} else {
 			const folder = checkFolder(body.folder);
 			if (folder === "") throw new LibraryError("a member's folder cannot be the whole bucket; make them a co-owner instead");
 			await env.DB.prepare("INSERT INTO member_folders (member_id, prefix, set_by, set_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(member_id) DO UPDATE SET prefix = ?2, set_by = ?3, set_at = ?4")
 				.bind(memberId, folder, me.login, nowSeconds).run();
+			await logStatement(env, memberId, "folder", { folder }, me.login, nowSeconds).run();
 		}
 	}
 	if ("blocked" in body) {
@@ -361,11 +376,20 @@ async function setMember(env, me, memberId, body, nowSeconds) {
 		if (body.blocked) {
 			const reason = cleanText(body.reason, "reason", true);
 			await env.DB.prepare("UPDATE members SET blocked_at = ?1, blocked_by = ?2, blocked_reason = ?3 WHERE id = ?4").bind(nowSeconds, me.login, reason, memberId).run();
+			await logStatement(env, memberId, "blocked", { reason }, me.login, nowSeconds).run();
 		} else {
 			await env.DB.prepare("UPDATE members SET blocked_at = NULL, blocked_by = NULL, blocked_reason = NULL WHERE id = ?1").bind(memberId).run();
+			await logStatement(env, memberId, "unblocked", {}, me.login, nowSeconds).run();
 		}
 	}
-	return (await listMembers(env)).find((x) => x.id === memberId) ?? null;
+	if ("signOut" in body) {
+		if (body.signOut !== true) throw new LibraryError("signOut must be true");
+		// As with blocking: a member who holds rights answers to the owner and co-owners.
+		if (held.size && !can(me, "manage")) throw new LibraryError("only the owner and co-owners sign out a member who holds rights", 403);
+		const { meta } = await env.DB.prepare("DELETE FROM member_sessions WHERE member_id = ?1").bind(memberId).run();
+		await logStatement(env, memberId, "signed-out", { sessions: meta?.changes ?? 0 }, me.login, nowSeconds).run();
+	}
+	return memberSummary(env, memberId);
 }
 
 /* ------------------------------------------------------------- storage ---- */
@@ -515,22 +539,27 @@ export async function handleLibrary(request, env, { now = () => Date.now() } = {
 		if ((match = /^\/library\/uploads\/(\d+)\/file$/.exec(path)) && m === "PUT") return json(200, await storeFile(request, env, me, Number(match[1]), nowSeconds), cors);
 		if ((match = /^\/library\/uploads\/(\d+)$/.exec(path))) {
 			if (m === "PATCH") return json(200, await editUpload(env, me, Number(match[1]), await readJson(request), nowSeconds), cors);
-			if (m === "DELETE") return json(204, await deleteUpload(env, me, Number(match[1])), cors);
+			if (m === "DELETE") { await deleteUpload(env, me, Number(match[1]), nowSeconds); return json(204, null, cors); }
 		}
 		if (path === "/library/members" || path.startsWith("/library/members/")) {
 			if (!me.rights.size) throw new LibraryError("members are listed for those the owner has given a right", 403);
-			if (path === "/library/members" && m === "GET") return json(200, { members: await listMembers(env) }, cors);
+			if (path === "/library/members" && m === "GET") return json(200, await listPage(env, me, url.searchParams, nowSeconds), cors);
 			if ((match = /^\/library\/members\/(\d+)$/.exec(path))) {
-				if (m === "GET") {
-					if (!can(me, "moderate")) throw new LibraryError("a member's uploads are listed for Moderate members", 403);
-					return json(200, await memberUploads(env, Number(match[1])), cors);
-				}
+				if (m === "GET") return json(200, await memberPage(env, me, Number(match[1]), nowSeconds, { quota: cfg.quota }), cors);
 				if (m === "POST") return json(200, { member: await setMember(env, me, Number(match[1]), await readJson(request), nowSeconds) }, cors);
+			}
+			if ((match = /^\/library\/members\/(\d+)\/uploads(\/delete)?$/.exec(path))) {
+				if (!can(me, "moderate")) throw new LibraryError("a member's uploads are listed for Moderate members", 403);
+				const memberId = Number(match[1]);
+				// The owner's library is the owner's alone.
+				if (memberId === (await ownerId(env))) throw new LibraryError("the owner's library is private", 403);
+				if (!match[2] && m === "GET") return json(200, await uploadsPage(env, memberId, url.searchParams, publicUpload), cors);
+				if (match[2] && m === "POST") return json(200, await deleteMemberUploads(env, me, memberId, await readJson(request), nowSeconds), cors);
 			}
 		}
 		return json(404, { error: `no route ${m} ${path}` }, cors);
 	} catch (err) {
-		if (err instanceof LibraryError || err instanceof MemberError || err instanceof UploadRuleError) return json(err.status, { error: err.message }, cors);
+		if (err instanceof LibraryError || err instanceof MemberError || err instanceof UploadRuleError || err instanceof AdminError) return json(err.status, { error: err.message }, cors);
 		console.error("library request failed", err);
 		return json(500, { error: "the library request failed on the Worker" }, cors);
 	}

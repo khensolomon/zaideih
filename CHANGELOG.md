@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.27.10
+
+- Members studio in the Workspace
+- The members a page of 50 at a time from the audio Worker, beside the member open: found by name, @login or #id (and by email for the owner and co-owners), filtered (All, With rights, Uploading, New in 30 days, Blocked, with counts) and sorted (last seen, joined, space used, name)
+- A member's page (also `#/workspace?member=<id>`): how they sign in, joined and last seen, and tiles for uploads, space against the quota, their library, contributions and devices; tabs Overview (rights with who gave them and when, storage folder, latest history), Library (their uploads, searchable and paged, several deleted at once after a confirmation), Sign-ins (each way to sign in, emails for the owner and co-owners, passkeys, devices) and History
+- Sign out everywhere (Moderate members; for a member with rights, the owner and co-owners): every session of theirs ends at once
+- History: what was done to a member (rights, storage folder, blocks, sign-outs, deleted uploads) is kept with who and when in D1 `member_log` (migration 0012), shown with what they did (joining, sign-ins, requests to publish, lyrics versions)
+- Audio Worker: `GET /library/members` takes `q`, `filter`, `sort`, `offset` and `limit`; `GET /library/members/<id>` is the member's page; their uploads moved to `GET /library/members/<id>/uploads`; new `POST /library/members/<id>/uploads/delete` and `{signOut: true}`
+
 ## v26.10.27.9
 
 - Workspace statistics, deleting artists without songs, reading song lengths

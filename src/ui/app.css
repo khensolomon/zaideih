@@ -1480,16 +1480,69 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-inline input { min-height: 40px; width: 240px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
 
 /* Members, checks, statistics. */
-.adm-members { list-style: none; padding: 0; margin: 0 0 16px; display: grid; }
-.adm-members > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
-.adm-members > li[data-blocked="true"] .adm-row-text b { text-decoration: line-through; opacity: 0.7; }
-.adm-member { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.adm-members .adm-actions { margin: 0; justify-content: flex-end; }
-.adm-member-uploads { grid-column: 1 / -1; margin: 4px 0 0; padding-left: 58px; display: grid; gap: 6px; }
-.adm-member-uploads li { display: flex; justify-content: space-between; gap: 12px; }
-.adm-member-uploads small { display: block; color: var(--ink-3); }
-.adm-rights { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 0 58px; padding: 0; border: 0; }
-.adm-rights legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* Members: the list beside the member open (a studio of its own). */
+.adm-mstudio { grid-template-columns: 360px minmax(0, 1fr); }
+.adm-mlist { display: grid; gap: 12px; max-height: calc(100dvh - 120px - var(--deck)); overflow: auto; padding: 2px 6px 16px 2px; }
+.adm-msearch { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--search-edge); }
+.adm-msearch .i { flex: none; width: 18px; height: 18px; color: var(--ink-3); }
+.adm-msearch input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 15px; outline: none; }
+.adm-msearch:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+.adm-msearch.small { min-height: 38px; width: min(300px, 100%); }
+.adm-mfilters { display: flex; flex-wrap: wrap; gap: 6px; }
+.adm-mchip { min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.adm-mchip span { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.adm-mchip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.adm-mchip[aria-pressed="true"] span { color: var(--on-accent); }
+.adm-mbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink-3); }
+.adm-mbar select { min-height: 30px; margin-left: 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+.adm-mrows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.adm-mrows button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.adm-mrows button:hover { background: rgb(255 255 255 / 0.06); }
+.adm-mrows button[aria-current="true"] { background: var(--raised); }
+.adm-mrows .adm-row-text { flex: 1; }
+.adm-mphoto { flex: none; width: var(--size, 40px); height: var(--size, 40px); border-radius: 50%; object-fit: cover; background: var(--logo-bg); }
+.adm-mphoto.blank { display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: calc(var(--size, 40px) * 0.4); color: var(--ink); }
+.adm-mphoto.blank .i { width: 50%; height: 50%; }
+.adm-more { width: 100%; justify-content: center; }
+.adm-mpane { display: grid; gap: 20px; min-width: 0; }
+.adm-mhead { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.adm-mwho { flex: 1; min-width: 200px; display: grid; gap: 4px; }
+.adm-mwho h1 { margin: 0; font-size: 30px; line-height: 1.15; overflow-wrap: anywhere; }
+.adm-mwho > span:last-child { font-size: 14px; color: var(--ink-2); }
+.adm-mblocked { margin: 0; padding: 12px 16px; border-radius: 12px; background: var(--danger-bg); color: var(--danger-ink); }
+.adm-mblock { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.adm-mblock .adm-field { flex: 1; min-width: 240px; }
+.adm-mtiles { margin: 0; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+.adm-mtiles .adm-tile { padding: 12px 14px; }
+.adm-mtiles .adm-tile small { font-size: 12px; }
+.adm-meter { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.adm-meter span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.adm-mpane > .adm-seg { justify-self: start; margin: 0; }
+.adm-mrights { list-style: none; margin: 0; padding: 0; }
+.adm-mrights label { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.adm-mrights input { flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
+.adm-mrights input:disabled + .adm-row-text { opacity: 0.8; }
+.adm-mrights .adm-row-text { flex: 1; }
+.adm-mby { flex: none; font-size: 12px; color: var(--ink-3); }
+.adm-mhistory { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.adm-mhistory li { display: grid; gap: 2px; }
+.adm-mhistory small { font-size: 12px; color: var(--ink-3); }
+.adm-mout { display: grid; gap: 8px; margin-top: 18px; padding: 14px 16px; border-radius: 14px; background: var(--surface); }
+.adm-mout small { color: var(--ink-3); }
+.adm-mout .adm-actions { margin: 0; }
+.adm-mlogin { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.adm-mtools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.adm-grow { flex: 1; }
+.adm-utable { display: grid; font-size: 14px; }
+.adm-urow { display: grid; grid-template-columns: 32px minmax(0, 2fr) minmax(0, 1.4fr) 64px 80px 100px; gap: 12px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.adm-uhead { font-size: 13px; color: var(--ink-3); }
+.adm-urow input { width: 18px; height: 18px; accent-color: var(--accent); }
+.adm-urow .num { text-align: right; font-variant-numeric: tabular-nums; }
+.adm-urow[data-kept="true"] .adm-ucell b::after { content: ""; }
+.adm-ucell { min-width: 0; display: grid; }
+.adm-ucell b, .adm-ucell small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-ucell b { font-weight: 600; }
+.adm-ucell small, .adm-urow small { color: var(--ink-3); }
 .adm-folder { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px 10px; margin-left: 58px; }
 .adm-folder small { grid-column: 1 / -1; color: var(--ink-3); }
 .adm-check { border-bottom: 1px solid var(--line); }
@@ -1562,6 +1615,15 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	.adm-cover { width: 96px; height: 96px; }
 	.adm-split { grid-template-columns: minmax(0, 1fr); }
 	.adm-split-list { position: static; }
+	/* Members on phones: the list, or the member open, as the whole page. */
+	.adm-mstudio { grid-template-columns: minmax(0, 1fr); }
+	.adm-mstudio[data-open="true"] .adm-mlist, .adm-mstudio[data-open="false"] .adm-split-main { display: none; }
+	.adm-mlist { max-height: none; overflow: visible; padding: 0; }
+	.adm-mwho h1 { font-size: 24px; }
+	.adm-mtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.adm-mhead .adm-mphoto { --size: 64px !important; }
+	.adm-urow { grid-template-columns: 28px minmax(0, 1fr) 70px; }
+	.adm-urow > :nth-child(3), .adm-urow > :nth-child(4), .adm-urow > :nth-child(6) { display: none; }
 	.adm-song { grid-template-columns: 34px minmax(0, 1fr) 44px; grid-template-areas: "play title shown" "play artists lyrics"; row-gap: 0; padding: 6px 4px; }
 	.adm-song > :nth-child(1) { grid-area: play; }
 	.adm-song > :nth-child(2) { grid-area: title; }
@@ -1574,8 +1636,6 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	.adm-song-req { grid-template-areas: "play title time" "play artists time"; }
 	.adm-song-req > .num { display: block; grid-area: time; }
 	.adm-song input { min-height: 32px; padding: 0 6px; }
-	.adm-members > li { grid-template-columns: minmax(0, 1fr); }
-	.adm-members .adm-actions { justify-content: flex-start; margin-left: 58px; }
 	.adm-tray { padding-left: 14px; gap: 10px; }
 	.adm-tray-text span, .adm-tray .link-btn { display: none; }
 	body[data-page="workspace"] main { padding-bottom: calc(var(--deck) + 40px + env(safe-area-inset-bottom)); }
