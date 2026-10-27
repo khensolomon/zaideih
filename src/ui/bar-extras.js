@@ -43,7 +43,7 @@ export function renderBarExtras(catalog, sleep) {
 		quick.innerHTML = t ? html`<a class="icon-btn q1" href="${href(`album/${t.album.id}`)}" aria-label="Go to album: ${t.album.title}" title="Go to album: ${t.album.title}">${icon("album")}</a>
 			<button class="icon-btn q1" data-act="bar-playlist" aria-label="Add to playlist" title="Add to playlist" aria-haspopup="menu">${icon("plus")}</button>
 			${t.upload ? "" : html`<button class="icon-btn q2" data-act="bar-share" aria-label="Share this song" title="Share this song">${icon("share")}</button>`}
-			<button class="icon-btn q2" data-act="bar-download" aria-pressed="${String(saved)}" aria-label="${saved ? "Downloaded: remove from this device" : "Download this song"}" title="${saved ? "Downloaded: remove from this device" : "Download this song"}">${icon(saved ? "saved" : "download")}</button>`.toString() : "";
+			${t.listenOnly ? "" : html`<button class="icon-btn q2" data-act="bar-download" aria-pressed="${String(saved)}" aria-label="${saved ? "Downloaded: remove from this device" : "Download this song"}" title="${saved ? "Downloaded: remove from this device" : "Download this song"}">${icon(saved ? "saved" : "download")}</button>`}`.toString() : "";
 	}
 	const tools = $("#bar-tools");
 	if (tools) {

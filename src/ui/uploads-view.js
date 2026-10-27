@@ -21,6 +21,7 @@ import { prepare, prepareStored, uploads } from "../core/uploads.js";
 import { formatDuration } from "../core/text.js";
 import { icon } from "./icons.js";
 import { albumTile } from "./parts.js";
+import { sharedSections } from "./share-view.js";
 
 const ACCEPT = "audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus";
 // State that survives re-renders of the page.
@@ -129,13 +130,15 @@ export function uploadsPanel() {
 				<label class="btn primary up-pick">${icon("plus")} Add music<input type="file" multiple accept="${ACCEPT}" class="sr" data-up="pick" ${sending ? "disabled" : ""}></label>
 				${canPickFolders() ? html`<label class="btn up-pick">${icon("album")} Add a folder<input type="file" webkitdirectory multiple class="sr" data-up="pick-folder" ${sending ? "disabled" : ""}></label>` : ""}
 				${uploads.storageRoot !== null ? html`<button class="btn" data-up="store-open" ${sending ? "disabled" : ""}>${icon("upload")} Add from storage</button>` : ""}
+				${st.albums.length ? html`<a class="btn" href="#/share/all">${icon("people")} Share all</a>` : ""}
 			</div>
 		</section>
 		<div id="up-store">${storagePanel()}</div>
 		<div id="up-review">${reviewList()}</div>
 		${st.albums.length
 			? html`<div class="albums grid">${st.albums.map((a) => albumTile(a))}</div>`
-			: st.loading ? html`<p class="muted">Reading your uploads…</p>` : html`<div class="empty"><h2>No uploads yet</h2><p>Add music you own to listen to it here, on any device you sign in on.</p></div>`}</div>`;
+			: st.loading ? html`<p class="muted">Reading your uploads…</p>` : html`<div class="empty"><h2>No uploads yet</h2><p>Add music you own to listen to it here, on any device you sign in on.</p></div>`}
+		${sharedSections(albumTile)}</div>`;
 	return { body, mount };
 }
 

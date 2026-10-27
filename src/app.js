@@ -43,6 +43,7 @@ import { hymnBooks, readText, refreshHymnIndex } from "./core/songbooks.js";
 import { applyChordStyle } from "./ui/chord-style.js";
 import { renderBarExtras, startBarLyrics } from "./ui/bar-extras.js";
 import { audioStudio, studioWaiting } from "./ui/audio-studio.js";
+import { joinPage, pendingInvite, shareContext, sharePage } from "./ui/share-view.js";
 import { startEdits } from "./core/audio-edits.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -62,6 +63,16 @@ route("genre/:id", V.genre);
 route("search", V.searchView);
 route("library", V.libraryView);
 route("library/:tab", V.libraryView);
+// Sharing private music with members (ui/share-view.js, docs/library.md).
+route("share/:id", sharePage);
+route("join/:code", joinPage);
+shareContext({
+	notify: (...a) => notify(...a),
+	redraw: ({ keepFocus } = {}) => render({ keepScroll: true }).then(() => {
+		const el = keepFocus && $(keepFocus);
+		if (el) { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); }
+	}),
+});
 route("playlist/:id", V.playlist);
 route("about", V.about);
 route("songbooks", songbooksView);
@@ -1039,9 +1050,9 @@ function trackMenu(anchor, track, extra) {
 		{ label: "Play next", run: () => { player.playNext([track.id]); notify(`“${track.title}” plays next`); } },
 		{ label: "Add to queue", run: () => { player.addToQueue([track.id]); notify("Added to queue"); } },
 		{ label: "Add to playlist…", run: () => addToPlaylistMenu(anchor, [track.id]) },
-		offline.has(track.id)
+		...(track.listenOnly ? [] : [offline.has(track.id)
 			? { label: "Remove download", run: () => offline.remove([track.id]) }
-			: { label: "Download", run: () => startDownload([track]) },
+			: { label: "Download", run: () => startDownload([track]) }]),
 		"-",
 		{ label: "Go to album", run: () => { closeSheet(); go(`album/${track.album.id}`); } },
 		...(LYRICS_URL && !track.upload ? [{ label: "Lyrics", run: () => { closeSheet(); go(`lyrics/${track.id}`); } }] : []),
@@ -1169,7 +1180,23 @@ const actions = {
 		if (currentRoute?.path === "about") rerender();
 		else if (el.dataset.value === "granted") analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
 	},
-	/** "My music" in search: the person's own uploads searched too, or not (kept per device). */
+	/** Leaves an album shared with the person; one that came with all of its owner's music leaves all of it, after asking. */
+	async "leave-share"(el) {
+		const album = catalog.album(el.dataset.album);
+		const own = uploads.receivedFor(album);
+		const one = own.find((x) => x.album !== null);
+		const share = one ?? own[0];
+		if (!share) return;
+		if (!one && !(await confirmAction(`“${album.title}” came with all of ${share.owner.name}'s music. Leave all of it? ${share.owner.name} can share it again.`, "Leave all of it"))) return;
+		try {
+			await uploads.unshare(share.id);
+			notify(one ? `Left “${album.title}”` : `Left ${share.owner.name}'s music`);
+			go("library/uploads");
+		} catch (err) {
+			notify(err.message, { kind: "error" });
+		}
+	},
+	/** "Private" in search: the person's own music, and music shared with them, searched too, or not (kept per device). */
 	"search-mine"() {
 		setIncludeMine(!includeMine());
 		for (const b of $$("[data-act=search-mine]")) b.setAttribute("aria-pressed", String(includeMine()));
@@ -1912,6 +1939,16 @@ export async function boot(platform) {
 		if (mineChanged && includeMine() && $("#q")?.value) runSearch($("#q").value);
 		// Songbook pages show editing to the Songbooks right, known once the member is read.
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();
+		// Sharing: its pages show the person's own music and shares, known once read.
+		if (path.startsWith("share/") || path.startsWith("join/")) rerender();
+		// An invite opened before signing in opens again once they have.
+		const invite = pendingInvite();
+		if (invite && uploads.state.member && !path.startsWith("join/")) go(`join/${invite}`);
+		// Downloads that may no longer be kept: songs of one's own taken out, and shared songs taken back or made listen only.
+		if (uploads.state.member && !uploads.state.loading && !uploads.state.error) {
+			const gone = offline.downloadedIds().filter((id) => /^u\d+$/.test(id) && (!catalog.extra.tracks.has(id) || catalog.extra.tracks.get(id).listenOnly));
+			if (gone.length) offline.remove(gone).catch((err) => console.warn("removing downloads no longer shared", err));
+		}
 		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.
 		else if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
 	});

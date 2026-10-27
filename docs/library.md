@@ -2,7 +2,7 @@
 
 Anyone signed in can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5); publishing in place (v26.10.27.2). Still to come: asking to remove a published song, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5); publishing in place (v26.10.27.2); sharing with members (v26.10.27.3). Still to come: asking to remove a published song, and share links for people who are not members.
 
 ## Roles and rights
 
@@ -38,6 +38,7 @@ D1 (`worker/media/schema.sql`):
 - `uploads`: one row per uploaded file: id, owner's member id, R2 key, size, format, length, title, artist, album, year, track number, status (`uploading`, `private`, `requested` while asked to be published, `published` once approved, `released` once in the catalog) and when it was added.
 - `publish_requests`: one row per album asked to be published: the member, the album name, language, note, status (`open`, `withdrawn`, `rejected`, `approved`, `released`), who decided, the reason, the catalog album id and the pull request.
 - `published_tracks`: for each approved song, its upload, request, catalog track id and catalog file (`music/…`).
+- `library_shares` (migration 0010): one row per share: whose music, one album of it (by its name) or all of it, the member it is shared with (none while its invite is unused), listen only, the invite code's SHA-256 while unused, when it was made and taken.
 
 R2:
 
@@ -107,6 +108,27 @@ Albums published as copies before this existed keep both files: the release step
 
 The app lists them in Library as Uploads, grouped by album, and plays them in the normal player; their addresses are renewed whenever the list is read.
 
+## Sharing
+
+A member shares music of their own library with another member: one album (its page, **Share**), or all of it, songs added later too (Uploads, **Share all**). The member it is shared with finds it in Library, Uploads, under **Shared with you** (by who shared it), on its album page ("Shared with you by …") and in search with **Private** on (the lock: one's own music and music shared with one). They listen to it like their own, but cannot change it, share it on or ask to publish it; **Leave** gives it back (an album that came with all of someone's music leaves all of it, after asking).
+
+**Who it is shared with.** Members are not listed for one another, so anyone shares by an **invite link** (`#/join/<code>`, `worker/media/shares.js`): made on the share page and shown only then, kept by the Worker only as its SHA-256, used once (by the first member who opens it signed in; whoever is not signed in signs in first, and the invite opens again by itself), and removed after 14 days unused. A member has at most 20 unused invites and 200 shares. The owner and co-owners can also find a member by name and share at once.
+
+**Taking it back works at once.** A shared song plays through an address that names its listener (`/u/<id>?e&m=<member>&s`, signed with the member); every request checks that the share still exists, that neither member is blocked, and the address cannot be used by another member or turned into the owner's. The share page lists who has it and the unused invites, each with **Listen only** and **Take back** (or **Cancel the invite**). An album renamed in the owner's library (its last song with the old name) keeps its shares.
+
+**Listen only** hides downloading in the app for that share (the album's Download, a song's menu and the player's button) and removes copies already downloaded; it is the app's rule, not a lock: the stream is the same, since the player reads it with CORS. Downloads of songs no longer shared, or made listen only, are removed when the library is read again.
+
+| Route (under `/library`) | Who | What |
+|---|---|---|
+| `POST /shares {album \| null, listenOnly?, member?}` | any member; `member` for the owner and co-owners | an invite (`{share, code}`, the code shown once), or shared with that member at once |
+| `PATCH /shares/<id> {listenOnly}` | who shared it | |
+| `DELETE /shares/<id>` | who shared it (take back), or who it is shared with (leave) | |
+| `GET /shares/invite/<code>` | signed in | who shares what, how many songs, listen only, and whether it is one's own invite |
+| `POST /shares/invite/<code>` | signed in | take it (already shared with them: the invite is spent, nothing else changes) |
+| `GET /shares/members?q=` | the owner and co-owners | members by name, to share with |
+
+`GET /library` also answers `shared` (the songs shared with the member, each once, with its owner and listen only when every share covering it is), `shares` (what the member shares) and `received` (the shares made with them).
+
 ## Moderation
 
 Spam is expected. Anyone holding a right sees every member (login, rights, space used, uploads, last seen) in the Workspace, Members. With Moderate members:
@@ -130,4 +152,4 @@ Deleting is permanent. Blocking is the reversible step.
 
 - Ask to remove: a member asks for a song they published to leave the catalog, reviewed like asking to publish. Until then the owner removes it with a catalog edit.
 - M4A (AAC) for publishing: needs the catalog's player and `media.json` to accept it; MP3 only for now.
-- Share links: chosen songs, a note and an expiry ("never" allowed), revocable, with a record of when they were opened; for showing pending recordings to rights holders without making them public.
+- Share links for people who are not members: chosen songs, a note and an expiry ("never" allowed), revocable, with a record of when they were opened; for showing pending recordings to rights holders without making them public. Sharing with members is built (above).

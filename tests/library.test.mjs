@@ -450,6 +450,87 @@ test("publishing in place: songs added from storage are published where they are
 	assert.equal(other.status, 201);
 });
 
+test("sharing: an invite link shares an album, or a whole library, with one member", { skip }, async () => {
+	const { env, call, tick } = setup({ UPLOAD_QUOTA_BYTES: "5000" });
+	const one = await upload(call, "tok-ann", song({ title: "One", album: "Tape 1990" }), mp3(600));
+	await upload(call, "tok-ann", song({ title: "Other", album: "Elsewhere" }), mp3(600));
+	await call("tok-mod", "GET", "/library");
+	await call("tok-co", "GET", "/library");
+
+	assert.equal((await call("tok-ann", "POST", "/library/shares", { album: "Nope" })).status, 404);
+	const made = await call("tok-ann", "POST", "/library/shares", { album: "Tape 1990" });
+	assert.equal(made.status, 201, await made.clone().text());
+	const { share, code } = await made.json();
+	assert.equal(share.invite, true);
+	assert.match(code, /^[A-Za-z0-9_-]{32}$/);
+	assert.equal(env.DB.raw.prepare("SELECT invite_hash FROM library_shares").get().invite_hash.length, 64, "only the code's hash is kept");
+	assert.equal((await call("tok-ann", "POST", "/library/shares", { album: "Tape 1990", member: 7 })).status, 403, "naming a member is for the owner and co-owners");
+
+	// The member sees what it is, then takes it; their own invite cannot be taken by its maker.
+	const look = await (await call("tok-mod", "GET", `/library/shares/invite/${code}`)).json();
+	assert.deepEqual(look, { owner: { id: 42, name: "ann" }, album: "Tape 1990", songs: 1, listenOnly: false, yours: false });
+	assert.equal((await call("tok-ann", "POST", `/library/shares/invite/${code}`)).status, 409);
+	assert.equal((await call("tok-mod", "POST", `/library/shares/invite/${code}`)).status, 200);
+	assert.equal((await call("tok-co", "POST", `/library/shares/invite/${code}`)).status, 404, "an invite is used once");
+
+	let lib = await (await call("tok-mod", "GET", "/library")).json();
+	assert.deepEqual(lib.shared.map((u) => [u.title, u.owner.name, u.listenOnly]), [["One", "ann", false]], "only the album shared");
+	assert.equal(lib.uploads.length, 0, "nothing of theirs became the member's own");
+	const url = new URL(lib.shared[0].url);
+	assert.equal(url.searchParams.get("m"), "7");
+	assert.equal((await handleSignedAudio(new Request(url), env, one.id)).status, 200, "they listen");
+	const stripped = new URL(url); stripped.searchParams.delete("m");
+	assert.equal((await handleSignedAudio(new Request(stripped), env, one.id)).status, 403, "the address is theirs alone");
+	const other = new URL(url); other.searchParams.set("m", "5");
+	assert.equal((await handleSignedAudio(new Request(other), env, one.id)).status, 403);
+	assert.equal((await call("tok-mod", "PATCH", `/library/uploads/${one.id}`, { title: "x" })).status, 404, "they cannot change it");
+
+	// The owner sees who has it, makes it listen only, and takes it back: it stops at once.
+	const mine = (await (await call("tok-ann", "GET", "/library")).json()).shares;
+	assert.deepEqual(mine.map((x) => [x.album, x.member?.name, x.invite]), [["Tape 1990", "modi", false]]);
+	assert.equal((await call("tok-mod", "PATCH", `/library/shares/${mine[0].id}`, { listenOnly: true })).status, 403);
+	assert.equal((await call("tok-ann", "PATCH", `/library/shares/${mine[0].id}`, { listenOnly: true })).status, 200);
+	assert.equal((await (await call("tok-mod", "GET", "/library")).json()).shared[0].listenOnly, true);
+	assert.equal((await call("tok-co", "DELETE", `/library/shares/${mine[0].id}`)).status, 403);
+	assert.equal((await call("tok-ann", "DELETE", `/library/shares/${mine[0].id}`)).status, 204);
+	assert.equal((await handleSignedAudio(new Request(url), env, one.id)).status, 403, "taken back: the old address stops");
+	assert.deepEqual((await (await call("tok-mod", "GET", "/library")).json()).shared, []);
+
+	// A whole library, named directly by a co-owner's peer: the owner shares all of theirs, songs added later too.
+	await upload(call, "tok-owner", song({ title: "Owner's", album: "Mine" }), mp3(600));
+	const direct = await call("tok-owner", "POST", "/library/shares", { album: null, member: 7 });
+	assert.equal(direct.status, 201, await direct.clone().text());
+	assert.equal((await call("tok-owner", "POST", "/library/shares", { album: null, member: 7 })).status, 409, "once");
+	await upload(call, "tok-owner", song({ title: "Later", album: "New" }), mp3(600));
+	lib = await (await call("tok-mod", "GET", "/library")).json();
+	assert.deepEqual(lib.shared.map((u) => u.title).sort(), ["Later", "Owner's"]);
+	const found = await (await call("tok-owner", "GET", "/library/shares/members?q=mod")).json();
+	assert.deepEqual(found.members, [{ id: 7, name: "modi" }]);
+	assert.equal((await call("tok-ann", "GET", "/library/shares/members?q=mod")).status, 403, "members are not listed for everyone");
+
+	// A blocked library's shared songs stop; the member can leave a share.
+	const owners = new URL(lib.shared[0].url);
+	await call("tok-owner", "POST", "/library/members/1", { blocked: true, reason: "x" });
+	const again = await (await call("tok-owner", "POST", "/library/shares", { album: null, member: 5 })).json();
+	assert.equal((await call("tok-co", "DELETE", `/library/shares/${again.share.id}`)).status, 204, "left");
+	await call("tok-ann", "GET", "/library");
+	await call("tok-owner", "POST", "/library/members/42", { blocked: true, reason: "spam" });
+	const annLater = await (await call("tok-ann", "POST", "/library/shares", { album: "Elsewhere" }));
+	assert.equal(annLater.status, 403, "a blocked member shares nothing");
+	await call("tok-owner", "POST", "/library/members/42", { blocked: false });
+	assert.equal((await handleSignedAudio(new Request(owners), env, Number(owners.pathname.split("/").pop()))).status, 200, "the owner cannot be blocked");
+
+	// Renaming the album (its last song) keeps the share; unused invites go after two weeks.
+	const later = await (await call("tok-ann", "POST", "/library/shares", { album: "Elsewhere" })).json();
+	await call("tok-co", "POST", `/library/shares/invite/${later.code}`);
+	const elsewhere = (await (await call("tok-ann", "GET", "/library")).json()).uploads.find((u) => u.album === "Elsewhere");
+	assert.equal((await call("tok-ann", "PATCH", `/library/uploads/${elsewhere.id}`, { album: "Somewhere" })).status, 200);
+	assert.deepEqual((await (await call("tok-co", "GET", "/library")).json()).shared.map((u) => u.album), ["Somewhere"]);
+	const stale = await (await call("tok-ann", "POST", "/library/shares", { album: "Tape 1990" })).json();
+	tick(15 * 86400_000);
+	assert.equal((await call("tok-co", "GET", `/library/shares/invite/${stale.code}`)).status, 404);
+});
+
 test("asking to publish: MP3 only, withdrawing and rejecting give the songs back", { skip }, async () => {
 	const { env, call } = setup();
 	await upload(call, "tok-ann", song({ title: "One" }), mp3(600));

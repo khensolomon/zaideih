@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.27.3
+
+- Sharing: an album, or all of one's music, shared with members by an invite link; taken back at once
+- Share an album (its page, Share) or all of your music, songs added later too (Uploads, Share all): an invite link, shown once, used once, gone after 14 days unused; the owner and co-owners can also find a member by name and share at once
+- The member it is shared with finds it in Library, Uploads, under Shared with you, on the album page ("Shared with you by …") and in search; they can listen but not change, share on or publish it, and can Leave
+- Every play of a shared song checks the share (an address that names its listener), so Take back stops it at once; Listen only hides downloading in the app and removes downloaded copies
+- Search: "My music" is now "Private": one's own music, and music shared with one
+- Audio Worker: `/library/shares…`, D1 `library_shares` (migration 0010); joining two accounts moves their shares
+
 ## v26.10.27.2
 
 - Publishing in place: albums added from storage are published where their files are, nothing copied

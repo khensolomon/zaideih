@@ -25,7 +25,7 @@ import { getScope, includeMine, recentSearches, setScope } from "./suggest.js";
 import { albumTile, artistLinks, avatar, chunkedAlbums, chunkedTracks, cover, myanmarBreaks, registerList, scriptClass, trackRow } from "./parts.js";
 import { LYRICS_LANGS, lyricsIndex } from "../core/lyrics-index.js";
 
-const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam", uploads: "your uploads" };
+const LANG_LABEL = { zola: "Zola", myanmar: "Myanmar", mizo: "Mizo", falam: "Falam", uploads: "your uploads", shared: "music shared with you" };
 export const langLabel = (lang) => LANG_LABEL[lang.name] ?? lang.name[0].toUpperCase() + lang.name.slice(1);
 const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -193,7 +193,8 @@ export function album(c, { id }) {
 						${a.year ? html`<span>${a.year}</span>` : ""}
 						${a.genres.map((g) => html`<a class="chip" href="${href(`genre/${g.id}`)}">${g.name}</a>`)}
 						<span>${plural(a.tracks.length, "song")}, ${formatTotal(a.duration)}</span>
-						${a.upload ? html`<span>Only you can play these</span>` : html`<span>${compact.format(a.plays)} plays</span>`}
+						${a.shared ? html`<span class="shared-note">${icon("people")} Shared with you by ${a.shared.owner.name}${a.shared.listenOnly ? " · to listen online" : ""}</span>`
+							: a.upload ? html`<span>${sharedCount(a) ? `Shared with ${sharedCount(a)}` : "Only you can play these"}</span>` : html`<span>${compact.format(a.plays)} plays</span>`}
 						${saved ? html`<span class="saved-note">${icon("saved")} ${allSaved ? "Downloaded" : `${saved} of ${ids.length} downloaded`}</span>` : ""}
 					</div>
 				</div>
@@ -202,13 +203,15 @@ export function album(c, { id }) {
 			<div class="actions">
 				<button class="btn primary" data-page-play="${a.title}" data-act="play-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("play")} Play</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("shuffle")} Shuffle</button>
-				<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}" ${a.off && !allSaved ? "disabled" : ""}>
+				${a.shared?.listenOnly ? "" : html`<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}" ${a.off && !allSaved ? "disabled" : ""}>
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
-				</button>
+				</button>`}
 				${a.upload ? "" : editLink({ album: a.id })}
+				${a.upload && !a.shared ? html`<a class="btn" href="${href(`share/${a.id}`)}">${icon("people")} Share</a>` : ""}
+				${a.shared ? html`<button class="btn" data-act="leave-share" data-album="${a.id}">Leave</button>` : ""}
 				<button class="icon-btn" data-act="list-menu" data-list="${key}" ${a.upload ? "" : html`data-share="album/${a.id}" data-share-title="${a.title}"`} aria-label="More options for this album" aria-haspopup="menu">${icon("more")}</button>
 			</div>
-			${a.upload && a.named ? publishRow(c, a) : ""}
+			${a.upload && a.named && !a.shared ? publishRow(c, a) : ""}
 			</div><div class="page-main">
 			${chunkedTracks(a.tracks, a.title)}
 			${more.length ? html`<section class="section">
@@ -218,6 +221,12 @@ export function album(c, { id }) {
 			</div></div>`,
 	};
 }
+/** How many members hear an album of one's own: shared on its own, or with all of one's music. */
+function sharedCount(a) {
+	const name = a.named ? a.title : "";
+	return new Set([...uploads.sharesFor(name), ...uploads.sharesFor(null)].filter((x) => x.member).map((x) => x.member.id)).size;
+}
+
 /** Albums shown under "More by" on an album's page. */
 const MORE_BY = 12;
 
@@ -422,10 +431,10 @@ function scopeButtons(scope, cls, counts = null, c = null) {
 		const n = counts && k !== "all" ? counts[k] : null;
 		const count = n === null || n === undefined ? "" : typeof n === "string" ? n : n.toLocaleString();
 		return html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}" aria-label="${label}${count ? `, ${count}` : ""}" title="${label}">${icon(ic)}<span class="lbl">${label}</span>${count ? html`<span class="n">${count}</span>` : ""}</button>`;
-	})}${c ? html`<button type="button" class="mine" data-act="search-mine" aria-pressed="${String(includeMine())}" aria-label="My music: your own uploads in the results" title="My music: your own uploads in the results" ${hasMine(c) ? "" : "hidden"}>${icon("lock")}<span class="lbl">My music</span></button>` : ""}</div>`;
+	})}${c ? html`<button type="button" class="mine" data-act="search-mine" aria-pressed="${String(includeMine())}" aria-label="Private: your own music, and music shared with you, in the results" title="Private: your own music, and music shared with you, in the results" ${hasMine(c) ? "" : "hidden"}>${icon("lock")}<span class="lbl">Private</span></button>` : ""}</div>`;
 }
 
-/** True when the signed-in person has music of their own (uploads, files added from storage): "My music" is offered in search. */
+/** True when the signed-in person has private music (their own, or shared with them): "Private" is offered in search. */
 export const hasMine = (c) => Boolean(c?.extra?.tracks.size);
 
 const ASKS = ["most played mizo artists", "gospel albums from the 90s", "newest myanmar songs"];
@@ -604,7 +613,7 @@ async function libraryHome(c) {
 			<section class="section lib-rows">
 				${libRow("downloads", "download", "Downloads", usage.count ? `${plural(usage.count, "song")} on this device, ${formatBytes(usage.bytes)}` : "Nothing downloaded yet")}
 				${libRow("history", "clock", "Recently played", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
-				${LIBRARY_URL ? libRow("uploads", "upload", "Uploads", uploads.available ? (st.list.length ? `${plural(st.list.length, "song")}, only you can play them` : "Add music of your own") : "Sign in to keep music of your own") : ""}
+				${LIBRARY_URL ? libRow("uploads", "upload", "Uploads", uploads.available ? ([st.list.length ? `${plural(st.list.length, "song")} of your own` : "", st.shared.length ? `${plural(st.shared.length, "album")} shared with you` : ""].filter(Boolean).join(", ") || "Add music of your own") : "Sign in to keep music of your own") : ""}
 			</section>
 			<section class="section lib-backup">
 				<header><h2>Keep your library</h2></header>

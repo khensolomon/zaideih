@@ -173,6 +173,10 @@ export async function mergeMembers(env, a, b, nowSeconds) {
 		// A book both were on keeps the role of the one kept.
 		q("INSERT OR IGNORE INTO songbook_members (book_id, member_id, role, added_by, at) SELECT book_id, ?1, role, added_by, at FROM songbook_members WHERE member_id = ?2"),
 		q("DELETE FROM songbook_members WHERE member_id = ?2"),
+		// Shares: what each shared, and what was shared with each; a share between the two is dropped.
+		q("UPDATE library_shares SET owner_id = ?1 WHERE owner_id = ?2"),
+		q("UPDATE library_shares SET member_id = ?1 WHERE member_id = ?2"),
+		q("DELETE FROM library_shares WHERE owner_id = ?1 AND member_id = ?1 AND ?2 IS NOT NULL"),
 		q("INSERT OR IGNORE INTO member_folders (member_id, prefix, set_by, set_at) SELECT ?1, prefix, set_by, set_at FROM member_folders WHERE member_id = ?2"),
 		q("DELETE FROM member_folders WHERE member_id = ?2"),
 		env.DB.prepare(`UPDATE members SET moderator = MAX(moderator, (SELECT moderator FROM members WHERE id = ?2)),

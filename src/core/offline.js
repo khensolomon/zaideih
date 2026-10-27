@@ -31,6 +31,8 @@ export const offline = {
 	},
 
 	has: (id) => state.downloaded.has(id),
+	/** Every song downloaded on this device (ids). */
+	downloadedIds: () => [...state.downloaded],
 	isPending: (id) => state.active?.track.id === id || state.queue.some((t) => t.id === id),
 
 	async blob(id) {
@@ -40,7 +42,8 @@ export const offline = {
 
 	/** Queues tracks for download; already downloaded or queued tracks are skipped. */
 	async enqueue(tracks) {
-		const fresh = tracks.filter((t) => !state.downloaded.has(t.id) && !this.isPending(t.id));
+		// Songs shared "listen only" (docs/library.md, "Sharing") are not downloaded.
+		const fresh = tracks.filter((t) => !t.listenOnly && !state.downloaded.has(t.id) && !this.isPending(t.id));
 		if (!fresh.length) return 0;
 		// Ask once for persistent storage so the browser does not evict downloads.
 		if (!state.persisted && navigator.storage?.persist) {

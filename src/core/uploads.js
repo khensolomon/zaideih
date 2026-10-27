@@ -10,6 +10,10 @@
  * song carries its signed streaming address (`url`), renewed every
  * REFRESH_MS while the app is open.
  *
+ * Music others share with the person (docs/library.md, "Sharing") joins
+ * the same way: albums "u-shared-<n>", one per owner and album name, marked
+ * with who shared them (`shared`), and `listenOnly` when downloading is off.
+ *
  * State changes are announced on the "uploads" topic (core/store.js).
  */
 import { LIBRARY_URL } from "../config.js";
@@ -49,9 +53,14 @@ async function call(method, path, body) {
 /* ------------------------------------------------------- catalog joins ---- */
 
 const UPLOADS_LANG = Object.freeze({ id: 0, name: "uploads", albums: [] });
+const SHARED_LANG = Object.freeze({ id: 0, name: "shared", albums: [] });
 
-/** Songs and albums for the app from the Worker's list (pure apart from ids). */
-export function shapeUploads(list, requests = []) {
+/**
+ * Songs and albums for the app from the Worker's list (pure apart from ids):
+ * the person's own (`list`), and those shared with them (`shared`, each song
+ * with its `owner` and `listenOnly`), kept apart per owner.
+ */
+export function shapeUploads(list, requests = [], shared = []) {
 	const albums = new Map();
 	const artists = new Map();
 	const artistOf = (name) => {
@@ -60,20 +69,27 @@ export function shapeUploads(list, requests = []) {
 		return artists.get(key);
 	};
 	const tracks = [];
-	for (const u of list) {
+	let sharedAlbums = 0;
+	for (const u of [...list, ...shared]) {
 		const albumName = u.album || "Singles";
-		if (!albums.has(albumName)) {
-			albums.set(albumName, {
-				id: `u-album-${albums.size + 1}`, title: albumName, lang: UPLOADS_LANG, year: null, genres: [],
+		// Shared albums are kept per owner, apart from the person's own of the same name.
+		const key = u.owner ? `${u.owner.id}\u0000${albumName}` : albumName;
+		if (!albums.has(key)) {
+			albums.set(key, {
+				id: u.owner ? `u-shared-${++sharedAlbums}` : `u-album-${albums.size - sharedAlbums + 1}`, title: albumName, lang: u.owner ? SHARED_LANG : UPLOADS_LANG, year: null, genres: [],
 				tracks: [], duration: 0, plays: 0, artists: [], search: normalize(albumName), searchCompact: compact(normalize(albumName)), upload: true,
 				named: Boolean(u.album), request: null, publish: "private",
+				shared: u.owner ? { owner: u.owner, listenOnly: true } : null,
 			});
 		}
-		const album = albums.get(albumName);
+		const album = albums.get(key);
+		// Downloading is offered for a shared album when any of its songs may be downloaded.
+		if (u.owner && !u.listenOnly) album.shared.listenOnly = false;
 		const artist = artistOf(u.artist);
 		const t = {
 			id: `u${u.id}`, uploadId: u.id, title: u.title, album, n: 0, duration: u.duration, plays: 0, base: 0, recent: 0,
 			artists: [artist], url: u.url, upload: true, format: u.format, size: u.size, year: u.year, track: u.track, fileName: u.fileName, status: u.status,
+			shared: u.owner ? { owner: u.owner } : null, listenOnly: Boolean(u.owner && u.listenOnly),
 		};
 		album.tracks.push(t);
 		album.duration += u.duration;
@@ -100,17 +116,18 @@ export function shapeUploads(list, requests = []) {
 	}
 	// The newest request for each album (requests come newest first).
 	for (const q of requests) {
-		const album = albums.get(q.album);
+		const album = albums.get(q.album || "Singles");
 		if (album && !album.request) album.request = q;
 	}
-	return { tracks, albums: [...albums.values()].sort((a, b) => a.title.localeCompare(b.title)) };
+	const all = [...albums.values()].sort((a, b) => a.title.localeCompare(b.title));
+	return { tracks, albums: all.filter((a) => !a.shared), sharedAlbums: all.filter((a) => a.shared).sort((a, b) => a.shared.owner.name.localeCompare(b.shared.owner.name) || a.title.localeCompare(b.title)) };
 }
 
 /* -------------------------------------------------------------- state ---- */
 
 export const uploads = {
-	/** { member, space, list, albums, loading, error } */
-	state: { member: null, space: null, list: [], albums: [], requests: [], loading: false, error: "" },
+	/** { member, space, list, albums, requests, shared (albums shared with the person), shares (what they share), loading, error } */
+	state: { member: null, space: null, list: [], albums: [], requests: [], shared: [], shares: [], received: [], loading: false, error: "" },
 	catalog: null,
 	timer: 0,
 
@@ -133,13 +150,13 @@ export const uploads = {
 		emit("uploads", this.state);
 		try {
 			const lib = await call("GET", "");
-			const { tracks, albums } = shapeUploads(lib.uploads, lib.requests ?? []);
+			const { tracks, albums, sharedAlbums } = shapeUploads(lib.uploads, lib.requests ?? [], lib.shared ?? []);
 			const extra = this.catalog.extra;
 			extra.tracks.clear();
 			extra.albums.clear();
 			for (const t of tracks) extra.tracks.set(t.id, t);
-			for (const a of albums) extra.albums.set(a.id, a);
-			Object.assign(this.state, { member: lib.member, space: lib.space, list: lib.uploads, albums, requests: lib.requests ?? [], error: "" });
+			for (const a of [...albums, ...sharedAlbums]) extra.albums.set(a.id, a);
+			Object.assign(this.state, { member: lib.member, space: lib.space, list: lib.uploads, albums, requests: lib.requests ?? [], shared: sharedAlbums, shares: lib.shares ?? [], received: lib.received ?? [], error: "" });
 			this.timer = setTimeout(() => this.refresh().catch(() => {}), REFRESH_MS);
 		} catch (err) {
 			this.state.error = err.message;
@@ -154,7 +171,7 @@ export const uploads = {
 		clearTimeout(this.timer);
 		this.catalog?.extra.tracks.clear();
 		this.catalog?.extra.albums.clear();
-		Object.assign(this.state, { member: null, space: null, list: [], albums: [], requests: [], error: "" });
+		Object.assign(this.state, { member: null, space: null, list: [], albums: [], requests: [], shared: [], shares: [], received: [], error: "" });
 		emit("uploads", this.state);
 	},
 
@@ -226,6 +243,63 @@ export const uploads = {
 	async withdrawPublish(requestId) {
 		await call("DELETE", `/requests/${requestId}`);
 		await this.refresh();
+	},
+
+	/* -------------------------------------------------------- sharing ---- */
+
+	/** True for the owner and co-owners: sharing with a member named directly (others send invite links). */
+	get canNameMembers() {
+		const m = this.state.member;
+		return Boolean(m && (m.role === "owner" || m.rights?.includes("manage")));
+	},
+
+	/** The shares of one album of the person's own (its name), or of the whole library (null). */
+	sharesFor(albumName) {
+		return this.state.shares.filter((x) => (albumName === null ? x.album === null : x.album === albumName));
+	},
+
+	/**
+	 * Shares an album (its name; null: the whole library, songs added later too).
+	 * With `member` (the owner and co-owners), with that member at once; otherwise
+	 * an invite: answers { share, code }, the code shown only now.
+	 */
+	async share(albumName, { listenOnly = false, member = null } = {}) {
+		const answer = await call("POST", "/shares", { album: albumName, listenOnly, ...(member ? { member } : {}) });
+		await this.refresh();
+		return answer;
+	},
+
+	async setListenOnly(shareId, listenOnly) {
+		await call("PATCH", `/shares/${shareId}`, { listenOnly });
+		await this.refresh();
+	},
+
+	/** Takes a share back (its owner), or leaves it (the member it is shared with). */
+	async unshare(shareId) {
+		await call("DELETE", `/shares/${shareId}`);
+		await this.refresh();
+	},
+
+	/** The shares that let the person hear a shared album: its own, and all of its owner's library. */
+	receivedFor(album) {
+		if (!album?.shared) return [];
+		return this.state.received.filter((x) => x.owner.id === album.shared.owner.id && (x.album === null || x.album === (album.named ? album.title : "")));
+	},
+
+	/** What an invite shares: { owner: {id, name}, album, songs, listenOnly, yours }. */
+	invite(code) {
+		return call("GET", `/shares/invite/${encodeURIComponent(code)}`);
+	},
+
+	async acceptInvite(code) {
+		const answer = await call("POST", `/shares/invite/${encodeURIComponent(code)}`);
+		await this.refresh();
+		return answer;
+	},
+
+	/** Members by name, for the owner and co-owners to share with: [{ id, name }]. */
+	async findMembers(q) {
+		return (await call("GET", `/shares/members?q=${encodeURIComponent(q)}`)).members;
 	},
 
 	/** Where this person may add files from storage, or null (core/library rights). */

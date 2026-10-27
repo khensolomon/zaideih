@@ -68,7 +68,7 @@ export function albumTile(album) {
 		${cover(album)}
 		<a class="tile-link" href="${href(`album/${album.id}`)}"><span class="t ${scriptClass(album.title)}">${myanmarBreaks(album.title)}</span></a>
 		<span class="s ${scriptClass(artist)}">${artist}</span>
-		<span class="m">${album.upload ? html`<span class="mine-mark" title="My music">${icon("lock", "My music")}</span>` : ""}${album.year ? html`<span>${album.year}</span>` : ""}<span>${songs}</span>${saved ? html`<span class="saved-mark" title="Downloaded">${icon("saved", "Downloaded")}</span>` : ""}</span>
+		<span class="m">${album.shared ? html`<span class="mine-mark" title="Shared by ${album.shared.owner.name}">${icon("people", "Shared")}</span><span>${album.shared.owner.name}</span>` : album.upload ? html`<span class="mine-mark" title="Private">${icon("lock", "Private")}</span>` : ""}${album.year ? html`<span>${album.year}</span>` : ""}<span>${songs}</span>${saved ? html`<span class="saved-mark" title="Downloaded">${icon("saved", "Downloaded")}</span>` : ""}</span>
 		<button class="tile-play" data-act="play-album" data-album="${album.id}" aria-label="Play ${album.title}">${icon("play")}</button>
 	</div>`;
 }

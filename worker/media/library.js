@@ -23,8 +23,11 @@
  *                                           `manage`: {rights: {<right>: true|false, ...}},
  *                                           {folder: "<prefix>/" | null} (where Storage adds from)
  *   /library/requests*                      asking to publish an album (requests.js)
+ *   /library/shares*                        sharing an album, or all of a library, with members (shares.js)
  * Streaming (no sign-in; the address is the permission):
- *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload
+ *   GET/HEAD /u/<id>?e=<expiry>&s=<signature>      an upload, for its owner
+ *   GET/HEAD /u/<id>?e&m=<member>&s                an upload shared with that member: the share
+ *                                                  is checked on every request
  *   GET/HEAD /k/<key, base64url>?e&s               a file in storage, for reading its details
  *
  * Rights (members.js): the owner (OWNER_GITHUB_ID) holds all; co-owners
@@ -41,6 +44,7 @@ import { sessionMember } from "./accounts.js";
 import { handleSync } from "./sync.js";
 import { formatOf } from "../../src/core/upload-rules.js";
 import { handleRequests, settleReleased } from "./requests.js";
+import { followRename, handleShares, mayHear, sharedWith, sharesOf, sharesWith } from "./shares.js";
 
 export { checkNewUpload, FORMATS };
 
@@ -88,11 +92,17 @@ async function hmacKey(secret) {
 	return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-/** The signed streaming address of an upload: `<origin>/u/<id>?e=<expiry>&s=<signature>`. */
-export async function signedUrl(origin, id, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
+/** What a streaming address signs: the upload, the expiry, and the member it is for when shared. */
+const signedText = (id, e, member) => (member ? `${id}.${e}.m${member}` : `${id}.${e}`);
+
+/**
+ * The signed streaming address of an upload: `<origin>/u/<id>?e=<expiry>&s=<signature>`
+ * for its owner, `…?e&m=<member>&s` for a member it is shared with.
+ */
+export async function signedUrl(origin, id, secret, nowSeconds = Math.floor(Date.now() / 1000), member = null) {
 	const e = nowSeconds + SIGNED_FOR_S;
-	const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), new TextEncoder().encode(`${id}.${e}`));
-	return `${origin}/u/${id}?e=${e}&s=${b64url(sig)}`;
+	const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), new TextEncoder().encode(signedText(id, e, member)));
+	return `${origin}/u/${id}?e=${e}${member ? `&m=${member}` : ""}&s=${b64url(sig)}`;
 }
 
 /** The signed address of a file in storage, for reading its details: `<origin>/k/<key>?e&s`. */
@@ -113,13 +123,13 @@ export function keyOf(encoded) {
 	}
 }
 
-/** True when the address's signature is right and it has not expired. */
-export async function verifySigned(id, e, s, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
+/** True when the address's signature is right and it has not expired (`member`: an address for a share). */
+export async function verifySigned(id, e, s, secret, nowSeconds = Math.floor(Date.now() / 1000), member = null) {
 	if (!/^\d+$/.test(e ?? "") || Number(e) < nowSeconds || !/^[A-Za-z0-9_-]{43}$/.test(s ?? "")) return false;
 	let sig;
 	try { sig = fromB64url(s); } catch { return false; }
 	// verify() compares in constant time.
-	return crypto.subtle.verify("HMAC", await hmacKey(secret), sig, new TextEncoder().encode(`${id}.${e}`));
+	return crypto.subtle.verify("HMAC", await hmacKey(secret), sig, new TextEncoder().encode(signedText(id, e, member)));
 }
 
 /* --------------------------------------------------------- file checks ---- */
@@ -190,10 +200,18 @@ async function library(env, me, cfg, origin, nowSeconds) {
 	const uploads = [];
 	for (const r of rows.results ?? []) uploads.push({ ...publicUpload(r), url: await signedUrl(origin, r.id, env.AUDIO_SIGNING_KEY, nowSeconds) });
 	const requests = (await env.DB.prepare("SELECT id, album, lang, note, status, reason, reviewer, catalog_album, pr_url, created_at, decided_at FROM publish_requests WHERE owner_id = ?1 ORDER BY created_at DESC, id DESC").bind(me.id).all()).results ?? [];
+	// Shared with this member by others: each song with an address that names them (checked on every play).
+	const shared = [];
+	for (const r of await sharedWith(env, me.id)) {
+		shared.push({ ...publicUpload(r), url: await signedUrl(origin, r.id, env.AUDIO_SIGNING_KEY, nowSeconds, me.id), owner: { id: r.owner_id, name: r.owner_name }, listenOnly: Boolean(r.listen_only) });
+	}
 	return {
 		member: { id: me.id, login: me.login, role: me.role, moderator: me.moderator, rights: [...me.rights], storageRoot: storageRootOf(me) },
 		space: { used, quota: me.role === "owner" ? null : cfg.quota, maxFile: cfg.maxBytes },
 		uploads,
+		shared,
+		shares: await sharesOf(env, me.id, nowSeconds),
+		received: await sharesWith(env, me.id),
 		requests: requests.map((q) => ({ id: q.id, album: q.album, lang: q.lang, note: q.note, status: q.status, reason: q.reason, reviewer: q.reviewer, catalogAlbum: q.catalog_album, pr: q.pr_url, created: q.created_at, decided: q.decided_at })),
 	};
 }
@@ -250,6 +268,8 @@ async function editUpload(env, me, id, body, nowSeconds) {
 	if (!fields.length) throw new LibraryError("nothing to change");
 	await env.DB.prepare(`UPDATE uploads SET ${fields.map((f, i) => `${f} = ?${i + 1}`).join(", ")}, updated_at = ?${fields.length + 1} WHERE id = ?${fields.length + 2}`)
 		.bind(...fields.map((f) => d[f]), nowSeconds, id).run();
+	// An album renamed (its last song with the old name): its shares follow it.
+	if ("album" in d && (d.album ?? "") !== (row.album ?? "")) await followRename(env, me.id, row.album, d.album);
 	return publicUpload({ ...row, ...d });
 }
 
@@ -485,6 +505,10 @@ export async function handleLibrary(request, env, { now = () => Date.now() } = {
 			const answer = await handleRequests(request, env, me, path, url.origin, cors, nowSeconds);
 			if (answer) return answer;
 		}
+		if (path === "/library/shares" || path.startsWith("/library/shares/")) {
+			const answer = await handleShares(request, env, me, path, url, readJson, nowSeconds);
+			if (answer) return json(answer[0], answer[1], cors);
+		}
 		if (path === "/library/uploads" && m === "POST") return json(201, await createUpload(env, me, cfg, await readJson(request), nowSeconds), cors);
 		if (path === "/library/storage" && m === "GET") return json(200, await listStorage(env, me, url.searchParams.get("prefix"), url.searchParams.get("cursor"), url.origin, nowSeconds), cors);
 		if (path === "/library/storage/add" && m === "POST") return json(201, await addFromStorage(env, me, await readJson(request, 256 * 1024), nowSeconds), cors);
@@ -520,7 +544,12 @@ export async function handleSignedAudio(request, env, id) {
 	const text = (status, body) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 	if (request.method !== "GET" && request.method !== "HEAD") return text(405, "Method Not Allowed");
 	if (!env.AUDIO_SIGNING_KEY || !env.DB || !env.BUCKET) return text(503, "personal libraries are not set up on this Worker");
-	if (!(await verifySigned(String(id), url.searchParams.get("e"), url.searchParams.get("s"), env.AUDIO_SIGNING_KEY))) return text(403, "this address has expired or is not valid; open the library again");
+	// An address for a member it is shared with names them; the share is checked on every request, so taking it back works at once.
+	const m = url.searchParams.get("m");
+	const member = m === null ? null : /^\d+$/.test(m) ? Number(m) : NaN;
+	if (Number.isNaN(member)) return text(403, "this address is not valid");
+	if (!(await verifySigned(String(id), url.searchParams.get("e"), url.searchParams.get("s"), env.AUDIO_SIGNING_KEY, undefined, member))) return text(403, "this address has expired or is not valid; open the library again");
+	if (member !== null && !(await mayHear(env, id, member))) return text(403, "this song is no longer shared with you");
 	const row = await env.DB.prepare(
 		"SELECT u.r2_key, u.format, u.status, m.blocked_at FROM uploads u LEFT JOIN members m ON m.id = u.owner_id WHERE u.id = ?1",
 	).bind(id).first();
