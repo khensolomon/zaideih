@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.27.6
+
+- t2 (catalog, 1 change)
+
 ## v26.10.27.5
 
 - Buttons answer at once: a slow action shows a spinner and its step, and a second click starts nothing
