@@ -583,3 +583,29 @@ CREATE TABLE IF NOT EXISTS library_shares (
 );
 CREATE INDEX IF NOT EXISTS idx_library_shares_owner ON library_shares (owner_id);
 CREATE INDEX IF NOT EXISTS idx_library_shares_member ON library_shares (member_id);
+
+-- =============================================================================
+-- catalog_live: catalog changes made live, without a release
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS catalog_live (
+    kind         TEXT    NOT NULL,              -- album | track | artist
+    item_id      TEXT    NOT NULL,              -- album ui, track id, artist id (as text)
+    field        TEXT    NOT NULL,              -- the draft's field name (src/workspace/draft.js)
+    value        TEXT    NOT NULL,              -- JSON: the new value
+    base         TEXT    NOT NULL,              -- JSON: the released value it was made against
+    refs         TEXT    NOT NULL DEFAULT '{}', -- JSON: artists, languages, genres the released catalog may lack
+    set_by       TEXT    NOT NULL,
+    at           INTEGER NOT NULL,
+    PRIMARY KEY (kind, item_id, field)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS catalog_live_log (
+    id           INTEGER PRIMARY KEY,
+    kind         TEXT    NOT NULL,
+    item_id      TEXT    NOT NULL,
+    field        TEXT    NOT NULL,
+    value        TEXT,                          -- JSON, for set
+    action       TEXT    NOT NULL,              -- set | undo | released | overtaken
+    set_by       TEXT    NOT NULL,
+    at           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_live_log_at ON catalog_live_log (at);

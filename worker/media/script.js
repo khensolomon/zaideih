@@ -21,6 +21,8 @@
  *                         (sync.js), asking to publish (requests.js).
  *   /lyrics/:id           Lyrics of catalog songs: public reading, editing signed in;
  *                         also /lyrics/recent and /lyrics/index (lyrics.js).
+ *   /live, /live/…         Catalog changes made live, without a release: public list,
+ *                         and the Catalog right's changes (live.js).
  *   /holds, /holds/:album  Albums held back without a release: public list,
  *                         set by the Albums right; held songs are refused
  *                         here with 403 (holds.js).
@@ -79,6 +81,7 @@ import { handleAuth } from "./auth.js";
 import { handleLibrary, handleSignedAudio, handleSignedKey } from "./library.js";
 import { handleLyrics } from "./lyrics.js";
 import { handleHolds, heldTracks } from "./holds.js";
+import { handleLive } from "./live.js";
 import { handleSongbooks } from "./songbooks.js";
 import { currentVersions, keyOfVersion, originalKey } from "./audio-edits.js";
 import { handleEdits } from "./audio-edits.js";
@@ -115,6 +118,7 @@ export default {
 		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
 		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
 		if (url.pathname === "/holds" || url.pathname.startsWith("/holds/")) return handleHolds(request, env, ctx);
+		if (url.pathname === "/live" || url.pathname.startsWith("/live/")) return handleLive(request, env, ctx);
 		if (url.pathname === "/songbooks" || url.pathname.startsWith("/songbooks/")) return handleSongbooks(request, env, ctx);
 		if (url.pathname === "/edits" || url.pathname.startsWith("/edits/")) return handleEdits(request, env, ctx);
 		const signed = /^\/u\/(\d+)$/.exec(url.pathname);

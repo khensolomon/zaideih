@@ -1,7 +1,8 @@
 // First: keys renamed on this device are moved before any module reads them.
 import "./core/moved-keys.js";
 import { analytics } from "./core/analytics.js";
-import { CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
+import { applyLive, CatalogLoadError, creditOf, loadCatalog } from "./core/catalog.js";
+import { startLive } from "./core/live-catalog.js";
 import { db, StorageError } from "./core/db.js";
 import { createSync } from "./core/sync.js";
 import { escape, html } from "./core/html.js";
@@ -9,7 +10,7 @@ import { library } from "./core/library.js";
 import { offline } from "./core/offline.js";
 import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
-import { startPlayTotals, totalsUrl } from "./core/playcounts.js";
+import { applyTotals, startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { startHolds } from "./core/holds.js";
 import { AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
@@ -1967,6 +1968,19 @@ export async function boot(platform) {
 	const edits = editsCtl = startEdits(catalog, {
 		onChange: () => {
 			offline.refreshVersions(catalog).catch((err) => console.warn("downloads of trimmed songs", err.message));
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
+		},
+	});
+	// Catalog changes made live, without a release (docs/live-catalog.md): applied on top of the released catalog.
+	startLive({
+		apply: (changes) => {
+			applyLive(catalog, changes);
+			if (catalog.totals) applyTotals(catalog, catalog.totals);
+			edits.reapply();
+		},
+		onChange: () => {
+			clearArtCaches();
+			renderRail();
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
 		},
 	});

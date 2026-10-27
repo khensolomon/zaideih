@@ -22,6 +22,7 @@ The owner trusts members with rights, one by one, in the Workspace (Members); ea
 | Storage (`storage`) | Adds files already in R2, from one folder the owner or a co-owner sets for them (`private/<their member id>/` until one is set) |
 | Songbooks (`songbooks`) | Makes songbooks, their hymn numbers and texts, people and works, and looks after their texts' versions; texts of private books are seen only with it ([songbooks.md](songbooks.md)) |
 | Albums (`albums`) | Holds albums back from listeners without a release, and gives them back: streaming off, or hidden from the public ([holds.md](holds.md)) |
+| Catalog (`catalog`) | Applies catalog edits live, without a release, and releases them later ([live-catalog.md](live-catalog.md)) |
 | Lyrics (`lyrics`) | Sees every version of a song's lyrics, hides and shows them, restores an earlier version; links songs that are the same, merges and unlinks them, compares copies and declines proposals ([lyrics.md](lyrics.md)) |
 
 A member who holds any right can be blocked only by the owner or a co-owner. `members.moderator = 1`, from before rights existed, counts as Moderate members until that right is taken. Catalog editing in the Workspace is separate: it follows the repository permission (admin, editor), see [architecture.md](architecture.md#workspace).
