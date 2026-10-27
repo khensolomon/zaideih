@@ -1551,7 +1551,67 @@ export function mount(root, ctx) {
 		root.querySelector(".adm-tray").outerHTML = String(tray());
 	}
 
+	/* ------------------------------------------------------- slow actions ---- */
+
+	/*
+	 * A slow action (publishing, merging, applying live, approving, signing
+	 * in…) answers at once: its button turns into a spinner with what is
+	 * happening (s.busy, step by step, else "Working…") until it is done, and
+	 * the page's other actions wait, so a second click starts nothing. Moving
+	 * around (sections, opening an album, the find field) never waits.
+	 */
+	const QUICK = new Set(["github", "tab", "find", "open", "close", "menu", "search", "req-filter", "req-open", "reject-open", "reject-cancel", "genre-drop", "req-genre-drop", "member-open", "dismiss", "undo", "play", "preview"]);
+	let working = null; // { key, label }
+
+	/** What identifies a button across renders: its action and the record it acts on, or its form's. */
+	function workKey(el) {
+		if (el.dataset.adm) return `adm:${el.dataset.adm}:${el.dataset.id ?? el.dataset.i ?? el.dataset.url ?? el.dataset.tab ?? ""}`;
+		const form = el.form ?? el.closest("form");
+		return form ? `form:${form.dataset.form}:${form.dataset.id ?? ""}` : "";
+	}
+
+	/** Marks the working button (again, after a render replaced it) and the page; or, with nothing working, gives the buttons back. */
+	function markWorking() {
+		root.toggleAttribute("data-working", Boolean(working));
+		if (!working) {
+			for (const el of root.querySelectorAll("button[aria-busy=true]")) {
+				el.innerHTML = el.dataset.idle ?? el.innerHTML;
+				el.disabled = el.dataset.wasDisabled === "true";
+				el.removeAttribute("aria-busy");
+				delete el.dataset.idle;
+				delete el.dataset.wasDisabled;
+			}
+			return;
+		}
+		for (const el of root.querySelectorAll("button")) {
+			if (workKey(el) !== working.key) continue;
+			if (el.dataset.idle === undefined) { el.dataset.idle = el.innerHTML; el.dataset.wasDisabled = String(el.disabled); }
+			el.disabled = true;
+			el.setAttribute("aria-busy", "true");
+			el.innerHTML = html`<span class="btn-spin" aria-hidden="true"></span><span>${s.busy || working.label}</span>`;
+		}
+	}
+
+	/** Runs a slow action for the button that started it; answers false (and does nothing) while another is running. */
+	async function slow(button, fn) {
+		if (working) return false;
+		working = { key: workKey(button), label: "Working…" };
+		markWorking();
+		try {
+			await fn();
+		} finally {
+			working = null;
+			markWorking();
+		}
+		return true;
+	}
+
 	function render() {
+		draw();
+		markWorking();
+	}
+
+	function draw() {
 		if (!root.isConnected) return;
 		// A render replaces the page; the field being typed in keeps the focus.
 		const active = document.activeElement?.closest?.(".workspace") ? document.activeElement : null;
@@ -1660,7 +1720,15 @@ export function mount(root, ctx) {
 	root.addEventListener("submit", async (e) => {
 		e.preventDefault();
 		const form = e.target;
+		const button = e.submitter ?? form.querySelector("[type=submit]") ?? form;
 		try {
+			await slow(button, () => submitted(form));
+		} catch (err) {
+			fail(err);
+		}
+	});
+	async function submitted(form) {
+		{
 			if (form.dataset.form === "token") await connect("token", new FormData(form).get("token").trim());
 			else if (form.dataset.form === "publish") await publish(new FormData(form).get("note"));
 			else if (form.dataset.form === "suggest") await sendSuggestion(new FormData(form).get("note"));
@@ -1675,10 +1743,8 @@ export function mount(root, ctx) {
 			}
 			else if (form.dataset.form === "hold") await setHold(form);
 			else if (form.dataset.form === "block") await setMember(Number(form.dataset.id), { blocked: true, reason: new FormData(form).get("reason") }, "Blocked");
-		} catch (err) {
-			fail(err);
 		}
-	});
+	}
 	root.addEventListener("click", async (e) => {
 		if (e.target.closest("[data-adm-open]")) {
 			// The link opens GitHub in its sheet; the page waits for the sign-in, after the tap has done its work.
@@ -1690,6 +1756,14 @@ export function mount(root, ctx) {
 		if (s.menu && !e.target.closest(".adm-menu") && b?.dataset.adm !== "menu") { s.menu = false; refreshChrome(); }
 		if (!b || b.dataset.adm === "search") return;
 		try {
+			if (QUICK.has(b.dataset.adm) || b.tagName !== "BUTTON") await clicked(b);
+			else await slow(b, () => clicked(b));
+		} catch (err) {
+			fail(err);
+		}
+	});
+	async function clicked(b) {
+		{
 			switch (b.dataset.adm) {
 				case "tab": await openSection(b.dataset.tab); break;
 				case "live-apply": await applyNow(); break;
@@ -1748,10 +1822,8 @@ export function mount(root, ctx) {
 				case "github": await signInWithGitHub(); break;
 				default: break;
 			}
-		} catch (err) {
-			fail(err);
 		}
-	});
+	}
 
 
 	const query = new URLSearchParams(location.hash.split("?")[1] ?? "");

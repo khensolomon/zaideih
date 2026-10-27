@@ -1361,15 +1361,45 @@ document.addEventListener("click", async (e) => {
 	const fn = actions[el.dataset.act];
 	if (!fn) return;
 	if (el.tagName !== "A") e.preventDefault();
-	try { await fn(el); } catch (err) { console.error(err); notify(err.message, { kind: "error" }); }
+	// A button already working ignores more clicks; one still working after a moment shows it (a spinner, disabled).
+	if (el.tagName === "BUTTON" && el.getAttribute("aria-busy") === "true") return;
+	const running = Promise.resolve().then(() => fn(el));
+	const mark = el.tagName === "BUTTON" ? setTimeout(() => markBusy(el, true), BUSY_AFTER_MS) : 0;
+	if (el.tagName === "BUTTON") el.setAttribute("aria-busy", "true");
+	try { await running; } catch (err) { console.error(err); notify(err.message, { kind: "error" }); }
+	finally {
+		clearTimeout(mark);
+		if (el.tagName === "BUTTON") markBusy(el, false);
+	}
 });
+
+/** A slow action's button shows a spinner after this long; a quick one never does. */
+const BUSY_AFTER_MS = 200;
+
+/** Marks a button as working (a spinner before its label, disabled), or gives it back. */
+function markBusy(el, on) {
+	if (on) {
+		if (!el.isConnected || el.querySelector(".btn-spin")) return;
+		el.dataset.wasDisabled = String(el.disabled);
+		el.disabled = true;
+		el.insertAdjacentHTML("afterbegin", '<span class="btn-spin" aria-hidden="true"></span>');
+		return;
+	}
+	el.removeAttribute("aria-busy");
+	if (!el.querySelector(".btn-spin")) return;
+	el.querySelector(".btn-spin").remove();
+	el.disabled = el.dataset.wasDisabled === "true";
+	delete el.dataset.wasDisabled;
+}
 
 document.addEventListener("change", async (e) => {
 	const el = e.target;
 	if (el.dataset.act === "sort") {
 		go(currentRoute.path, { sort: el.value });
 	} else if (el.dataset.act === "publish-toggle") {
-		await publishToggle(el);
+		// Waits for the answer: switched once, not again meanwhile.
+		el.disabled = true;
+		try { await publishToggle(el); } finally { el.disabled = false; }
 	} else if (el.dataset.act === "import" && el.files?.[0]) {
 		try {
 			const data = JSON.parse(await el.files[0].text());
