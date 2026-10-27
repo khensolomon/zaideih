@@ -9,23 +9,24 @@
  *   }
  *
  * The object key of a track is `${root}/${folderPath}/${fileName}`, which is
- * what worker/media looks up in R2 for GET /audio/:id.
+ * what worker/media looks up in R2 for GET /audio/:id. A folder starting
+ * with "/" is an album published in place (docs/library.md): its files are
+ * where they already were in storage, `${folderPath without "/"}/${fileName}`
+ * (src/core/media-keys.js).
  */
+import { CATALOG_ROOT, folderProblem, inPlace, inPlaceFolder, trackKey } from "../../src/core/media-keys.js";
+
 export const MEDIA_FORMAT = 1;
 
 export class MediaError extends Error {}
 
 const AUDIO_EXT = /\.mp3$/i;
 
-function badSegment(path) {
-	return path.split("/").some((seg) => seg === "" || seg === "." || seg === "..");
-}
-
 /** Validates the structure of a parsed media.json. Returns a list of errors. */
 export function validateMedia(media) {
 	const errors = [];
 	if (media?.format !== MEDIA_FORMAT) errors.push(`media.json: format must be ${MEDIA_FORMAT}`);
-	if (typeof media?.root !== "string" || !media.root || badSegment(media.root)) errors.push("media.json: root must be a relative path");
+	if (media?.root !== CATALOG_ROOT) errors.push(`media.json: root must be "${CATALOG_ROOT}" (the Worker reads the catalog there)`);
 	if (!Array.isArray(media?.albums)) {
 		errors.push("media.json: albums must be an array");
 		return errors;
@@ -38,9 +39,8 @@ export function validateMedia(media) {
 		if (typeof uid !== "string" || !uid) { errors.push(`${where}: album uid is empty`); continue; }
 		if (uids.has(uid)) errors.push(`${where}: duplicate album uid`);
 		uids.add(uid);
-		if (typeof folder !== "string" || !folder || badSegment(folder) || folder.includes("\\")) {
-			errors.push(`${where}: folder path is empty or unsafe: ${JSON.stringify(folder)}`);
-		}
+		const problem = folderProblem(folder);
+		if (problem) errors.push(`${where}: ${problem}`);
 		if (!Array.isArray(tracks) || !tracks.length) { errors.push(`${where}: no tracks`); continue; }
 		for (const [k, t] of tracks.entries()) {
 			const [id, file] = Array.isArray(t) ? t : [];
@@ -199,4 +199,29 @@ export function d1Sql(media, { prune = false, now = Math.floor(Date.now() / 1000
 		out.push("DELETE FROM tracks WHERE id NOT IN (SELECT id FROM _keep_tracks);", "DROP TABLE _keep_tracks;");
 	}
 	return { sql: `${out.join("\n")}\n`, count: rows.length };
+}
+
+/* ---------------------------------------------------------- in place */
+
+/**
+ * An album already published as copies under music/, pointed at the
+ * originals still in storage instead (docs/library.md, "Publishing in
+ * place"): its media.json folder becomes "/<dir>", its file names kept.
+ * Answers { media, moves: [{ id, from, to }] } (each song's key before and
+ * after) without changing the input. Throws MediaError when the album is
+ * unknown, already in place, or the folder cannot be used.
+ */
+export function pointInPlace(media, albumId, dir) {
+	const at = media.albums.findIndex(([uid]) => uid === albumId);
+	if (at < 0) throw new MediaError(`album ${albumId} is not in media.json`);
+	const [uid, folder, tracks] = media.albums[at];
+	if (inPlace(folder)) throw new MediaError(`album ${albumId} is already in place, at ${folder}`);
+	const next = inPlaceFolder(dir);
+	const problem = folderProblem(next);
+	if (problem) throw new MediaError(problem);
+	if (media.albums.some(([, f]) => f === next)) throw new MediaError(`${next} is already an album's folder`);
+	const moves = tracks.map(([id, file]) => ({ id, from: trackKey(folder, file), to: trackKey(next, file) }));
+	const albums = media.albums.slice();
+	albums[at] = [uid, next, tracks];
+	return { media: { ...media, albums }, moves };
 }

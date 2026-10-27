@@ -31,7 +31,8 @@
  *                open ones on the Overview and review them on GitHub.
  *   Requests     members' albums asked to be published (worker/media/requests.js),
  *                for Review publishing: listen, then approve (the Worker copies
- *                the songs into music/, and a pull request adds the album to
+ *                the songs into music/, or leaves songs added from storage where
+ *                they are, and a pull request adds the album to
  *                the catalog, src/workspace/publish.js) or decline with a reason.
  *   Lyrics       for the Lyrics right: proposals that two songs are the same
  *                (Compare opens the studio's merge, Decline keeps a reason
@@ -53,7 +54,7 @@ import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../to
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
-import { buildPublish } from "./publish.js";
+import { buildPublish, placeOf } from "./publish.js";
 import { stringifyMedia } from "../../tools/lib/media.mjs";
 import { createSession, PENDING_KEY, SESSION_KEY, SignInError } from "./session.js";
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
@@ -868,7 +869,7 @@ export function mount(root, ctx) {
 			: null;
 		const out = buildPublish(data, req, form, { reserved, assigned });
 		if (req.status === "open") {
-			s.busy = `Copying ${out.approve.tracks.length} song(s) into the catalog's storage…`;
+			s.busy = out.place.inPlace ? `Publishing ${out.approve.tracks.length} song(s) where they are in storage…` : `Copying ${out.approve.tracks.length} song(s) into the catalog's storage…`;
 			render();
 			await libraryCall("POST", `/requests/${id}/approve`, out.approve);
 		}
@@ -885,7 +886,7 @@ export function mount(root, ctx) {
 			Object.assign(files, releaseFiles(fetched, next, [`${note} (${out.approve.tracks.length} songs, from @${req.login}'s library)`]));
 			// The title is the release line, so merging here or on GitHub releases the site and the track paths.
 			const title = `release: web+d1 ${next} ${note}`;
-			const body = `Publishing request #${id}, approved by ${s.user} in the Workspace.\n\n${out.lines.map((l) => `- ${l}`).join("\n")}\n\nThe songs are already copied to ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/. Merging releases v${next}; the member's uploaded copies are removed once the track paths are loaded.`;
+			const body = `Publishing request #${id}, approved by ${s.user} in the Workspace.\n\n${out.lines.map((l) => `- ${l}`).join("\n")}\n\n${out.place.inPlace ? `The songs stay where they are in storage, ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/ (published in place: nothing was copied).` : `The songs are already copied to ${out.approve.tracks[0].key.split("/").slice(0, -1).join("/")}/.`} Merging releases v${next}; the member's uploaded copies are removed once the track paths are loaded.`;
 			url = (await s.gh.propose({ parent: head, files, branch: `publish-${id}-${Date.now().toString(36)}`, title, body })).url;
 		} else {
 			url = await suggest({ base: head, note, lines: out.lines, files });
@@ -1113,6 +1114,13 @@ export function mount(root, ctx) {
 
 	const duration = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
+	/** Where the request's songs will be: left where they are in storage, or copied under music/ (and why). */
+	function placeHint(songs) {
+		const p = placeOf(songs, { albums: [] });
+		if (p.inPlace) return html`The songs stay where they are in storage, <b>${p.dir}/</b>: nothing is copied, and the files must not be moved or renamed afterwards.`;
+		return `The songs are copied into the catalog's storage under music/${p.why ? ` (${p.why})` : ""}.`;
+	}
+
 	/** The request's album as it will be published: every field editable, every song to listen to. */
 	function requestPane(r) {
 		const cat = s.data.category;
@@ -1153,7 +1161,7 @@ export function mount(root, ctx) {
 			</div>
 			<div class="adm-songs" role="table" aria-label="Songs">${songs}</div>
 			<datalist id="adm-artists">${s.data.artists.map((a) => html`<option value="${a.name}">`)}</datalist>
-			<p class="adm-hint">Listen first: approve only music the member may share. The songs are copied into the catalog's storage under music/, and ${s.canWrite ? "a pull request adds the album; merging it releases the site and the track paths" : "the album goes to the editors as a suggestion"}. The member stays credited in their library.</p>
+			<p class="adm-hint">Listen first: approve only music the member may share. ${placeHint(r.songs ?? [])} ${s.canWrite ? "A pull request adds the album; merging it releases the site and the track paths" : "The album goes to the editors as a suggestion"}. The member stays credited in their library.</p>
 			<div class="adm-actions adm-actions-end">
 				<button class="btn primary" type="submit">${r.status === "approved" ? "Open the pull request" : "Approve and publish"}</button>
 				${r.status === "open" ? html`<span class="adm-grow"></span>${s.rejecting === r.id

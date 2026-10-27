@@ -2,7 +2,7 @@
 
 Anyone signed in can keep their own music on Zaideih: uploaded to the audio Worker, stored in R2, playable only by them. The public catalog is unchanged: it stays in git (`assets/data`), reviewed and released. Everything personal lives in the Worker's D1 database and R2 bucket and never enters the public repository.
 
-Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5). Still to come: asking to remove a published song, and share links.
+Status: agreed 2026-10-22 and 2026-10-23. Built: roles, uploads, Uploads in Library, signed streaming, moderation (v26.10.22.8); rights per member and adding files from storage (v26.10.23.4); asking to publish (v26.10.23.5); publishing in place (v26.10.27.2). Still to come: asking to remove a published song, and share links.
 
 ## Roles and rights
 
@@ -41,9 +41,9 @@ D1 (`worker/media/schema.sql`):
 
 R2:
 
-- `music/…`: the catalog.
+- `music/…`: the catalog, except albums published in place (below), whose files stay where they were in storage.
 - `users/<member id>/<upload id>.<ext>`: uploads.
-- Anything else: files put in R2 some other way (rclone, wrangler, the dashboard), wherever their owner keeps them, which can be added from storage. They are never moved, renamed or deleted by Zaideih.
+- Anything else: files put in R2 some other way (rclone, wrangler, the dashboard), wherever their owner keeps them, which can be added from storage. They are never moved, renamed or deleted by Zaideih. Once such a file is published in place it is a catalog song's own file, and must not be moved or renamed with rclone either: the storage browser marks it "in the catalog".
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).
 
@@ -79,12 +79,27 @@ A member can ask for an album of their uploads to join the public catalog. The c
 
 1. **Ask** (the album's page in the app, Ask to publish): the whole album, with its language, a note for the reviewer (who made it, why it may be shared) and a statement that they may share it. Only MP3 can be published, since the catalog streams MP3 (`media.json`, `/audio`); an album with other formats is refused naming the files, to be uploaded again as MP3. While asked, its songs cannot be edited or deleted; the member can withdraw the request.
 2. **Review** (Workspace, Requests, with Review publishing): every song can be listened to. **Reject** needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
-3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. The Workspace then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, in the Workspace (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
+3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. Songs added from storage, all in one folder, are not copied: they are published in place (below). The Workspace then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, in the Workspace (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
 4. **Released**: once D1 `tracks` holds every song of the request, the next library read settles it: the member's uploaded copies (`users/…`) are deleted and their library entries point at the catalog's files, so they play as before and no longer use the member's space. A song added from storage keeps its file. The album page says "In the catalog, published by you" with a link to the catalog album.
 
 The member stays credited: published songs stay in their library and cannot be deleted from it by them (the owner and co-owners can); corrections go through Suggest in the Workspace like any catalog edit.
 
 The owner, co-owners and reviewers do not ask anyone: on their own album the page has a **Public in the catalog** switch. Turning it on asks and opens the approval form at once (`#/workspace?review=<id>`); turning it off while still waiting withdraws.
+
+## Publishing in place
+
+An album whose songs were all added from storage, in one folder, is published where its files are: nothing is copied, and the catalog names that folder. Uploads (`users/…`) are always copied under `music/`, and the uploaded copy is deleted once released, as above. So are albums whose songs are in several folders, or in a folder that cannot be named (the top of the bucket, `music/`, `users/`, `edits/`) or that a catalog album already uses; the approval form says which, and why.
+
+- **media.json**: an album's folder starting with `/` is in place, from the bucket's top: `["…", "/Google Music/Album A", [[31001, "01 One.mp3"]]]` is `Google Music/Album A/01 One.mp3`. Any other folder is under `music/` as before. `src/core/media-keys.js` (`trackKey`, `folderProblem`) is the one rule the Worker, the tools and the Workspace share; D1 `tracks.folder_path` holds the folder as written.
+- **The approval form** (Workspace, Requests) says "The songs stay where they are in storage, <folder>/" or why they are copied. The request's songs carry `storageKey`, their place in storage; approving in place sends each song's own key and the Worker checks it is that song's file, present, not an upload, and not already another catalog song's.
+- **Afterwards** the file is a catalog song's: removing the song from a library, or the album from the catalog, never deletes it, and it must stay where it is. The storage browser lists it as "in the catalog".
+- **The folder names are public**: media.json is in the public repository, so a folder published in place (`private/42/…` included) can be read there. Listeners never see it: the app plays `/audio/<id>`.
+
+Albums published as copies before this existed keep both files: the release step pointed their library entries at the `music/` copy, so where the originals were is not recorded. `tools/inplace.mjs` points such an album back at its originals, named by hand, and then deletes the copies:
+
+1. `node tools/inplace.mjs point --album <id> --folder "<folder in R2>"` lists each song's key before and after (the same file names); `--apply` writes media.json and keeps the plan in `build/inplace/<id>.json`.
+2. Release the change (`web+d1`), which loads the new places into D1.
+3. A day later, `node tools/inplace.mjs prune --album <id>` checks that D1 holds every new place, that it was loaded 25 hours ago or more (the audio Worker keeps a song's place for up to a day), and that every song plays; `--apply` deletes the `music/` copies.
 
 ## Listening
 

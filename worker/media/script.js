@@ -3,7 +3,8 @@
  *
  * Routes:
  *   GET/HEAD /audio/:id   Stream an MP3 from R2. The object key is
- *                         `music/{folder_path}/{mp3}`, looked up in D1 by track id;
+ *                         `music/{folder_path}/{mp3}` (or, for an album published in place,
+ *                         where its files are in storage: src/core/media-keys.js), looked up in D1 by track id;
  *                         a song trimmed in the audio studio plays its current
  *                         version, and `?v=<version>` asks for one (0: the
  *                         original), see audio-edits.js.

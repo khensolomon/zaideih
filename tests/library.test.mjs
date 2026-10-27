@@ -408,6 +408,48 @@ test("asking to publish: a member asks, a reviewer listens and approves, the rel
 	assert.equal(used, 600, "published songs no longer use the member's space");
 });
 
+test("publishing in place: songs added from storage are published where they are, nothing copied", { skip }, async () => {
+	const { env, call } = setup();
+	await env.BUCKET.put("Google Music/Album A/01 One.mp3", mp3(300));
+	await env.BUCKET.put("Google Music/Album A/02 Two.mp3", mp3(300));
+	await env.BUCKET.put("Elsewhere/03 Three.mp3", mp3(300));
+	const items = [["Google Music/Album A/01 One.mp3", 1], ["Google Music/Album A/02 Two.mp3", 2]].map(([key, track]) => ({ key, title: `Song ${track}`, artist: "Ann", album: "Album A", track, duration: 200 }));
+	assert.equal((await call("tok-owner", "POST", "/library/storage/add", { items })).status, 201);
+	const asked = await call("tok-owner", "POST", "/library/requests", { album: "Album A" });
+	assert.equal(asked.status, 201, await asked.clone().text());
+	const { id } = await asked.json();
+	const req = (await (await call("tok-owner", "GET", "/library/requests")).json()).requests.find((r) => r.id === id);
+	assert.deepEqual(req.songs.map((u) => u.storageKey), ["Google Music/Album A/01 One.mp3", "Google Music/Album A/02 Two.mp3"], "the reviewer sees where they are");
+
+	const approve = (tracks) => call("tok-owner", "POST", `/library/requests/${id}/approve`, { album: "0123456789abcdef", tracks });
+	const tracks = req.songs.map((u, i) => ({ upload: u.upload, track: 31001 + i, key: u.storageKey }));
+	assert.equal((await approve([tracks[0], { ...tracks[1], key: "Elsewhere/03 Three.mp3" }])).status, 400, "only a song's own file");
+	assert.equal((await approve([tracks[0], { ...tracks[1], key: "music/x/2.mp3" }])).status, 400, "in place or copied, not both");
+	const before = env.BUCKET.objects.size;
+	const ok = await approve(tracks);
+	assert.equal(ok.status, 200, await ok.clone().text());
+	assert.deepEqual(await ok.json(), { id, status: "approved", copied: 0, inPlace: true });
+	assert.equal(env.BUCKET.objects.size, before, "nothing copied");
+
+	// The storage browser marks them: they must stay where they are.
+	const listed = await (await call("tok-owner", "GET", `/library/storage?prefix=${encodeURIComponent("Google Music/Album A/")}`)).json();
+	assert.deepEqual(listed.files.map((f) => f.catalog), [true, true]);
+
+	// The release loads them as an album in place; the files stay, and play from the catalog.
+	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, '/Google Music/Album A', ?, 0)").run(t.track, t.key.split("/").pop());
+	const lib = await (await call("tok-owner", "GET", "/library")).json();
+	assert.equal(lib.requests.find((r) => r.id === id).status, "released");
+	assert.ok(env.BUCKET.objects.has("Google Music/Album A/01 One.mp3"), "a file from storage is never deleted");
+	globalThis.caches ??= { default: { match: async () => undefined, put: async () => {} } };
+	const played = await worker.fetch(new Request(`${W}/audio/31001`, { headers: { Range: "bytes=0-2" } }), env, { waitUntil() {} });
+	assert.equal(played.status, 206);
+	assert.equal(new TextDecoder().decode(await played.arrayBuffer()), "ID3");
+
+	// A file already a catalog song's cannot be published twice.
+	const other = await call("tok-owner", "POST", "/library/storage/add", { items: [{ key: "Elsewhere/03 Three.mp3", title: "Three", album: "B", duration: 9 }] });
+	assert.equal(other.status, 201);
+});
+
 test("asking to publish: MP3 only, withdrawing and rejecting give the songs back", { skip }, async () => {
 	const { env, call } = setup();
 	await upload(call, "tok-ann", song({ title: "One" }), mp3(600));

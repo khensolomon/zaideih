@@ -13,7 +13,9 @@
  *   DELETE /library/requests/<id>           withdraw an open request (its member, or a co-owner)
  *   POST   /library/requests/<id>/reject    {reason}: Review publishing
  *   POST   /library/requests/<id>/approve   {album: <catalog ui>, tracks: [{upload, track, key}]}:
- *                                           Review publishing; copies every song to its key under music/
+ *                                           Review publishing; copies every song to its key under music/,
+ *                                           or, for songs added from storage (all in one folder), names
+ *                                           them where they are: the key is the file's own, nothing copied
  *   POST   /library/requests/<id>/pr        {url}: the pull request that adds the album to the catalog
  *
  * The owner and co-owners hold every right, so for them asking and
@@ -22,6 +24,7 @@
 import { can } from "./members.js";
 import { cleanText } from "../../src/core/upload-rules.js";
 import { isUpload, json, LibraryError, readJson, signedUrl } from "./library.js";
+import { folderProblem, inPlaceFolder } from "../../src/core/media-keys.js";
 
 const CATALOG_ROOT = "music/";
 const OPEN = "open";
@@ -52,6 +55,8 @@ async function songsOf(env, req) {
 const songOut = async (u, origin, env, nowSeconds) => ({
 	upload: u.id, title: u.title, artist: u.artist, album: u.album, year: u.year, track: u.track_no, duration: u.duration,
 	format: u.format, size: u.size, fileName: u.file_name, catalogTrack: u.track_id ?? null, catalogKey: u.catalog_key ?? null,
+	// Added from storage: where the file is, so it can be published there (approve, "in place").
+	storageKey: isUpload(u.r2_key) ? null : u.r2_key,
 	url: await signedUrl(origin, u.id, env.AUDIO_SIGNING_KEY, nowSeconds),
 });
 
@@ -120,6 +125,20 @@ async function reject(env, me, id, body, nowSeconds) {
 
 /* ------------------------------------------------------------ approve ---- */
 
+/**
+ * A song published in place: its key is its own file's, added from storage
+ * (never an upload), an MP3 in a folder media.json can name. Answers the
+ * folder (without the "/").
+ */
+export function checkInPlaceKey(key, u) {
+	if (typeof key !== "string" || key !== u.r2_key || isUpload(u.r2_key)) throw new LibraryError(`${key} is not where "${u.file_name}" is in storage`);
+	if (!/\.mp3$/i.test(key)) throw new LibraryError(`${key} must be an .mp3`);
+	const dir = key.slice(0, Math.max(0, key.lastIndexOf("/")));
+	const problem = dir ? folderProblem(inPlaceFolder(dir)) : "a file at the top of the bucket has no folder";
+	if (problem) throw new LibraryError(`"${u.file_name}" cannot be published where it is: ${problem}`);
+	return dir;
+}
+
 /** A catalog key for a song: music/<folder>/<file>.mp3, safe path segments only. */
 export function checkCatalogKey(key) {
 	if (typeof key !== "string" || !key.startsWith(CATALOG_ROOT) || !/\.mp3$/i.test(key)) throw new LibraryError(`${key} must be an .mp3 under ${CATALOG_ROOT}`);
@@ -143,21 +162,31 @@ async function approve(env, me, id, body, nowSeconds) {
 	}
 	const keys = new Set();
 	const ids = new Set();
+	// In place (every song's key is its own file in storage, all in one folder), or every song copied under music/.
+	const inPlace = songs.some((u) => byUpload.get(u.id).key === u.r2_key && !isUpload(u.r2_key));
+	const dirs = new Set();
 	for (const u of songs) {
 		const t = byUpload.get(u.id);
 		const track = Number(t.track);
 		if (!Number.isSafeInteger(track) || track <= 0 || ids.has(track)) throw new LibraryError(`track ids must be new positive whole numbers, one per song`);
 		ids.add(track);
-		const key = checkCatalogKey(t.key);
+		const key = inPlace ? t.key : checkCatalogKey(t.key);
+		if (inPlace) dirs.add(checkInPlaceKey(key, u));
 		if (keys.has(key)) throw new LibraryError(`${key} is named twice`);
 		keys.add(key);
-		if (await env.BUCKET.head(key)) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
+		if (inPlace) {
+			if (!(await env.BUCKET.head(key))) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
+			const used = await env.DB.prepare("SELECT track_id FROM published_tracks WHERE r2_key = ?1 AND upload_id != ?2").bind(key, u.id).first();
+			if (used) throw new LibraryError(`${key} is already the catalog's song ${used.track_id}`, 409);
+		} else if (await env.BUCKET.head(key)) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
 		const taken = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM tracks WHERE id = ?1) + (SELECT COUNT(*) FROM published_tracks WHERE track_id = ?1) AS n").bind(track).first();
 		if (taken.n) throw new LibraryError(`track id ${track} is already used`, 409);
 	}
+	if (dirs.size > 1) throw new LibraryError(`an album published in place has its songs in one folder; these are in ${dirs.size} (${[...dirs].slice(0, 3).join(", ")}): copy them under music/ instead`);
 	const copied = [];
 	try {
 		for (const u of songs) {
+			if (inPlace) break;
 			const t = byUpload.get(u.id);
 			const src = await env.BUCKET.get(u.r2_key);
 			if (!src) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
@@ -175,7 +204,7 @@ async function approve(env, me, id, body, nowSeconds) {
 	}
 	await env.DB.prepare("UPDATE uploads SET status = 'published', updated_at = ?1 WHERE owner_id = ?2 AND album = ?3 AND status = 'requested'").bind(nowSeconds, r.owner_id, r.album).run();
 	await env.DB.prepare("UPDATE publish_requests SET status = 'approved', reviewer = ?1, catalog_album = ?2, decided_at = ?3 WHERE id = ?4").bind(me.login, album, nowSeconds, id).run();
-	return { id, status: "approved", copied: copied.length };
+	return { id, status: "approved", copied: copied.length, inPlace };
 }
 
 async function recordPr(env, me, id, body) {

@@ -17,7 +17,9 @@
 -- tracks: track id -> audio object path
 -- =============================================================================
 -- Loaded from assets/data/media.json (tools/d1.mjs tracks, or reset). The
--- Worker only reads it: the object key is music/{folder_path}/{mp3}.
+-- Worker only reads it: the object key is music/{folder_path}/{mp3}, or, for a
+-- folder starting with "/" (an album published in place, docs/library.md),
+-- {folder_path without the "/"}/{mp3} (src/core/media-keys.js).
 CREATE TABLE IF NOT EXISTS tracks (
     id          INTEGER PRIMARY KEY,
     folder_path TEXT NOT NULL,
