@@ -26,6 +26,7 @@
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 import { cut, Mp3Error } from "./mp3.js";
+import { trackKey } from "../../src/core/media-keys.js";
 
 const MAX_NOTE = 300;
 const LOG = 30;
@@ -50,8 +51,8 @@ async function readBody(request) {
 	throw new MemberError("body must be a JSON object");
 }
 
-/** The original's R2 key, from the tracks table. */
-export const originalKey = (row) => `music/${row.folder_path}/${row.mp3}`;
+/** The original's R2 key, from the tracks table: under music/, or in place in storage (src/core/media-keys.js). */
+export const originalKey = (row) => trackKey(row.folder_path, row.mp3);
 export const versionKey = (track, version) => `edits/${track}/${version}.mp3`;
 
 let current = null;

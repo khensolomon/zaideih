@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.27.2
+
+- Publishing in place: albums added from storage are published where their files are, nothing copied
+- An album whose songs were all added from storage, in one folder, keeps its files where they are: media.json names that folder (a folder starting with "/", src/core/media-keys.js), the Worker plays and trims from it, and the approval form says so (or why the songs are copied: uploads, several folders, a folder that cannot be named)
+- The storage browser marks files that are catalog songs' own ("in the catalog: keep it where it is"); removing a song never deletes such a file
+- `tools/inplace.mjs` points an album published as copies back at its originals in storage and, a day after the release, deletes the copies (dry run unless --apply)
+- Fixed: listing a storage folder of more than 100 audio files failed, since D1 binds at most 100 values a query
+
 ## v26.10.27.1
 
 - Search: My music offered as soon as the person's own music is known, and only then

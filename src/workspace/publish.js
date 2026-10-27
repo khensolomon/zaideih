@@ -8,13 +8,16 @@
  *   - one song per upload, with new track ids after the highest in use
  *     (the catalog's, and those other approved requests have taken);
  *   - artists matched by name, or added (type Unknown) when new;
- *   - a media.json row: the files under music/<language>/<album>/.
+ *   - a media.json row: the files under music/<language>/<album>/, or,
+ *     when every song was added from storage and they share one folder,
+ *     that folder, "in place" (src/core/media-keys.js): nothing is copied.
  *
  * The audio Worker copies each upload to its key (POST
  * /library/requests/<id>/approve) before the pull request is opened; a
  * second attempt keeps the same album id, track ids and keys
  * (`assigned`), since the files are already in place.
  */
+import { CATALOG_ROOT, folderProblem, inPlaceFolder } from "../core/media-keys.js";
 import { normalize } from "../core/text.js";
 import { DraftError } from "./draft.js";
 
@@ -29,12 +32,35 @@ export function segment(text) {
 
 const randomUi = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => HEX[b % 16]).join("");
 
+/** The folder a key is in ("" at the top of the bucket). */
+const dirOf = (key) => key.slice(0, Math.max(0, key.lastIndexOf("/")));
+
+/**
+ * Where an album's songs go: { inPlace: true, folder: "/<their folder>" }
+ * when every song was added from storage, all in one folder that media.json
+ * can name and no catalog album uses yet; otherwise { inPlace: false, why }
+ * (why they are copied, or "" for uploads).
+ */
+export function placeOf(songs, media) {
+	const keys = songs.map((u) => u.storageKey ?? null);
+	if (!keys.length || keys.some((k) => !k)) return { inPlace: false, why: keys.some((k) => k) ? "some of its songs were uploaded, so all are copied into the catalog's folder" : "" };
+	const dirs = new Set(keys.map(dirOf));
+	if (dirs.size > 1) return { inPlace: false, why: `its songs are in ${dirs.size} folders in storage, so they are copied into one catalog folder` };
+	const [dir] = dirs;
+	if (!keys.every((k) => /\.mp3$/i.test(k))) return { inPlace: false, why: "not every file is an .mp3" };
+	const folder = dir ? inPlaceFolder(dir) : null;
+	const problem = folder ? folderProblem(folder) : "a file at the top of the bucket has no folder";
+	if (problem) return { inPlace: false, why: `${problem}, so they are copied` };
+	if (media.albums.some((row) => row[1] === folder)) return { inPlace: false, why: `${dir}/ is already a catalog album's folder, so they are copied` };
+	return { inPlace: true, folder, dir };
+}
+
 /**
  * @param data      { albums, artists, media, category } as parsed from the files
  * @param request   the request from GET /library/requests, with its songs
  * @param form      { title, year, lang, genres: [ids], songs: [{ upload, title, artists: "A, B" }] }
  * @param options   { reserved: Set of track ids taken by other approved requests, assigned: { album, tracks } from an earlier attempt, ui: () => string }
- * @returns { albums, artists, media, approve: { album, tracks: [{upload, track, key}] }, lines, newArtists }
+ * @returns { albums, artists, media, approve: { album, tracks: [{upload, track, key}] }, place, lines, newArtists }
  */
 export function buildPublish(data, request, form, { reserved = new Set(), assigned = null, ui = randomUi } = {}) {
 	const title = String(form.title ?? "").trim();
@@ -58,8 +84,9 @@ export function buildPublish(data, request, form, { reserved = new Set(), assign
 	let nextArtist = Math.max(0, ...data.artists.map((a) => a.id)) + 1;
 	const before = assigned ? new Map(assigned.tracks.map((t) => [t.upload, t])) : null;
 
-	const folder = `${segment(lang.name)}/${segment(title)}`;
-	if (!assigned && data.media.albums.some((row) => row[1] === folder)) throw new DraftError(`music/${folder}/ is already an album's folder; change the title a little (a year, a volume) to keep them apart`);
+	const place = placeOf(songs, data.media);
+	const folder = place.inPlace ? place.folder : `${segment(lang.name)}/${segment(title)}`;
+	if (!assigned && !place.inPlace && data.media.albums.some((row) => row[1] === folder)) throw new DraftError(`music/${folder}/ is already an album's folder; change the title a little (a year, a volume) to keep them apart`);
 
 	const artists = [...data.artists];
 	const newArtists = [];
@@ -87,6 +114,11 @@ export function buildPublish(data, request, form, { reserved = new Set(), assign
 			const was = before.get(u.upload);
 			if (!was) throw new DraftError(`song ${u.fileName} was not in the earlier attempt`);
 			track = was.track; key = was.key; file = key.split("/").pop();
+		} else if (place.inPlace) {
+			// Left where it is: its own file name, in its own folder.
+			track = nextTrack++;
+			key = u.storageKey;
+			file = key.split("/").pop();
 		} else {
 			track = nextTrack++;
 			const base = segment(u.fileName.replace(/\.mp3$/i, ""));
@@ -99,7 +131,9 @@ export function buildPublish(data, request, form, { reserved = new Set(), assign
 		rows.push([track, file]);
 		tracks.push({ upload: u.upload, track, key });
 	}
-	const mediaFolder = before ? tracks[0].key.slice(data.media.root.length + 1, tracks[0].key.lastIndexOf("/")) : folder;
+	// An earlier attempt's keys name the folder: under music/, or in place.
+	const keyFolder = (key) => (key.startsWith(`${CATALOG_ROOT}/`) ? dirOf(key).slice(CATALOG_ROOT.length + 1) : inPlaceFolder(dirOf(key)));
+	const mediaFolder = before ? keyFolder(tracks[0].key) : folder;
 	const album = { ui: albumId, ab: title, gr: genres, yr: year === null ? [] : [year], lg: lang.id, tk };
 	const lines = [
 		`Published "${title}" (${tk.length} song${tk.length === 1 ? "" : "s"}, ${lang.name}${year ? `, ${year}` : ""}), from @${request.login}'s library`,
@@ -110,6 +144,7 @@ export function buildPublish(data, request, form, { reserved = new Set(), assign
 		artists,
 		media: { ...data.media, albums: [...data.media.albums, [albumId, mediaFolder, rows]] },
 		approve: { album: albumId, tracks },
+		place: before ? { inPlace: !tracks[0].key.startsWith(`${CATALOG_ROOT}/`), folder: mediaFolder } : place,
 		lines,
 		newArtists,
 	};

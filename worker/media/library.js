@@ -57,6 +57,7 @@ export const STORAGE_DEFAULT = "private/";
 export const isUpload = (key) => key.startsWith(UPLOADS_ROOT);
 const MAX_ADD = 200;
 const MAX_LIST = 1000;
+const D1_BIND_MAX = 100;
 const STALE_UPLOAD_S = 3600;
 const MAX_JSON = 8192;
 
@@ -389,13 +390,20 @@ async function listStorage(env, me, prefix, cursor, origin, nowSeconds) {
 	listed.delimitedPrefixes = (listed.delimitedPrefixes ?? []).filter((f) => !isUpload(f));
 	const audio = listed.objects.filter((o) => formatOf(o.key));
 	const known = new Set();
-	if (audio.length) {
-		const rows = await env.DB.prepare(`SELECT r2_key FROM uploads WHERE r2_key IN (${audio.map(() => "?").join(",")})`).bind(...audio.map((o) => o.key)).all();
+	// Published in place: the file is a catalog song's own (docs/library.md), so it must stay where it is.
+	const catalog = new Set();
+	// D1 binds at most 100 values a query: the keys are looked up a hundred at a time.
+	for (let i = 0; i < audio.length; i += D1_BIND_MAX) {
+		const keys = audio.slice(i, i + D1_BIND_MAX).map((o) => o.key);
+		const marks = keys.map(() => "?").join(",");
+		const rows = await env.DB.prepare(`SELECT r2_key FROM uploads WHERE r2_key IN (${marks})`).bind(...keys).all();
 		for (const r of rows.results ?? []) known.add(r.r2_key);
+		const published = await env.DB.prepare(`SELECT r2_key FROM published_tracks WHERE r2_key IN (${marks})`).bind(...keys).all();
+		for (const r of published.results ?? []) catalog.add(r.r2_key);
 	}
 	const files = [];
 	for (const o of audio) {
-		files.push({ key: o.key, name: o.key.slice(p.length), size: o.size, format: formatOf(o.key), added: known.has(o.key), url: await signedKeyUrl(origin, o.key, env.AUDIO_SIGNING_KEY, nowSeconds) });
+		files.push({ key: o.key, name: o.key.slice(p.length), size: o.size, format: formatOf(o.key), added: known.has(o.key), catalog: catalog.has(o.key), url: await signedKeyUrl(origin, o.key, env.AUDIO_SIGNING_KEY, nowSeconds) });
 	}
 	return {
 		root: storageRootOf(me), prefix: p,

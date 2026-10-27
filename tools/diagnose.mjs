@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { decodeCode, explain, sniff } from "../src/core/diagnostic.js";
 import { validateMedia } from "./lib/media.mjs";
+import { trackKey } from "../src/core/media-keys.js";
 
 function fail(message) {
 	console.error(`error: ${message}`);
@@ -98,8 +99,8 @@ async function showTrack(id, data) {
 		line("path", "MISSING: the build would fail, and D1 has no source for this track");
 		return;
 	}
-	// The Worker reads `${root}/${folder_path}/${mp3}`, with root "music".
-	const key = `${media.root}/${entry[1]}/${file}`;
+	// The Worker reads music/<folder>/<file>, or the place in storage of an album published in place.
+	const key = trackKey(entry[1], file);
 	heading("Storage");
 	line("R2 key", key);
 	if (/[^\x20-\x7e]/.test(key)) line("code points", escaped(key));

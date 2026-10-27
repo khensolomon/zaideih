@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPublish, segment } from "../src/workspace/publish.js";
+import { buildPublish, placeOf, segment } from "../src/workspace/publish.js";
 import { validateMedia, checkCoverage } from "../tools/lib/media.mjs";
 
 const data = () => ({
@@ -42,4 +42,27 @@ test("a request is refused before anything happens when it cannot be published",
 	assert.throws(() => buildPublish(data(), request, { ...form, year: "1800" }), /year/);
 	assert.throws(() => buildPublish(data(), { ...request, songs: [{ ...request.songs[0], artist: "" }] }, { ...form, songs: [] }), /needs an artist/);
 	assert.throws(() => segment(".."), /cannot be used/);
+});
+
+test("songs added from storage, all in one folder, are published where they are", () => {
+	const stored = { id: 4, login: "khen", songs: [
+		{ upload: 21, title: "One", artist: "Ann", fileName: "01 One.mp3", duration: 100, storageKey: "Google Music/Album A/01 One.mp3" },
+		{ upload: 22, title: "Two", artist: "Ann", fileName: "02 Two.mp3", duration: 120, storageKey: "Google Music/Album A/02 Two.mp3" },
+	] };
+	const out = buildPublish(data(), stored, { title: "Album A", lang: 1, songs: [] }, { ui: () => "0123456789abcdef" });
+	assert.equal(out.place.inPlace, true);
+	assert.deepEqual(out.approve.tracks.map((t) => t.key), ["Google Music/Album A/01 One.mp3", "Google Music/Album A/02 Two.mp3"]);
+	assert.deepEqual(out.media.albums.at(-1), ["0123456789abcdef", "/Google Music/Album A", [[41, "01 One.mp3"], [42, "02 Two.mp3"]]]);
+	assert.deepEqual(validateMedia(out.media), []);
+	// A second attempt keeps the place.
+	const again = buildPublish(data(), stored, { title: "Album A", lang: 1, songs: [] }, { assigned: out.approve });
+	assert.equal(again.media.albums.at(-1)[1], "/Google Music/Album A");
+
+	// Otherwise copied, with the reason said.
+	const mixed = { ...stored, songs: [stored.songs[0], { ...stored.songs[1], storageKey: "Elsewhere/02 Two.mp3" }] };
+	assert.match(placeOf(mixed.songs, data().media).why, /2 folders/);
+	assert.equal(buildPublish(data(), mixed, { title: "Album A", lang: 1, songs: [] }).approve.tracks[0].key, "music/zola/Album A/01 One.mp3");
+	assert.match(placeOf([stored.songs[0], { ...stored.songs[1], storageKey: null }], data().media).why, /uploaded/);
+	assert.equal(placeOf(request.songs, data().media).why, "", "uploads: copied, nothing to explain");
+	assert.match(placeOf([{ ...stored.songs[0], storageKey: "top.mp3" }], data().media).why, /no folder/);
 });
