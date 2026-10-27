@@ -252,3 +252,30 @@ test("GET /plays says so when D1 cannot be read", async () => {
 		assert.equal(res.status, 503);
 	} finally { console.error = err; }
 });
+
+test("GET /plays/stats gives the first day, the plays of each day and the last 7 days per song", async () => {
+	edge.clear();
+	const sqls = [];
+	const env = { DB: { prepare: (sql) => {
+		sqls.push(sql);
+		return {
+			first: async () => ({ day: "2026-09-01" }),
+			all: async () => ({ results: /GROUP BY day/.test(sql) ? [{ day: "2026-09-01", n: 4 }, { day: "2026-09-03", n: 2 }] : [{ id: 7, n: 3 }] }),
+		};
+	} } };
+	const get = () => worker.fetch(new Request("https://media.zaideih.com/plays/stats"), env, { waitUntil: (p) => p });
+	const res = await get();
+	assert.equal(res.status, 200);
+	assert.equal(res.headers.get("access-control-allow-origin"), "*");
+	const body = await res.json();
+	assert.equal(body.v, 1);
+	assert.equal(body.first, "2026-09-01");
+	assert.match(body.today, /^\d{4}-\d{2}-\d{2}$/);
+	assert.deepEqual(body.days, [["2026-09-01", 4], ["2026-09-03", 2]]);
+	assert.deepEqual(body.week, [[7, 3]]);
+	assert.ok(sqls.some((s) => /-6 days/.test(s)), "the week is today and the 6 days before");
+	await new Promise((r) => setTimeout(r, 0));
+	const n = sqls.length;
+	await get();
+	assert.equal(sqls.length, n, "the second read comes from the edge cache");
+});

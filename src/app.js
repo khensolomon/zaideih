@@ -12,7 +12,7 @@ import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { applyTotals, startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { startHolds } from "./core/holds.js";
-import { AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
+import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
@@ -148,7 +148,7 @@ route("workspace", () => ({
 		try {
 			const mod = await import(new URL(WORKSPACE_URL, document.baseURI).href);
 			mod.mount(root, {
-				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
+				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), audioUrl, authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
 				// The app's own player, lyrics index and covers: the Workspace bundle has no copies of its own.
 				player, onPlayer: (fn) => on("player", fn),
 				lyrics: { has: (id) => lyricsIndex.has(id), get size() { return lyricsIndex.size; } },

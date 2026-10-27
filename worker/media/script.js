@@ -11,6 +11,8 @@
  *   OPTIONS  /audio/:id   CORS preflight for allowed origins.
  *   POST     /plays       Count song plays sent by the app (see "Play counts").
  *   GET      /plays       Play totals per track, for the app (public, cached 5 minutes).
+ *   GET      /plays/stats When counting began, the plays of each day, and each song's plays of the
+ *                         last 7 days, for the Workspace's Statistics (public, cached 5 minutes).
  *   OPTIONS  /plays       CORS preflight for counting origins.
  *   /auth/*               Sign in with GitHub for the Workspace and suggestions
  *                         (auth.js, suggest.js); accounts: Zaideih sessions from
@@ -114,6 +116,7 @@ export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
 		if (url.pathname === "/plays" || url.pathname === "/plays/") return handlePlays(request, env, ctx);
+		if (url.pathname === "/plays/stats" && (request.method === "GET" || request.method === "HEAD")) return handlePlayStats(request, env, ctx);
 		if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return handleAuth(request, env);
 		if (url.pathname === "/library" || url.pathname.startsWith("/library/")) return handleLibrary(request, env);
 		if (url.pathname.startsWith("/lyrics/")) return handleLyrics(request, env, ctx);
@@ -275,6 +278,44 @@ async function handlePlayTotals(request, env, ctx) {
 	} catch (err) {
 		console.error("reading play totals failed", err);
 		return new Response("play totals are unavailable; try again later", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
+	}
+	ctx.waitUntil(caches.default.put(key, new Response(body, { headers })));
+	return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });
+}
+
+/*
+ * GET /plays/stats: what the Workspace's Statistics adds to the totals. Public,
+ * like them (no listener data), cached at the edge PLAY_TOTALS_SECONDS.
+ *
+ *   {"v":1,"updated":<unix seconds>,"first":"YYYY-MM-DD"|null,"today":"YYYY-MM-DD",
+ *    "days":[["YYYY-MM-DD", plays], ...]   every day with plays, the last PLAY_STATS_DAYS
+ *    "week":[[id, plays], ...]}            each song's plays of the last 7 days (today included)
+ */
+const PLAY_STATS_DAYS = 400;
+
+export async function playStats(env) {
+	const first = (await env.DB.prepare("SELECT MIN(day) AS day FROM plays").first())?.day ?? null;
+	const today = new Date().toISOString().slice(0, 10);
+	const days = (await env.DB.prepare(`SELECT day, SUM(n) AS n FROM plays WHERE day >= date('now', '-${PLAY_STATS_DAYS - 1} days') GROUP BY day ORDER BY day`).all()).results ?? [];
+	const week = (await env.DB.prepare("SELECT track_id AS id, SUM(n) AS n FROM plays WHERE day >= date('now', '-6 days') GROUP BY track_id ORDER BY track_id").all()).results ?? [];
+	return { v: 1, updated: Math.floor(Date.now() / 1000), first, today, days: days.map((r) => [r.day, r.n]), week: week.map((r) => [r.id, r.n]) };
+}
+
+async function handlePlayStats(request, env, ctx) {
+	const headers = { "Content-Type": "application/json", "Cache-Control": `public, max-age=${PLAY_TOTALS_SECONDS}`, "Access-Control-Allow-Origin": "*" };
+	const key = new Request("https://cache.internal/play-stats/v1");
+	const cached = await caches.default.match(key);
+	if (cached) {
+		const h = new Headers(cached.headers);
+		h.set("Access-Control-Allow-Origin", "*");
+		return new Response(request.method === "HEAD" ? null : cached.body, { status: 200, headers: h });
+	}
+	let body;
+	try {
+		body = JSON.stringify(await playStats(env));
+	} catch (err) {
+		console.error("reading play statistics failed", err);
+		return new Response("play statistics are unavailable; try again later", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
 	}
 	ctx.waitUntil(caches.default.put(key, new Response(body, { headers })));
 	return new Response(request.method === "HEAD" ? null : body, { status: 200, headers });

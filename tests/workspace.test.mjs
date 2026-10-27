@@ -242,3 +242,41 @@ test("the admin page's keys move to the Workspace's once; a key already moved is
 	assert.deepEqual(Object.fromEntries(map), { "zaideih.workspace.token": "new", "zaideih.rail": "R", "zaideih.workspace.draft": "D" });
 	assert.equal(moveKeys(storage), 0);
 });
+
+test("an artist without songs can be deleted; one credited again is kept and said why", () => {
+	const src = { ...data(), artists: [...data().artists, { id: 0, name: "Unknown", type: 0 }, { id: 12, name: "Nobody", type: 2 }] };
+	const index = indexData(src);
+	const checks = Object.fromEntries(healthChecks(src).map((c) => [c.id, c]));
+	const unused = checks["unused-artist"];
+	assert.deepEqual(unused.items.map((i) => i.id), [12], "Unknown (0) is a credit, never listed");
+	assert.deepEqual(unused.fixes, [{ kind: "artist", id: 12, field: "removed", value: true }]);
+	assert.deepEqual(unused.items[0].fix, unused.fixes[0]);
+	assert.equal(unused.fixLabel, "Delete");
+	const changes = setChange([], index, unused.fixes[0]);
+	assert.equal(changes.length, 1);
+	assert.equal(describe(changes[0], index), 'Delete the artist "Nobody" (no songs)');
+	const out = applyChanges(src, changes);
+	assert.deepEqual(out.artists.map((a) => a.id), [10, 11, 0]);
+	assert.deepEqual(out.missing, []);
+	assert.equal(src.artists.length, 4, "the source is not changed");
+	// Credited on a song in the same draft: kept, and the change is reported.
+	const again = applyChanges(src, [...changes, { kind: "track", id: 2, field: "a", value: [11, 12] }]);
+	assert.ok(again.artists.some((a) => a.id === 12));
+	assert.match(again.missing[0].reason, /credited on a song again/);
+	assert.equal(cleanValue({ kind: "artist", field: "removed" }, "yes"), false);
+});
+
+test("a song's length is a whole number of seconds, shown as m:ss", () => {
+	const src = data();
+	src.albums[0].tk[1].d = 0;
+	const index = indexData(src);
+	assert.equal(cleanValue({ kind: "track", field: "d" }, "245"), 245);
+	assert.throws(() => cleanValue({ kind: "track", field: "d" }, 2.5), /whole number/);
+	assert.throws(() => cleanValue({ kind: "track", field: "d" }, 99999), /whole number/);
+	const changes = setChange([], index, { kind: "track", id: 2, field: "d", value: 245 });
+	assert.equal(describe(changes[0], index), 'song "Two": length none → 4:05');
+	assert.equal(applyChanges(src, changes).albums[0].tk[1].d, 245);
+	assert.deepEqual(setChange(changes, index, { kind: "track", id: 2, field: "d", value: 0 }), [], "back to the source value");
+	const checks = Object.fromEntries(healthChecks(src).map((c) => [c.id, c]));
+	assert.equal(checks["no-duration"].reads, "lengths");
+});

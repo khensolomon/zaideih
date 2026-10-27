@@ -147,3 +147,13 @@ test("live: the Catalog right makes changes live and takes them away; the public
 	assert.deepEqual(removed.body.changes.map((c) => c.id), [2]);
 	assert.equal((await call("gh-owner", "GET", "/live/detail")).body.log[0].action, "released");
 });
+
+test("live: a song's length changes live, and the album's total with it", () => {
+	const raw = released();
+	assert.equal(rawValue(indexRaw(raw), { kind: "track", id: 2, field: "d" }), 95);
+	const out = patchRaw(raw, [{ kind: "track", id: 2, field: "d", value: 180, base: 95, refs: {} }]);
+	assert.equal(out.applied.length, 1);
+	const model = buildModel(out.raw, { version: "t" });
+	assert.equal(model.tracks.get(2).duration, 180);
+	assert.equal(model.albums.get("a1").duration, 252 + 180);
+});

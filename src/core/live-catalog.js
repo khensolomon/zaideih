@@ -24,10 +24,10 @@
  */
 import { AUDIO_URL_TEMPLATE } from "../config.js";
 
-/** The fields that can change live: the Workspace's, but showing a hidden song again (it is not shipped). */
+/** The fields that can change live: the Workspace's, but showing a hidden song again (it is not shipped) and deleting an artist (one without songs is not shipped either). */
 export const LIVE_FIELDS = Object.freeze({
 	album: ["ab", "yr", "lg", "gr"],
-	track: ["t", "a", "h"],
+	track: ["t", "a", "h", "d"],
 	artist: ["name", "aka", "type", "thesaurus"],
 });
 
@@ -59,7 +59,7 @@ export function rawValue(index, { kind, id, field }) {
 		const hit = index.track.get(id);
 		if (field === "h") return hit ? false : undefined;
 		if (!hit) return undefined;
-		return { t: hit.row[1], a: hit.row[2] }[field];
+		return { t: hit.row[1], a: hit.row[2], d: hit.row[3] }[field];
 	}
 	const a = index.artist.get(id);
 	if (!a) return undefined;
@@ -99,7 +99,7 @@ export function patchRaw(source, changes) {
 				hit.album[5] = hit.album[5].filter((t) => t[0] !== c.id);
 				index.track.delete(c.id);
 				if (!hit.album[5].length) dropped.add(hit.album[0]);
-			} else hit.row[{ t: 1, a: 2 }[c.field]] = c.value;
+			} else hit.row[{ t: 1, a: 2, d: 3 }[c.field]] = c.value;
 		} else {
 			const a = index.artist.get(c.id);
 			a[{ name: 1, aka: 2, type: 3, thesaurus: 4 }[c.field]] = c.value;
