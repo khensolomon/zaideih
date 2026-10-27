@@ -510,17 +510,22 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .track .saved svg { width: 16px; height: 16px; }
 .track.now { background: var(--surface); }
 .track.now .title, .track.now .no { color: var(--accent-ink); }
-/* The playing song: three bars in place of its number, moving while the music plays. */
+/*
+ * The playing song: three bars in place of its number, moving while the
+ * music plays and held where they are when it pauses (the animation is
+ * paused, not taken away). They move by transform, which the compositor
+ * draws without laying the page out again, so a long list stays smooth.
+ */
 .track .no .eq { display: none; }
 .track.now .no span { display: none; }
 .track.now .no .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; vertical-align: middle; }
-.track .no .eq i { display: block; width: 3px; height: 4px; border-radius: 1.5px; background: var(--accent-icon); }
-.track.now .no .eq i:nth-child(2) { height: 8px; }
-body.is-playing .track.now .no .eq i { animation: eq 0.9s ease-in-out infinite alternate; }
-body.is-playing .track.now .no .eq i:nth-child(2) { animation-duration: 0.7s; animation-delay: -0.3s; }
-body.is-playing .track.now .no .eq i:nth-child(3) { animation-duration: 1.1s; animation-delay: -0.6s; }
-@keyframes eq { from { height: 3px; } to { height: 14px; } }
-@media (prefers-reduced-motion: reduce) { body.is-playing .track.now .no .eq i { animation: none; height: 10px; } }
+.track .no .eq i { display: block; width: 3px; height: 14px; border-radius: 1.5px; background: var(--accent-icon); transform-origin: 50% 100%; transform: scaleY(0.3); will-change: transform; }
+.track.now .no .eq i { animation: eq 0.9s ease-in-out infinite alternate; animation-play-state: paused; }
+.track.now .no .eq i:nth-child(2) { animation-duration: 0.7s; animation-delay: -0.3s; }
+.track.now .no .eq i:nth-child(3) { animation-duration: 1.1s; animation-delay: -0.6s; }
+body.is-playing .track.now .no .eq i { animation-play-state: running; }
+@keyframes eq { from { transform: scaleY(0.22); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .track.now .no .eq i { animation: none; transform: scaleY(0.7); } }
 @media (max-width: 560px) { .track .dur { display: none; } .track { grid-template-columns: 28px minmax(0, 1fr) auto auto auto; } }
 
 .more { display: flex; justify-content: center; margin-top: 14px; }
@@ -1598,10 +1603,10 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-play svg.i { width: 18px; height: 18px; }
 .ly-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .ly-state .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
-.ly-state .eq i { display: block; width: 3px; height: 4px; border-radius: 1.5px; background: var(--accent-icon); animation: eq 0.9s ease-in-out infinite alternate; }
+.ly-state .eq i { display: block; width: 3px; height: 12px; border-radius: 1.5px; background: var(--accent-icon); transform-origin: 50% 100%; animation: eq 0.9s ease-in-out infinite alternate; }
 .ly-state .eq i:nth-child(2) { animation-duration: 0.7s; animation-delay: -0.3s; }
 .ly-state .eq i:nth-child(3) { animation-duration: 1.1s; animation-delay: -0.6s; }
-@media (prefers-reduced-motion: reduce) { .ly-state .eq i { animation: none; height: 9px; } }
+@media (prefers-reduced-motion: reduce) { .ly-state .eq i { animation: none; transform: scaleY(0.75); } }
 @media (min-width: 700px) {
 	.ly-hero { grid-template-columns: 132px minmax(0, 1fr); gap: 24px; }
 	.ly-cover { width: 132px; border-radius: 12px; }

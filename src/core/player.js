@@ -325,19 +325,40 @@ function artworkNow(track) {
 	}
 }
 
-/** Draws the covers of the songs next to the playing one: one back, three ahead (around the end with repeat all). */
+/** When the main thread is free: an idle moment, or soon where the browser has no idle callback. */
+const whenIdle = (fn) => (typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 50));
+
+let aheadQueued = false;
+/**
+ * Draws the covers of the songs next to the playing one: one back, three
+ * ahead (around the end with repeat all). One cover per idle moment, while
+ * the page is in front: a cover takes some 100 ms to draw (several times
+ * that on a phone), and four in a row held the page up as a song started.
+ */
 function drawAhead() {
-	if (!artworkFor || !state.queue.length) return;
-	const n = state.queue.length;
-	for (const step of [1, -1, 2, 3]) {
-		let i = state.index + step;
-		if (i < 0 || i >= n) {
-			if (state.repeat !== "all") continue;
-			i = (i + n) % n;
+	if (!artworkFor || !state.queue.length || aheadQueued) return;
+	aheadQueued = true;
+	const next = () => {
+		aheadQueued = false;
+		if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+		const n = state.queue.length;
+		for (const step of [1, -1, 2, 3]) {
+			let i = state.index + step;
+			if (i < 0 || i >= n) {
+				if (state.repeat !== "all") continue;
+				i = (i + n) % n;
+			}
+			const t = catalog?.track(state.queue[i]);
+			if (t && !drawn.has(t.id)) {
+				artworkOf(t).catch(() => { /* drawn when it plays */ });
+				// The next one in another idle moment.
+				aheadQueued = true;
+				whenIdle(next);
+				return;
+			}
 		}
-		const t = catalog?.track(state.queue[i]);
-		if (t && !drawn.has(t.id)) artworkOf(t).catch(() => { /* drawn when it plays */ });
-	}
+	};
+	whenIdle(next);
 }
 
 function metadataFor(track, src) {
@@ -349,6 +370,19 @@ function metadataFor(track, src) {
 
 function updateMediaSession(track) {
 	if (!("mediaSession" in navigator)) return;
+	// In front (a tap in the app), the song starts first and its cover is drawn a moment later; in the
+	// background (a car's or the lock screen's buttons) it is drawn now, since such devices read it once.
+	if (typeof document !== "undefined" && document.visibilityState === "visible" && !drawn.has(track.id) && artworkFor) {
+		navigator.mediaSession.metadata = metadataFor(track, null);
+		whenIdle(() => {
+			if (state.queue[state.index] !== track.id) return;
+			const set = (src) => { if (src && state.queue[state.index] === track.id) navigator.mediaSession.metadata = metadataFor(track, src); };
+			const src = artworkNow(track);
+			if (src) set(src);
+			else artworkOf(track).then(set, (err) => console.warn("Cover artwork could not be drawn; the app icon is shown instead.", err));
+		});
+		return;
+	}
 	const ready = artworkNow(track);
 	navigator.mediaSession.metadata = metadataFor(track, ready);
 	if (ready || !artworkFor) return;

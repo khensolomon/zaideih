@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.27.7
+
+- Smoother song rows: the playing bars pause in place, starting a song no longer holds the page up, and a page loads with one redraw
+- The playing row's bars freeze where they are on pause and move on from there on resume (the animation is paused, not removed); they move by transform, so a long list is not laid out again on every frame
+- Starting a song: the lock-screen cover of a song tapped in the app is drawn just after it starts (in the background, from a car's or the lock screen's buttons, still at once); the covers ahead are drawn one per idle moment instead of four in a row. Measured on an album page: no long task while a song starts (were 314 and 329 ms)
+- The visualizer reads the page's layout twice a second instead of on every frame, and draws its bars with one fill per colour
+- Loading a page: counted plays, holds, live changes, trimmed songs and the lyrics marks arriving together draw it again once, not once each (6 draws to 2 on an album page; the longest task from 495 to 175 ms)
+
 ## v26.10.27.6
 
 - t2 (catalog, 1 change)
