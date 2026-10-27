@@ -1,5 +1,14 @@
 # Version
 
+## v26.10.27.9
+
+- Workspace statistics, deleting artists without songs, reading song lengths
+- Statistics says when counting began and what counts as a play; "Last 30 days" and "Last 7 days" appear only once counting is older than the period (before that they equal all time, and the page says from which day they differ). New tiles: daily average, busiest day, songs played out of the catalog's; a bar for each day; the most played songs, albums, artists or languages over 7 days, 30 days or all time, with shares, each opening its editor
+- Audio Worker: `GET /plays/stats` (public, cached 5 minutes): the first counted day, the plays of each day, and each song's plays of the last 7 days
+- Checks, artists without songs: Delete beside each, Delete all, and "Delete this artist" on the artist's page (a draft change, released with the next release); "Unknown" and "Various Artists" are no longer listed
+- Checks, songs with no length: "Read the lengths from the files" reads the first 64 KB of each song's MP3 (frame count from the Xing/Info or VBRI header, or size and bitrate for constant bitrate), six at a time, and adds each length to the draft; the songs that could not be read are listed with the reason. A song's length is a draft field and a live field
+- Apply now sends more than 500 changes in several requests
+
 ## v26.10.27.8
 
 - Published Chin Famine Concert (29 songs, from @khensolomon's library)

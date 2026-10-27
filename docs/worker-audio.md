@@ -5,7 +5,7 @@ The audio Worker (`worker/media`, at `https://media.zaideih.com`) streams the ca
 | Route | What | Code |
 |---|---|---|
 | `GET /audio/:id` | a catalog song from R2 (`music/…`, path from D1 `tracks`), with ranges | `script.js` |
-| `POST /plays`, `GET /plays` | count plays; play totals for the app | `script.js` |
+| `POST /plays`, `GET /plays`, `GET /plays/stats` | count plays; play totals for the app; counting history for the Workspace | `script.js` |
 | `/auth/*` | sign in with GitHub for the Workspace; `POST /auth/suggest` opens suggestions | `auth.js`, `suggest.js` |
 | `/auth/session`, `/auth/me`, `/auth/google/*`, `/auth/passkey/*` | accounts: Zaideih sessions from GitHub, Google or passkey sign-ins ([accounts.md](accounts.md)) | `accounts.js`, `google.js`, `passkeys.js` |
 | `/holds`, `/holds/:album` | albums held back without a release: the public list, set by the Albums right; held songs are refused at `/audio/:id` with 403 ([holds.md](holds.md)) | `holds.js` |
@@ -160,6 +160,8 @@ npx wrangler d1 execute audio --remote --command \
 The app counts a play after 10 seconds of listening (or at the end of a shorter song) and posts it to `POST /plays` (`src/core/plays.js`). The Worker stores one row per track and UTC day in `plays`; nothing about the listener is stored.
 
 The app reads the counts back with `GET /plays` (`src/core/playcounts.js`): `{"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}`, only tracks with plays, sorted by id. It is public (any origin; totals only) and cached for 5 minutes, at the edge (so D1 is asked at most once per data centre in that time) and in browsers. The app adds each total to the catalog's own count, keeps the last answer per device for offline use, and asks again at start and on returning to the app, at most every 10 minutes.
+
+The Workspace's Statistics also reads `GET /plays/stats`: `{"v":1,"updated":<unix seconds>,"first":"YYYY-MM-DD"|null,"today":"YYYY-MM-DD","days":[["YYYY-MM-DD", plays], ...],"week":[[id, plays], ...]}`: the first day with plays, the plays of each day with any in the last 400 days, and each song's plays of the last 7 days (today and the 6 days before). It is public and cached like `GET /plays` (5 minutes, edge and browsers): sums per day and per song, nothing about listeners. The day index on `plays` serves the day sums.
 
 ```bash
 # Plays per day, last 14 days

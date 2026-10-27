@@ -11,10 +11,10 @@ The Workspace's own fields:
 | Record | Fields |
 |---|---|
 | Album | title, year, language, genres |
-| Song | title, artists, hidden (hiding only) |
+| Song | title, artists, hidden (hiding only), length |
 | Artist | name, other name, type, spellings |
 
-Anything else needs a release, as before: a new album or song, showing a hidden song again (it is not shipped), merging artists, changing files or paths, and a record the released catalog does not have yet. The Workspace keeps such changes in the draft and says why.
+Anything else needs a release, as before: a new album or song, showing a hidden song again (it is not shipped), deleting an artist (one without songs is not shipped either), merging artists, changing files or paths, and a record the released catalog does not have yet. The Workspace keeps such changes in the draft and says why.
 
 ## Who
 
@@ -49,7 +49,7 @@ Limits: an app that has never been online since a change shows the released valu
 |---|---|---|
 | `GET /live` | anyone (CORS `*`, cached 60 s at the edge) | `{ at, changes: [{ kind, id, field, value, base, refs }] }`, no names |
 | `GET /live/detail` | Catalog right | the changes with who and when, and the latest 100 log entries |
-| `POST /live {changes}` | Catalog right | made live; each replaces the one for its field. Checked as the draft checks it (`cleanValue`), its base another value of the same field; hidden only as true; up to 500 a call, 5,000 in all |
+| `POST /live {changes}` | Catalog right | made live; each replaces the one for its field. Checked as the draft checks it (`cleanValue`), its base another value of the same field; hidden only as true; up to 500 a call (the Workspace sends more in several calls), 5,000 in all |
 | `POST /live/remove {changes: [{kind, id, field}], why}` | Catalog right | taken away; `why` is `undo`, `released` or `overtaken`, kept in the log |
 
 Tables (`migrations/0011-catalog-live.sql`): `catalog_live` (one row per kind, record and field) and `catalog_live_log` (every change). They cannot be rebuilt from git, so `tools/d1.mjs reset` keeps them (`LIBRARY_TABLES`).

@@ -1499,12 +1499,41 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .adm-check > :not(summary) { margin-left: 4px; }
 .adm-check-items { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
 .adm-check-items .link-btn { color: var(--ink); font-weight: 500; text-align: left; }
+.adm-check-items li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.adm-check-items .link-btn.danger { color: var(--danger-ink); font-weight: 600; }
+.adm-check-items .adm-hint { font-size: 13px; }
+.adm-delete { margin-top: 28px; }
+.adm-reader { display: grid; gap: 8px; margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface); max-width: 720px; }
+.adm-reader progress { width: 100%; height: 6px; }
+.adm-reader ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 .adm-count { flex: none; min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; padding: 2px 10px; border-radius: 999px; background: var(--surface-2); font-weight: 650; }
 .adm-count[data-zero="true"] { background: none; color: var(--ink-3); }
 .adm-rank { list-style: none; margin: 0; padding: 0; counter-reset: rank; }
 .adm-rank li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); counter-increment: rank; }
 .adm-rank li::before { content: counter(rank); flex: none; width: 24px; color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
 .adm-rank .num { font-variant-numeric: tabular-nums; font-weight: 650; }
+
+/* Statistics: tiles, the plays of each day, and the ranking with share bars. */
+.adm-stat-tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.adm-stat-tiles .adm-tile small { font-size: 12px; }
+.adm-daily { margin: 0 0 28px; }
+.adm-chart { position: relative; display: grid; grid-template-columns: repeat(var(--days), minmax(0, 1fr)); align-items: end; height: 140px; padding-top: 18px; border-bottom: 1px solid var(--line); }
+.adm-chart-peak { position: absolute; top: 0; left: 0; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.adm-chart::before { content: ""; position: absolute; top: 18px; left: 0; right: 0; border-top: 1px dashed var(--line); }
+.adm-bar-hit { display: flex; align-items: flex-end; height: 100%; padding: 0 1px; }
+.adm-bar-hit:hover .adm-bar { background: var(--ink); }
+.adm-bar { display: block; width: 100%; max-width: 18px; margin: 0 auto; min-height: 2px; border-radius: 3px 3px 0 0; background: var(--ink-3); }
+.adm-bar[data-zero="true"] { background: var(--line); }
+.adm-bar[data-today="true"] { background: var(--accent); }
+.adm-chart-axis { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.adm-stat-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.adm-rank-bars li { position: relative; }
+.adm-rank-bars li::after { content: ""; position: absolute; left: 36px; bottom: -1px; height: 2px; width: calc((100% - 36px) * var(--share)); background: var(--ink-3); border-radius: 2px; }
+.adm-rank-bars li > .adm-row-text, .adm-rank-open { flex: 1; min-width: 0; }
+.adm-rank-open { display: flex; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.adm-rank-open:hover b { text-decoration: underline; }
+.adm-rank-bars .num { display: grid; justify-items: end; }
+.adm-rank-bars .num small { font-weight: 500; font-size: 12px; color: var(--ink-3); }
 .workspace .adm-flash { animation: adm-flash 1.6s ease-out; }
 @keyframes adm-flash { from { background: rgb(255 255 255 / 0.18); } }
 
@@ -1528,6 +1557,7 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 	.adm-card-line { display: none; }
 	.adm-greet h1 { font-size: 24px; }
 	.adm-tiles { grid-template-columns: minmax(0, 1fr); }
+	.adm-stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 	.adm-hero { grid-template-columns: 96px minmax(0, 1fr); gap: 16px; }
 	.adm-cover { width: 96px; height: 96px; }
 	.adm-split { grid-template-columns: minmax(0, 1fr); }

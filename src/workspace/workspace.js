@@ -55,6 +55,9 @@ import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, s
 import { indexRaw, LIVE_FIELDS, patchRaw, rawValue } from "../core/live-catalog.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
+import { readLength } from "./lengths.js";
+import { NOT_ARTISTS } from "../core/catalog.js";
+import { dayAfter, parseStats, periodsFor, ranking, statsUrl, summarize } from "./stats.js";
 import { buildPublish, placeOf } from "./publish.js";
 import { stringifyMedia } from "../../tools/lib/media.mjs";
 import { createSession, PENDING_KEY, SESSION_KEY, SignInError } from "./session.js";
@@ -79,7 +82,7 @@ const store = {
 
 /**
  * @param {HTMLElement} root
- * @param {{ catalog, notify, analyticsOn: () => boolean, totalsUrl: string, desktop: boolean }} ctx
+ * @param {{ catalog, notify, analyticsOn: () => boolean, totalsUrl: string, audioUrl: (track) => string, desktop: boolean }} ctx
  */
 export function mount(root, ctx) {
 	const s = {
@@ -393,6 +396,13 @@ export function mount(root, ctx) {
 				<label class="adm-field${mark("thesaurus")}"><span>Other spellings, for search</span><input name="thesaurus" value="${draftValue("artist", a.id, "thesaurus", a.thesaurus ?? []).join(", ")}" placeholder="Separated by commas" autocomplete="off"></label>
 			</div>
 			${albums.length ? html`<h2 class="adm-h">Albums</h2><ul class="adm-rows">${albums.slice(0, 60).map((al) => albumRow(al))}</ul>${albums.length > 60 ? html`<p class="adm-hint">and ${(albums.length - 60).toLocaleString()} more</p>` : ""}` : ""}
+			${!albums.length && !NOT_ARTISTS.has(a.id) ? html`<div class="adm-panel adm-delete">
+				<h2 class="adm-h">No songs</h2>
+				${changed("artist", a.id, "removed")
+					? html`<p>Deleted in your draft: the artist leaves artist.name.json when the draft is published. <button class="link-btn" data-adm="fix-undo" data-kind="artist" data-id="${a.id}" data-field="removed">Undo</button></p>`
+					: html`<p class="adm-hint">No song credits this artist, so the app does not show them. Deleting takes them out of the source data with the next release.</p>
+						<div class="adm-actions"><button class="btn danger" data-adm="artist-delete" data-id="${a.id}">Delete this artist</button></div>`}
+			</div>` : ""}
 		</div>`;
 	}
 
@@ -668,6 +678,22 @@ export function mount(root, ctx) {
 		if (s.tab === "overview" || s.tab === "stats") render();
 	}
 
+	/** The counting's history for Statistics; an older Worker without /plays/stats leaves the page to the totals. */
+	async function loadStats() {
+		const url = statsUrl(ctx.totalsUrl);
+		try {
+			if (!url) throw new Error("no address for the play statistics");
+			const res = await fetch(url, { cache: "no-store" });
+			if (!res.ok) throw new Error(`GET ${url}: HTTP ${res.status}`);
+			s.stats = parseStats(await res.json());
+			s.statsError = "";
+		} catch (err) {
+			console.warn("the play statistics could not be read", err);
+			s.statsError = err.message;
+		}
+		if (s.tab === "stats") render();
+	}
+
 	/* ------------------------------------------------------------ members ---- */
 
 	/** The audio Worker's personal-library routes, with this sign-in. */
@@ -743,13 +769,12 @@ export function mount(root, ctx) {
 	 * released with (`base`) and what that catalog may lack to show it
 	 * (`refs`); or { why } when it needs a release.
 	 */
-	function toLive(c) {
+	function toLive(c, shipped = indexRaw(ctx.catalog.source)) {
 		if (!LIVE_FIELDS[c.kind]?.includes(c.field)) return { why: "needs a release" };
-		const base = rawValue(indexRaw(ctx.catalog.source), c);
+		const base = rawValue(shipped, c);
 		if (base === undefined) return { why: "is not in the released catalog yet: it needs a release" };
 		if (c.kind === "track" && c.field === "h" && !c.value) return { why: "shows a hidden song again, which needs a release" };
 		const refs = {};
-		const shipped = indexRaw(ctx.catalog.source);
 		if (c.field === "a") {
 			refs.artists = c.value.filter((id) => !shipped.artist.has(id)).map((id) => {
 				const a = s.data.index.artist.get(id);
@@ -762,18 +787,21 @@ export function mount(root, ctx) {
 	}
 
 	/** Apply now: the draft's changes that can go live, sent; the others stay in the draft, each said why. */
+	const LIVE_BATCH = 500;
 	async function applyNow() {
 		const sent = [];
 		const kept = [];
+		const shipped = indexRaw(ctx.catalog.source);
 		for (const c of s.draft.changes) {
-			const r = toLive(c);
+			const r = toLive(c, shipped);
 			if (r.live) sent.push({ c, live: r.live }); else kept.push({ c, why: r.why });
 		}
 		if (!sent.length) { ctx.notify(`Nothing here can go live: ${describe(kept[0].c, s.data.index, names())} ${kept[0].why}`, { kind: "error" }); return; }
 		s.busy = `Applying ${plural(sent.length, "change")}…`;
 		render();
 		try {
-			await liveCall("POST", "", { changes: sent.map((x) => x.live) });
+			// The Worker takes LIVE_BATCH changes a request (worker/media/live.js MAX_CHANGES).
+			for (let i = 0; i < sent.length; i += LIVE_BATCH) await liveCall("POST", "", { changes: sent.slice(i, i + LIVE_BATCH).map((x) => x.live) });
 		} finally {
 			s.busy = "";
 		}
@@ -1071,6 +1099,89 @@ export function mount(root, ctx) {
 
 	const STATUS_NAMES = { open: "waiting", withdrawn: "withdrawn", rejected: "rejected", approved: "approved, waiting for the release", released: "in the catalog" };
 
+	/* ---------------------------------------------------- song lengths ---- */
+
+	const LENGTH_READS = 6;
+	const LENGTH_GIVE_UP = 24;
+
+	/** The songs still without a length: in the source, not hidden, and not given one in the draft. */
+	const lengthless = () => {
+		const given = new Set(s.draft.changes.filter((c) => c.kind === "track" && c.field === "d").map((c) => c.id));
+		return s.data.albums.flatMap((al) => al.tk.filter((t) => !t.d && t.h !== true && !given.has(t.i)).map((t) => ({ al, t })));
+	};
+
+	/**
+	 * Reads each length from the start of the song's file (src/workspace/lengths.js),
+	 * LENGTH_READS at a time, and adds it to the draft. Runs in the background:
+	 * the rest of the Workspace stays usable, and Stop ends it.
+	 */
+	async function readLengths() {
+		if (s.lengths?.running) return;
+		const songs = lengthless();
+		const stop = new AbortController();
+		const run = { running: true, done: 0, total: songs.length, added: 0, failed: [], stop };
+		s.lengths = run;
+		render();
+		const progress = () => {
+			const el = root.querySelector(".adm-reader");
+			if (!el) return;
+			el.querySelector("progress")?.setAttribute("value", String(run.done));
+			const line = el.querySelector("[data-line]");
+			if (line) line.textContent = `${run.done.toLocaleString()} of ${run.total.toLocaleString()} read · ${run.added.toLocaleString()} added${run.failed.length ? ` · ${run.failed.length.toLocaleString()} could not be read` : ""}`;
+		};
+		let next = 0;
+		const reader = async () => {
+			while (next < songs.length && !stop.signal.aborted) {
+				const { al, t } = songs[next++];
+				try {
+					const shipped = ctx.catalog.track(t.i);
+					if (!shipped) throw new Error("not in the app's catalog, so it has no address (its album may be held)");
+					if (!ctx.audioUrl) throw new Error("this page has no audio address to read from");
+					const { seconds } = await readLength(ctx.audioUrl(shipped), { signal: stop.signal });
+					s.draft.changes = setChange(s.draft.changes, s.data.index, { kind: "track", id: t.i, field: "d", value: seconds });
+					run.added += 1;
+					if (run.added % 25 === 0) saveDraft();
+				} catch (err) {
+					if (stop.signal.aborted) break;
+					run.failed.push({ id: t.i, album: al.ui, label: `${t.t} (${al.ab})`, why: err.message });
+					// Nothing read at all: the Worker or the address is the trouble, not the songs.
+					if (!run.added && run.failed.length >= LENGTH_GIVE_UP) { run.gaveUp = true; stop.abort(); }
+				}
+				run.done += 1;
+				progress();
+			}
+		};
+		try {
+			await Promise.all(Array.from({ length: LENGTH_READS }, reader));
+		} finally {
+			run.running = false;
+			saveDraft();
+			render();
+		}
+		ctx.notify(run.gaveUp
+			? `Stopped: the first ${plural(run.failed.length, "song")} could not be read (${run.failed[0].why})`
+			: `${plural(run.added, "length")} added to the draft${run.failed.length ? `; ${plural(run.failed.length, "song")} could not be read` : ""}${stop.signal.aborted ? " (stopped)" : ""}`, run.failed.length && !run.added ? { kind: "error" } : undefined);
+	}
+
+	function lengthsPanel() {
+		const run = s.lengths;
+		const left = lengthless().length;
+		if (run?.running) {
+			return html`<div class="adm-reader" aria-live="polite">
+				<progress max="${run.total}" value="${run.done}"></progress>
+				<span class="adm-hint" data-line>${run.done.toLocaleString()} of ${run.total.toLocaleString()} read · ${run.added.toLocaleString()} added</span>
+				<div class="adm-actions"><button class="btn" data-adm="lengths-stop">Stop</button></div>
+			</div>`;
+		}
+		return html`<div class="adm-reader">
+			${run ? html`<span>${plural(run.added, "length")} added to the draft${run.failed.length ? `; ${plural(run.failed.length, "song")} could not be read:` : "."}</span>
+				${run.failed.length ? html`<ul>${run.failed.slice(0, 50).map((f) => html`<li><button class="link-btn" data-adm="open" data-kind="album" data-id="${f.album}">${f.label}</button>: ${f.why}</li>`)}${run.failed.length > 50 ? html`<li>and ${(run.failed.length - 50).toLocaleString()} more</li>` : ""}</ul>` : ""}` : ""}
+			${left ? html`<span class="adm-hint">Reads the first few kilobytes of each song's file from the audio Worker (the MP3 header says the length), ${LENGTH_READS} at a time, and adds each length to the draft. Nothing is downloaded in full.</span>
+				<div class="adm-actions"><button class="btn primary" data-adm="read-lengths">Read ${plural(left, "length")} from the files</button></div>`
+				: html`<span class="adm-hint">Every song in this check has a length in the draft. Publish it, or apply it now, to fix them.</span>`}
+		</div>`;
+	}
+
 	function applyFixes(id) {
 		const check = s.health.find((c) => c.id === id);
 		let n = 0;
@@ -1080,7 +1191,7 @@ export function mount(root, ctx) {
 			if (s.draft.changes.length !== before) n += 1;
 		}
 		saveDraft();
-		ctx.notify(`${n} fix(es) added; the draft has ${s.draft.changes.length} change(s)`);
+		ctx.notify(`${plural(n, "change")} added; the draft has ${plural(s.draft.changes.length, "change")}`);
 	}
 
 	/* ------------------------------------------------------------- views ---- */
@@ -1159,22 +1270,65 @@ export function mount(root, ctx) {
 		</div>`;
 	}
 
+	const dayLabel = (day, opts = { day: "numeric", month: "short" }) => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: "UTC", ...opts });
+	const STATS_KINDS = [["songs", "Songs"], ["albums", "Albums"], ["artists", "Artists"], ["languages", "Languages"]];
+	const PERIOD_NAMES = { week: "Last 7 days", month: "Last 30 days", all: "All time" };
+	const RANK_SHOWN = 25;
+
 	function statistics() {
-		if (!s.totals) return html`<p class="adm-hint">Reading the counted plays…</p>`;
-		const rows = s.totals.tracks.map(([id, total, recent]) => ({ id, total, recent, t: ctx.catalog.track(id) }));
-		const sum = rows.reduce((a, r) => a + r.total, 0);
-		const recentSum = rows.reduce((a, r) => a + r.recent, 0);
-		const list = (sorted, key) => html`<ol class="adm-rank">${sorted.slice(0, 25).map((r) => html`<li><span class="adm-row-text"><b>${r.t ? r.t.title : `#${r.id} (not in the catalog)`}</b><small>${r.t ? r.t.album.title : ""}</small></span><span class="num">${r[key].toLocaleString()}</span></li>`)}</ol>`;
-		return html`<div class="adm-tiles">
-				<div class="adm-tile"><span>Last ${s.totals.recentDays} days</span><b>${recentSum.toLocaleString()}</b></div>
-				<div class="adm-tile"><span>Since counting began</span><b>${sum.toLocaleString()}</b></div>
-				<div class="adm-tile"><span>Songs played</span><b>${rows.length.toLocaleString()}</b></div>
-			</div>
-			<div class="adm-two">
-				<section><h2 class="adm-h">Last ${s.totals.recentDays} days</h2>${list([...rows].sort((a, b) => b.recent - a.recent), "recent")}</section>
-				<section><h2 class="adm-h">Since counting began</h2>${list([...rows].sort((a, b) => b.total - a.total), "total")}</section>
-			</div>
-			<p class="adm-hint">Updated ${new Date(s.totals.updated * 1000).toLocaleString()}; the Worker caches 5 minutes. <button class="link-btn" data-adm="totals">Read again</button></p>`;
+		if (!s.totals || (!s.stats && !s.statsError)) return html`<p class="adm-hint">Reading the counted plays…</p>`;
+		if (!s.stats) return html`<p class="adm-error">The play statistics could not be read (${s.statsError}). The audio Worker may need deploying with this version. <button class="link-btn" data-adm="totals">Try again</button></p>`;
+		const sum = summarize(s.totals, s.stats);
+		const periods = periodsFor(sum.age);
+		const period = periods.includes(s.statsPeriod) ? s.statsPeriod : periods.includes("month") ? "month" : "all";
+		const kind = STATS_KINDS.some(([k]) => k === s.statsKind) ? s.statsKind : "songs";
+		const ranked = ranking(s.totals, s.stats, (id) => ctx.catalog.track(id), period, kind);
+		const top = ranked[0]?.n ?? 0;
+		const total = ranked.reduce((a, r) => a + r.n, 0);
+		const shown = s.statsMore ? ranked : ranked.slice(0, RANK_SHOWN);
+		const songs = ctx.catalog.tracks?.size ?? 0;
+		const n = (v) => Math.round(v).toLocaleString();
+		const since = sum.first ? dayLabel(sum.first, { day: "numeric", month: "long", year: "numeric" }) : "";
+		const until = (days) => dayLabel(dayAfter(sum.first, days));
+		const tiles = [
+			sum.age > 7 ? ["Last 7 days", n(sum.week), ""] : null,
+			sum.age > 30 ? ["Last 30 days", n(sum.month), ""] : null,
+			["All time", n(sum.all), since ? `since ${dayLabel(sum.first)}` : ""],
+			["A day, on average", sum.average < 10 ? sum.average.toFixed(1) : n(sum.average), `over ${plural(sum.age, "day")}, today included`],
+			["Busiest day", sum.busiest ? n(sum.busiest.n) : "–", sum.busiest ? dayLabel(sum.busiest.day, { weekday: "short", day: "numeric", month: "short" }) : ""],
+			["Songs played", n(sum.played), songs ? `of ${songs.toLocaleString()} (${Math.round((sum.played / songs) * 100)}%)` : ""],
+		].filter(Boolean);
+		const peak = Math.max(1, ...sum.days.map((d) => d.n));
+		const chartLabel = `Plays each day, ${dayLabel(sum.days[0].day)} to ${dayLabel(sum.today)}; most in a day ${peak.toLocaleString()}`;
+		return html`<p class="adm-lead">${sum.first
+				? html`Counting began on <b>${since}</b>, ${sum.age === 1 ? "today" : `${plural(sum.age - 1, "day")} ago`}.`
+				: "Nothing has been counted yet."}
+			A play counts after 10 seconds of listening (or a shorter song played to its end), with nothing that identifies the listener; only songs of the catalog are counted, never members' own uploads.</p>
+			${sum.first && sum.age <= 30 ? html`<p class="adm-hint">Counting is younger than 30 days, so the last 30 days are all of it${sum.age <= 7 ? ", and so are the last 7" : ""}: the 30-day figures differ from all time from ${until(30)}${sum.age <= 7 ? `, the 7-day ones from ${until(7)}` : ""}.</p>` : ""}
+			<div class="adm-tiles adm-stat-tiles">${tiles.map(([label, value, note]) => html`<div class="adm-tile"><span>${label}</span><b>${value}</b>${note ? html`<small>${note}</small>` : ""}</div>`)}</div>
+			<section class="adm-daily" aria-label="Plays each day">
+				<div class="adm-h-row"><h2 class="adm-h">Plays each day</h2><span class="adm-hint">${sum.days.length < sum.age ? `last ${sum.days.length} days` : "since counting began"} · UTC days</span></div>
+				<div class="adm-chart" role="img" aria-label="${chartLabel}" style="--days:${sum.days.length}">
+					<span class="adm-chart-peak">${peak.toLocaleString()}</span>
+					${sum.days.map((d) => html`<span class="adm-bar-hit" title="${dayLabel(d.day, { weekday: "short", day: "numeric", month: "short" })}: ${plural(d.n, "play")}"><span class="adm-bar" data-zero="${String(!d.n)}" data-today="${String(d.day === sum.today)}" style="height:${((d.n / peak) * 100).toFixed(1)}%"></span></span>`)}
+				</div>
+				<div class="adm-chart-axis"><span>${dayLabel(sum.days[0].day)}</span><span>${sum.days.length > 2 ? dayLabel(sum.days[Math.floor(sum.days.length / 2)].day) : ""}</span><span>Today</span></div>
+			</section>
+			<section aria-label="Most played">
+				<div class="adm-h-row"><h2 class="adm-h">Most played</h2><span class="adm-hint">${plural(total, "play")}${ranked.length ? ` · ${plural(ranked.length, kind === "songs" ? "song" : kind === "albums" ? "album" : kind === "artists" ? "artist" : "language")}` : ""}</span></div>
+				<div class="adm-stat-controls">
+					<div class="adm-seg" role="tablist" aria-label="Show">${STATS_KINDS.map(([k, label]) => html`<button role="tab" data-adm="stats-kind" data-kind="${k}" aria-selected="${String(k === kind)}">${label}</button>`)}</div>
+					${periods.length > 1 ? html`<div class="adm-seg" role="tablist" aria-label="Period">${periods.map((p) => html`<button role="tab" data-adm="stats-period" data-period="${p}" aria-selected="${String(p === period)}">${PERIOD_NAMES[p]}</button>`)}</div>` : ""}
+				</div>
+				${ranked.length ? html`<ol class="adm-rank adm-rank-bars">${shown.map((r) => {
+					const text = html`<span class="adm-row-text"><b>${r.label}</b>${r.sub ? html`<small>${r.sub}</small>` : ""}</span>`;
+					return html`<li style="--share:${(r.n / top).toFixed(3)}">${r.open ? html`<button class="adm-rank-open" data-adm="open" data-kind="${r.open.kind}" data-id="${r.open.id}">${text}</button>` : text}<span class="num">${r.n.toLocaleString()}<small>${total ? `${((r.n / total) * 100).toFixed(r.n / total < 0.1 ? 1 : 0)}%` : ""}</small></span></li>`;
+				})}</ol>
+				${ranked.length > shown.length ? html`<p><button class="link-btn" data-adm="stats-more">Show all ${ranked.length.toLocaleString()}</button></p>` : ""}`
+				: html`<p class="adm-hint">Nothing played ${period === "all" ? "yet" : `in the ${PERIOD_NAMES[period].toLowerCase()}`}.</p>`}
+				${kind === "artists" ? html`<p class="adm-hint">An artist gets every play of each song they are credited on, so the plays of a duet count for both.</p>` : ""}
+			</section>
+			<p class="adm-hint">Updated ${new Date(s.stats.updated * 1000).toLocaleString()}; the Worker caches 5 minutes. <button class="link-btn" data-adm="totals">Read again</button></p>`;
 	}
 
 	function suggestionsView() {
@@ -1330,8 +1484,11 @@ export function mount(root, ctx) {
 		return html`<p class="adm-lead">Checks of the source data on ${BASE}. Open an item to edit it; some checks add all their fixes to the draft at once.</p>
 			${s.health.map((c) => html`<details class="adm-check" ${s.openChecks.has(c.id) ? "open" : ""} data-check="${c.id}">
 				<summary><span class="adm-row-text"><b>${c.title}</b><small>${c.help}</small></span><span class="adm-count" data-zero="${String(!c.total)}">${c.total.toLocaleString()}</span></summary>
-				${c.fixes ? html`<p><button class="btn" data-adm="fix" data-check="${c.id}">Add all ${c.fixes.length.toLocaleString()} fixes to the draft</button></p>` : ""}
-				${c.total ? html`<ul class="adm-check-items">${c.items.map((it) => html`<li><button class="link-btn" data-adm="open" data-kind="${it.open.kind}" data-id="${it.open.id}">${it.label}</button></li>`)}</ul>${c.total > c.items.length ? html`<p class="adm-hint">and ${(c.total - c.items.length).toLocaleString()} more</p>` : ""}` : html`<p class="adm-hint">Nothing to look at.</p>`}
+				${c.fixes ? html`<p><button class="btn" data-adm="fix" data-check="${c.id}">${c.fixAll ? `${c.fixAll} (${c.fixes.length.toLocaleString()})` : `Add all ${c.fixes.length.toLocaleString()} fixes to the draft`}</button></p>` : ""}
+				${c.reads === "lengths" && c.total ? lengthsPanel(c) : ""}
+				${c.total ? html`<ul class="adm-check-items">${c.items.map((it) => html`<li><button class="link-btn" data-adm="open" data-kind="${it.open.kind}" data-id="${it.open.id}">${it.label}</button>${it.fix ? (changed(it.fix.kind, it.fix.id, it.fix.field)
+					? html`<span class="adm-hint">in your draft</span><button class="link-btn" data-adm="fix-undo" data-kind="${it.fix.kind}" data-id="${it.fix.id}" data-field="${it.fix.field}">Undo</button>`
+					: html`<button class="link-btn danger" data-adm="fix-one" data-check="${c.id}" data-id="${it.id}">${c.fixLabel ?? "Fix"}</button>`) : ""}</li>`)}</ul>${c.total > c.items.length ? html`<p class="adm-hint">and ${(c.total - c.items.length).toLocaleString()} more</p>` : ""}` : html`<p class="adm-hint">Nothing to look at.</p>`}
 			</details>`)}`;
 	}
 
@@ -1560,7 +1717,7 @@ export function mount(root, ctx) {
 	 * the page's other actions wait, so a second click starts nothing. Moving
 	 * around (sections, opening an album, the find field) never waits.
 	 */
-	const QUICK = new Set(["github", "tab", "find", "open", "close", "menu", "search", "req-filter", "req-open", "reject-open", "reject-cancel", "genre-drop", "req-genre-drop", "member-open", "dismiss", "undo", "play", "preview"]);
+	const QUICK = new Set(["github", "tab", "find", "open", "close", "menu", "search", "req-filter", "req-open", "reject-open", "reject-cancel", "genre-drop", "req-genre-drop", "member-open", "dismiss", "undo", "play", "preview", "stats-period", "stats-kind", "stats-more", "fix-one", "fix-undo", "artist-delete", "read-lengths", "lengths-stop"]);
 	let working = null; // { key, label }
 
 	/** What identifies a button across renders: its action and the record it acts on, or its form's. */
@@ -1652,7 +1809,7 @@ export function mount(root, ctx) {
 		if (id === "members") await loadMembers();
 		if (id === "requests") await loadRequests();
 		if (id === "lyrics") await loadLyrics();
-		if (id === "stats" && !s.totals) await loadTotals();
+		if (id === "stats") await Promise.all([s.totals ? null : loadTotals(), s.stats ? null : loadStats()]);
 	}
 
 	/**
@@ -1809,6 +1966,30 @@ export function mount(root, ctx) {
 				case "menu": s.menu = !s.menu; refreshChrome(); break;
 				case "open": s.open = { kind: b.dataset.kind, id: b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id) }; await openSection("catalog"); break;
 				case "fix": applyFixes(b.dataset.check); render(); break;
+				case "fix-one": {
+					const check = s.health.find((c) => c.id === b.dataset.check);
+					const it = check?.items.find((x) => String(x.id) === b.dataset.id);
+					if (it?.fix) { s.draft.changes = setChange(s.draft.changes, s.data.index, it.fix); saveDraft(); ctx.notify(describe(it.fix, s.data.index, names())); }
+					render();
+					break;
+				}
+				case "read-lengths": readLengths().catch((err) => ctx.notify(`Reading the lengths failed: ${err.message}`, { kind: "error" })); break;
+				case "lengths-stop": s.lengths?.stop.abort(); break;
+				case "artist-delete": {
+					const change = { kind: "artist", id: Number(b.dataset.id), field: "removed", value: true };
+					s.draft.changes = setChange(s.draft.changes, s.data.index, change);
+					saveDraft();
+					ctx.notify(describe(change, s.data.index, names()));
+					render();
+					break;
+				}
+				case "fix-undo": {
+					const id = b.dataset.kind === "album" ? b.dataset.id : Number(b.dataset.id);
+					s.draft.changes = s.draft.changes.filter((c) => !(c.kind === b.dataset.kind && c.id === id && c.field === b.dataset.field));
+					saveDraft();
+					render();
+					break;
+				}
 				case "reload": s.menu = false; s.health = null; await load(); break;
 				case "close": s.open = null; render(); [...root.querySelectorAll("[data-adm=search]")].find((el) => el.offsetParent)?.focus(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
@@ -1816,7 +1997,10 @@ export function mount(root, ctx) {
 				case "merge": await mergeAndRelease(); break;
 				case "refresh": watch(); break;
 				case "forget-pr": s.draft.pr = null; s.pr = null; saveDraft(); render(); break;
-				case "totals": await loadTotals(); break;
+				case "totals": await Promise.all([loadTotals(), loadStats()]); break;
+				case "stats-period": s.statsPeriod = b.dataset.period; render(); break;
+				case "stats-kind": s.statsKind = b.dataset.kind; s.statsMore = false; render(); break;
+				case "stats-more": s.statsMore = true; render(); break;
 				case "dismiss": s.error = ""; refreshChrome(); break;
 				case "logout": await disconnect(); break;
 				case "github": await signInWithGitHub(); break;

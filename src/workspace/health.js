@@ -5,6 +5,7 @@
  * Pure: tested in Node (tests/workspace.test.mjs).
  */
 import { normalize } from "../core/text.js";
+import { NOT_ARTISTS } from "../core/catalog.js";
 
 const MAX_ITEMS = 200;
 
@@ -16,9 +17,10 @@ export function tidyText(value) {
 }
 
 /**
- * Runs every check. Returns [{ id, title, help, items: [{ kind, id, open, label }], fixes? }],
- * where `open` names the editor ({kind: "album"|"artist", id}) and `fixes`
- * are draft changes ({kind, id, field, value}) that correct every item.
+ * Runs every check. Returns [{ id, title, help, items: [{ kind, id, open, label, fix? }], fixes?, fixLabel? }],
+ * where `open` names the editor ({kind: "album"|"artist", id}), `fixes`
+ * are draft changes ({kind, id, field, value}) that correct every item, and
+ * an item's `fix` is its own (offered beside it, named by `fixLabel`).
  */
 export function healthChecks({ albums, artists }) {
 	const out = [];
@@ -31,7 +33,7 @@ export function healthChecks({ albums, artists }) {
 	const albumItem = (al, label) => ({ kind: "album", id: al.ui, open: { kind: "album", id: al.ui }, label });
 	const songItem = ({ al, t }, label) => ({ kind: "track", id: t.i, open: { kind: "album", id: al.ui }, label });
 	const artistItem = (a, label) => ({ kind: "artist", id: a.id, open: { kind: "artist", id: a.id }, label });
-	const add = (id, title, help, items, fixes) => out.push({ id, title, help, items: items.slice(0, MAX_ITEMS), total: items.length, ...(fixes?.length ? { fixes } : {}) });
+	const add = (id, title, help, items, fixes, more = {}) => out.push({ id, title, help, items: items.slice(0, MAX_ITEMS), total: items.length, ...(fixes?.length ? { fixes } : {}), ...more });
 
 	// Text: stray spaces and non-NFC forms (Myanmar marks out of order), with a one-click fix.
 	const textItems = [];
@@ -51,7 +53,7 @@ export function healthChecks({ albums, artists }) {
 	add("text", "Titles and names with stray spaces or an unusual Unicode form", "Extra or doubled spaces, or Myanmar marks stored in a non-standard order (the app corrects the order when it builds, but search tools and diffs see the difference).", textItems, textFixes);
 
 	add("no-artist", "Songs without an artist", "Shown as \"Unknown artist\".", songs.filter((s) => !s.t.a.length && s.t.h !== true).map((s) => songItem(s, `${s.t.t} (${s.al.ab})`)));
-	add("no-duration", "Songs with no length", "A length of 0 seconds usually means the file was never read; check that it plays.", songs.filter((s) => !s.t.d && s.t.h !== true).map((s) => songItem(s, `${s.t.t} (${s.al.ab})`)));
+	add("no-duration", "Songs with no length", "A length of 0 seconds means the file was never read: the song shows no length and its album's total is short. Read the lengths from the files to add them to the draft.", songs.filter((s) => !s.t.d && s.t.h !== true).map((s) => songItem(s, `${s.t.t} (${s.al.ab})`)), null, { reads: "lengths" });
 	add("no-year", "Albums without a year", "They sort last by year and are missing from year questions in search.", albums.filter((al) => !al.yr?.length).map((al) => albumItem(al, al.ab)));
 	add("no-genre", "Albums without a genre", "They are missing from every genre page.", albums.filter((al) => !al.gr?.length).map((al) => albumItem(al, al.ab)));
 
@@ -67,6 +69,9 @@ export function healthChecks({ albums, artists }) {
 	add("duplicate-artist", "Artists who may be listed twice", "The same name under more than one id, each with songs. Move the songs to one of them by editing their albums.", dupes.flatMap((list) => list.map((a) => artistItem(a, `${a.name} (#${a.id})`))));
 
 	add("hidden", "Hidden songs", "Kept in the source but not shipped; open the album to show them again.", songs.filter((s) => s.t.h === true).map((s) => songItem(s, `${s.t.t} (${s.al.ab})`)));
-	add("unused-artist", "Artists without songs", "Not shipped in the app.", artists.filter((a) => !used.has(a.id)).map((a) => artistItem(a, a.name)));
+	// "Unknown" and "Various Artists" are credits the catalog keeps, with or without songs.
+	const unused = artists.filter((a) => !used.has(a.id) && !NOT_ARTISTS.has(a.id));
+	const remove = (a) => ({ kind: "artist", id: a.id, field: "removed", value: true });
+	add("unused-artist", "Artists without songs", "Not shipped in the app, and nothing refers to them; deleting one takes it out of artist.name.json with the next release.", unused.map((a) => ({ ...artistItem(a, a.name), fix: remove(a) })), unused.map(remove), { fixLabel: "Delete", fixAll: "Delete all" });
 	return out;
 }

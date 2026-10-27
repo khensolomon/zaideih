@@ -5,8 +5,9 @@
  *
  * A change is { kind, id, field, value }:
  *   album   id = album ui;  fields ab (title), yr (year or null), lg (language id), gr (genre ids)
- *   track   id = track i;   fields t (title), a (artist ids), h (hidden)
- *   artist  id = artist id; fields name, aka, type, thesaurus (spelling variants)
+ *   track   id = track i;   fields t (title), a (artist ids), h (hidden), d (length, whole seconds)
+ *   artist  id = artist id; fields name, aka, type, thesaurus (spelling variants),
+ *                           removed (true: deleted, only while no song credits them)
  * Pure functions: tested in Node (tests/workspace.test.mjs).
  */
 
@@ -14,10 +15,20 @@ export class DraftError extends Error {}
 
 export const FIELDS = Object.freeze({
 	album: ["ab", "yr", "lg", "gr"],
-	track: ["t", "a", "h"],
-	artist: ["name", "aka", "type", "thesaurus"],
+	track: ["t", "a", "h", "d"],
+	artist: ["name", "aka", "type", "thesaurus", "removed"],
 });
-const LABELS = { ab: "title", yr: "year", lg: "language", gr: "genres", t: "title", a: "artists", h: "hidden", name: "name", aka: "also known as", type: "type", thesaurus: "spellings" };
+const LABELS = { ab: "title", yr: "year", lg: "language", gr: "genres", t: "title", a: "artists", h: "hidden", d: "length", name: "name", aka: "also known as", type: "type", thesaurus: "spellings", removed: "removed" };
+/** The longest song length accepted, in seconds (10 hours). */
+export const MAX_SECONDS = 36000;
+/** Seconds as m:ss (or h:mm:ss). */
+export const clock = (sec) => {
+	const s = Math.max(0, Math.round(sec));
+	const h = Math.floor(s / 3600);
+	const m = Math.floor((s % 3600) / 60);
+	const ss = String(s % 60).padStart(2, "0");
+	return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+};
 
 const text = (v) => String(v ?? "").normalize("NFC").trim();
 const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
@@ -44,11 +55,11 @@ export function currentValue(index, { kind, id, field }) {
 	if (kind === "track") {
 		const t = index.track.get(id)?.track;
 		if (!t) return undefined;
-		return field === "h" ? t.h === true : t[field];
+		return field === "h" ? t.h === true : field === "d" ? (Number.isSafeInteger(t.d) ? t.d : 0) : t[field];
 	}
 	const a = index.artist.get(id);
 	if (!a) return undefined;
-	return field === "aka" ? (a.aka ?? "") : field === "thesaurus" ? (a.thesaurus ?? []) : a[field];
+	return field === "aka" ? (a.aka ?? "") : field === "thesaurus" ? (a.thesaurus ?? []) : field === "removed" ? false : a[field];
 }
 
 /** Checks a value for a field and returns it in canonical form; throws DraftError with the reason. */
@@ -83,6 +94,13 @@ export function cleanValue({ kind, field }, value, category = {}) {
 			return ids;
 		}
 		case "h": return value === true;
+		case "removed": return value === true;
+		case "d": {
+			const d = Number(value);
+			// 0: not known (as a song never read has it).
+			if (!Number.isInteger(d) || d < 0 || d > MAX_SECONDS) throw new DraftError(`the length must be a whole number of seconds up to ${MAX_SECONDS}`);
+			return d;
+		}
 		case "type": {
 			const t = Number(value);
 			if (category.artist && !category.artist.some((x) => x.id === t)) throw new DraftError(`unknown artist type ${value}`);
@@ -106,14 +124,16 @@ export function setChange(changes, index, change) {
 
 /**
  * Applies the changes to (copies of) the source data. Returns the new data
- * and the changes that could not be applied (their record is gone), each
- * with the reason.
+ * and the changes that could not be applied (their record is gone, or an
+ * artist to delete is credited on a song again), each with the reason.
+ * Artists are deleted last, so a song credited to one in the same draft keeps it.
  */
 export function applyChanges(data, changes) {
 	const albums = structuredClone(data.albums);
 	const artists = structuredClone(data.artists);
 	const index = indexData({ albums, artists });
 	const missing = [];
+	const removals = [];
 	for (const c of changes) {
 		if (c.kind === "album") {
 			const al = index.album.get(c.id);
@@ -130,10 +150,19 @@ export function applyChanges(data, changes) {
 		} else if (c.kind === "artist") {
 			const a = index.artist.get(c.id);
 			if (!a) { missing.push({ change: c, reason: `artist ${c.id} is no longer in artist.name.json` }); continue; }
+			if (c.field === "removed") { if (c.value) removals.push(c); continue; }
 			a[c.field] = c.value;
 		}
 	}
-	return { albums, artists, missing };
+	if (!removals.length) return { albums, artists, missing };
+	const credited = new Set();
+	for (const al of albums) for (const t of al.tk) for (const id of t.a ?? []) credited.add(id);
+	const gone = new Set();
+	for (const c of removals) {
+		if (credited.has(c.id)) missing.push({ change: c, reason: `artist ${c.id} is credited on a song again, so it is kept` });
+		else gone.add(c.id);
+	}
+	return { albums, artists: artists.filter((a) => !gone.has(a.id)), missing };
 }
 
 /** One line describing a change, for the draft list, the pull request and the changelog. */
@@ -147,12 +176,14 @@ export function describe(change, index, names = {}) {
 		if (field === "type") return names.type?.(v) ?? String(v);
 		if (field === "thesaurus") return (v ?? []).join(", ") || "none";
 		if (field === "yr") return v ?? "no year";
+		if (field === "d") return v ? clock(v) : "none";
 		return `"${v}"`;
 	};
 	if (kind === "track" && field === "h") {
 		const t = index.track.get(id);
 		return `${value ? "Hide" : "Show again"} the song "${t?.track.t ?? id}"${t ? ` (${t.album.ab})` : ""}`;
 	}
+	if (kind === "artist" && field === "removed") return `Delete the artist "${index.artist.get(id)?.name ?? id}" (no songs)`;
 	const what = kind === "album" ? `album "${index.album.get(id)?.ab ?? id}"` : kind === "track" ? `song "${index.track.get(id)?.track.t ?? id}"` : `artist "${index.artist.get(id)?.name ?? id}"`;
 	return `${what}: ${label} ${show(currentValue(index, change))} → ${show(value)}`;
 }
