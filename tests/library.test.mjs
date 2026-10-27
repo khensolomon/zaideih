@@ -208,8 +208,10 @@ test("rights: the owner and co-owners give and take them; each right allows its 
 	assert.equal(row("khensolomon").owner, true);
 	assert.deepEqual(row("khensolomon").rights, ["manage", "review", "moderate", "storage", "lyrics", "albums", "songbooks", "audio", "catalog"]);
 	assert.deepEqual([row("spammer").uploads, row("spammer").used], [1, 600]);
-	assert.equal((await call("tok-mod", "GET", "/library/members/1")).status, 403, "the owner's library is private");
-	assert.equal((await (await call("tok-mod", "GET", "/library/members/99")).json()).uploads[0].title, "BUY NOW");
+	assert.equal((await call("tok-mod", "GET", "/library/members/1/uploads")).status, 403, "the owner's library is private");
+	const ownerPage = await (await call("tok-mod", "GET", "/library/members/1")).json();
+	assert.equal(ownerPage.library, null, "the owner's page shows nothing of their library");
+	assert.equal((await (await call("tok-mod", "GET", "/library/members/99/uploads")).json()).uploads[0].title, "BUY NOW");
 
 	// Block: the spammer's music stops at once and their requests say why.
 	const lib = await (await call("tok-spam", "GET", "/library")).json();
@@ -235,7 +237,7 @@ test("rights: the owner and co-owners give and take them; each right allows its 
 	assert.deepEqual((await (await call("tok-mod", "GET", "/library")).json()).member.rights, ["storage"]);
 	assert.equal((await call("tok-co", "POST", "/library/members/42", { blocked: true, reason: "holds rights" })).status, 200, "co-owners block members with rights");
 	assert.equal((await call("tok-co", "POST", "/library/members/1", { rights: { manage: false } })).status, 403);
-	assert.equal((await call("tok-co", "GET", "/library/members/1")).status, 403, "the owner's library stays private to co-owners too");
+	assert.equal((await call("tok-co", "GET", "/library/members/1/uploads")).status, 403, "the owner's library stays private to co-owners too");
 
 	// A moderator cannot block someone who holds a right.
 	await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
@@ -557,4 +559,88 @@ test("asking to publish: MP3 only, withdrawing and rejecting give the songs back
 	lib = await (await call("tok-ann", "GET", "/library")).json();
 	assert.deepEqual([lib.requests[0].status, lib.requests[0].reason, lib.uploads[0].status], ["rejected", "Not your recording", "private"]);
 	assert.equal(env.BUCKET.objects.size, 1);
+});
+
+test("members: a page at a time, found by name, login, id or (for co-owners) email, with a count per filter", { skip }, async () => {
+	const { env, call } = setup();
+	const now = 1_800_000_000;
+	// 120 more members, every third uploading, a few new, one blocked, one with an email.
+	for (let i = 0; i < 120; i++) {
+		const id = 1000 + i;
+		env.DB.raw.prepare("INSERT INTO members (id, name, first_seen, last_seen) VALUES (?, ?, ?, ?)").run(id, `listener${i}`, i < 5 ? now - 86400 : 1, 1000 + i);
+		env.DB.raw.prepare("INSERT INTO member_logins (provider, subject, member_id, login, full_name, email, created_at, last_used) VALUES ('google', ?, ?, NULL, ?, ?, 1, 1)").run(`g${i}`, id, `Listener ${i}`, i === 7 ? "zo.music@example.com" : null);
+		if (i % 3 === 0) env.DB.raw.prepare("INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (?, ?, 10, 'mp3', 1, 't', 'f.mp3', 'private', 1, 1)").run(id, `users/${id}/${i}.mp3`);
+	}
+	env.DB.raw.prepare("UPDATE members SET blocked_at = 5, blocked_by = 'x', blocked_reason = 'spam' WHERE id = 1003").run();
+	await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
+	await call("tok-owner", "POST", "/library/members/5", { rights: { manage: true } });
+	const get = async (token, qs) => (await call(token, "GET", `/library/members${qs}`)).json();
+
+	const first = await get("tok-mod", "");
+	assert.equal(first.members.length, 50);
+	assert.equal(first.total, 125);
+	assert.deepEqual(first.counts, { all: 125, rights: 3, uploading: 40, new: 5, blocked: 1 });
+	const more = await get("tok-mod", "?offset=100");
+	assert.equal(more.members.length, 25);
+	assert.ok(!more.members.some((m) => first.members.some((f) => f.id === m.id)), "pages do not overlap");
+
+	assert.deepEqual((await get("tok-mod", "?q=listener11&sort=name")).members.map((m) => m.login), ["listener11", ...Array.from({ length: 10 }, (_, k) => `listener11${k}`)]);
+	assert.deepEqual((await get("tok-mod", "?q=%231050")).members.map((m) => m.id), [1050], "#id");
+	assert.equal((await get("tok-mod", "?q=Listener%2042")).members[0].name, "Listener 42", "full name");
+	assert.equal((await get("tok-mod", "?q=100%25")).total, 0, "% is taken literally");
+	assert.equal((await get("tok-mod", "?q=zo.music")).total, 0, "a moderator does not search emails");
+	assert.deepEqual((await get("tok-co", "?q=zo.music")).members.map((m) => m.id), [1007], "a co-owner does");
+	const blocked = await get("tok-mod", "?filter=blocked");
+	assert.deepEqual(blocked.members.map((m) => [m.id, m.blocked.reason]), [[1003, "spam"]]);
+	assert.deepEqual((await get("tok-mod", "?filter=rights&sort=name")).members.map((m) => m.login), ["khensolomon", "lian", "modi"]);
+	assert.equal((await get("tok-mod", "?filter=new")).total, 5);
+	assert.equal((await call("tok-mod", "GET", "/library/members?filter=odd")).status, 400);
+	assert.equal((await call("tok-mod", "GET", "/library/members?limit=500")).status, 400);
+	assert.equal((await call("tok-ann", "GET", "/library/members")).status, 403, "no right, no list");
+});
+
+test("members: a member's page, history, signing out everywhere and deleting several uploads", { skip }, async () => {
+	const { env, call } = setup();
+	await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
+	await call("tok-owner", "POST", "/library/members/5", { rights: { manage: true } });
+	const a = await upload(call, "tok-spam", song({ title: "One" }), mp3(600));
+	const b = await upload(call, "tok-spam", song({ title: "Two" }), mp3(600));
+	const c = await upload(call, "tok-spam", song({ title: "Three" }), mp3(600));
+	env.DB.raw.prepare("UPDATE uploads SET status = 'published' WHERE id = ?").run(c.id);
+	await call("tok-spam", "GET", "/library");
+	// After the sign-in, which writes what GitHub gives (no email here).
+	env.DB.raw.prepare("UPDATE member_logins SET email = 'spam@example.com' WHERE member_id = 99").run();
+
+	const page = await (await call("tok-mod", "GET", "/library/members/99")).json();
+	assert.equal(page.member.login, "spammer");
+	assert.deepEqual([page.uploads.count, page.uploads.published, page.uploads.quota], [3, 1, 2500]);
+	assert.equal(page.sessions.count, 1);
+	assert.equal(page.logins[0].email, undefined, "a moderator does not see emails");
+	assert.equal((await (await call("tok-co", "GET", "/library/members/99")).json()).logins[0].email, "spam@example.com");
+	assert.equal(page.history.at(-1).action, "joined");
+
+	// Several uploads at once: the published one is refused, with why; the rest go.
+	const del = await (await call("tok-mod", "POST", "/library/members/99/uploads/delete", { ids: [a.id, b.id, c.id, 4242] })).json();
+	assert.deepEqual(del.deleted, [a.id, b.id]);
+	assert.deepEqual(del.refused.map((r) => r.id), [c.id, 4242]);
+	assert.match(del.refused[0].error, /published/);
+	const left = await (await call("tok-mod", "GET", "/library/members/99/uploads?q=thr")).json();
+	assert.deepEqual([left.total, left.uploads[0].title], [1, "Three"]);
+	assert.equal((await call("tok-ann", "POST", "/library/members/99/uploads/delete", { ids: [c.id] })).status, 403);
+
+	// Signing out everywhere ends the member's sessions at once.
+	assert.equal((await call("tok-mod", "POST", "/library/members/99", { signOut: true })).status, 200);
+	assert.equal((await call("tok-spam", "GET", "/library")).status, 401);
+	assert.equal((await call("tok-mod", "POST", "/library/members/5", { signOut: true })).status, 403, "a member with rights answers to the owner and co-owners");
+	assert.equal((await call("tok-mod", "POST", "/library/members/1", { signOut: true })).status, 403, "never the owner");
+
+	await call("tok-mod", "POST", "/library/members/99", { blocked: true, reason: "spam" });
+	await call("tok-owner", "POST", "/library/members/99", { rights: { lyrics: true } });
+	await call("tok-owner", "POST", "/library/members/99", { rights: { lyrics: true } });
+	const after = await (await call("tok-co", "GET", "/library/members/99")).json();
+	const actions = after.history.filter((e) => e.by).map((e) => `${e.action}:${e.by}`);
+	assert.deepEqual(actions.sort(), ["blocked:modi", "right-given:khensolomon", "signed-out:modi", "uploads-deleted:modi"].sort(), "giving a right already held is not logged again");
+	assert.deepEqual(after.history.find((e) => e.action === "uploads-deleted").detail, { count: 2, titles: ["One", "Two"] });
+	assert.deepEqual(after.rights.map((r) => [r.kind, r.by]), [["lyrics", "khensolomon"]]);
+	assert.equal((await call("tok-mod", "GET", "/library/members/12345")).status, 404);
 });

@@ -132,14 +132,36 @@ A member shares music of their own library with another member: one album (its p
 
 ## Moderation
 
-Spam is expected. Anyone holding a right sees every member (login, rights, space used, uploads, last seen) in the Workspace, Members. With Moderate members:
+Spam is expected. The Workspace's Members is where members are looked after (`src/workspace/workspace.js`, `worker/media/members-admin.js`).
 
-- block a member, with a reason: their uploads stop playing at once, and every library request answers 403 with the reason; unblocking restores everything;
-- delete any upload (the R2 object and the row; a file added from storage stays in R2).
+**The list.** Anyone holding a right sees members a page of 50 at a time, from the audio Worker: found by name, @login or #id (and, for the owner and co-owners only, by a sign-in's email), filtered (All, With rights, Uploading, New in the last 30 days, Blocked, each with its count) and sorted (last seen, joined, space used, name). Each row shows the photo the sign-in gives, the name, the @login, the uploads, when they were last seen and a tag (Owner, Co-owner, a right, Blocked).
 
-The owner and co-owners also give and take rights there.
+**A member's page** (also `#/workspace?member=<id>`): how they sign in, when they joined and were last seen, and tiles for uploads (published among them), space against the quota, their library (liked songs, playlists, shares), contributions (lyrics versions, requests to publish, songbooks) and the devices they are signed in on. Its tabs:
+
+- Overview: the rights, each with who gave it and when (the owner and co-owners change them; others see them), the storage folder for a member with Storage, the latest history, and Sign out everywhere.
+- Library (Moderate members; never the owner's): the uploads, newest first, found by title, artist, album or file name, a page of 50 at a time, chosen one by one or all shown, and deleted together after a confirmation. A song waiting for review is never deleted; a published one only by the owner and co-owners, and its catalog entry stays. Uploads have no address here and cannot be played.
+- Sign-ins: each way to sign in (GitHub, Google), with its name, the email for the owner and co-owners, when it was added and last used; passkeys; the devices signed in. No session token, device name or address is kept or shown.
+- History: what was done to the member (rights given and taken, the storage folder set, blocks, sign-outs, deleted uploads: `member_log`, with who and when) and what they did (joining, sign-ins and passkeys added, requests to publish and their decisions, lyrics versions), newest first.
+
+With Moderate members:
+
+- block a member, with a reason they see: their uploads stop playing at once, and every library request answers 403 with the reason; unblocking restores everything;
+- sign a member out everywhere: every session of theirs ends at once and each device signs in again;
+- delete uploads (the R2 object and the row; a file added from storage stays in R2), one at a time or several together.
+
+A member who holds a right is blocked and signed out only by the owner or a co-owner; nobody blocks, signs out or changes the owner, or sees the owner's library.
 
 Deleting is permanent. Blocking is the reversible step.
+
+| Route | Who | What |
+|---|---|---|
+| `GET /library/members?q&filter&sort&offset&limit` | any right | a page of members (50, at most 100): `{ members, total, counts, offset, limit }` |
+| `GET /library/members/<id>` | any right | a member's page: `{ member, rights, logins, passkeys, sessions, library, uploads, contributions, history }` (emails for the owner and co-owners; no library for the owner) |
+| `GET /library/members/<id>/uploads?q&offset&limit` | Moderate members | their uploads, a page at a time, without addresses |
+| `POST /library/members/<id>` | Moderate members: `{blocked, reason}`, `{signOut: true}`; the owner and co-owners: `{rights}`, `{folder}` | the change, logged; answers the member as the list shows them |
+| `POST /library/members/<id>/uploads/delete {ids}` | Moderate members | up to 100 at once: `{ deleted, refused: [{ id, error }] }`, logged as one entry |
+
+`member_log` (`migrations/0012-member-log.sql`) cannot be rebuilt from git, so `tools/d1.mjs reset` keeps it (`LIBRARY_TABLES`). A list is four D1 queries and a member's page about twenty, within the Free plan's queries per request.
 
 ## Limits and cost
 
