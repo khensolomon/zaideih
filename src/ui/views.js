@@ -422,8 +422,11 @@ function scopeButtons(scope, cls, counts = null, c = null) {
 		const n = counts && k !== "all" ? counts[k] : null;
 		const count = n === null || n === undefined ? "" : typeof n === "string" ? n : n.toLocaleString();
 		return html`<button type="button" data-act="scope" data-scope="${k}" aria-pressed="${String(k === scope)}" aria-label="${label}${count ? `, ${count}` : ""}" title="${label}">${icon(ic)}<span class="lbl">${label}</span>${count ? html`<span class="n">${count}</span>` : ""}</button>`;
-	})}${c?.extra?.tracks.size ? html`<button type="button" class="mine" data-act="search-mine" aria-pressed="${String(includeMine())}" aria-label="My music: your own uploads in the results" title="My music: your own uploads in the results">${icon("lock")}<span class="lbl">My music</span></button>` : ""}</div>`;
+	})}${c ? html`<button type="button" class="mine" data-act="search-mine" aria-pressed="${String(includeMine())}" aria-label="My music: your own uploads in the results" title="My music: your own uploads in the results" ${hasMine(c) ? "" : "hidden"}>${icon("lock")}<span class="lbl">My music</span></button>` : ""}</div>`;
 }
+
+/** True when the signed-in person has music of their own (uploads, files added from storage): "My music" is offered in search. */
+export const hasMine = (c) => Boolean(c?.extra?.tracks.size);
 
 const ASKS = ["most played mizo artists", "gospel albums from the 90s", "newest myanmar songs"];
 
