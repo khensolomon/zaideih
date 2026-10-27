@@ -90,3 +90,19 @@ test("an album of uploads knows where it is in asking to publish", () => {
 	assert.deepEqual([by.Live.publish, by.Live.request.catalogAlbum], ["released", "0123456789abcdef"]);
 	assert.deepEqual([by.Singles.publish, by.Singles.request, by.Singles.named], ["private", null, false]);
 });
+
+test("music shared with the person joins apart from their own, per owner, and listen only stays out of downloads", () => {
+	const row = (id, album, extra = {}) => ({ id, title: `S${id}`, artist: "Ann", album, year: null, track: id, duration: 100, size: 1, format: "mp3", fileName: `${id}.mp3`, status: "private", url: `u${id}`, ...extra });
+	const ann = { id: 42, name: "ann" };
+	const ben = { id: 43, name: "ben" };
+	const { albums, sharedAlbums, tracks } = shapeUploads(
+		[row(1, "Tape")],
+		[],
+		[row(2, "Tape", { owner: ann, listenOnly: true }), row(3, "Tape", { owner: ann, listenOnly: false }), row(4, "Tape", { owner: ben, listenOnly: true })],
+	);
+	assert.deepEqual(albums.map((a) => [a.id, a.title, a.shared]), [["u-album-1", "Tape", null]], "one's own album keeps its id");
+	assert.deepEqual(sharedAlbums.map((a) => [a.title, a.shared.owner.name, a.shared.listenOnly, a.tracks.map((t) => t.id)]), [["Tape", "ann", false, ["u2", "u3"]], ["Tape", "ben", true, ["u4"]]]);
+	assert.ok(sharedAlbums.every((a) => a.id.startsWith("u-shared-")));
+	assert.deepEqual(tracks.filter((t) => t.listenOnly).map((t) => t.id), ["u2", "u4"]);
+	assert.equal(tracks.find((t) => t.id === "u3").shared.owner.name, "ann");
+});
