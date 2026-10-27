@@ -1,5 +1,11 @@
 # Version
 
+## v26.10.27.5
+
+- Buttons answer at once: a slow action shows a spinner and its step, and a second click starts nothing
+- Workspace: Publish as a pull request, Apply now, Merge and release, Approve and publish, Check again, the token sign-in and every other slow action turn their button into a spinner with the step under way (Reading the newest files from GitHub…, Opening the pull request…, Merging…), disabled until done; the page's other actions wait meanwhile, moving around does not
+- App: a button whose action is still running after a moment (Leave, Ask to publish, and others) shows a spinner and ignores more clicks; the Public in the catalog switch waits for its answer
+
 ## v26.10.27.4
 
 - Live catalog changes: corrections applied at once, without a release, and released later in one pull request
