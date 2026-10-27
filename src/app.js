@@ -1902,6 +1902,14 @@ export async function boot(platform) {
 			for (const a of $$(".rail-songbooks, .am-songbooks")) a.hidden = !uploads.canSongbooks && !hymnBooks().length;
 		}, (err) => console.warn("songbooks index", err.message));
 		const path = currentRoute?.path ?? "";
+		// "My music" in search: offered once the person's own music is known, taken away when there is none (signed out).
+		// The search box keeps its focus and text; only the results are drawn again when they would change.
+		const mineNow = V.hasMine(catalog);
+		let mineChanged = false;
+		for (const b of $$("[data-act=search-mine]")) {
+			if (b.hidden === mineNow) { b.hidden = !mineNow; mineChanged = true; }
+		}
+		if (mineChanged && includeMine() && $("#q")?.value) runSearch($("#q").value);
 		// Songbook pages show editing to the Songbooks right, known once the member is read.
 		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();
 		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.

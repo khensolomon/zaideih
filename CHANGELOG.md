@@ -1,5 +1,10 @@
 # Version
 
+## v26.10.27.1
+
+- Search: My music offered as soon as the person's own music is known, and only then
+- Fixed: opened from a link or a reload, search was drawn before the person's uploads were read and showed no My music switch until it was opened again; the switch now appears when they are read (and goes when there are none, signed out), and the results are searched again with them
+
 ## v26.10.26.12
 
 - Audio studio, guided: a cautious suggestion, one picture with the ends close up, checks of the joins, Undo
