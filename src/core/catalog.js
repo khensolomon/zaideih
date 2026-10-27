@@ -4,6 +4,7 @@
  * meta.json is always revalidated by the service worker; the catalog file it
  * points to is content-hashed and immutable, so it is cached forever.
  */
+import { patchRaw } from "./live-catalog.js";
 import { compact, normalize } from "./text.js";
 
 const SUPPORTED_FORMAT = 1;
@@ -95,7 +96,8 @@ export function buildModel(raw, meta, hidden = new Set()) {
 	for (const a of artists.values()) a.albums = [...a.albums].sort((x, y) => (y.year || 0) - (x.year || 0));
 	if (hidden.size) for (const [id, a] of artists) if (!a.tracks.length) artists.delete(id);
 
-	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [], raw, meta, hidden };
+	// `raw` is what the model is built from: the catalog as released (`source`), with the live changes on it (applyLive).
+	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [], raw, source: raw, meta, hidden, live: [], holdsAlbums: {} };
 	/*
 	 * Songs and albums outside the public catalog (the signed-in person's own
 	 * uploads, src/core/uploads.js): found by id like catalog ones, but never
@@ -119,13 +121,34 @@ export function applyHolds(model, holds) {
 	const albums = holds?.albums ?? {};
 	const hidden = new Set(Object.keys(albums).filter((id) => albums[id].listed === false));
 	const rebuilt = hidden.size !== model.hidden.size || [...hidden].some((id) => !model.hidden.has(id));
-	if (rebuilt) {
-		const fresh = buildModel(model.raw, model.meta, hidden);
-		fresh.extra = model.extra;
-		Object.assign(model, fresh);
-	}
-	for (const album of model.albums.values()) album.off = albums[album.id]?.streaming === false;
+	if (rebuilt) rebuild(model, model.raw, hidden);
+	model.holdsAlbums = albums;
+	markOff(model);
 	return rebuilt;
+}
+
+const markOff = (model) => { for (const album of model.albums.values()) album.off = model.holdsAlbums[album.id]?.streaming === false; };
+
+/** Builds the model again in place from `raw`, keeping what lives beside the catalog (uploads, holds, live changes). */
+function rebuild(model, raw, hidden) {
+	const fresh = buildModel(raw, model.meta, hidden);
+	// Its lookups (model.track, model.album) read `extra` from the new model: it is the same one.
+	fresh.extra = model.extra;
+	Object.assign(model, fresh, { source: model.source, live: model.live, holdsAlbums: model.holdsAlbums });
+}
+
+/**
+ * Applies catalog changes made live (src/core/live-catalog.js,
+ * docs/live-catalog.md) to the model, in place: built again from the
+ * released catalog with the changes on it, keeping uploads and holds.
+ * Answers { applied, done, stale }.
+ */
+export function applyLive(model, changes) {
+	const out = patchRaw(model.source, changes);
+	model.live = out.applied;
+	rebuild(model, out.raw, model.hidden);
+	markOff(model);
+	return out;
 }
 
 const TOP_TRACKS = 100;

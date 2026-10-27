@@ -52,6 +52,7 @@ import { logoMark } from "../ui/logo.js";
 import { normalize } from "../core/text.js";
 import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../tools/lib/version.mjs";
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
+import { indexRaw, LIVE_FIELDS, patchRaw, rawValue } from "../core/live-catalog.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
 import { healthChecks } from "./health.js";
 import { buildPublish, placeOf } from "./publish.js";
@@ -163,6 +164,7 @@ export function mount(root, ctx) {
 				if (may("review")) loadRequests().catch(fail);
 				if (may("lyrics")) loadLyrics().catch(fail);
 				if (may("albums")) loadHolds().catch(fail);
+				if (may("catalog")) loadLive().catch(fail);
 				render();
 			}, (err) => console.warn("library", err.message));
 			ctx.onWho?.();
@@ -286,7 +288,10 @@ export function mount(root, ctx) {
 	/** The value as the draft has it (the change, or the source). */
 	function draftValue(kind, id, field, source) {
 		const c = s.draft.changes.find((x) => x.kind === kind && x.id === id && x.field === field);
-		return c ? c.value : source;
+		if (c) return c.value;
+		// A change made live shows what listeners see (docs/live-catalog.md); Undo in the Draft takes it back.
+		const live = s.live?.changes.find((x) => x.kind === kind && x.id === id && x.field === field);
+		return live ? live.value : source;
 	}
 
 	/** Whether the draft changes this field (or, without `field`, anything of this item). */
@@ -686,6 +691,132 @@ export function mount(root, ctx) {
 		return answer;
 	}
 
+	/* --------------------------------------------------------------- live ---- */
+
+	/*
+	 * Catalog changes made live, without a release (docs/live-catalog.md),
+	 * for the Catalog right: "Apply now" sends the draft's changes that can
+	 * go live to the audio Worker; they show in the Draft as live until a
+	 * release carries them, then go by themselves. "Release the live changes"
+	 * puts them into the draft, to publish as one pull request.
+	 */
+	async function liveCall(method, path, body) {
+		const base = ctx.libraryUrl ? ctx.libraryUrl.replace(/\/library$/, "/live") : "";
+		if (!base) throw new Error("live catalog changes are not built into this version");
+		let res;
+		try {
+			res = await account.send((token) => fetch(`${base}${path}`, {
+				method,
+				headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+				body: body ? JSON.stringify(body) : undefined,
+				cache: "no-store",
+			}));
+		} catch (err) {
+			if (err instanceof AccountError) throw new SignInError(err.message);
+			throw new SignInError(`the live catalog could not be reached (${err.message})`);
+		}
+		const answer = await res.json().catch(() => null);
+		if (!res.ok) throw new SignInError(answer?.error ?? `the live catalog answered HTTP ${res.status}`);
+		return answer;
+	}
+
+	/**
+	 * Reads the live changes, and takes away those a release has dealt with:
+	 * carried (the released catalog the app shipped with has the value now),
+	 * or overtaken (it has another value than the one the change was made
+	 * against). The app's own catalog is the released one, so this is safe.
+	 */
+	async function loadLive() {
+		const d = await liveCall("GET", "/detail");
+		const out = patchRaw(ctx.catalog.source, d.changes);
+		const key = (c) => ({ kind: c.kind, id: c.id, field: c.field });
+		if (out.done.length) await liveCall("POST", "/remove", { changes: out.done.map(key), why: "released" });
+		if (out.stale.length) await liveCall("POST", "/remove", { changes: out.stale.map(key), why: "overtaken" });
+		const gone = new Set([...out.done, ...out.stale].map((c) => `${c.kind}|${c.id}|${c.field}`));
+		s.live = { changes: d.changes.filter((c) => !gone.has(`${c.kind}|${c.id}|${c.field}`)), log: d.log };
+		if (out.stale.length) ctx.notify(`${plural(out.stale.length, "live change")} ${out.stale.length === 1 ? "was" : "were"} overtaken by a release that set ${out.stale.length === 1 ? "its field" : "their fields"} otherwise; the release stands`);
+		render();
+	}
+
+	/**
+	 * The live form of a draft change: the value in the catalog the app was
+	 * released with (`base`) and what that catalog may lack to show it
+	 * (`refs`); or { why } when it needs a release.
+	 */
+	function toLive(c) {
+		if (!LIVE_FIELDS[c.kind]?.includes(c.field)) return { why: "needs a release" };
+		const base = rawValue(indexRaw(ctx.catalog.source), c);
+		if (base === undefined) return { why: "is not in the released catalog yet: it needs a release" };
+		if (c.kind === "track" && c.field === "h" && !c.value) return { why: "shows a hidden song again, which needs a release" };
+		const refs = {};
+		const shipped = indexRaw(ctx.catalog.source);
+		if (c.field === "a") {
+			refs.artists = c.value.filter((id) => !shipped.artist.has(id)).map((id) => {
+				const a = s.data.index.artist.get(id);
+				return a ? [a.id, a.name, a.aka ?? "", a.type, a.thesaurus ?? []] : null;
+			}).filter(Boolean);
+		}
+		if (c.field === "lg") refs.langs = s.data.category.lang.filter((l) => l.id === c.value).map((l) => [l.id, l.name]);
+		if (c.field === "gr") refs.genres = s.data.category.genre.filter((g) => c.value.includes(g.id)).map((g) => [g.id, g.name]);
+		return { live: { kind: c.kind, id: c.id, field: c.field, value: c.value, base, refs } };
+	}
+
+	/** Apply now: the draft's changes that can go live, sent; the others stay in the draft, each said why. */
+	async function applyNow() {
+		const sent = [];
+		const kept = [];
+		for (const c of s.draft.changes) {
+			const r = toLive(c);
+			if (r.live) sent.push({ c, live: r.live }); else kept.push({ c, why: r.why });
+		}
+		if (!sent.length) { ctx.notify(`Nothing here can go live: ${describe(kept[0].c, s.data.index, names())} ${kept[0].why}`, { kind: "error" }); return; }
+		s.busy = `Applying ${plural(sent.length, "change")}…`;
+		render();
+		try {
+			await liveCall("POST", "", { changes: sent.map((x) => x.live) });
+		} finally {
+			s.busy = "";
+		}
+		s.draft.changes = kept.map((x) => x.c);
+		saveDraft();
+		await loadLive();
+		ctx.notify(`${plural(sent.length, "change")} live: listeners see ${sent.length === 1 ? "it" : "them"} within about five minutes${kept.length ? `. ${plural(kept.length, "change")} need${kept.length === 1 ? "s" : ""} a release and stay${kept.length === 1 ? "s" : ""} in the draft` : ""}`);
+	}
+
+	/** Takes one live change away: the field is back as released. */
+	async function undoLive(i) {
+		const c = s.live.changes[i];
+		await liveCall("POST", "/remove", { changes: [{ kind: c.kind, id: c.id, field: c.field }], why: "undo" });
+		await loadLive();
+		ctx.notify("Taken back: the field is as released again");
+	}
+
+	/** Release the live changes: into the draft (against the newest source), to publish as one pull request. */
+	function releaseLive() {
+		let n = 0;
+		for (const c of s.live.changes) {
+			try {
+				s.draft.changes = setChange(s.draft.changes, s.data.index, { kind: c.kind, id: c.id, field: c.field, value: cleanValue(c, c.value, s.data.category) });
+				n++;
+			} catch (err) {
+				ctx.notify(`${describe(c, s.data.index, names())}: ${err.message}`, { kind: "error" });
+			}
+		}
+		saveDraft();
+		render();
+		ctx.notify(n ? `${plural(n, "live change")} in the draft: publish ${n === 1 ? "it" : "them"} as a pull request. They stay live until the release carries them.` : "Every live change is in the source already; it goes once the release is out");
+	}
+
+	function liveView() {
+		if (!may("catalog") || !s.live?.changes.length) return "";
+		return html`<section class="adm-panel adm-live">
+			<div class="adm-h-row"><h2 class="adm-h">Live, not yet in a release</h2><span class="adm-count">${s.live.changes.length}</span></div>
+			<p class="adm-hint">Listeners see these now, on top of the released catalog. Git does not have them until they are released; each goes by itself once a release carries it.</p>
+			<ol class="adm-changes adm-changes-full">${s.live.changes.map((c, i) => html`<li><span>${s.data ? describe(c, s.data.index, names()) : `${c.kind} ${c.id}: ${c.field}`}<small class="adm-live-by"> · ${c.by}, ${ago(c.at)}</small></span><button class="link-btn" data-adm="live-undo" data-i="${i}">Undo</button></li>`)}</ol>
+			<div class="adm-actions"><button class="btn" data-adm="live-release" ${s.draft.pr ? "disabled" : ""}>Release the live changes</button></div>
+		</section>`;
+	}
+
 	/* -------------------------------------------------------------- holds ---- */
 
 	/*
@@ -824,6 +955,7 @@ export function mount(root, ctx) {
 		albums: ["Albums", "holds albums back from listeners without a release, and gives them back"],
 		songbooks: ["Songbooks", "adds songbooks, edits every one of them, and appoints their editors and readers"],
 		audio: ["Audio studio", "trims the start and end of songs' recordings (the originals are kept and can be restored)"],
+		catalog: ["Catalog", "applies catalog edits live, without a release, and releases them later"],
 	};
 
 	/* ----------------------------------------------------------- requests ---- */
@@ -1229,15 +1361,16 @@ export function mount(root, ctx) {
 				<div class="adm-actions"><button class="btn primary" data-adm="merge" ${green ? "" : "disabled"}>Merge and release v${pr.version}</button><button class="btn" data-adm="refresh">Check again</button><button class="link-btn danger" data-adm="forget-pr">Forget this pull request</button></div>
 			</div>`;
 		}
-		if (!n) return html`<p class="adm-hint">No changes yet. <button class="link-btn" data-adm="find">Find an album or an artist</button> to start.</p>`;
-		return html`<ol class="adm-changes adm-changes-full">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, s.data.index, names())}</span><button class="link-btn" data-adm="open" data-kind="${c.kind === "artist" ? "artist" : "album"}" data-id="${c.kind === "track" ? s.data.index.track.get(c.id)?.album.ui : c.id}">Open</button><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>
+		if (!n) return html`${liveView()}<p class="adm-hint">No changes yet. <button class="link-btn" data-adm="find">Find an album or an artist</button> to start.</p>`;
+		const apply = may("catalog") ? html`<button class="btn" type="button" data-adm="live-apply" title="Listeners see it within minutes; release it later">Apply now, without a release</button>` : "";
+		return html`${liveView()}<ol class="adm-changes adm-changes-full">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, s.data.index, names())}</span><button class="link-btn" data-adm="open" data-kind="${c.kind === "artist" ? "artist" : "album"}" data-id="${c.kind === "track" ? s.data.index.track.get(c.id)?.album.ui : c.id}">Open</button><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>
 			${s.canWrite ? html`<form class="adm-publish" data-form="publish">
 				<label class="adm-field"><span>Note for the changelog and the release</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button><span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button>${apply}<span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
 			</form>` : html`<form class="adm-publish" data-form="suggest">
 				<p class="adm-hint">As a ${LEVELS[s.level].name.toLowerCase()}, your changes go to the editors as a suggestion: a pull request in your name that they review before it is released.</p>
 				<label class="adm-field"><span>What does it correct?</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button><span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button>${apply}<span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
 			</form>`}`;
 	}
 
@@ -1559,6 +1692,9 @@ export function mount(root, ctx) {
 		try {
 			switch (b.dataset.adm) {
 				case "tab": await openSection(b.dataset.tab); break;
+				case "live-apply": await applyNow(); break;
+				case "live-undo": await undoLive(Number(b.dataset.i)); break;
+				case "live-release": releaseLive(); break;
 				case "find": find(); break;
 				case "play": await playSong(Number(b.dataset.id)); break;
 				case "preview": await previewToggle(b.dataset.url); break;

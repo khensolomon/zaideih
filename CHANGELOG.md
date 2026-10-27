@@ -1,5 +1,13 @@
 # Version
 
+## v26.10.27.4
+
+- Live catalog changes: corrections applied at once, without a release, and released later in one pull request
+- Workspace, with the new Catalog right (and for the owner and co-owners): Apply now, without a release, for an album's title, year, language and genres, a song's title, artists and hiding, an artist's name, other name, type and spellings; listeners see it within about five minutes
+- The Draft lists the live changes with Undo, and Release the live changes puts them into one pull request; once a release carries them (or overtakes them) they go by themselves
+- The app reads `GET /live` at start and every five minutes and applies each change only while the released catalog still has the value it was made against, so a live change never undoes a release
+- Audio Worker: `/live`, `/live/detail`, `/live/remove`; D1 `catalog_live` and `catalog_live_log` (migration 0011)
+
 ## v26.10.27.3
 
 - Sharing: an album, or all of one's music, shared with members by an invite link; taken back at once
