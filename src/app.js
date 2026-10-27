@@ -381,6 +381,24 @@ function markNav(path) {
 
 const rerender = () => render({ keepScroll: true });
 
+/*
+ * Background data that changes what a page shows (counted plays, album
+ * holds, live catalog changes, trimmed songs, the lyrics marks) arrives in
+ * bursts, most of all while the app starts: the page is drawn again once
+ * after the burst (SOFT_MS of quiet, SOFT_MAX_MS at most), not once for each.
+ */
+const SOFT_MS = 300;
+const SOFT_MAX_MS = 1000;
+let softTimer = 0;
+let softSince = 0;
+function rerenderSoon() {
+	const now = performance.now();
+	if (!softTimer) softSince = now;
+	clearTimeout(softTimer);
+	const wait = Math.min(SOFT_MS, Math.max(0, softSince + SOFT_MAX_MS - now));
+	softTimer = setTimeout(() => { softTimer = 0; rerender(); }, wait);
+}
+
 /* =================================================================== shell */
 function renderRail() {
 	const langs = [...catalog.langs.values()].sort((a, b) => b.albums.length - a.albums.length);
@@ -1819,7 +1837,7 @@ function startLyricsIndex() {
 	refresh();
 	document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 	on("lyrics-index", () => {
-		if (/^(album|artist|playlist|search|library|top|genre|lang)/.test(currentRoute?.path ?? "") && !document.body.classList.contains("search-open")) rerender();
+		if (/^(album|artist|playlist|search|library|top|genre|lang)/.test(currentRoute?.path ?? "") && !document.body.classList.contains("search-open")) rerenderSoon();
 	});
 }
 
@@ -1988,7 +2006,7 @@ export async function boot(platform) {
 		onChange: () => {
 			clearArtCaches();
 			const path = currentRoute?.path ?? "";
-			if ((path === "" || /^(top|genres|lang\/|artist\/|album\/|genre\/)/.test(path)) && !document.body.classList.contains("search-open")) rerender();
+			if ((path === "" || /^(top|genres|lang\/|artist\/|album\/|genre\/)/.test(path)) && !document.body.classList.contains("search-open")) rerenderSoon();
 		},
 	});
 	// Albums held back without a release (docs/holds.md): the last known ones at once, fresh ones when they arrive.
@@ -1998,7 +2016,7 @@ export async function boot(platform) {
 	const edits = editsCtl = startEdits(catalog, {
 		onChange: () => {
 			offline.refreshVersions(catalog).catch((err) => console.warn("downloads of trimmed songs", err.message));
-			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
 		},
 	});
 	// Catalog changes made live, without a release (docs/live-catalog.md): applied on top of the released catalog.
@@ -2011,7 +2029,7 @@ export async function boot(platform) {
 		onChange: () => {
 			clearArtCaches();
 			renderRail();
-			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
 		},
 	});
 	startHolds(catalog, {
@@ -2020,7 +2038,7 @@ export async function boot(platform) {
 			edits.reapply();
 			clearArtCaches();
 			renderRail();
-			if (!document.body.classList.contains("search-open") && !inStudio()) rerender();
+			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
 		},
 	});
 	clearArtCaches();

@@ -6,6 +6,11 @@
  * freezes the bars and the glow where the music left them; they move again
  * on resume. With reduced motion requested, or where live analysis is
  * unavailable, nothing animates.
+ *
+ * What the drawing needs from the page (the canvases shown, their sizes, the
+ * play button's place, the accent) is read at most every LAYOUT_MS, and
+ * again after a resize, not on every frame: a read of the layout in each
+ * frame makes the browser lay the page out again while the music plays.
  */
 import { visualizer } from "../core/visualizer.js";
 
@@ -46,8 +51,8 @@ function entryFor(canvas) {
  * centre and higher ones towards the edges, tapering so text stays readable.
  * Large (now playing view): a plain spectrum, low to high.
  */
-function draw(canvas, e, color, centerX) {
-	const { w, h, dpr } = sizeCanvas(canvas);
+function draw(canvas, e, color, centerX, size = sizeCanvas(canvas)) {
+	const { w, h, dpr } = size;
 	const g = canvas.getContext("2d");
 	g.clearRect(0, 0, w, h);
 	if (!w || !h) return;
@@ -65,6 +70,8 @@ function draw(canvas, e, color, centerX) {
 		grad.addColorStop(1, `rgb(${color} / 0)`);
 		g.fillStyle = grad;
 		const radius = bw / 2;
+		// Every bar in one path, filled once.
+		g.beginPath();
 		for (let k = 0; k < count; k++) {
 			const t = k / count;
 			const v = e.shown[Math.min(n - 1, Math.floor(t * n))] * (1 - t * 0.55);
@@ -72,11 +79,10 @@ function draw(canvas, e, color, centerX) {
 			if (bh < 1) continue;
 			for (const x of [cx + k * step + 1.5 * dpr, cx - (k + 1) * step + 1.5 * dpr]) {
 				if (x < -bw || x > w) continue;
-				g.beginPath();
-				g.roundRect ? g.roundRect(x, h - bh, bw, bh, [radius, radius, 0, 0]) : g.rect(x, h - bh, bw, bh);
-				g.fill();
+				if (g.roundRect) g.roundRect(x, h - bh, bw, bh, [radius, radius, 0, 0]); else g.rect(x, h - bh, bw, bh);
 			}
 		}
+		g.fill();
 		return;
 	}
 
@@ -84,12 +90,16 @@ function draw(canvas, e, color, centerX) {
 	const gap = Math.max(1, Math.round(3 * dpr));
 	const bw = (w - gap * (n - 1)) / n;
 	const radius = Math.min(bw / 2, 2 * dpr);
-	for (let i = 0; i < n; i++) {
-		const bh = Math.max(2 * dpr, e.shown[i] * h);
-		const x = i * (bw + gap);
-		g.fillStyle = (i + 0.5) / n <= progress ? `rgb(${color})` : `rgb(255 255 255 / 0.22)`;
+	// Two paths, each filled once: the played part in the accent, the rest dimmed.
+	for (const played of [true, false]) {
+		g.fillStyle = played ? `rgb(${color})` : "rgb(255 255 255 / 0.22)";
 		g.beginPath();
-		g.roundRect ? g.roundRect(x, h - bh, bw, bh, [radius, radius, 0, 0]) : g.rect(x, h - bh, bw, bh);
+		for (let i = 0; i < n; i++) {
+			if (((i + 0.5) / n <= progress) !== played) continue;
+			const bh = Math.max(2 * dpr, e.shown[i] * h);
+			const x = i * (bw + gap);
+			if (g.roundRect) g.roundRect(x, h - bh, bw, bh, [radius, radius, 0, 0]); else g.rect(x, h - bh, bw, bh);
+		}
 		g.fill();
 	}
 }
@@ -109,6 +119,18 @@ function visibleCanvases() {
 	return [...document.querySelectorAll("canvas[data-viz]")].filter((c) => c.getClientRects().length > 0);
 }
 
+const LAYOUT_MS = 500;
+let layout = null; // { until, color, centerX, canvases: [[canvas, size]] }
+
+/** What the drawing needs from the page, read again when older than LAYOUT_MS, after a resize, or when a canvas left. */
+function layoutNow() {
+	const now = performance.now();
+	if (layout && layout.until > now && layout.canvases.every(([c]) => c.isConnected)) return layout;
+	const { color, centerX } = geometry();
+	layout = { until: now + LAYOUT_MS, color, centerX, canvases: visibleCanvases().map((c) => [c, sizeCanvas(c)]) };
+	return layout;
+}
+
 /** Resamples the shared band energies onto a canvas's own bar count. */
 function resample(e) {
 	const n = e.bars.length;
@@ -122,15 +144,15 @@ function frame() {
 		return;
 	}
 	const level = visualizer.read(scratch);
-	const { color, centerX } = geometry();
-	for (const canvas of visibleCanvases()) {
+	const { color, centerX, canvases } = layoutNow();
+	for (const [canvas, size] of canvases) {
 		const e = entryFor(canvas);
 		resample(e);
 		for (let i = 0; i < e.bars.length; i++) {
 			const target = e.bars[i];
 			e.shown[i] = target > e.shown[i] ? target : Math.max(target, e.shown[i] - FALL);
 		}
-		draw(canvas, e, color, e.kind === "deck" ? centerX : undefined);
+		draw(canvas, e, color, e.kind === "deck" ? centerX : undefined, size);
 	}
 	levelSmooth = level > levelSmooth ? level : Math.max(level, levelSmooth - 0.04);
 	deck.style.setProperty("--level", levelSmooth.toFixed(3));
@@ -143,6 +165,7 @@ function frame() {
  * clears canvases) or when a canvas appears while paused (Now playing view).
  */
 function redrawStill() {
+	layout = null;
 	if (running) return;
 	const { color, centerX } = geometry();
 	const deckEntry = [...state.entries()].find(([c, e]) => e.kind === "deck" && c.isConnected)?.[1];
