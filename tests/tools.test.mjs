@@ -14,8 +14,10 @@ test("parseVersion accepts yy.mm.dd.changes and rejects everything else", () => 
 });
 
 test("nextVersion increments within a day and restarts on a new day", () => {
-	const oct19 = new Date(2026, 9, 19, 12);
-	const oct20 = new Date(2026, 9, 20, 0, 5);
+	// UTC days: the same version from any time zone.
+	const oct19 = new Date(Date.UTC(2026, 9, 19, 12));
+	const oct20 = new Date(Date.UTC(2026, 9, 20, 0, 5));
+	assert.equal(datePart(new Date(Date.UTC(2026, 9, 19, 23, 59))), "26.10.19", "late in the UTC day, whatever the local clock says");
 	assert.equal(datePart(oct19), "26.10.19");
 	assert.equal(nextVersion(undefined, oct19), "26.10.19.1");
 	assert.equal(nextVersion("26.10.19.1", oct19), "26.10.19.2");

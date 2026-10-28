@@ -50,7 +50,7 @@ import { html, raw } from "../core/html.js";
 import { icon } from "../ui/icons.js";
 import { logoMark } from "../ui/logo.js";
 import { normalize } from "../core/text.js";
-import { nextVersion, parseVersion, releaseFiles, VERSION_FILES } from "../../tools/lib/version.mjs";
+import { nextVersion, parseVersion, releaseFiles, VERSION_FILES, VersionError } from "../../tools/lib/version.mjs";
 import { applyChanges, cleanValue, describe, DraftError, indexData, setChange, sourceText } from "./draft.js";
 import { indexRaw, LIVE_FIELDS, patchRaw, rawValue } from "../core/live-catalog.js";
 import { BASE, createGitHub, GitHubError, REPO } from "./github.js";
@@ -63,8 +63,16 @@ import { stringifyMedia } from "../../tools/lib/media.mjs";
 import { createSession, PENDING_KEY, SESSION_KEY, SignInError } from "./session.js";
 import { LEVELS, saveWho, TOKEN_KEY } from "../core/access.js";
 import { AccountError, createAccount, homeScreenApp, waitForSignIn } from "../core/account.js";
+// Its styles, emitted beside this bundle (tools/build.mjs); the app adds the stylesheet before loading it.
+import "./workspace.css";
+import { ago, day, dayLabel, duration, mb, photoOf, plural, since, sized, space, when } from "./format.js";
 
 const DRAFT_KEY = "zaideih.workspace.draft";
+// Where the person was (the section, what is open, the search) across this tab's reloads and visits.
+const VIEW_KEY = "zaideih.workspace.view";
+// The catalog files read last, by the commit they came from: a visit back to the Workspace in the
+// same page life (the app keeps running between routes) does not read 2 MB from GitHub again.
+let catalogRead = null;
 const DATA = { albums: "assets/data/albums.json", artists: "assets/data/artist.name.json", category: "assets/data/category.json", media: "assets/data/media.json" };
 const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
@@ -123,6 +131,7 @@ export function mount(root, ctx) {
 		blocking: false,
 		signingOut: null,
 		confirmDelete: false,
+		confirmDiscard: false,
 	};
 	let poll = 0;
 	const session = createSession({ authUrl: ctx.authUrl, local: localStorage, tab: sessionStorage });
@@ -133,7 +142,7 @@ export function mount(root, ctx) {
 	/** Shows what went wrong; `keepPage` leaves the page (and what is typed in it) as it is. */
 	const fail = (err, { keepPage = false } = {}) => {
 		s.busy = "";
-		s.error = err instanceof GitHubError || err instanceof DraftError || err instanceof SignInError ? err.message : `${err.name}: ${err.message}`;
+		s.error = err instanceof GitHubError || err instanceof DraftError || err instanceof SignInError || err instanceof VersionError ? err.message : `${err.name}: ${err.message}`;
 		// A refused value is the listener's to fix and is shown on the page; anything else also goes to the console.
 		if (!(err instanceof DraftError || err instanceof SignInError)) console.error(err);
 		if (keepPage) refreshChrome();
@@ -293,12 +302,19 @@ export function mount(root, ctx) {
 		s.busy = `Loading the catalog from ${BASE}…`;
 		render();
 		const head = await s.gh.head();
-		const [albums, artists, category] = await Promise.all([DATA.albums, DATA.artists, DATA.category].map((p) => s.gh.file(p, head)));
-		const parsed = { albums: JSON.parse(albums.text), artists: JSON.parse(artists.text), category: JSON.parse(category.text) };
+		if (catalogRead?.head !== head) {
+			const [albums, artists, category] = await Promise.all([DATA.albums, DATA.artists, DATA.category].map((p) => s.gh.file(p, head)));
+			catalogRead = { head, albums: albums.text, artists: artists.text, category: category.text };
+		}
+		const parsed = { albums: JSON.parse(catalogRead.albums), artists: JSON.parse(catalogRead.artists), category: JSON.parse(catalogRead.category) };
 		s.data = { head, ...parsed, index: indexData(parsed) };
+		// Checks were run against the data read before: run again on this.
+		s.health = null;
 		s.busy = "";
 		if (s.draft.pr) watch();
 		if (s.jump) openJump();
+		// A section restored from the last visit reads what it shows, as opening it would.
+		else if (["suggestions", "members", "requests", "lyrics", "stats"].includes(s.tab) && sectionShown(s.tab)) openSection(s.tab).catch(fail);
 		render();
 		if (s.jump?.track) focusTrack(s.jump.track);
 		s.jump = null;
@@ -338,7 +354,6 @@ export function mount(root, ctx) {
 		return { albums, artists };
 	}
 
-	const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 	const artistNames = (ids) => ids.map((a) => s.data.index.artist.get(a)?.name ?? `#${a}`).join(", ");
 	/** The app's cover for an album (drawn by the app's bundle, so taken as it is). */
 	const coverOf = (id) => raw(String(ctx.cover?.(id) ?? ""));
@@ -470,7 +485,11 @@ export function mount(root, ctx) {
 				if (el.name === "t") change = { kind: "track", id: tid, field: "t", value: el.value };
 				else if (el.name === "a") change = { kind: "track", id: tid, field: "a", value: artistIds(el.value, tid) };
 				else if (el.name === "shown") change = { kind: "track", id: tid, field: "h", value: !el.checked };
-			} else if (["ab", "yr", "lg"].includes(el.name)) change = { kind: "album", id, field: el.name, value: el.value };
+			} else if (["ab", "yr", "lg"].includes(el.name)) {
+				// A number field with letters in it reads as empty: that is not "no year".
+				if (el.validity?.badInput) throw new DraftError("the year must be a number between 1900 and 2100, or empty");
+				change = { kind: "album", id, field: el.name, value: el.value };
+			}
 			else if (el.name === "gr-add" && el.value) {
 				const al = s.data.index.album.get(id);
 				change = { kind: "album", id, field: "gr", value: [...draftValue("album", id, "gr", al.gr), Number(el.value)] };
@@ -588,20 +607,22 @@ export function mount(root, ctx) {
 		s.busy = "Reading the newest files from GitHub…";
 		s.error = "";
 		render();
+		// The changes as they are now: an edit made while GitHub answers is not half in this pull request.
+		const changes = structuredClone(s.draft.changes);
 		const head = await s.gh.head();
 		const want = [DATA.albums, DATA.artists, ...VERSION_FILES.packages, ...VERSION_FILES.locks, VERSION_FILES.changelog];
 		const fetched = Object.fromEntries(await Promise.all(want.map(async (p) => [p, (await s.gh.file(p, head)).text])));
 		const fresh = { albums: JSON.parse(fetched[DATA.albums]), artists: JSON.parse(fetched[DATA.artists]) };
-		const { albums, artists, missing } = applyChanges(fresh, s.draft.changes);
+		const { albums, artists, missing } = applyChanges(fresh, changes);
 		if (missing.length) throw new DraftError(`some changes no longer apply:\n${missing.map((m) => m.reason).join("\n")}\nRemove them from the draft.`);
 		const index = indexData(fresh);
-		const lines = s.draft.changes.map((c) => describe(c, index, names()));
+		const lines = changes.map((c) => describe(c, index, names()));
 		const current = JSON.parse(fetched["package.json"]).version;
 		parseVersion(current);
 		const next = nextVersion(current);
 		const files = releaseFiles(fetched, next, [`${note.trim()} (catalog, ${lines.length} change${lines.length === 1 ? "" : "s"})`]);
-		if (s.draft.changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
-		if (s.draft.changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
+		if (changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
+		if (changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
 		const title = `release: web ${next} ${note.trim()}`;
 		const body = `Catalog changes from the Workspace, by ${s.user}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nMerging with "Merge and release" in the Workspace releases v${next}.`;
 		s.busy = "Opening the pull request…";
@@ -611,7 +632,7 @@ export function mount(root, ctx) {
 		const branch = `catalog-edit-${next}-${Date.now().toString(36)}`;
 		const pr = await s.gh.propose({ parent: head, files, branch, title: `Catalog: ${note.trim()}`, body });
 		// The changes it carries, so a merge takes only those out of the draft (edits made meanwhile stay).
-		s.draft.pr = { ...pr, branch, title, body, version: next, changes: structuredClone(s.draft.changes) };
+		s.draft.pr = { ...pr, branch, title, body, version: next, changes };
 		saveDraft();
 		s.busy = "";
 		watch();
@@ -623,16 +644,17 @@ export function mount(root, ctx) {
 		s.busy = "Reading the newest files from GitHub…";
 		s.error = "";
 		render();
+		const changes = structuredClone(s.draft.changes);
 		const head = await s.gh.head();
 		const want = [DATA.albums, DATA.artists];
 		const fetched = Object.fromEntries(await Promise.all(want.map(async (p) => [p, (await s.gh.file(p, head)).text])));
 		const fresh = { albums: JSON.parse(fetched[DATA.albums]), artists: JSON.parse(fetched[DATA.artists]) };
-		const { albums, artists, missing } = applyChanges(fresh, s.draft.changes);
+		const { albums, artists, missing } = applyChanges(fresh, changes);
 		if (missing.length) throw new DraftError(`some changes no longer apply:\n${missing.map((m) => m.reason).join("\n")}\nRemove them from the draft.`);
-		const lines = s.draft.changes.map((c) => describe(c, indexData(fresh), names()));
+		const lines = changes.map((c) => describe(c, indexData(fresh), names()));
 		const files = {};
-		if (s.draft.changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
-		if (s.draft.changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
+		if (changes.some((c) => c.kind !== "artist")) files[DATA.albums] = sourceText(albums, fetched[DATA.albums]);
+		if (changes.some((c) => c.kind === "artist")) files[DATA.artists] = sourceText(artists, fetched[DATA.artists]);
 		s.busy = "Sending the suggestion…";
 		render();
 		let res;
@@ -648,7 +670,7 @@ export function mount(root, ctx) {
 		}
 		const answer = await res.json().catch(() => null);
 		if (!res.ok) throw new SignInError(`the suggestion was not accepted: ${answer?.error ?? `HTTP ${res.status}`}`);
-		s.draft.pr = { number: answer.number, url: answer.url, branch: answer.branch, suggestion: true, changes: structuredClone(s.draft.changes) };
+		s.draft.pr = { number: answer.number, url: answer.url, branch: answer.branch, suggestion: true, changes };
 		saveDraft();
 		s.busy = "";
 		ctx.notify(`Sent as suggestion #${answer.number}; an editor reviews it`);
@@ -697,9 +719,31 @@ export function mount(root, ctx) {
 				if (pending) poll = setTimeout(tick, 10000);
 			} catch (err) {
 				fail(err);
+				// A passing failure (the network, a GitHub hiccup) is looked past: the check runs again in a while; a sign-in gone is not.
+				if (!(err instanceof GitHubError && err.status === 401) && round === watching && s.draft.pr) poll = setTimeout(tick, 30000);
 			}
 		};
 		tick();
+	}
+
+	/**
+	 * Closes the pull request on GitHub (nothing merged), deletes its branch and
+	 * forgets it here; the draft is kept. (A suggestion is the app's pull request,
+	 * which its sender cannot close: it is only forgotten here.)
+	 */
+	async function closePullRequest() {
+		const pr = s.draft.pr;
+		s.busy = "Closing the pull request…";
+		render();
+		await s.gh.close(pr.number);
+		await s.gh.deleteBranch(pr.branch).catch((err) => console.warn("the branch could not be deleted", err));
+		watching += 1;
+		s.draft.pr = null;
+		s.pr = null;
+		saveDraft();
+		s.busy = "";
+		ctx.notify(`Pull request #${pr.number} closed; your draft is kept`);
+		render();
 	}
 
 	async function mergeAndRelease() {
@@ -864,9 +908,10 @@ export function mount(root, ctx) {
 		ctx.notify(`${plural(sent.length, "change")} live: listeners see ${sent.length === 1 ? "it" : "them"} within about five minutes${kept.length ? `. ${plural(kept.length, "change")} need${kept.length === 1 ? "s" : ""} a release and stay${kept.length === 1 ? "s" : ""} in the draft` : ""}`);
 	}
 
-	/** Takes one live change away: the field is back as released. */
-	async function undoLive(i) {
-		const c = s.live.changes[i];
+	/** Takes one live change away (named by what it changes, not its place in a list that may have moved): the field is back as released. */
+	async function undoLive(kind, id, field) {
+		const c = s.live.changes.find((x) => x.kind === kind && String(x.id) === id && x.field === field);
+		if (!c) { await loadLive(); return; }
 		await liveCall("POST", "/remove", { changes: [{ kind: c.kind, id: c.id, field: c.field }], why: "undo" });
 		await loadLive();
 		ctx.notify("Taken back: the field is as released again");
@@ -893,7 +938,7 @@ export function mount(root, ctx) {
 		return html`<section class="adm-panel adm-live">
 			<div class="adm-h-row"><h2 class="adm-h">Live, not yet in a release</h2><span class="adm-count">${s.live.changes.length}</span></div>
 			<p class="adm-hint">Listeners see these now, on top of the released catalog. Git does not have them until they are released; each goes by itself once a release carries it.</p>
-			<ol class="adm-changes adm-changes-full">${s.live.changes.map((c, i) => html`<li><span>${s.data ? describe(c, s.data.index, names()) : `${c.kind} ${c.id}: ${c.field}`}<small class="adm-live-by"> · ${c.by}, ${ago(c.at)}</small></span><button class="link-btn" data-adm="live-undo" data-i="${i}">Undo</button></li>`)}</ol>
+			<ol class="adm-changes adm-changes-full">${s.live.changes.map((c, i) => html`<li><span>${s.data ? describe(c, s.data.index, names()) : `${c.kind} ${c.id}: ${c.field}`}<small class="adm-live-by"> · ${c.by}, ${ago(c.at)}</small></span><button class="link-btn" data-adm="live-undo" data-kind="${c.kind}" data-id="${c.id}" data-field="${c.field}">Undo</button></li>`)}</ol>
 			<div class="adm-actions"><button class="btn" data-adm="live-release" ${s.draft.pr ? "disabled" : ""}>Release the live changes</button></div>
 		</section>`;
 	}
@@ -1108,9 +1153,6 @@ export function mount(root, ctx) {
 	}
 
 	/** Bytes as MB, or GB from a thousand MB (a quota reads "2 GB"). */
-	const space = (n) => (n >= 1e9 ? `${(n / 1e9).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB` : mb(n));
-	const mb = (n) => `${(n / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`;
-	const ago = (t) => new Date(t * 1000).toLocaleDateString();
 
 	/** What this person may do here; co-owners (and the owner) may do everything. */
 	const may = (right) => s.isOwner || s.rights.has("manage") || s.rights.has(right);
@@ -1343,7 +1385,6 @@ export function mount(root, ctx) {
 
 	/* ------------------------------------------------------------- views ---- */
 
-	const when = (sec) => new Date(sec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 	const LANG_NAMES = { en: "English", my: "Myanmar" };
 	const firstName = () => (s.name || s.user || "").split(/\s+/)[0];
 
@@ -1417,7 +1458,6 @@ export function mount(root, ctx) {
 		</div>`;
 	}
 
-	const dayLabel = (day, opts = { day: "numeric", month: "short" }) => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: "UTC", ...opts });
 	const STATS_KINDS = [["songs", "Songs"], ["albums", "Albums"], ["artists", "Artists"], ["languages", "Languages"]];
 	const PERIOD_NAMES = { week: "Last 7 days", month: "Last 30 days", all: "All time" };
 	const RANK_SHOWN = 25;
@@ -1539,7 +1579,6 @@ export function mount(root, ctx) {
 		</div>`;
 	}
 
-	const photoOf = (url) => (/^https:\/\/avatars\.githubusercontent\.com\//.test(url) ? sized(url) : url);
 	function memberPhoto(m, size) {
 		const letter = (m.name || m.login || "?").trim().slice(0, 1).toUpperCase();
 		return m.picture
@@ -1555,16 +1594,6 @@ export function mount(root, ctx) {
 	}
 	const memberLine = (m) => [m.name && m.login !== m.name ? `@${m.login}` : "", m.uploads ? plural(m.uploads, "upload") : "", `seen ${since(m.lastSeen)}`].filter(Boolean).join(" · ");
 
-	/** How long ago, in words: "2 h ago", "yesterday", "3 days ago", or the date. */
-	function since(t) {
-		const sec = Math.max(0, Date.now() / 1000 - t);
-		if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))} min ago`;
-		if (sec < 86400) return `${Math.round(sec / 3600)} h ago`;
-		if (sec < 2 * 86400) return "yesterday";
-		if (sec < 14 * 86400) return `${Math.round(sec / 86400)} days ago`;
-		return new Date(t * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-	}
-	const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 	const PROVIDERS = { github: "GitHub", google: "Google", email: "email", passkey: "a passkey" };
 
 	function memberPane() {
@@ -1729,7 +1758,6 @@ export function mount(root, ctx) {
 		return list.find((r) => r.id === s.reviewing) ?? (s.reqFilter === "done" ? null : list.find((r) => r.status === "open")) ?? null;
 	}
 
-	const duration = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
 	/** Where the request's songs will be: left where they are in storage, or copied under music/ (and why). */
 	function placeHint(songs) {
@@ -1838,7 +1866,7 @@ export function mount(root, ctx) {
 					<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a></p>
 					<p class="adm-hint">${st?.state === "closed" ? "Closed without merging. Read the comments on GitHub; the draft is kept." : "Waiting for an editor to review it. You can follow and discuss it on GitHub."}</p>
 					${checkList}
-					<div class="adm-actions"><button class="btn" data-adm="refresh">Check again</button><button class="link-btn danger" data-adm="forget-pr">Forget this suggestion</button></div>
+					<div class="adm-actions"><button class="btn" data-adm="refresh">Check again</button><span class="adm-grow"></span><button class="link-btn danger" data-adm="forget-pr">Forget it here</button></div>
 				</div>`;
 			}
 			return html`<div class="adm-panel">
@@ -1847,19 +1875,24 @@ export function mount(root, ctx) {
 				<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a> · releases v${pr.version}</p>
 				${checkList}
 				${done && !green ? html`<p class="adm-error">A check failed: open it on GitHub, then fix the draft there or close the pull request.</p>` : ""}
-				<div class="adm-actions"><button class="btn primary" data-adm="merge" ${green ? "" : "disabled"}>Merge and release v${pr.version}</button><button class="btn" data-adm="refresh">Check again</button><button class="link-btn danger" data-adm="forget-pr">Forget this pull request</button></div>
+				${st?.mergeable === false ? html`<p class="adm-error">GitHub cannot merge it: another change to the same files was released first. Close it and publish the draft again.</p>` : ""}
+				<div class="adm-actions"><button class="btn primary" data-adm="merge" ${green && st?.mergeable !== false ? "" : "disabled"}>Merge and release v${pr.version}</button><button class="btn" data-adm="refresh">Check again</button><span class="adm-grow"></span><button class="link-btn danger" data-adm="close-pr">Close the pull request</button><button class="link-btn danger" data-adm="forget-pr">Forget it here</button></div>
 			</div>`;
 		}
 		if (!n) return html`${liveView()}<p class="adm-hint">No changes yet. <button class="link-btn" data-adm="find">Find an album or an artist</button> to start.</p>`;
 		const apply = may("catalog") ? html`<button class="btn" type="button" data-adm="live-apply" title="Listeners see it within minutes; release it later">Apply now, without a release</button>` : "";
+		// Discarding asks once: the draft is this device's only copy of the changes.
+		const discard = s.confirmDiscard
+			? html`<span class="adm-hint">Throw away ${plural(n, "change")}?</span><button class="btn danger" type="button" data-adm="discard">Discard</button><button class="link-btn" type="button" data-adm="discard-cancel">Keep</button>`
+			: html`<button class="link-btn danger" type="button" data-adm="discard-ask">Discard the draft…</button>`;
 		return html`${liveView()}<ol class="adm-changes adm-changes-full">${s.draft.changes.map((c, i) => html`<li><span>${describe(c, s.data.index, names())}</span><button class="link-btn" data-adm="open" data-kind="${c.kind === "artist" ? "artist" : "album"}" data-id="${c.kind === "track" ? s.data.index.track.get(c.id)?.album.ui : c.id}">Open</button><button class="link-btn" data-adm="undo" data-i="${i}">Undo</button></li>`)}</ol>
 			${s.canWrite ? html`<form class="adm-publish" data-form="publish">
 				<label class="adm-field"><span>Note for the changelog and the release</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button>${apply}<span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+				<div class="adm-actions"><button class="btn primary" type="submit">Publish as a pull request</button>${apply}<span class="adm-grow"></span>${discard}</div>
 			</form>` : html`<form class="adm-publish" data-form="suggest">
 				<p class="adm-hint">As a ${LEVELS[s.level].name.toLowerCase()}, your changes go to the editors as a suggestion: a pull request in your name that they review before it is released.</p>
 				<label class="adm-field"><span>What does it correct?</span><input name="note" required maxlength="120" placeholder="Corrected titles and credits" autocomplete="off"></label>
-				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button>${apply}<span class="adm-grow"></span><button class="link-btn danger" type="button" data-adm="discard">Discard the draft</button></div>
+				<div class="adm-actions"><button class="btn primary" type="submit">Send as a suggestion</button>${apply}<span class="adm-grow"></span>${discard}</div>
 			</form>`}`;
 	}
 
@@ -1889,10 +1922,6 @@ export function mount(root, ctx) {
 		</div></div>`;
 	}
 
-	/** GitHub's avatar address at twice the shown size, for sharp photos. */
-	const sized = (url) => {
-		try { const u = new URL(url); u.searchParams.set("s", "96"); return u.href; } catch { return ""; }
-	};
 
 	/*
 	 * The sections, as icons with hints in the header, like the lyrics
@@ -1983,7 +2012,7 @@ export function mount(root, ctx) {
 			<div class="st-title"><b>${SECTIONS[s.tab][0]}</b><span>${subtitle()}</span></div>
 			<label class="adm-find${s.tab === "catalog" ? " on" : ""}" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}<input type="search" data-adm="search" data-where="head" value="${s.query}" placeholder="Find an album or artist" aria-label="Find an album or an artist (2 letters or more, or an album id)" autocomplete="off" spellcheck="false"><kbd>${MAC ? "⌘K" : "Ctrl K"}</kbd></label>
 			<button class="adm-find-icon${s.tab === "catalog" ? " on" : ""}" data-adm="find" aria-label="Find an album or an artist" title="Find an album or an artist (${MAC ? "⌘K" : "Ctrl+K"})">${icon("search")}</button>
-			<div class="st-modes adm-modes" role="tablist" aria-label="Admin">
+			<div class="st-modes adm-modes" role="tablist" aria-label="Workspace sections">
 				${Object.entries(SECTIONS).filter(([id, [, , hint]]) => hint && sectionShown(id)).map(([id, [, ic, hint]]) => {
 					const count = sectionCount(id);
 					return html`<button role="tab" class="st-mode" data-adm="tab" data-tab="${id}" aria-selected="${String(s.tab === id)}" aria-label="${hint}${count ? `, ${count} waiting` : ""}" title="${hint}${count ? ` · ${count} waiting` : ""}">${icon(ic)}${count ? html`<span class="adm-mode-dot"></span>` : ""}</button>`;
@@ -2103,6 +2132,7 @@ export function mount(root, ctx) {
 	function render() {
 		draw();
 		markWorking();
+		try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ tab: s.tab, open: s.open, query: s.query })); } catch { /* a view not kept is no loss */ }
 	}
 
 	function draw() {
@@ -2269,7 +2299,7 @@ export function mount(root, ctx) {
 			switch (b.dataset.adm) {
 				case "tab": await openSection(b.dataset.tab); break;
 				case "live-apply": await applyNow(); break;
-				case "live-undo": await undoLive(Number(b.dataset.i)); break;
+				case "live-undo": await undoLive(b.dataset.kind, b.dataset.id, b.dataset.field); break;
 				case "live-release": releaseLive(); break;
 				case "find": find(); break;
 				case "play": await playSong(Number(b.dataset.id)); break;
@@ -2355,7 +2385,10 @@ export function mount(root, ctx) {
 				case "reload": s.menu = false; s.health = null; await load(); break;
 				case "close": s.open = null; render(); [...root.querySelectorAll("[data-adm=search]")].find((el) => el.offsetParent)?.focus(); break;
 				case "undo": s.draft.changes.splice(Number(b.dataset.i), 1); saveDraft(); render(); break;
-				case "discard": s.draft.changes = []; saveDraft(); render(); break;
+				case "discard-ask": s.confirmDiscard = true; render(); break;
+				case "discard-cancel": s.confirmDiscard = false; render(); break;
+				case "discard": s.confirmDiscard = false; s.draft.changes = []; saveDraft(); render(); break;
+				case "close-pr": await closePullRequest(); break;
 				case "merge": await mergeAndRelease(); break;
 				case "refresh": watch(); break;
 				case "forget-pr": s.draft.pr = null; s.pr = null; saveDraft(); render(); break;
@@ -2379,6 +2412,13 @@ export function mount(root, ctx) {
 	if (/^\d+$/.test(query.get("member") ?? "")) s.jumpMember = Number(query.get("member"));
 	// The link has done its work; Back and reloads land on the plain Workspace.
 	if (s.jump || s.jumpReview || s.jumpMember !== null) history.replaceState(history.state, "", "#/workspace");
+	// Without a link's errand, where the person was: the same section, album and search after a reload or a visit elsewhere.
+	else {
+		try {
+			const view = JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? "null");
+			if (view && SECTIONS[view.tab]) { s.tab = view.tab; s.open = view.open ?? null; s.query = typeof view.query === "string" ? view.query : ""; }
+		} catch { /* nothing kept */ }
+	}
 	const saved = store.get(TOKEN_KEY);
 	if (ctx.analyticsOn() || ctx.desktop) render();
 	else if (query.has("signin") || query.has("signin-error")) finishSignIn(query).catch(fail);

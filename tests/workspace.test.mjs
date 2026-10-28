@@ -280,3 +280,21 @@ test("a song's length is a whole number of seconds, shown as m:ss", () => {
 	const checks = Object.fromEntries(healthChecks(src).map((c) => [c.id, c]));
 	assert.equal(checks["no-duration"].reads, "lengths");
 });
+
+test("format: counts, sizes and times as the Workspace shows them", async () => {
+	const f = await import("../src/workspace/format.js");
+	assert.equal(f.plural(1, "change"), "1 change");
+	assert.equal(f.plural(2, "change"), "2 changes");
+	assert.equal(f.plural(0, "person", "people"), "0 people");
+	assert.equal(f.duration(119.6), "2:00", "rounded to the second first, never 1:60");
+	assert.equal(f.duration(61), "1:01");
+	assert.equal(f.mb(1_234_567), `${(1.234567).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`);
+	assert.match(f.space(2e9), /GB$/);
+	const now = 1_800_000_000_000;
+	assert.equal(f.since(now / 1000 - 120, now), "2 min ago");
+	assert.equal(f.since(now / 1000 - 7200, now), "2 h ago");
+	assert.equal(f.since(now / 1000 - 30 * 3600, now), "yesterday");
+	assert.equal(f.since(now / 1000 - 5 * 86400, now), "5 days ago");
+	assert.equal(f.sized("https://avatars.githubusercontent.com/u/1?v=4"), "https://avatars.githubusercontent.com/u/1?v=4&s=96");
+	assert.equal(f.photoOf("https://lh3.googleusercontent.com/a/x"), "https://lh3.googleusercontent.com/a/x");
+});

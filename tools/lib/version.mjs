@@ -27,16 +27,22 @@ export function parseVersion(value) {
 	return { date: `${yy}.${mm}.${dd}`, changes: Number(changes) };
 }
 
-/** The date part for a given day, in yy.mm.dd form. */
+/**
+ * The date part for a given moment, in yy.mm.dd form: the UTC day, so the
+ * Workspace in one time zone, a laptop in another and the release workflow
+ * (UTC) name the same day and never refuse each other's versions as "dated
+ * after today".
+ */
 export function datePart(day) {
 	const pad = (n) => String(n).padStart(2, "0");
-	return `${pad(day.getFullYear() % 100)}.${pad(day.getMonth() + 1)}.${pad(day.getDate())}`;
+	return `${pad(day.getUTCFullYear() % 100)}.${pad(day.getUTCMonth() + 1)}.${pad(day.getUTCDate())}`;
 }
 
 /**
  * Next version after `current` on `day`: the change count increments on the
  * same day and restarts at 1 on a new day. A current version dated after
- * `day` is refused, since the next version would sort before it.
+ * `day` is refused, since the next version would sort before it. Days are
+ * UTC days (datePart).
  */
 export function nextVersion(current, day = new Date()) {
 	const today = datePart(day);

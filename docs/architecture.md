@@ -184,7 +184,7 @@ Downloads use IndexedDB Blobs rather than Cache Storage because `<audio>` sends 
 
 ## Versions
 
-Releases use `yy.mm.dd.changes` (`v26.10.19.1`), stored without the `v` in both `package.json` files and bumped by `tools/version.mjs` (dry run by default). The build refuses an invalid version. The app shows the release version; the service worker cache is named by release plus a content hash of the build, so every build installs a fresh cache. The scheme is not semver: `npm version` cannot bump it, and installer tooling that requires semver (desktop packaging) will need it mapped, e.g. to `26.10.19-1`.
+Releases use `yy.mm.dd.changes` (`v26.10.19.1`; the day is the UTC day, so the Workspace, a laptop and the release workflow agree), stored without the `v` in both `package.json` files and bumped by `tools/version.mjs` (dry run by default). The build refuses an invalid version. The app shows the release version; the service worker cache is named by release plus a content hash of the build, so every build installs a fresh cache. The scheme is not semver: `npm version` cannot bump it, and installer tooling that requires semver (desktop packaging) will need it mapped, e.g. to `26.10.19-1`.
 
 ## Local development
 

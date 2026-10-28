@@ -12,7 +12,7 @@ import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { applyTotals, startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { startHolds } from "./core/holds.js";
-import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
+import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_CSS, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho, saveWho, SESSION_KEY, TOKEN_KEY } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
@@ -177,6 +177,20 @@ route("admin", (_catalog, _params, query) => {
 });
 
 // The Workspace (src/workspace): its own bundle, loaded only here; linked for those signed in with GitHub.
+/** The Workspace's stylesheet, added to the page the first time it opens; resolves when it is in (or failed: the page still works, less styled). */
+let workspaceCss = null;
+function workspaceStyles() {
+	if (!WORKSPACE_CSS) return Promise.resolve();
+	workspaceCss ??= new Promise((resolve) => {
+		const link = document.createElement("link");
+		link.rel = "stylesheet";
+		link.href = new URL(WORKSPACE_CSS, document.baseURI).href;
+		link.onload = () => resolve();
+		link.onerror = () => { console.warn("the Workspace's stylesheet could not be loaded"); resolve(); };
+		document.head.append(link);
+	});
+	return workspaceCss;
+}
 route("workspace", () => ({
 	title: "Workspace",
 	body: html`<div class="workspace" id="workspace-root"><p class="muted adm-loading">Loading…</p></div>`,
@@ -184,7 +198,8 @@ route("workspace", () => ({
 		const root = $("#workspace-root", view);
 		if (!WORKSPACE_URL) { root.innerHTML = html`<p>The Workspace works in the web app only.</p>`; return; }
 		try {
-			const mod = await import(new URL(WORKSPACE_URL, document.baseURI).href);
+			// Its stylesheet first (once), so the page is never drawn unstyled; then the code.
+			const [mod] = await Promise.all([import(new URL(WORKSPACE_URL, document.baseURI).href), workspaceStyles()]);
 			mod.mount(root, {
 				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), audioUrl, authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
 				// The app's own player, lyrics index and covers: the Workspace bundle has no copies of its own.
