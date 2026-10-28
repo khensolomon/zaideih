@@ -1,34 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { sqlite } from "./helpers/fakes.mjs";
+import { harness, workerEnv } from "./helpers/worker.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleLibrary } = await import("../worker/media/library.js");
 const { mergeMembers } = await import("../worker/media/accounts.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-ann": { id: 42, login: "ann" }, "gh-bo": { id: 43, login: "bo" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
-};
 function setup() {
-	const env = { DB: fakeD1(), BUCKET: fakeR2(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s", UPLOAD_MAX_BYTES: "1000", UPLOAD_QUOTA_BYTES: "2000", AUDIO_SIGNING_KEY: "k", UPLOAD_LIMIT: { limit: async () => ({ success: true }) } };
-	let clock = 1_800_000_000_000;
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github, now: () => clock })).json()));
-	const sync = async (t, body) => {
-		const s = await signIn(t);
-		const res = await handleLibrary(new Request(`${W}/library/sync`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${s.token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }), env, { now: () => clock });
-		const text = await res.text();
-		return { status: res.status, body: text ? JSON.parse(text) : null };
-	};
-	return { env, sync, signIn, tick: (ms) => { clock += ms; }, at: () => clock };
+	const h = harness({ people: PEOPLE, handler: handleLibrary, handleAuth, env: workerEnv({ UPLOAD_MAX_BYTES: "1000", UPLOAD_QUOTA_BYTES: "2000", AUDIO_SIGNING_KEY: "k", UPLOAD_LIMIT: { limit: async () => ({ success: true }) } }), ctxless: true });
+	return { ...h, sync: (t, body) => h.call(t, "POST", "/library/sync", body), at: h.now };
 }
 const like = (track, liked, at) => ({ kind: "like", track, liked, at });
 const pl = (uid, extra) => ({ kind: "playlist", uid, name: "Road", tracks: [1, 2], deleted: false, base: 0, offline: false, ...extra });

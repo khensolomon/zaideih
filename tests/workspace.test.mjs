@@ -298,3 +298,29 @@ test("format: counts, sizes and times as the Workspace shows them", async () => 
 	assert.equal(f.sized("https://avatars.githubusercontent.com/u/1?v=4"), "https://avatars.githubusercontent.com/u/1?v=4&s=96");
 	assert.equal(f.photoOf("https://lh3.googleusercontent.com/a/x"), "https://lh3.googleusercontent.com/a/x");
 });
+
+test("createGitHub: requests carry the token and API version; failures name the route, the status and GitHub's message", async () => {
+	const { createGitHub, GitHubError } = await import("../src/workspace/github.js");
+	const calls = [];
+	const answers = [];
+	const fetchImpl = async (url, init) => { calls.push({ url, init }); return answers.shift(); };
+	const gh = createGitHub(async () => "tok", { fetchImpl });
+	answers.push(new Response(JSON.stringify({ object: { sha: "abc" } }), { status: 200 }));
+	assert.equal(await gh.head(), "abc");
+	assert.equal(calls[0].init.headers.Authorization, "Bearer tok");
+	assert.equal(calls[0].init.headers["X-GitHub-Api-Version"], "2022-11-28");
+	assert.equal(calls[0].init.cache, "no-store");
+	// A file is one raw request; no blob metadata request beside it.
+	answers.push(new Response("{\"a\":1}", { status: 200 }));
+	assert.deepEqual(await gh.file("assets/data/x.json", "abc"), { text: "{\"a\":1}" });
+	assert.equal(calls.length, 2);
+	assert.equal(calls[1].init.headers.Accept, "application/vnd.github.raw+json");
+	// A refusal: the route, the status, GitHub's message and the hint about permissions.
+	answers.push(new Response(JSON.stringify({ message: "Resource not accessible by personal access token" }), { status: 403 }));
+	await assert.rejects(gh.head(), (err) => err instanceof GitHubError && err.status === 403 && /GET \/repos\/.*HTTP 403 Resource not accessible.*permission/.test(err.message));
+	// Closing a pull request is a PATCH with state closed.
+	answers.push(new Response("{}", { status: 200 }));
+	await gh.close(12);
+	assert.equal(calls.at(-1).init.method, "PATCH");
+	assert.deepEqual(JSON.parse(calls.at(-1).init.body), { state: "closed" });
+});

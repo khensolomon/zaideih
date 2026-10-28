@@ -8,7 +8,10 @@ import { readFileSync } from "node:fs";
 let DatabaseSync = null;
 try {
 	({ DatabaseSync } = await import("node:sqlite"));
-} catch { /* older Node: tests that need it are skipped */ }
+} catch (err) {
+	// Older Node: the tests that need it are skipped on a laptop, but never on CI, where a skip would pass for a test that did not run.
+	if (process.env.CI) throw new Error(`node:sqlite is not available (${err.message}); the Worker tests need Node 22.13 or later`);
+}
 export const sqlite = DatabaseSync;
 
 /** A D1-like database with the Worker's schema. */

@@ -1,41 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { harness, W } from "./helpers/worker.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleLyrics, cleanLyrics } = await import("../worker/media/lyrics.js");
 const { mergeMembers } = await import("../worker/media/accounts.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-ann": { id: 42, login: "ann" }, "gh-bo": { id: 43, login: "bo" }, "gh-mod": { id: 44, login: "mod" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
+const setup = () => {
+	const h = harness({ people: PEOPLE, handler: handleLyrics, handleAuth });
+	return { ...h, read: (track) => h.callWith(handleLyrics, null, "GET", `/lyrics/${track}`) };
 };
-
-function setup() {
-	const env = { DB: fakeD1(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s" };
-	let clock = 1_800_000_000_000;
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github, now: () => clock })).json()));
-	const call = async (who, method, path, body) => {
-		const headers = { Origin: ORIGIN };
-		if (who) headers.Authorization = `Bearer ${(await signIn(who)).token}`;
-		if (body) headers["Content-Type"] = "application/json";
-		const res = await handleLyrics(new Request(`${W}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, null, { now: () => clock });
-		return { status: res.status, body: await res.json(), headers: res.headers };
-	};
-	const read = async (track) => {
-		const res = await handleLyrics(new Request(`${W}/lyrics/${track}`), env, null);
-		return { status: res.status, body: await res.json(), headers: res.headers };
-	};
-	return { env, call, read, signIn, tick: (s) => { clock += s * 1000; } };
-}
 
 async function seed(env) {
 	await env.DB.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (101, 'a', 'b.mp3', 0), (102, 'a', 'c.mp3', 0)").run();
@@ -60,7 +37,7 @@ test("anyone signed in adds lyrics, which appear at once; editing needs the late
 	assert.deepEqual([pub.status, pub.body.text, pub.headers.get("access-control-allow-origin")], [200, "Verse one\nChorus", "*"]);
 	assert.match(pub.headers.get("cache-control"), /public/);
 	// Bo corrects it from version 1.
-	tick(60);
+	tick(60e3);
 	const fixed = await call("gh-bo", "POST", "/lyrics/101", { text: "Verse one\nChorus, twice", base: 1 });
 	assert.equal(fixed.body.version, 2);
 	// Ann, still at version 1, saves too: refused, with the current lyrics to compare.
@@ -149,7 +126,7 @@ test("a member saves at most MAX_PER_HOUR versions an hour; the Lyrics right has
 	const mod = (await signIn("gh-mod")).member.id;
 	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
 	assert.equal((await call("gh-mod", "POST", "/lyrics/101", { text: "the right saves", base })).status, 200);
-	tick(3601);
+	tick(3601e3);
 	assert.equal((await call("gh-ann", "POST", "/lyrics/101", { text: "an hour later", base: base + 1 })).status, 200);
 });
 
@@ -213,7 +190,7 @@ test("the index: every shown text's words, then what changed since", { skip }, a
 	assert.deepEqual(all.songs, [[101, "", 1, "Waiting on the Lord\nTopa ngak ta un\nVang-liat-na!\nJesu tung"], [102, "en", 1, "Wait on the Lord"]]);
 	assert.deepEqual(all.gone, []);
 	// Changed since: a new save, and a hidden text as gone.
-	tick(10);
+	tick(10e3);
 	await call("gh-ann", "POST", "/lyrics/102?lang=en", { text: "Wait upon the Lord", base: 1 });
 	const mod = (await setupRight(env, call));
 	await call(mod, "POST", "/lyrics/101/hide", { reason: "check" });
@@ -261,7 +238,7 @@ test("shared lyrics: one text for several recordings, each with its own timing",
 	// Ann's recording, timed to her song.
 	const timed = "Key: G\n\n[Verse 1]\n[00:10.00]Topa ngak ta un\n[00:14.00]Vang liat na\n\n[Chorus]\n[00:20.00][01:05.00]Hallelujah";
 	assert.equal((await call("gh-ann", "POST", "/lyrics/101", { text: timed, base: 0 })).status, 200);
-	tick(60);
+	tick(60e3);
 
 	// Linking is for the Lyrics right; a member proposes instead.
 	const mod = (await signIn("gh-mod")).member.id;
@@ -298,7 +275,7 @@ test("shared lyrics: one text for several recordings, each with its own timing",
 	assert.equal((await read(103)).body.text, clearTimes(timed));
 
 	// A correction from any recording is one for all; each keeps its timing.
-	tick(60);
+	tick(60e3);
 	const fixed = await call("gh-bo", "POST", "/lyrics/102", { text: bos.replace("Vang liat na", "Vang-liat-na!"), base: v });
 	assert.equal(fixed.body.version, v + 1);
 	assert.match((await read(101)).body.text, /\[00:14\.00\]Vang-liat-na!/);
@@ -311,7 +288,7 @@ test("shared lyrics: one text for several recordings, each with its own timing",
 
 	// Unlinking is for the Lyrics right; with a copy, the recording keeps the text and its timing as its own.
 	const before = idx.body.at;
-	tick(60);
+	tick(60e3);
 	assert.equal((await call("gh-bo", "POST", "/lyrics/102/unlink", { copy: true })).status, 403);
 	const copied = await call("gh-mod", "POST", "/lyrics/102/unlink", { copy: true });
 	assert.deepEqual(copied.body, { track: 102, source: 101, copied: true });
@@ -341,12 +318,12 @@ test("merging: members propose, the Lyrics right compares and merges, nothing is
 	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'lyrics', 'owner', 0)").bind(mod).run();
 	// Two copies of one song: Ann's (worked on), Bo's (timed to his recording, with an English translation).
 	await call("gh-ann", "POST", "/lyrics/201", { text: "[Verse 1]\nTopa ngak ta un\nVang liat na", base: 0 });
-	tick(10);
+	tick(10e3);
 	await call("gh-ann", "POST", "/lyrics/201", { text: "[Verse 1]\nTopa ngak ta un\nVang-liat-na!\n\n[Chorus]\nHallelujah", base: 1 });
 	await call("gh-bo", "POST", "/lyrics/202", { text: "[00:03.00]Topa ngak ta un\n[00:07.00]Vang liat na", base: 0 });
 	await call("gh-bo", "POST", "/lyrics/202?lang=en", { text: "Wait upon the Lord", base: 0 });
 	await call("gh-mod", "POST", "/lyrics/203/link", { to: 202 });
-	tick(10);
+	tick(10e3);
 
 	// Bo proposes; it waits for the Lyrics right.
 	assert.equal((await call("gh-bo", "POST", "/lyrics/202/propose", { to: 201, note: "Same hymn, sung by Bo" })).status, 201);
@@ -382,7 +359,7 @@ test("merging: members propose, the Lyrics right compares and merges, nothing is
 	assert.equal(hidden.hidden_reason, "merged into song 201");
 
 	// A copy of its own brings it back, its own history continuing.
-	tick(10);
+	tick(10e3);
 	assert.equal((await call("gh-mod", "POST", "/lyrics/202/unlink", { copy: true })).status, 200);
 	const back = await read(202);
 	assert.deepEqual([back.body.version, back.body.shared], [3, undefined]);
@@ -415,7 +392,7 @@ test("audit: timing comes back when sharing ends; hidden texts are not copied; s
 	await call("gh-ann", "POST", "/lyrics/101", { text: timed, base: 0 });
 	await call("gh-ann", "POST", "/lyrics/101?lang=en", { text: "Rude words", base: 0 });
 	await call("gh-mod", "POST", "/lyrics/101/hide?lang=en", { reason: "abusive" });
-	tick(10);
+	tick(10e3);
 	assert.equal((await call("gh-mod", "POST", "/lyrics/102/link", { to: 101 })).status, 200);
 
 	// A member without the right who links (older app builds) sends a proposal instead.
@@ -425,7 +402,7 @@ test("audit: timing comes back when sharing ends; hidden texts are not copied; s
 	assert.deepEqual((await call("gh-mod", "GET", "/lyrics/recent")).body.proposals.map((p) => [p.track, p.target]), [[103, 101]]);
 
 	// A copy of its own leaves the hidden translation behind.
-	tick(10);
+	tick(10e3);
 	assert.equal((await call("gh-mod", "POST", "/lyrics/102/unlink", { copy: true })).status, 200);
 	assert.equal((await call(null, "GET", "/lyrics/102?lang=en")).status, 404);
 	// The last recording gone, the source has its own timing again.

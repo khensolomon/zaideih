@@ -22,7 +22,7 @@
 		"esbuild": "0.25.10"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=22.13"
 	},
 	"homepage": "https://github.com/khensolomon/zaideih#readme",
 	"repository": {

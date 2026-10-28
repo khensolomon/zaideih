@@ -4,7 +4,8 @@ import { compile } from "../tools/catalog.mjs";
 import { applyHolds, applyLive, buildModel } from "../src/core/catalog.js";
 import { indexRaw, parseLive, patchRaw, rawValue } from "../src/core/live-catalog.js";
 import { search } from "../src/core/search.js";
-import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { harness } from "./helpers/worker.mjs";
 
 const category = {
 	lang: [{ id: 1, name: "zola" }, { id: 2, name: "myanmar" }, { id: 3, name: "mizo" }],
@@ -96,30 +97,12 @@ test("live: applied to the app's model with holds and uploads kept, searched by 
 /* ------------------------------------------------------------ Worker ---- */
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
-};
 
 test("live: the Catalog right makes changes live and takes them away; the public sees the changes", { skip }, async () => {
 	const { handleAuth } = await import("../worker/media/auth.js");
 	const { handleLive } = await import("../worker/media/live.js");
-	const env = { DB: fakeD1(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s" };
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github })).json()));
-	const call = async (who, method, path, body) => {
-		const headers = { Origin: ORIGIN };
-		if (who) headers.Authorization = `Bearer ${(await signIn(who)).token}`;
-		if (body) headers["Content-Type"] = "application/json";
-		const res = await handleLive(new Request(`${W}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, null);
-		return { status: res.status, body: await res.json(), headers: res.headers };
-	};
+	const { env, call, signIn } = harness({ people: PEOPLE, handler: handleLive, handleAuth });
 	assert.deepEqual((await call(null, "GET", "/live")).body, { at: 0, changes: [] });
 	const title = { kind: "album", id: "a1", field: "ab", value: "  Agape No. 1 ", base: "Agape No.1" };
 	assert.equal((await call(null, "POST", "/live", { changes: [title] })).status, 401);

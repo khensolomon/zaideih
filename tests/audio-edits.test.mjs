@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { harness, ORIGIN, W, workerEnv } from "./helpers/worker.mjs";
 
 globalThis.caches ??= { default: { match: async () => undefined, put: async () => {} } };
 const { handleAuth } = await import("../worker/media/auth.js");
@@ -9,16 +10,7 @@ const { default: worker } = await import("../worker/media/script.js");
 const { cut, plan, scan } = await import("../worker/media/mp3.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" }, "gh-ed": { id: 43, login: "ed" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
-};
 const join = (...parts) => {
 	const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
 	let at = 0;
@@ -38,17 +30,7 @@ function mp3(n) {
 }
 
 test("audio studio: the Audio right cuts a song as a version, the original kept; audio plays the current or the asked version", { skip }, async () => {
-	const env = { DB: fakeD1(), BUCKET: fakeR2(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, ALLOWED_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s" };
-	const clock = 1_800_000_000_000;
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github, now: () => clock })).json()));
-	const call = async (who, method, path, body) => {
-		const headers = { Origin: ORIGIN };
-		if (who) headers.Authorization = `Bearer ${(await signIn(who)).token}`;
-		if (body) headers["Content-Type"] = "application/json";
-		const res = await handleEdits(new Request(`${W}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, null, { now: () => clock });
-		return { status: res.status, body: await res.json() };
-	};
+	const { env, call, signIn } = harness({ people: PEOPLE, handler: handleEdits, handleAuth, env: workerEnv({ ALLOWED_ORIGINS: ORIGIN }) });
 	const play = async (path) => {
 		const res = await worker.fetch(new Request(`${W}${path}`, { headers: { "Sec-Fetch-Dest": "audio" } }), env, { waitUntil() {} });
 		return { status: res.status, version: res.headers.get("x-zaideih-version"), cache: res.headers.get("cache-control"), bytes: res.status === 200 ? new Uint8Array(await res.arrayBuffer()) : null };
