@@ -37,10 +37,19 @@ function registerServiceWorker() {
 		});
 	}).catch((err) => console.error("service worker registration failed", err));
 
+	// A page already run by a service worker (not the first install) whose worker changed without
+	// its say: the update was accepted in another tab, and this page's files are no longer kept.
+	const hadController = Boolean(navigator.serviceWorker.controller);
 	navigator.serviceWorker.addEventListener("controllerchange", () => {
-		if (!updateAccepted) return;
-		updateAccepted = false;
-		location.reload();
+		if (updateAccepted) {
+			updateAccepted = false;
+			location.reload();
+		} else if (hadController) {
+			notify("Zaideih was updated in another tab. Reload this one to keep everything working.", {
+				sticky: true,
+				action: { label: "Reload", run: () => location.reload() },
+			});
+		}
 	});
 }
 

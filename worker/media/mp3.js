@@ -141,7 +141,7 @@ function xingFrame(s, frames, bytes, vbr) {
 
 /**
  * The song from `startMs` to `endMs` (of the original), cut at frame edges:
- * { bytes, startMs, endMs, durationMs, frames } with the times as cut. The
+ * { parts, length, bytes, startMs, endMs, durationMs, frames } with the times as cut. The
  * ID3 tags are kept; a Xing/Info frame is written for the frames kept when
  * the original had one (or a VBRI header), Xing when the bitrate varies.
  */
@@ -161,10 +161,19 @@ export function cut(b, startMs, endMs) {
 	}
 	const head = b.subarray(0, s.head);
 	const tail = s.tail === null ? new Uint8Array(0) : b.subarray(s.tail);
-	const out = new Uint8Array(head.length + info.length + sound.length + tail.length);
-	out.set(head, 0);
-	out.set(info, head.length);
-	out.set(sound, head.length + info.length);
-	out.set(tail, head.length + info.length + sound.length);
-	return { bytes: out, startMs: Math.round(from * msPer), endMs: Math.round(to * msPer), durationMs: durationMs(s, kept.length), frames: kept.length };
+	// The parts are views into the original: a long recording is not copied whole again
+	// (the Worker streams them to R2); `bytes` joins them for whoever needs one array.
+	const parts = [head, info, sound, tail];
+	const length = parts.reduce((n, p) => n + p.length, 0);
+	return {
+		parts,
+		length,
+		get bytes() {
+			const out = new Uint8Array(length);
+			let at = 0;
+			for (const p of parts) { out.set(p, at); at += p.length; }
+			return out;
+		},
+		startMs: Math.round(from * msPer), endMs: Math.round(to * msPer), durationMs: durationMs(s, kept.length), frames: kept.length,
+	};
 }

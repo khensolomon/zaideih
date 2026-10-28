@@ -133,6 +133,20 @@ export const db = {
 	delete: (store, key) => run(store, "readwrite", (s) => wrap(s.delete(key))),
 	clear: (store) => run(store, "readwrite", (s) => wrap(s.clear())),
 
+	/** Keeps the newest `keep` history entries; older ones are deleted (oldest first, by the "at" index). */
+	trimHistory: (keep) =>
+		run("history", "readwrite", (s) => new Promise((resolve, reject) => {
+			let seen = 0;
+			const req = s.index("at").openCursor(null, "prev");
+			req.onsuccess = () => {
+				const cur = req.result;
+				if (!cur) return resolve();
+				if (++seen > keep) cur.delete();
+				cur.continue();
+			};
+			req.onerror = () => reject(req.error);
+		})),
+
 	/** Most recent history entries, newest first. */
 	recentHistory: (limit) =>
 		run("history", "readonly", (s) => new Promise((resolve, reject) => {

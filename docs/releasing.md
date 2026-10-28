@@ -14,7 +14,7 @@ plan ──> test (ci.yml) ──┬──> audio  wrangler deploy (worker/media
                                      └──> publish  tag v<version>, GitHub release from CHANGELOG.md
 ```
 
-When both web and audio are released, web waits for audio, since the new app may call routes only the new Worker answers; a failed audio deploy stops web.
+When both web and audio are released, web waits for audio, since the new app may call routes only the new Worker answers; a failed audio deploy stops web. With d1 (track paths, as every published request has), web waits for d1 too, so the site never lists an album whose songs the Worker cannot find yet, and d1 runs after audio, after its schema changes. The plan checks the version's tag first: a tag already on another commit stops the release before anything is deployed. A release line is read in any case (`Release:` as `release:`).
 
 Nothing built is committed. Cloudflare receives files from wrangler and builds nothing itself.
 

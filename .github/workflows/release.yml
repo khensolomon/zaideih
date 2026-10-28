@@ -92,8 +92,9 @@ jobs:
             node tools/release-plan.mjs --target "$TARGET"
             exit 0
           fi
+          # Any case, as GitHub's startsWith (ci.yml) and tools/lib/release.mjs read it.
           case "$RELEASE_MESSAGE" in
-            release:*) ;;
+            [Rr][Ee][Ll][Ee][Aa][Ss][Ee]:*) ;;
             *)
               # The pull request this commit came from, if any: its title asks for the release.
               title=$(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)][0].title // ""')
@@ -103,6 +104,18 @@ jobs:
               ;;
           esac
           node tools/release-plan.mjs
+      # A version names one commit: a tag already on another commit stops the release
+      # here, before anything is deployed (publish checks again, for a re-run).
+      - name: Check the version is free
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.tag != ''
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          existing=$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)
+          if [ -n "$existing" ] && [ "$existing" != "$GITHUB_SHA" ]; then
+            echo "::error::tag $TAG already names commit $existing, not $GITHUB_SHA; bump the version (node tools/version.mjs --apply)"
+            exit 1
+          fi
 
   test:
     needs: plan
@@ -114,11 +127,14 @@ jobs:
   # ---------------------------------------------------------------- web ----
 
   # After the Worker when both are released: the new app calls routes the new Worker answers.
+  # After the Worker (audio) and the track paths (d1) when those are released too:
+  # the site never lists an album whose songs the Worker cannot find yet.
   web:
-    needs: [plan, test, audio]
+    needs: [plan, test, audio, d1]
     if: >-
       !cancelled() && needs.test.result == 'success' && needs.plan.outputs.web == 'true'
       && (needs.audio.result == 'success' || needs.audio.result == 'skipped')
+      && (needs.d1.result == 'success' || needs.d1.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -267,9 +283,12 @@ jobs:
   # Loads every track path from assets/data/media.json into D1 as upserts.
   # Rows for tracks no longer in media.json stay; removing them is a manual
   # step (node tools/d1.mjs tracks --prune --apply) so a release never deletes.
+  # After the audio job when both are released, so its schema changes are in place first.
   d1:
-    needs: [plan, test]
-    if: needs.plan.outputs.d1 == 'true'
+    needs: [plan, test, audio]
+    if: >-
+      !cancelled() && needs.test.result == 'success' && needs.plan.outputs.d1 == 'true'
+      && (needs.audio.result == 'success' || needs.audio.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

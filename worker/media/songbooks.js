@@ -139,6 +139,20 @@ function id(v, what) {
 /* ------------------------------------------------------------- reads ---- */
 
 /** True when a text is printed in a public book. */
+/**
+ * Texts whose place in a public book changed (added, taken out, replaced):
+ * they, and the recordings showing them, count as changed in the app's
+ * lyrics index, which then adds or drops them (lyrics.js index).
+ */
+async function touchTexts(env, ids, nowSeconds) {
+	const list = [...new Set(ids)];
+	const marks = list.map((_, i) => `?${i + 2}`).join(", ");
+	await env.DB.batch([
+		env.DB.prepare(`UPDATE lyrics SET changed_at = ?1 WHERE track IN (${marks})`).bind(nowSeconds, ...list),
+		env.DB.prepare(`UPDATE lyrics_links SET at = ?1 WHERE unlinked_at IS NULL AND source IN (${marks})`).bind(nowSeconds, ...list),
+	]);
+}
+
 export async function textIsPublic(env, textId) {
 	const row = await env.DB.prepare("SELECT 1 AS yes FROM songbook_entries e JOIN songbooks b ON b.id = e.book_id WHERE e.text_id = ?1 AND b.public = 1 LIMIT 1").bind(textId).first();
 	return Boolean(row);
@@ -577,6 +591,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 				}, me, nowSeconds);
 			}
 			await env.DB.prepare("INSERT INTO songbook_entries (book_id, number, text_id, at) VALUES (?1, ?2, ?3, ?4)").bind(bookId, number, textId, nowSeconds).run();
+			if (b.public) await touchTexts(env, [textId], nowSeconds);
 			return answer(201, { book: bookId, number, text: textId }, cors);
 		}
 		// POST /songbooks/:book/entries/:number: another number, another text, taken out, or deleted.
@@ -598,6 +613,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 			if (others) {
 				// Printed elsewhere too: only this number goes.
 				await env.DB.prepare("DELETE FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).run();
+				if (b.public) await touchTexts(env, [textId], nowSeconds);
 				return answer(200, { book: bookId, number, deleted: "number" }, cors);
 			}
 			const joined = (await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics_links WHERE source = ?1 AND unlinked_at IS NULL").bind(textId).first())?.n ?? 0;
@@ -607,7 +623,9 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 				env.DB.prepare("DELETE FROM song_credits WHERE subject = 'text' AND subject_id = ?1").bind(textId),
 				env.DB.prepare("UPDATE song_texts SET from_text = NULL WHERE from_text = ?1").bind(textId),
 				env.DB.prepare("DELETE FROM song_texts WHERE id = ?1").bind(textId),
-				env.DB.prepare("DELETE FROM lyrics WHERE track = ?1").bind(textId),
+				// The words go; the row stays, hidden and empty, so devices that had them in their
+				// lyrics index learn they are gone (lyrics.js index: changed since they last asked).
+				env.DB.prepare("UPDATE lyrics SET text = '', words = '', hidden_at = ?2, hidden_by = ?3, hidden_reason = 'deleted with its songbook entry', changed_at = ?2 WHERE track = ?1").bind(textId, nowSeconds, me.login),
 				env.DB.prepare("DELETE FROM lyrics_versions WHERE track = ?1").bind(textId),
 				env.DB.prepare("DELETE FROM lyrics_reports WHERE track = ?1").bind(textId),
 				env.DB.prepare("DELETE FROM lyrics_links WHERE source = ?1 OR track = ?1").bind(textId),
@@ -616,11 +634,14 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 		}
 		if (body.remove === true) {
 			await env.DB.prepare("DELETE FROM songbook_entries WHERE book_id = ?1 AND number = ?2").bind(bookId, number).run();
+			// Taken out of a public book, the text may be in no public book now.
+			if (b.public) await touchTexts(env, [entry.text_id], nowSeconds);
 			return answer(200, { book: bookId, number, removed: true }, cors);
 		}
 		const textId = id(body.text, "text");
 		await seenText(env, acc, textId);
 		await env.DB.prepare("UPDATE songbook_entries SET text_id = ?3, at = ?4 WHERE book_id = ?1 AND number = ?2").bind(bookId, number, textId, nowSeconds).run();
+		if (b.public) await touchTexts(env, [entry.text_id, textId], nowSeconds);
 		return answer(200, { book: bookId, number, text: textId }, cors);
 	} catch (err) {
 		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");

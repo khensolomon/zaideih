@@ -12,9 +12,15 @@ import { db } from "./db.js";
 import { emit } from "./store.js";
 
 const HISTORY_LIMIT = 500;
+/** History kept on the device: what is read, and some room (a backup exports it all). */
+const HISTORY_KEEP = 1000;
 
 const newUid = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
 const playlistChange = (row, deleted = false) => ({ kind: "playlist", uid: row.uid, name: row.name, tracks: deleted ? [] : [...row.tracks], deleted, at: row.updated, base: row.version ?? 0 });
+
+// Other tabs of the app: a like or playlist changed in one is read again in the others, so a tab
+// opened earlier never writes its stale copy of a playlist over the newer one.
+const tabs = typeof BroadcastChannel === "function" ? new BroadcastChannel("zaideih.library") : null;
 
 export const library = {
 	likes: new Set(),
@@ -35,6 +41,7 @@ export const library = {
 
 	changed(change) {
 		this.onChange?.(change);
+		tabs?.postMessage("changed");
 	},
 
 	isLiked: (id) => library.likes.has(id),
@@ -166,12 +173,15 @@ export const library = {
 		if (changed) {
 			this.playlists.sort((a, b) => b.updated - a.updated);
 			emit("library");
+			tabs?.postMessage("changed");
 		}
 		return changed;
 	},
 
 	async recordPlay(trackId) {
 		await db.put("history", { track: trackId, at: Date.now() });
+		// Only HISTORY_LIMIT are ever read: the rest is trimmed now and then, not on every play.
+		if (Math.random() < 0.05) db.trimHistory(HISTORY_KEEP).catch((err) => console.warn("trimming play history failed", err));
 		emit("history");
 	},
 
@@ -216,3 +226,5 @@ export const library = {
 		emit("history");
 	},
 };
+
+tabs?.addEventListener("message", () => library.init().catch((err) => console.warn("the library could not be read again after a change in another tab", err)));

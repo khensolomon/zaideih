@@ -92,6 +92,8 @@ const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
+/** A song's ranges asked for without a version: it may be trimmed, so an hour, not a day (and not immutable). */
+const UNVERSIONED_CACHE_SECONDS = 3600;
 const MEDIA_DESTINATIONS = new Set(["audio", "video"]);
 const MAX_PLAYS = 50;
 const MAX_PER_TRACK = 3;
@@ -251,15 +253,15 @@ const PLAY_TOTALS_SECONDS = 300;
 const PLAY_RECENT_DAYS = 30;
 
 export async function playTotals(env) {
-	const rows = await env.DB.prepare(
-		`SELECT track_id AS id, SUM(n) AS total, SUM(CASE WHEN day >= date('now', '-${PLAY_RECENT_DAYS - 1} days') THEN n ELSE 0 END) AS recent
-		FROM plays GROUP BY track_id ORDER BY track_id`,
-	).all();
+	// Totals from the running sums (one row a song), the recent days from `plays` by its day
+	// index (only the rows of those days): never a sum over every song's every day.
+	const totals = (await env.DB.prepare("SELECT track_id AS id, total FROM play_totals ORDER BY track_id").all()).results ?? [];
+	const recent = new Map(((await env.DB.prepare(`SELECT track_id AS id, SUM(n) AS n FROM plays WHERE day >= date('now', '-${PLAY_RECENT_DAYS - 1} days') GROUP BY track_id`).all()).results ?? []).map((r) => [r.id, r.n]));
 	return {
 		v: 1,
 		updated: Math.floor(Date.now() / 1000),
 		recentDays: PLAY_RECENT_DAYS,
-		tracks: (rows.results ?? []).map((r) => [r.id, r.total, r.recent]),
+		tracks: totals.map((r) => [r.id, r.total, recent.get(r.id) ?? 0]),
 	};
 }
 
@@ -294,9 +296,10 @@ async function handlePlayTotals(request, env, ctx) {
 const PLAY_STATS_DAYS = 400;
 
 export async function playStats(env) {
-	const first = (await env.DB.prepare("SELECT MIN(day) AS day FROM plays").first())?.day ?? null;
+	const first = (await env.DB.prepare("SELECT MIN(day) AS day FROM play_days").first())?.day ?? null;
 	const today = new Date().toISOString().slice(0, 10);
-	const days = (await env.DB.prepare(`SELECT day, SUM(n) AS n FROM plays WHERE day >= date('now', '-${PLAY_STATS_DAYS - 1} days') GROUP BY day ORDER BY day`).all()).results ?? [];
+	// One row a day from the running sums; each song's week from `plays` by its day index.
+	const days = (await env.DB.prepare(`SELECT day, n FROM play_days WHERE day >= date('now', '-${PLAY_STATS_DAYS - 1} days') ORDER BY day`).all()).results ?? [];
 	const week = (await env.DB.prepare("SELECT track_id AS id, SUM(n) AS n FROM plays WHERE day >= date('now', '-6 days') GROUP BY track_id ORDER BY track_id").all()).results ?? [];
 	return { v: 1, updated: Math.floor(Date.now() / 1000), first, today, days: days.map((r) => [r.day, r.n]), week: week.map((r) => [r.id, r.n]) };
 }
@@ -344,7 +347,8 @@ async function handlePlays(request, env, ctx) {
 	const text = await request.text();
 	if (text.length > MAX_PLAYS_BODY) return playsResponse(413, `body larger than ${MAX_PLAYS_BODY} bytes`, allowed);
 
-	const parsed = parsePlays(text, Math.floor(Date.now() / 1000));
+	const nowSeconds = Math.floor(Date.now() / 1000);
+	const parsed = parsePlays(text, nowSeconds);
 	if (parsed.error) return playsResponse(400, parsed.error, allowed);
 	const { plays, rejected } = parsed;
 
@@ -365,15 +369,30 @@ async function handlePlays(request, env, ctx) {
 			if (!t.allowed) { rejected.push([p.index, "rate-limited"]); continue; }
 			if (t.n >= MAX_PER_TRACK) { rejected.push([p.index, "repeated"]); continue; }
 			t.n += 1;
-			const key = `${p.id}|${playDay(p.at)}`;
+			// A device clock a little ahead never files a play under tomorrow.
+			const key = `${p.id}|${playDay(Math.min(p.at, nowSeconds))}`;
 			counts.set(key, (counts.get(key) ?? 0) + 1);
 		}
 		if (counts.size) {
-			const sql = "INSERT INTO plays (track_id, day, n) VALUES (?1, ?2, ?3) ON CONFLICT(track_id, day) DO UPDATE SET n = n + excluded.n";
-			await env.DB.batch([...counts].map(([key, n]) => {
-				const [id, day] = key.split("|");
-				return env.DB.prepare(sql).bind(Number(id), day, n);
-			}));
+			// Each day's count and the running sums (a song's total, a day's) together: all or none.
+			const perDay = "INSERT INTO plays (track_id, day, n) VALUES (?1, ?2, ?3) ON CONFLICT(track_id, day) DO UPDATE SET n = n + excluded.n";
+			const total = "INSERT INTO play_totals (track_id, total) VALUES (?1, ?2) ON CONFLICT(track_id) DO UPDATE SET total = total + excluded.total";
+			const day = "INSERT INTO play_days (day, n) VALUES (?1, ?2) ON CONFLICT(day) DO UPDATE SET n = n + excluded.n";
+			const byTrack = new Map();
+			const byDay = new Map();
+			for (const [key, n] of counts) {
+				const [id, d] = key.split("|");
+				byTrack.set(Number(id), (byTrack.get(Number(id)) ?? 0) + n);
+				byDay.set(d, (byDay.get(d) ?? 0) + n);
+			}
+			await env.DB.batch([
+				...[...counts].map(([key, n]) => {
+					const [id, d] = key.split("|");
+					return env.DB.prepare(perDay).bind(Number(id), d, n);
+				}),
+				...[...byTrack].map(([id, n]) => env.DB.prepare(total).bind(id, n)),
+				...[...byDay].map(([d, n]) => env.DB.prepare(day).bind(d, n)),
+			]);
 		}
 		rejected.sort((a, b) => a[0] - b[0]);
 		const accepted = [...counts.values()].reduce((a, b) => a + b, 0);
@@ -429,9 +448,20 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	}
 
 	let object;
+	const rangeOption = parseRangeOption(range);
 	try {
-		object = await env.BUCKET.get(objectKey, parseRangeOption(range));
+		object = await env.BUCKET.get(objectKey, rangeOption);
 	} catch (err) {
+		// A range starting at or past the end of the file is the asker's mistake, not the song's: 416.
+		if (rangeOption) {
+			const head = await env.BUCKET.head(objectKey).catch(() => null);
+			if (head && rangeOption.range.offset >= head.size) {
+				const h = diag("range");
+				h.set("Content-Range", `bytes */${head.size}`);
+				h.set("Cache-Control", "no-store");
+				return new Response(null, { status: 416, headers: h });
+			}
+		}
 		console.error("R2 get threw", { trackId, objectKey, err });
 		ctx.waitUntil(recordStatus(env, trackId, "fetch_error"));
 		return new Response("Internal Server Error", { status: 500, headers: diag() });
@@ -452,10 +482,13 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	headers.set("Vary", "Origin");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
 	headers.set("X-Zaideih-Version", String(version));
-	// A version asked for never changes; the current one of an edited song can, so it is kept only briefly.
+	// A version asked for (`?v=`) never changes. Without one, the song may be trimmed later (audio-edits.js):
+	// an edited song's current file is kept briefly, an unedited one an hour, never as immutable.
 	headers.set(
 		"Cache-Control",
-		edited ? "private, max-age=300" : range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable` : "private, max-age=60",
+		asked !== null && range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable`
+			: edited ? "private, max-age=300"
+			: range ? `public, max-age=${UNVERSIONED_CACHE_SECONDS}` : "private, max-age=60",
 	);
 
 	let status = 200;
@@ -469,9 +502,9 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 		headers.set("Content-Length", String(object.size));
 	}
 
-	// Counts fresh fetches that reach the Worker, not plays: browser-cached
-	// replays and range continuations never arrive here.
-	ctx.waitUntil(recordStatus(env, trackId, "served"));
+	// Counts fresh fetches that reach the Worker, not plays: one write for the start of the
+	// file, not one for every range a player reads after it (D1 writes are counted per day).
+	if (!rangeOption || rangeOption.range.offset === 0) ctx.waitUntil(recordStatus(env, trackId, "served"));
 
 	return new Response(request.method === "HEAD" ? null : object.body, { headers, status });
 }

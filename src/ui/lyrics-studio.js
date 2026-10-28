@@ -383,8 +383,10 @@ function mount(root, ctx) {
 	const soonDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, DRAFT_MS); };
 	// Leaving the page (another page, or closing the tab): the draft is written at once.
 	const leave = () => { if (draftTimer) saveDraft(); };
-	addEventListener("hashchange", leave);
-	addEventListener("pagehide", leave);
+	// This page's own listeners, all removed when it is left (the first address change after it).
+	const page = new AbortController();
+	addEventListener("pagehide", leave, { signal: page.signal });
+	addEventListener("hashchange", () => { leave(); page.abort(); }, { once: true, signal: page.signal });
 
 	/**
 	 * The text changed: typed or inserted in the box (the words; drawn again only
@@ -796,10 +798,10 @@ function mount(root, ctx) {
 			root.querySelector("[data-st=save]:not([disabled])")?.click();
 		}
 	});
-	addEventListener("resize", () => { if (alive()) { fit(); marks(); } });
+	addEventListener("resize", () => { if (alive()) { fit(); marks(); } }, { signal: page.signal });
 	// Timing: the play button becomes the tap button when the song starts.
 	const offPlayer = on("player", () => {
-		if (!alive()) { offPlayer(); removeEventListener("hashchange", leave); removeEventListener("pagehide", leave); return; }
+		if (!alive()) { offPlayer(); page.abort(); return; }
 		if (st.mode === "timing" && !root.querySelector("[data-st=tap]") === (player.current()?.id === st.id)) draw();
 	});
 

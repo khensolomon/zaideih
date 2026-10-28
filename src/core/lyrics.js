@@ -131,22 +131,36 @@ export const resolveReports = (id, lang = "") => call("POST", `/${id}/resolve${q
  * a closed tab or a dead battery loses nothing. Saving clears it.
  */
 const draftKey = (id, lang = "") => `lyrics.draft.${id}${lang ? `.${lang}` : ""}`;
+// Drafts that could not be read this visit: never written over, so a draft that is
+// there (the device's storage was slow or failing for a moment) is not lost.
+const unreadable = new Set();
 export async function readDraft(id, lang = "") {
+	const key = draftKey(id, lang);
 	try {
-		return (await db.get("kv", draftKey(id, lang))) ?? null;
-	} catch {
+		const draft = (await db.get("kv", key)) ?? null;
+		unreadable.delete(key);
+		return draft;
+	} catch (err) {
+		unreadable.add(key);
+		console.warn("a draft kept on this device could not be read; it is left as it is", err);
 		return null;
 	}
 }
 export async function keepDraft(id, draft, lang = "") {
+	const key = draftKey(id, lang);
+	if (unreadable.has(key)) return;
 	try {
-		await db.put("kv", { ...draft, at: Date.now() }, draftKey(id, lang));
+		await db.put("kv", { ...draft, at: Date.now() }, key);
 	} catch (err) {
 		console.warn("the draft could not be kept on this device", err);
 	}
 }
 export async function dropDraft(id, lang = "") {
+	const key = draftKey(id, lang);
+	unreadable.delete(key);
 	try {
-		await db.delete("kv", draftKey(id, lang));
-	} catch { /* nothing kept */ }
+		await db.delete("kv", key);
+	} catch (err) {
+		console.warn("a saved draft could not be removed from this device", err);
+	}
 }

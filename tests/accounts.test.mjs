@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeR2, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleLibrary } = await import("../worker/media/library.js");
@@ -15,6 +15,10 @@ const PEOPLE = {
 	"gh-ann": { user: { id: 42, login: "ann", name: "Ann Lal", avatar_url: "https://avatars.githubusercontent.com/u/42?v=4" }, emails: mails(["ann@work.example", true, true], ["ann@home.example", true]) },
 	"gh-noperm": { user: { id: 43, login: "bo" } },
 	"gh-unverified": { user: { id: 44, login: "cy" }, emails: mails(["khen@example.com", false, true]) },
+	// Personal tokens (or another app's) for the same people: GitHub's token check says they are not Zaideih's.
+	"pat-owner": { user: { id: 1753766, login: "khensolomon" }, emails: mails(["khen@example.com", true, true]) },
+	"pat-ann": { user: { id: 42, login: "ann" }, emails: mails(["ann@work.example", true, true]) },
+	"pat-new": { user: { id: 77, login: "dee" }, emails: mails(["khen@example.com", true, true]) },
 };
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const GOOGLE = {
@@ -25,6 +29,8 @@ const GOOGLE = {
 };
 const googleCalls = [];
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	if (url === "https://oauth2.googleapis.com/token") {
 		const form = new URLSearchParams(init.body);
 		googleCalls.push(Object.fromEntries(form));
@@ -272,4 +278,24 @@ test("photo addresses are kept only at Google or GitHub, over https", async () =
 	assert.equal(safePicture("https://avatars.githubusercontent.com/u/1?v=4"), "https://avatars.githubusercontent.com/u/1?v=4");
 	assert.equal(safePicture("https://lh3.googleusercontent.com/a/x"), "https://lh3.googleusercontent.com/a/x");
 	for (const bad of ["http://lh3.googleusercontent.com/a/x", "https://evil.example/x.png", "https://googleusercontent.com.evil.example/x", "javascript:alert(1)", null, 5]) assert.equal(safePicture(bad), null, String(bad));
+});
+
+test("a personal GitHub token signs in only members without rights, and never links or joins by email", { skip }, async () => {
+	const { env, post } = setup();
+	assert.equal((await post("/auth/session", "gh-owner")).status, 200, "the owner, through Zaideih's sign-in");
+	const owner = await post("/auth/session", "pat-owner");
+	assert.equal(owner.status, 403, "but never with a personal or other app's token");
+	assert.match((await owner.json()).error, /sign in with GitHub through Zaideih/);
+
+	// Ann, no rights yet: her own token works.
+	const ann = await (await post("/auth/session", "gh-ann")).json();
+	assert.equal((await post("/auth/session", "pat-ann")).status, 200);
+	env.DB.raw.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?, 'lyrics', 'khen', 1)").run(ann.member.id);
+	assert.equal((await post("/auth/session", "pat-ann")).status, 403, "with a right, only Zaideih's sign-in");
+
+	// Someone new whose GitHub email is the owner's: a member of their own, not joined to the owner by email.
+	const dee = await (await post("/auth/session", "pat-new")).json();
+	assert.equal(dee.joined, "new");
+	assert.notEqual(dee.member.id, 1753766);
+	assert.equal((await post("/auth/session", "pat-new", { link: ann.token })).status, 403, "never adds GitHub to an account");
 });

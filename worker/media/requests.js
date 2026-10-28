@@ -52,6 +52,23 @@ async function songsOf(env, req) {
 	return rows.results ?? [];
 }
 
+/** songsOf for several requests in one query each hundred: request id → its songs. */
+async function songsOfMany(env, ids) {
+	const out = new Map(ids.map((id) => [id, []]));
+	for (const part of chunks(ids)) {
+		const marks = part.map((_, i) => `?${i + 1}`).join(", ");
+		const rows = (await env.DB.prepare(
+			`SELECT u.*, t.track_id, t.r2_key AS catalog_key, r.id AS request FROM publish_requests r
+			JOIN uploads u ON u.owner_id = r.owner_id
+			LEFT JOIN published_tracks t ON t.upload_id = u.id
+			WHERE r.id IN (${marks}) AND (t.request_id = r.id OR (t.request_id IS NULL AND u.album = r.album AND u.status = 'requested'))
+			ORDER BY u.track_no, u.title COLLATE NOCASE`,
+		).bind(...part).all()).results ?? [];
+		for (const row of rows) out.get(row.request).push(row);
+	}
+	return out;
+}
+
 const songOut = async (u, origin, env, nowSeconds) => ({
 	upload: u.id, title: u.title, artist: u.artist, album: u.album, year: u.year, track: u.track_no, duration: u.duration,
 	format: u.format, size: u.size, fileName: u.file_name, catalogTrack: u.track_id ?? null, catalogKey: u.catalog_key ?? null,
@@ -92,14 +109,13 @@ async function list(env, me, origin, nowSeconds) {
 				ORDER BY p.status = 'open' DESC, COALESCE(p.decided_at, p.created_at) DESC, p.id DESC`
 			: "SELECT p.*, m.name AS login FROM publish_requests p LEFT JOIN members m ON m.id = p.owner_id WHERE p.owner_id = ?1 ORDER BY p.created_at DESC, p.id DESC",
 	).bind(me.id).all()).results ?? [];
+	// Songs are listed with addresses for the member, and for reviewers while there is something to review.
+	const withSongs = rows.filter((r) => r.owner_id === me.id || (reviewer && (r.status === OPEN || r.status === "approved")));
+	const songs = await songsOfMany(env, withSongs.map((r) => r.id));
 	const out = [];
 	for (const r of rows) {
-		// Songs are listed with addresses for the member, and for reviewers while there is something to review.
-		const mine = r.owner_id === me.id;
-		const songs = mine || (reviewer && (r.status === OPEN || r.status === "approved"))
-			? await Promise.all((await songsOf(env, r)).map((u) => songOut(u, origin, env, nowSeconds)))
-			: undefined;
-		out.push(shapeRequest(r, songs ? { songs } : {}));
+		const list = songs.get(r.id);
+		out.push(shapeRequest(r, list ? { songs: await Promise.all(list.map((u) => songOut(u, origin, env, nowSeconds))) } : {}));
 	}
 	return { reviewer, requests: out };
 }
@@ -174,15 +190,29 @@ async function approve(env, me, id, body, nowSeconds) {
 		if (inPlace) dirs.add(checkInPlaceKey(key, u));
 		if (keys.has(key)) throw new LibraryError(`${key} is named twice`);
 		keys.add(key);
-		if (inPlace) {
-			if (!(await env.BUCKET.head(key))) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
-			const used = await env.DB.prepare("SELECT track_id FROM published_tracks WHERE r2_key = ?1 AND upload_id != ?2").bind(key, u.id).first();
-			if (used) throw new LibraryError(`${key} is already the catalog's song ${used.track_id}`, 409);
-		} else if (await env.BUCKET.head(key)) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
-		const taken = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM tracks WHERE id = ?1) + (SELECT COUNT(*) FROM published_tracks WHERE track_id = ?1) AS n").bind(track).first();
-		if (taken.n) throw new LibraryError(`track id ${track} is already used`, 409);
 	}
 	if (dirs.size > 1) throw new LibraryError(`an album published in place has its songs in one folder; these are in ${dirs.size} (${[...dirs].slice(0, 3).join(", ")}): copy them under music/ instead`);
+	// The checks against D1 a hundred values a query (D1's bind limit), not one query per song.
+	const usedIds = new Set();
+	for (const part of chunks([...ids])) {
+		const marks = part.map((_, i) => `?${i + 1}`).join(", ");
+		for (const r of (await env.DB.prepare(`SELECT id FROM tracks WHERE id IN (${marks}) UNION SELECT track_id FROM published_tracks WHERE track_id IN (${marks})`).bind(...part).all()).results ?? []) usedIds.add(r.id);
+	}
+	if (usedIds.size) throw new LibraryError(`track id ${[...usedIds][0]} is already used`, 409);
+	if (inPlace) {
+		const mine = new Set(songs.map((u) => u.id));
+		for (const part of chunks([...keys])) {
+			const marks = part.map((_, i) => `?${i + 1}`).join(", ");
+			const used = ((await env.DB.prepare(`SELECT r2_key, upload_id, track_id FROM published_tracks WHERE r2_key IN (${marks})`).bind(...part).all()).results ?? []).find((r) => !mine.has(r.upload_id));
+			if (used) throw new LibraryError(`${used.r2_key} is already the catalog's song ${used.track_id}`, 409);
+		}
+	}
+	for (const u of songs) {
+		const key = byUpload.get(u.id).key;
+		if (inPlace) {
+			if (!(await env.BUCKET.head(key))) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
+		} else if (await env.BUCKET.head(key)) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
+	}
 	const copied = [];
 	try {
 		for (const u of songs) {
@@ -193,17 +223,18 @@ async function approve(env, me, id, body, nowSeconds) {
 			await env.BUCKET.put(t.key, src.body, { httpMetadata: { contentType: "audio/mpeg" } });
 			copied.push(t.key);
 		}
+		// Every row and both status changes in one batch: all of them, or none.
+		await env.DB.batch([
+			...songs.map((u) => env.DB.prepare("INSERT INTO published_tracks (upload_id, request_id, owner_id, track_id, r2_key) VALUES (?1, ?2, ?3, ?4, ?5)")
+				.bind(u.id, id, r.owner_id, Number(byUpload.get(u.id).track), byUpload.get(u.id).key)),
+			env.DB.prepare("UPDATE uploads SET status = 'published', updated_at = ?1 WHERE owner_id = ?2 AND album = ?3 AND status = 'requested'").bind(nowSeconds, r.owner_id, r.album),
+			env.DB.prepare("UPDATE publish_requests SET status = 'approved', reviewer = ?1, catalog_album = ?2, decided_at = ?3 WHERE id = ?4 AND status = 'open'").bind(me.login, album, nowSeconds, id),
+		]);
 	} catch (err) {
 		// All or nothing: what was copied goes again.
-		for (const k of copied) await env.BUCKET.delete(k);
+		if (copied.length) await env.BUCKET.delete(copied);
 		throw err;
 	}
-	for (const u of songs) {
-		const t = byUpload.get(u.id);
-		await env.DB.prepare("INSERT INTO published_tracks (upload_id, request_id, owner_id, track_id, r2_key) VALUES (?1, ?2, ?3, ?4, ?5)").bind(u.id, id, r.owner_id, Number(t.track), t.key).run();
-	}
-	await env.DB.prepare("UPDATE uploads SET status = 'published', updated_at = ?1 WHERE owner_id = ?2 AND album = ?3 AND status = 'requested'").bind(nowSeconds, r.owner_id, r.album).run();
-	await env.DB.prepare("UPDATE publish_requests SET status = 'approved', reviewer = ?1, catalog_album = ?2, decided_at = ?3 WHERE id = ?4").bind(me.login, album, nowSeconds, id).run();
 	return { id, status: "approved", copied: copied.length, inPlace };
 }
 
@@ -217,24 +248,40 @@ async function recordPr(env, me, id, body) {
 	return null;
 }
 
+/** `list` in parts of at most `size` (D1 takes 100 bound values a statement). */
+function chunks(list, size = 100) {
+	const out = [];
+	for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+	return out;
+}
+
+/** Requests settled per call: each is three D1 queries, the reads that run settling stay within the Free plan's 50. */
+const SETTLE_PER_CALL = 5;
+
 /**
  * Approved requests whose songs the release has loaded (D1 `tracks`) are
  * released: each library row now names the catalog file, and the member's
  * uploaded copy is deleted (a file added from storage is left where it is).
+ * One query finds them; each is then settled in one batch (all its rows, or
+ * none), and its uploaded copies are deleted from R2 only after that, so a
+ * row never names a deleted file. A few per call: the rest on the next read.
  */
 export async function settleReleased(env) {
-	const approved = (await env.DB.prepare("SELECT id FROM publish_requests WHERE status = 'approved'").all()).results ?? [];
-	for (const { id } of approved) {
-		const done = await env.DB.prepare(
-			"SELECT COUNT(*) AS total, SUM(CASE WHEN EXISTS (SELECT 1 FROM tracks t WHERE t.id = p.track_id) THEN 1 ELSE 0 END) AS loaded FROM published_tracks p WHERE p.request_id = ?1",
-		).bind(id).first();
-		if (!done.total || done.loaded !== done.total) continue;
-		const rows = (await env.DB.prepare("SELECT p.upload_id, p.r2_key AS catalog_key, u.r2_key FROM published_tracks p JOIN uploads u ON u.id = p.upload_id WHERE p.request_id = ?1").bind(id).all()).results ?? [];
-		for (const row of rows) {
-			if (isUpload(row.r2_key)) await env.BUCKET.delete(row.r2_key);
-			await env.DB.prepare("UPDATE uploads SET r2_key = ?1, status = 'released' WHERE id = ?2").bind(row.catalog_key, row.upload_id).run();
-		}
-		await env.DB.prepare("UPDATE publish_requests SET status = 'released' WHERE id = ?1").bind(id).run();
+	const ready = (await env.DB.prepare(
+		`SELECT p.request_id AS id FROM published_tracks p JOIN publish_requests r ON r.id = p.request_id AND r.status = 'approved'
+		GROUP BY p.request_id HAVING COUNT(*) = SUM(CASE WHEN EXISTS (SELECT 1 FROM tracks t WHERE t.id = p.track_id) THEN 1 ELSE 0 END)
+		ORDER BY p.request_id LIMIT ${SETTLE_PER_CALL}`,
+	).all()).results ?? [];
+	for (const { id } of ready) {
+		const rows = (await env.DB.prepare("SELECT u.r2_key FROM published_tracks p JOIN uploads u ON u.id = p.upload_id WHERE p.request_id = ?1").bind(id).all()).results ?? [];
+		await env.DB.batch([
+			env.DB.prepare(`UPDATE uploads SET r2_key = (SELECT p.r2_key FROM published_tracks p WHERE p.upload_id = uploads.id), status = 'released'
+				WHERE id IN (SELECT upload_id FROM published_tracks WHERE request_id = ?1)`).bind(id),
+			env.DB.prepare("UPDATE publish_requests SET status = 'released' WHERE id = ?1").bind(id),
+		]);
+		// The member's uploaded copies, now that nothing names them.
+		const copies = rows.map((r) => r.r2_key).filter(isUpload);
+		if (copies.length) await env.BUCKET.delete(copies);
 	}
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleSongbooks, TEXT_BASE } = await import("../worker/media/songbooks.js");
@@ -11,6 +11,8 @@ const W = "https://media.zaideih.com";
 const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" }, "gh-ed": { id: 43, login: "ed" } };
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response("{}", { status: 401 });
 	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });

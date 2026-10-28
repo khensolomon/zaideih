@@ -39,6 +39,8 @@ function sizeCanvas(canvas) {
 function entryFor(canvas) {
 	let e = state.get(canvas);
 	if (!e) {
+		// Canvases drawn over (the Now playing sheet redraws on each song) are let go.
+		for (const c of state.keys()) if (!c.isConnected) state.delete(c);
 		const kind = canvas.dataset.viz in BAR_COUNT ? canvas.dataset.viz : "deck";
 		e = { kind, bars: new Float32Array(BAR_COUNT[kind]), shown: new Float32Array(BAR_COUNT[kind]) };
 		state.set(canvas, e);

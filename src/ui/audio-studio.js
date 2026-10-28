@@ -627,10 +627,11 @@ function paintAll(root) {
 let audioCtx = null;
 let hearing = null;
 
-function stop() {
-	if (st?.playing) {
-		for (const n of st.playing.nodes) { try { n.stop(); } catch { /* ended */ } }
-		st.playing = null;
+/** Stops what a page (`s`, this one by default) is playing. */
+function stop(s = st) {
+	if (s?.playing) {
+		for (const n of s.playing.nodes) { try { n.stop(); } catch { /* ended */ } }
+		s.playing = null;
 	}
 }
 
@@ -771,11 +772,17 @@ function setEdge(which, ms) {
 const snapped = (ms) => (st.snap ? quietest(st.levels, ms, SNAP_MS) : ms);
 
 async function read(root) {
-	const t = st.t;
+	// This page's own state: a song opened after it (another studio page) is never written into,
+	// and its download stops when the page is left (mount's cleanup aborts it).
+	const s = st;
+	const t = s.t;
+	s.reading = new AbortController();
+	const gone = () => st !== s;
 	try {
 		const detail = await call("GET", `/${t.id}`);
-		st.detail = detail;
-		const res = await fetch(versionUrl(t, 0), { mode: "cors", credentials: "omit" });
+		if (gone()) return;
+		s.detail = detail;
+		const res = await fetch(versionUrl(t, 0), { mode: "cors", credentials: "omit", signal: s.reading.signal });
 		if (!res.ok) throw new StudioError(`the original recording could not be read (HTTP ${res.status})`);
 		const total = Number(res.headers.get("content-length")) || 0;
 		const reader = res.body.getReader();
@@ -786,24 +793,27 @@ async function read(root) {
 			if (done) break;
 			chunks.push(value);
 			got += value.byteLength;
-			if (total) { st.progress = got / total; redraw(root); }
+			if (gone()) { reader.cancel().catch(() => {}); return; }
+			if (total) { s.progress = got / total; redraw(root); }
 		}
 		const bytes = new Uint8Array(got);
 		let at = 0;
 		for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
 		audioCtx ??= new AudioContext();
 		const buffer = await audioCtx.decodeAudioData(bytes.buffer);
+		if (gone()) return;
 		const chans = [...Array(buffer.numberOfChannels).keys()].map((k) => buffer.getChannelData(k));
-		st.buffer = buffer;
-		st.totalMs = Math.round(buffer.duration * 1000);
-		st.levels = envelope(chans, buffer.sampleRate);
-		st.hint = suggestTrim(st.levels);
-		st.mask = soundMask(st.levels, st.hint.floorDb);
+		s.buffer = buffer;
+		s.totalMs = Math.round(buffer.duration * 1000);
+		s.levels = envelope(chans, buffer.sampleRate);
+		s.hint = suggestTrim(s.levels);
+		s.mask = soundMask(s.levels, s.hint.floorDb);
 		// A song never cut opens on the suggestion; one cut before, on the cut that plays.
 		const c = currentCut();
-		if (detail.current) { st.start = c.start; st.end = c.end; } else { st.start = st.hint.startMs; st.end = st.hint.endMs; }
+		if (detail.current) { s.start = c.start; s.end = c.end; } else { s.start = s.hint.startMs; s.end = s.hint.endMs; }
 	} catch (err) {
-		st.error = err instanceof StudioError ? err.message : `The recording could not be opened: ${err.message}`;
+		if (gone() || err.name === "AbortError") return;
+		s.error = err instanceof StudioError ? err.message : `The recording could not be opened: ${err.message}`;
 	}
 	redraw(root);
 }
@@ -880,7 +890,9 @@ function mount(root, ctx) {
 		else if (what === "undo") await restore(root, ctx, st.justSaved.previous, { undo: true });
 		else if (what === "restore") await restore(root, ctx, Number(b.dataset.v));
 	});
-	addEventListener("resize", () => { if (st === mine && root.isConnected && st.buffer) paintAll(root); });
+	// Listeners of this page alone, removed when it is left.
+	const page = new AbortController();
+	addEventListener("resize", () => { if (st === mine && root.isConnected && st.buffer) paintAll(root); }, { signal: page.signal });
 
 	// Keys, ahead of the app's own (Space plays and pauses, the arrows seek): only while nothing is being typed.
 	if (keys) document.removeEventListener("keydown", keys, true);
@@ -910,12 +922,15 @@ function mount(root, ctx) {
 		}
 	};
 	document.addEventListener("keydown", keys, true);
-	// Leaving the page stops its listening and its keys.
+	const myKeys = keys;
+	// Leaving the page stops its listening, its download and its keys. By the time this runs the
+	// next page (another song's studio, say) may be mounted already: only this page's own go.
 	addEventListener("hashchange", () => {
-		if (st !== mine) return;
-		stop();
+		page.abort();
+		mine.reading?.abort();
+		stop(mine);
 		if (hearing) { hearing.pause(); hearing = null; }
-		if (keys) { document.removeEventListener("keydown", keys, true); keys = null; }
+		if (keys === myKeys) { document.removeEventListener("keydown", keys, true); keys = null; }
 	}, { once: true });
 }
 

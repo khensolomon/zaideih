@@ -119,39 +119,55 @@ function releaseObjectUrl() {
 	objectUrl = null;
 }
 
+/** The address to play `track` from: its download (a blob), or the stream. `{ url, blob }`. */
 async function sourceFor(track) {
 	// An album whose streaming is off (core/holds.js): not even its downloads play.
 	if (track.album?.off) throw new AudioSourceError(`"${track.title}" is not available right now.`);
 	if (offline.has(track.id)) {
 		const blob = await offline.blob(track.id);
 		if (!blob) throw new Error(`The download for "${track.title}" is missing. Download it again.`);
-		releaseObjectUrl();
-		objectUrl = URL.createObjectURL(blob);
-		return objectUrl;
+		return { url: URL.createObjectURL(blob), blob: true };
 	}
 	if (!navigator.onLine) throw new Error(`"${track.title}" isn't downloaded, and the device is offline.`);
-	releaseObjectUrl();
-	return audioUrl(track);
+	return { url: audioUrl(track), blob: false };
 }
+
+// Each load is numbered: one overtaken by a newer load (Next tapped again while a
+// download was being read) changes nothing, and its blob address is let go.
+let loads = 0;
+let resumeAt = null;
 
 async function load(autoplay, startAt = 0) {
 	const track = current();
 	if (!track) return;
+	const mine = ++loads;
+	// A position waiting from an earlier load is not this song's.
+	if (resumeAt) { audio.removeEventListener("loadedmetadata", resumeAt); resumeAt = null; }
 	state.error = "";
 	state.errorCode = "";
 	state.loading = true;
 	retriedFor = null;
 	changed();
 	updateMediaSession(track);
+	let source;
 	try {
-		audio.src = await sourceFor(track);
+		source = await sourceFor(track);
 	} catch (err) {
+		if (mine !== loads) return;
 		const kind = !navigator.onLine && !offline.has(track.id) ? "offline" : offline.has(track.id) ? "download-missing" : "unknown";
 		stopWithError(err instanceof AudioSourceError || err instanceof Error ? err.message : String(err), kind);
 		return;
 	}
+	if (mine !== loads) {
+		if (source.blob) URL.revokeObjectURL(source.url);
+		return;
+	}
+	releaseObjectUrl();
+	if (source.blob) objectUrl = source.url;
+	audio.src = source.url;
 	if (startAt > 0) {
-		audio.addEventListener("loadedmetadata", () => { audio.currentTime = startAt; }, { once: true });
+		resumeAt = () => { resumeAt = null; audio.currentTime = startAt; };
+		audio.addEventListener("loadedmetadata", resumeAt, { once: true });
 	}
 	if (autoplay) {
 		try {

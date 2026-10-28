@@ -311,23 +311,29 @@ async function deleteMemberUploads(env, me, memberId, body, nowSeconds) {
 	if (!can(me, "moderate")) throw new LibraryError("deleting a member's uploads needs the Moderate members right", 403);
 	const ids = body.ids;
 	if (!Array.isArray(ids) || !ids.length || ids.length > MAX_DELETE || !ids.every((x) => Number.isSafeInteger(x) && x > 0)) throw new LibraryError(`ids must list 1 to ${MAX_DELETE} upload ids`);
+	const wanted = [...new Set(ids)];
+	// One query for the rows, one batch for the deletes and the log: within D1's queries per request.
+	// At most 100 ids: D1 binds 100 values a statement.
+	const rows = new Map(((await env.DB.prepare(`SELECT id, owner_id, r2_key, title, status FROM uploads WHERE id IN (${wanted.map((_, i) => `?${i + 1}`).join(", ")})`)
+		.bind(...wanted).all()).results ?? []).filter((r) => r.owner_id === memberId).map((r) => [r.id, r]));
 	const deleted = [];
-	const titles = [];
 	const refused = [];
-	for (const id of [...new Set(ids)]) {
-		const row = await uploadRow(env, id);
-		if (!row || row.owner_id !== memberId) { refused.push({ id, error: "not one of this member's uploads" }); continue; }
-		try {
-			await deleteUpload(env, me, id, nowSeconds, { log: false });
-			deleted.push(id);
-			titles.push(row.title);
-		} catch (err) {
-			if (!(err instanceof LibraryError)) throw err;
-			refused.push({ id, error: err.message });
-		}
+	for (const id of wanted) {
+		const row = rows.get(id);
+		if (!row) refused.push({ id, error: "not one of this member's uploads" });
+		else if (row.status === "requested") refused.push({ id, error: `"${row.title}" is waiting for review; withdraw the request first` });
+		else if ((row.status === "published" || row.status === "released") && !can(me, "manage")) refused.push({ id, error: `"${row.title}" is published in the catalog; a song is removed from the catalog by the owner, on request` });
+		else deleted.push(row);
 	}
-	if (deleted.length && memberId !== me.id) await logStatement(env, memberId, "uploads-deleted", { count: deleted.length, titles: titles.slice(0, 20) }, me.login, nowSeconds).run();
-	return { deleted, refused };
+	if (!deleted.length) return { deleted: [], refused };
+	await env.DB.batch([
+		env.DB.prepare(`DELETE FROM uploads WHERE id IN (${deleted.map((_, i) => `?${i + 1}`).join(", ")})`).bind(...deleted.map((r) => r.id)),
+		...(memberId !== me.id ? [logStatement(env, memberId, "uploads-deleted", { count: deleted.length, titles: deleted.slice(0, 20).map((r) => r.title) }, me.login, nowSeconds)] : []),
+	]);
+	// A file added from storage was put there by hand and stays; only uploads are deleted.
+	const files = deleted.map((r) => r.r2_key).filter(isUpload);
+	if (files.length) await env.BUCKET.delete(files);
+	return { deleted: deleted.map((r) => r.id), refused };
 }
 
 async function setMember(env, me, memberId, body, nowSeconds) {
@@ -475,19 +481,21 @@ async function addFromStorage(env, me, body, nowSeconds) {
 		if (!head) throw new LibraryError(`${key} is not in storage`, 404);
 		const duration = Number(item.duration);
 		if (!Number.isFinite(duration) || duration < 1 || duration > 6 * 3600) throw new LibraryError(`"${name}" has no readable length; it may not be audio, or it is damaged`);
-		const exists = await env.DB.prepare("SELECT owner_id FROM uploads WHERE r2_key = ?1").bind(key).first();
-		if (exists) throw new LibraryError(`"${name}" is already in ${exists.owner_id === me.id ? "your" : "another"} library`, 409);
 		checked.push({ key, name, format, size: head.size, duration: Math.round(duration), d: checkDetails(item) });
 	}
-	const added = [];
-	for (const c of checked) {
-		const res = await env.DB.prepare(
-			`INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, artist, album, year, track_no, file_name, status, created_at, updated_at)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'private', ?12, ?12)`,
-		).bind(me.id, c.key, c.size, c.format, c.duration, c.d.title, c.d.artist, c.d.album, c.d.year, c.d.track_no, c.name, nowSeconds).run();
-		added.push(res.meta.last_row_id);
+	// Files already in a library: one query a hundred keys (D1's bind limit), not one a file.
+	const keys = checked.map((c) => c.key);
+	for (let i = 0; i < keys.length; i += 100) {
+		const part = keys.slice(i, i + 100);
+		const exists = await env.DB.prepare(`SELECT r2_key, owner_id FROM uploads WHERE r2_key IN (${part.map((_, k) => `?${k + 1}`).join(", ")})`).bind(...part).first();
+		if (exists) throw new LibraryError(`"${exists.r2_key.split("/").pop()}" is already in ${exists.owner_id === me.id ? "your" : "another"} library`, 409);
 	}
-	return { added };
+	// All in one batch: every file is added, or (another adding one meanwhile) none.
+	const results = await env.DB.batch(checked.map((c) => env.DB.prepare(
+		`INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, artist, album, year, track_no, file_name, status, created_at, updated_at)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'private', ?12, ?12)`,
+	).bind(me.id, c.key, c.size, c.format, c.duration, c.d.title, c.d.artist, c.d.album, c.d.year, c.d.track_no, c.name, nowSeconds)));
+	return { added: results.map((r) => r.meta.last_row_id) };
 }
 
 /**
@@ -584,13 +592,13 @@ export async function handleSignedAudio(request, env, id) {
 	).bind(id).first();
 	if (!row || row.status === "uploading") return text(404, "no such upload");
 	if (row.blocked_at) return text(403, "this library is closed");
-	return streamObject(request, env, row.r2_key, row.format);
+	return streamObject(request, env, row.r2_key, row.format, { shared: member !== null });
 }
 
 /**
  * GET/HEAD /k/<key>?e&s: a file in storage, for the app to read its tags
  * and length before adding it (see listStorage). The address is the
- * permission, and only private/ can be named.
+ * permission, and any key outside users/ (members' uploads) can be named.
  */
 export async function handleSignedKey(request, env, encoded) {
 	const url = new URL(request.url);
@@ -612,17 +620,27 @@ export async function handleSignedKey(request, env, encoded) {
 }
 
 /** An R2 object as an HTTP answer, with ranges, and CORS for the app's origins. */
-async function streamObject(request, env, key, format) {
+async function streamObject(request, env, key, format, { shared = false } = {}) {
 	const text = (status, body) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 	const range = request.headers.get("range");
 	const m = /^bytes=(\d+)-(\d+)?$/.exec(range ?? "");
 	const options = m ? { range: m[2] ? { offset: Number(m[1]), length: Number(m[2]) - Number(m[1]) + 1 } : { offset: Number(m[1]) } } : undefined;
-	const object = await env.BUCKET.get(key, options);
+	let object;
+	try {
+		object = await env.BUCKET.get(key, options);
+	} catch (err) {
+		// A range starting past the end of the file: R2 refuses it.
+		if (!m) throw err;
+		const head = await env.BUCKET.head(key);
+		if (!head) return text(404, "the file is missing");
+		return new Response("range not satisfiable", { status: 416, headers: { "Content-Range": `bytes */${head.size}`, "Cache-Control": "no-store" } });
+	}
 	if (!object) return text(404, "the file is missing");
 	const headers = new Headers({
 		"Content-Type": FORMATS[format]?.type ?? "application/octet-stream",
 		"Accept-Ranges": "bytes",
-		"Cache-Control": "private, max-age=3600",
+		// A shared song is checked on every request, so taking a share back (or blocking) stops it at once: not kept.
+		"Cache-Control": shared ? "private, no-store" : "private, max-age=3600",
 		"X-Content-Type-Options": "nosniff",
 	});
 	// The app reads with CORS: downloads for offline listening, and tags before adding from storage.

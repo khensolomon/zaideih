@@ -625,3 +625,34 @@ CREATE TABLE IF NOT EXISTS member_log (
     at         INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_member_log_member ON member_log (member_id, at);
+
+-- =============================================================================
+-- member_retired: member ids no longer used, never given out again
+-- =============================================================================
+-- An account joined into another is removed; its id is kept here so the next
+-- new member does not get it (and its history). New members take an id above
+-- every one here and in members (accounts.js).
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+CREATE TABLE IF NOT EXISTS member_retired (
+    id    INTEGER PRIMARY KEY,           -- the id no longer used
+    kept  INTEGER NOT NULL,              -- the member it was joined into
+    at    INTEGER NOT NULL
+);
+
+-- =============================================================================
+-- play_totals, play_days: running sums of `plays`
+-- =============================================================================
+-- Kept in the same batch as each count (POST /plays): every song's total and
+-- every day's. GET /plays and /plays/stats read these, and `plays` only for
+-- recent days (by idx_plays_day), so a read never sums the whole table.
+-- Rebuildable from `plays` (migration 0014 does it once):
+--   INSERT OR REPLACE INTO play_totals SELECT track_id, SUM(n) FROM plays GROUP BY track_id;
+--   INSERT OR REPLACE INTO play_days SELECT day, SUM(n) FROM plays GROUP BY day;
+CREATE TABLE IF NOT EXISTS play_totals (
+    track_id  INTEGER PRIMARY KEY,
+    total     INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS play_days (
+    day  TEXT    PRIMARY KEY,             -- UTC date, YYYY-MM-DD
+    n    INTEGER NOT NULL
+) WITHOUT ROWID;

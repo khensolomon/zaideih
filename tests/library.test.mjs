@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeLimiter, fakeR2, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, fakeLimiter, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const { checkNewUpload, handleLibrary, handleSignedAudio, looksLike, signedUrl, verifySigned } = await import("../worker/media/library.js");
 const { handleAuth } = await import("../worker/media/auth.js");
@@ -17,6 +17,8 @@ const PEOPLE = {
 	"tok-co": { user: { id: 5, login: "lian" }, permissions: { pull: true } },
 };
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response(JSON.stringify({ message: "Bad credentials" }), { status: 401 });
 	if (url.endsWith("/user")) return new Response(JSON.stringify(p.user));
@@ -643,4 +645,52 @@ test("members: a member's page, history, signing out everywhere and deleting sev
 	assert.deepEqual(after.history.find((e) => e.action === "uploads-deleted").detail, { count: 2, titles: ["One", "Two"] });
 	assert.deepEqual(after.rights.map((r) => [r.kind, r.by]), [["lyrics", "khensolomon"]]);
 	assert.equal((await call("tok-mod", "GET", "/library/members/12345")).status, 404);
+});
+
+test("asking to publish: a 60-song album is approved, listed and settled within D1's 50 queries a request", { skip }, async () => {
+	const { env, call } = setup();
+	await call("tok-ann", "GET", "/library");
+	await call("tok-owner", "POST", "/library/members/7", { rights: { review: true } });
+	const n = 60;
+	for (let i = 1; i <= n; i++) {
+		env.DB.raw.prepare("INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, album, track_no, file_name, status, created_at, updated_at) VALUES (42, ?, 600, 'mp3', 200, ?, 'Big Tape', ?, ?, 'private', 1, 1)").run(`users/42/b${i}.mp3`, `Song ${i}`, i, `${i}.mp3`);
+		await env.BUCKET.put(`users/42/b${i}.mp3`, mp3(600));
+	}
+	const { id } = await (await call("tok-ann", "POST", "/library/requests", { album: "Big Tape", lang: 1 })).json();
+	const uploads = env.DB.raw.prepare("SELECT id, track_no FROM uploads WHERE owner_id = 42 ORDER BY track_no").all();
+	const tracks = uploads.map((u) => ({ upload: u.id, track: 40000 + u.track_no, key: `music/big-tape/${u.track_no}.mp3` }));
+	const measured = async (what, run) => {
+		env.DB.counter.queries = 0;
+		const res = await run();
+		assert.ok(res.status < 300, `${what}: ${res.status} ${await res.clone().text()}`);
+		assert.ok(env.DB.counter.queries <= 50, `${what} used ${env.DB.counter.queries} queries`);
+		return res;
+	};
+	await measured("listing for a reviewer", () => call("tok-mod", "GET", "/library/requests"));
+	await measured("approving", () => call("tok-mod", "POST", `/library/requests/${id}/approve`, { album: "0123456789abcdef", tracks }));
+	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM published_tracks WHERE request_id = ?").get(id).n, n);
+	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, 'big-tape', ?, 0)").run(t.track, `${t.track}.mp3`);
+	const lib = await (await measured("the library read that settles it", () => call("tok-ann", "GET", "/library"))).json();
+	assert.equal(lib.requests.find((r) => r.id === id).status, "released");
+	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM uploads WHERE owner_id = 42 AND status = 'released' AND r2_key LIKE 'music/big-tape/%'").get().n, n);
+	assert.ok(![...env.BUCKET.objects.keys()].some((k) => k.startsWith("users/42/b")), "the uploaded copies are gone");
+});
+
+test("members: deleting 100 uploads at once stays within one request's D1 queries", { skip }, async () => {
+	const { env, call } = setup();
+	await call("tok-spam", "GET", "/library");
+	await call("tok-owner", "POST", "/library/members/7", { rights: { moderate: true } });
+	await call("tok-mod", "GET", "/library");
+	for (let i = 1; i <= 100; i++) {
+		env.DB.raw.prepare("INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, file_name, status, created_at, updated_at) VALUES (99, ?, 10, 'mp3', 1, ?, 'f.mp3', 'private', 1, 1)").run(`users/99/${i}.mp3`, `Spam ${i}`);
+		await env.BUCKET.put(`users/99/${i}.mp3`, mp3(10));
+	}
+	const ids = env.DB.raw.prepare("SELECT id FROM uploads WHERE owner_id = 99").all().map((r) => r.id);
+	env.DB.counter.queries = 0;
+	const res = await call("tok-mod", "POST", "/library/members/99/uploads/delete", { ids });
+	assert.equal(res.status, 200);
+	assert.ok(env.DB.counter.queries <= 50, `used ${env.DB.counter.queries} queries`);
+	assert.equal((await res.json()).deleted.length, 100);
+	assert.equal(env.BUCKET.objects.size, 0);
+	assert.equal((await call("tok-mod", "POST", "/library/members/99/uploads/delete", { ids: [...ids, 1] })).status, 400, "100 at most");
 });

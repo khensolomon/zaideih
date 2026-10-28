@@ -24,6 +24,8 @@ const INVITE_DAYS = 14;
 
 /** The invite just made on this page: shown until the page is left. */
 let fresh = null; // { key, url }
+// The invite link is shown once, while its page is open: leaving the page lets it go.
+addEventListener("hashchange", () => { if (fresh && !location.hash.startsWith(`#/share/${fresh.key}`)) fresh = null; });
 let found = { q: "", members: [], busy: false };
 
 /** The address an invite opens: the web app, also from the desktop app. */
@@ -188,7 +190,7 @@ export function joinPage(c, { code }) {
 	}
 	const p = joining.preview;
 	let body;
-	if (joining.error) body = html`<h2>This invite cannot be opened</h2><p>${joining.error}</p><p><a class="btn" href="#/library/uploads">Your music</a></p>`;
+	if (joining.error) body = html`<h2>This invite cannot be opened</h2><p>${joining.error}</p><p><button class="btn primary" data-sh="again">Try again</button> <a class="btn" href="#/library/uploads">Your music</a></p>`;
 	else if (!p) body = html`<p class="muted" aria-busy="true">Reading the invite…</p>`;
 	else if (p.yours) body = html`<h2>This is your own invite</h2><p>Send the link to the person you are sharing with: it works for the first member who opens it signed in.</p><p><a class="btn" href="#/library/uploads">Your music</a></p>`;
 	else {
@@ -200,7 +202,10 @@ export function joinPage(c, { code }) {
 	return {
 		title: "Music shared with you",
 		body: html`<div class="empty sh-join">${body}</div>`,
-		mount: (view) => view.querySelector("[data-sh=accept]")?.addEventListener("click", async (e) => {
+		mount: (view) => {
+			// A failure (offline, say) is not kept: Try again asks once more.
+			view.querySelector("[data-sh=again]")?.addEventListener("click", () => { joining = null; ctxShare.redraw(); });
+			view.querySelector("[data-sh=accept]")?.addEventListener("click", async (e) => {
 			e.currentTarget.disabled = true;
 			try {
 				const r = await uploads.acceptInvite(code);
@@ -211,7 +216,8 @@ export function joinPage(c, { code }) {
 				e.currentTarget.disabled = false;
 				ctxShare.notify(err.message, { kind: "error" });
 			}
-		}),
+			});
+		},
 	};
 }
 

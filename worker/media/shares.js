@@ -159,7 +159,9 @@ async function accept(env, me, code, nowSeconds) {
 		await env.DB.prepare("DELETE FROM library_shares WHERE id = ?1").bind(r.id).run();
 		return { share: shareOut({ ...(await shareRow(env, same.id)), owner_name: r.owner_name }), already: true };
 	}
-	await env.DB.prepare("UPDATE library_shares SET member_id = ?1, invite_hash = NULL, accepted_at = ?2 WHERE id = ?3 AND invite_hash IS NOT NULL").bind(me.id, nowSeconds, r.id).run();
+	const taken = await env.DB.prepare("UPDATE library_shares SET member_id = ?1, invite_hash = NULL, accepted_at = ?2 WHERE id = ?3 AND invite_hash IS NOT NULL").bind(me.id, nowSeconds, r.id).run();
+	// Someone else took it a moment before: nothing of theirs is shown.
+	if (!taken.meta?.changes) throw new LibraryError(`this invite was used already, taken back, or is older than ${INVITE_DAYS} days; ask for a new one`, 404);
 	return { share: shareOut({ ...(await shareRow(env, r.id)), owner_name: r.owner_name }), already: false };
 }
 

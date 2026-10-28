@@ -48,8 +48,10 @@ export function createSync({ load, save, local, apply, send, member, online, now
 	let again = false;
 	let timer = 0;
 	let queue = Promise.resolve();
-	// Writes to the kept state, one at a time (a change and a sync may come together).
-	const withState = (fn) => (queue = queue.then(async () => { const s = await load(); const out = await fn(s); await save(s); return out; }));
+	// Writes to the kept state, one at a time (a change and a sync may come together), and
+	// one tab at a time: two tabs reading and writing the outbox together would lose a change.
+	const locked = (fn) => (globalThis.navigator?.locks ? globalThis.navigator.locks.request("zaideih.sync.state", fn) : fn());
+	const withState = (fn) => (queue = queue.then(() => locked(async () => { const s = await load(); const out = await fn(s); await save(s); return out; })));
 
 	const engine = {
 		/** A change made on this device: kept, and sent soon. */

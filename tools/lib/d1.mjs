@@ -89,6 +89,9 @@ export function resetSql({ tables, schema, tracks, plays = null, migrations = []
 			});
 			out.push(`INSERT INTO plays (track_id, day, n) VALUES\n${rows.join(",\n")};`);
 		}
+		// The running sums (GET /plays reads them) are rebuilt from the counts put back.
+		out.push("INSERT INTO play_totals (track_id, total) SELECT track_id, SUM(n) FROM plays GROUP BY track_id;");
+		out.push("INSERT INTO play_days (day, n) SELECT day, SUM(n) FROM plays GROUP BY day;");
 	}
 	return `${out.join("\n")}\n`;
 }
@@ -136,7 +139,7 @@ export function lyricsBackup(lyrics, versions, exportedAt, { links = [], times =
 }
 
 /** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
-export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times", "lyrics_proposals", "album_holds", "album_hold_tracks", "album_hold_log", "songbooks", "songbook_members", "songbook_entries", "song_texts", "song_works", "song_people", "song_credits", "audio_versions", "audio_current", "audio_log", "library_shares", "catalog_live", "catalog_live_log", "member_log"]);
+export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times", "lyrics_proposals", "album_holds", "album_hold_tracks", "album_hold_log", "songbooks", "songbook_members", "songbook_entries", "song_texts", "song_works", "song_people", "song_credits", "audio_versions", "audio_current", "audio_log", "library_shares", "catalog_live", "catalog_live_log", "member_log", "member_retired"]);
 
 /**
  * Why a reset must not go ahead, or null: it would lose personal libraries
