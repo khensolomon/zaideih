@@ -77,6 +77,7 @@
  * change, so elsewhere a change shows once the copy there ends. Reading
  * lyrics costs no D1 query after the first listener in a region.
  */
+import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 import { isText, TEXT_BASE, textAccess, textExists, textIsPublic } from "./songbooks.js";
@@ -108,13 +109,6 @@ export function cleanLyrics(text) {
 	return clean;
 }
 
-function answer(status, body, cors, extra = {}) {
-	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
-	if (cors) headers.set("Access-Control-Allow-Origin", cors);
-	if (cors && cors !== "*") headers.set("Vary", "Origin");
-	return new Response(body === null ? null : JSON.stringify(body), { status, headers });
-}
-
 const current = (env, track, lang) => env.DB.prepare("SELECT track, lang, version, text, updated_at, hidden_at, hidden_by, hidden_reason FROM lyrics WHERE track = ?1 AND lang = ?2").bind(track, lang).first();
 const shown = (row) => ({ track: row.track, lang: row.lang, version: row.version, text: row.text, updated: row.updated_at });
 
@@ -137,8 +131,7 @@ async function timesOf(env, track, lang) {
 
 /** Keeps one recording's timing of a shared text; none removes it. */
 async function keepTimes(env, track, lang, times, memberId, nowSeconds) {
-	if (!times.length) await env.DB.prepare("DELETE FROM lyrics_times WHERE track = ?1 AND lang = ?2").bind(track, lang).run();
-	else await env.DB.prepare("INSERT INTO lyrics_times (track, lang, times, member_id, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (track, lang) DO UPDATE SET times = excluded.times, member_id = excluded.member_id, at = excluded.at").bind(track, lang, JSON.stringify(times), memberId, nowSeconds).run();
+	await timesStatement(env, track, lang, times, memberId, nowSeconds).run();
 }
 
 /** Lyrics changed: the public answers of `tracks` in `lang` and the full index are read again. */
@@ -177,39 +170,43 @@ async function view(env, track, lang, { hiddenToo = false } = {}) {
 }
 
 /**
- * Before `keep`'s text is shared for the first time: its timing is its own,
- * so it moves out of the text (a version without times is saved).
+ * Before `keep`'s text is shared for the first time (`shared` says whether it
+ * is already): its timing is its own, so it moves out of the text (a version
+ * without times is saved). `rows` are keep's lyrics rows. The statements.
  */
-async function shareFirst(env, keep, other, me, nowSeconds) {
-	if ((await linkedTo(env, keep)).length) return;
-	const langs = (await env.DB.prepare("SELECT lang, version, text FROM lyrics WHERE track = ?1").bind(keep).all()).results ?? [];
-	for (const r of langs) {
+function shareFirst(env, keep, other, rows, shared, me, nowSeconds) {
+	if (shared) return [];
+	const out = [];
+	for (const r of rows) {
 		const times = extractTimes(r.text);
 		if (!times.length) continue;
-		await keepTimes(env, keep, r.lang, times, me.id, nowSeconds);
-		await write(env, keep, r.lang, cleanLyrics(clearTimes(r.text)), r.version, me.id, `shared with song ${other}; each recording keeps its own timing`, nowSeconds);
+		out.push(timesStatement(env, keep, r.lang, times, me.id, nowSeconds));
+		out.push(...writeStatements(env, keep, r.lang, cleanLyrics(clearTimes(r.text)), r.version, me.id, `shared with song ${other}; each recording keeps its own timing`, nowSeconds));
 	}
+	return out;
 }
 
 /**
  * Merging: `drop`'s own lyrics give way to `keep`'s text. Its timing stays
  * its own; a translation `keep` has not is given to `keep`; its own text
  * and history stay with it, hidden ("merged into song N"), for a copy of its
- * own to bring back. Songs that showed `drop`'s text show `keep`'s.
+ * own to bring back. Songs that showed `drop`'s text show `keep`'s. `dropRows`
+ * and `keepRows` are the two songs' lyrics rows. The statements.
  */
-async function mergeInto(env, drop, keep, me, nowSeconds) {
-	const rows = (await env.DB.prepare("SELECT lang, version, text, hidden_at FROM lyrics WHERE track = ?1").bind(drop).all()).results ?? [];
-	for (const r of rows) {
+function mergeInto(env, drop, keep, dropRows, keepRows, me, nowSeconds) {
+	const out = [];
+	const kept = new Set(keepRows.map((r) => r.lang));
+	for (const r of dropRows) {
 		if (r.hidden_at) continue;
 		const times = extractTimes(r.text);
-		if (times.length) await keepTimes(env, drop, r.lang, times, me.id, nowSeconds);
-		const kept = await current(env, keep, r.lang);
-		if (!kept) await write(env, keep, r.lang, cleanLyrics(clearTimes(r.text)), 0, me.id, `from song ${drop}, merged`, nowSeconds);
+		if (times.length) out.push(timesStatement(env, drop, r.lang, times, me.id, nowSeconds));
+		if (!kept.has(r.lang)) out.push(...writeStatements(env, keep, r.lang, cleanLyrics(clearTimes(r.text)), 0, me.id, `from song ${drop}, merged`, nowSeconds));
 	}
-	await env.DB.batch([
+	out.push(
 		env.DB.prepare("UPDATE lyrics SET hidden_at = ?2, hidden_by = ?3, hidden_reason = ?4, changed_at = ?2 WHERE track = ?1 AND hidden_at IS NULL").bind(drop, nowSeconds, me.login, `merged into song ${keep}`),
 		env.DB.prepare("UPDATE lyrics_links SET source = ?2, at = ?3 WHERE source = ?1 AND unlinked_at IS NULL").bind(drop, keep, nowSeconds),
-	]);
+	);
+	return out;
 }
 
 /** Public read, from the edge cache when it holds the answer. */
@@ -273,21 +270,32 @@ async function index(env, since, ctx, nowSeconds) {
  * Writes `text` as the next version when the latest is `base`; answers the
  * new lyrics, or throws 409 with the current ones. Both rows in one batch.
  */
-async function write(env, track, lang, text, base, memberId, note, nowSeconds) {
+/** The two statements that save version `base + 1` of `track`'s lyrics in `lang`, when `base` is still current (else neither changes a row). */
+function writeStatements(env, track, lang, text, base, memberId, note, nowSeconds) {
 	const same = "COALESCE((SELECT version FROM lyrics WHERE track = ?1 AND lang = ?7), 0) = ?2";
+	const words = lyricsWords(text);
+	return [
+		env.DB.prepare(`INSERT INTO lyrics_versions (track, lang, version, text, member_id, at, note) SELECT ?1, ?7, ?2 + 1, ?3, ?4, ?5, ?6 WHERE ${same}`).bind(track, base, text, memberId, nowSeconds, note, lang),
+		env.DB.prepare(`INSERT INTO lyrics (track, lang, version, text, words, updated_at, updated_by, changed_at) VALUES (?1, ?6, ?2 + 1, ?3, ?7, ?5, ?4, ?5)
+			ON CONFLICT (track, lang) DO UPDATE SET version = excluded.version, text = excluded.text, words = excluded.words, updated_at = excluded.updated_at, updated_by = excluded.updated_by, changed_at = excluded.changed_at
+			WHERE lyrics.version = ?2`).bind(track, base, text, memberId, nowSeconds, lang, words),
+	];
+}
+
+/** The statement that keeps one recording's timing of a shared text; none removes it. */
+function timesStatement(env, track, lang, times, memberId, nowSeconds) {
+	if (!times.length) return env.DB.prepare("DELETE FROM lyrics_times WHERE track = ?1 AND lang = ?2").bind(track, lang);
+	return env.DB.prepare("INSERT INTO lyrics_times (track, lang, times, member_id, at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (track, lang) DO UPDATE SET times = excluded.times, member_id = excluded.member_id, at = excluded.at").bind(track, lang, JSON.stringify(times), memberId, nowSeconds);
+}
+
+async function write(env, track, lang, text, base, memberId, note, nowSeconds) {
 	// New lyrics start from 0: a later base for a song without lyrics is someone else's history (since hidden or gone).
 	if (base > 0 && !(await current(env, track, lang))) {
 		const err = new MemberError("these lyrics are no longer there; start again from an empty page", 409);
 		err.current = null;
 		throw err;
 	}
-	const words = lyricsWords(text);
-	const results = await env.DB.batch([
-		env.DB.prepare(`INSERT INTO lyrics_versions (track, lang, version, text, member_id, at, note) SELECT ?1, ?7, ?2 + 1, ?3, ?4, ?5, ?6 WHERE ${same}`).bind(track, base, text, memberId, nowSeconds, note, lang),
-		env.DB.prepare(`INSERT INTO lyrics (track, lang, version, text, words, updated_at, updated_by, changed_at) VALUES (?1, ?6, ?2 + 1, ?3, ?7, ?5, ?4, ?5)
-			ON CONFLICT (track, lang) DO UPDATE SET version = excluded.version, text = excluded.text, words = excluded.words, updated_at = excluded.updated_at, updated_by = excluded.updated_by, changed_at = excluded.changed_at
-			WHERE lyrics.version = ?2`).bind(track, base, text, memberId, nowSeconds, lang, words),
-	]);
+	const results = await env.DB.batch(writeStatements(env, track, lang, text, base, memberId, note, nowSeconds));
 	const row = await current(env, track, lang);
 	if (!results[1]?.meta?.changes) {
 		const err = new MemberError("someone else saved these lyrics while you were editing; your text is kept, compare it with theirs", 409);
@@ -311,16 +319,6 @@ async function checkTrack(env, track) {
 function baseOf(body) {
 	if (!Number.isSafeInteger(body.base) || body.base < 0) throw new MemberError("base must be the version you started from (0 for new lyrics)");
 	return body.base;
-}
-
-async function readBody(request) {
-	const text = await request.text();
-	if (text.length > MAX_LYRICS * 4 + 1024) throw new MemberError("request body too large", 413);
-	try {
-		const v = JSON.parse(text || "{}");
-		if (v && typeof v === "object" && !Array.isArray(v)) return v;
-	} catch { /* below */ }
-	throw new MemberError("body must be a JSON object");
 }
 
 /** A member says `track` is the same song as `body.to`: a proposal for those with the Lyrics right. */
@@ -374,14 +372,9 @@ const nameOf = (r) => r.name ?? "a member no longer here";
 export async function handleLyrics(request, env, ctx, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
 	const match = /^\/lyrics\/(?:(recent|index)|(\d{1,12})(?:\/(versions|hide|show|restore|report|resolve|link|unlink|propose|compare|decline))?)\/?$/.exec(url.pathname);
-	const origin = request.headers.get("origin");
-	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-	const cors = origin && origins.has(origin) ? origin : null;
+	const cors = corsOf(env, request);
 	const m = request.method;
-	if (m === "OPTIONS") {
-		if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
-		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
-	}
+	if (m === "OPTIONS") return preflight(cors);
 	if (!match) return answer(404, { error: "lyrics addresses are /lyrics/<song id>" }, cors ?? "*");
 	const track = Number(match[2] ?? 0);
 	const action = match[1] ?? match[3] ?? "";
@@ -419,7 +412,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		}
 
 		if (!action && m === "POST") {
-			const body = await readBody(request);
+			const body = await readBody(request, MAX_LYRICS * 4 + 1024);
 			await checkTrack(env, track);
 			const text = cleanLyrics(body.text);
 			const base = baseOf(body);
@@ -446,8 +439,8 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			return answer(200, await view(env, track, lang, { hiddenToo: true }), cors);
 		}
 
-		if (action === "propose" && m === "POST") return answer(201, await propose(env, track, await readBody(request), me, nowSeconds), cors);
-		const linkBody = action === "link" && m === "POST" ? await readBody(request) : null;
+		if (action === "propose" && m === "POST") return answer(201, await propose(env, track, await readBody(request, MAX_LYRICS * 4 + 1024), me, nowSeconds), cors);
+		const linkBody = action === "link" && m === "POST" ? await readBody(request, MAX_LYRICS * 4 + 1024) : null;
 		// Joining a recording to a songbook text: the Songbooks right too.
 		const toText = Number.isSafeInteger(linkBody?.to) && isText(linkBody.to);
 		// App builds before 26.10.24.32 offer "Use these lyrics" to every member: without the right, it is a proposal.
@@ -456,7 +449,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			throw new MemberError("only those who look after lyrics link songs; your suggestion was sent to them instead", 403);
 		}
 		if (action === "report" && m === "POST") {
-			const body = await readBody(request);
+			const body = await readBody(request, MAX_LYRICS * 4 + 1024);
 			const reason = typeof body.reason === "string" ? body.reason.replace(/\s+/g, " ").trim() : "";
 			if (!reason || reason.length > MAX_REASON) throw new MemberError(`say what is wrong in 1 to ${MAX_REASON} characters`);
 			if (!(await view(env, track, lang, { hiddenToo: true }))) throw new MemberError("this song has no lyrics to report", 404);
@@ -480,24 +473,36 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			const target = await sourceOf(env, body.to);
 			if (target === track) throw new MemberError("these songs already show one text", 409);
 			if (!(await mayReadText(env, me, target))) throw new MemberError(`song ${body.to} has no lyrics to share`, 404);
-			const targetText = await current(env, target, "");
+			// Both songs' lyrics and links, read once: what is written below follows from them.
+			const [lyricsRows, linkRows] = await Promise.all([
+				env.DB.prepare("SELECT track, lang, version, text, hidden_at FROM lyrics WHERE track IN (?1, ?2) ORDER BY track, lang").bind(track, target).all().then((r) => r.results ?? []),
+				env.DB.prepare("SELECT track, source FROM lyrics_links WHERE unlinked_at IS NULL AND source IN (?1, ?2)").bind(track, target).all().then((r) => r.results ?? []),
+			]);
+			const targetText = lyricsRows.find((r) => r.track === target && r.lang === "");
 			if (!targetText || targetText.hidden_at) throw new MemberError(`song ${body.to} has no lyrics to share`, 404);
-			const own = (await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics WHERE track = ?1 AND hidden_at IS NULL").bind(track).first())?.n ?? 0;
+			const rowsOf = (t) => lyricsRows.filter((r) => r.track === t);
+			const linkedOf = (t) => linkRows.filter((r) => r.source === t).map((r) => r.track);
+			const own = rowsOf(track).filter((r) => !r.hidden_at).length;
 			// Never over lyrics by accident: a song with its own is merged, deliberately.
 			if (own && body.merge !== true) throw new MemberError("this song has lyrics of its own; compare the two and merge them instead", 409);
 			const keep = own && body.keep === "track" ? track : target;
 			const drop = keep === track ? target : track;
-			await shareFirst(env, keep, drop, me, nowSeconds);
-			if (own) await mergeInto(env, drop, keep, me, nowSeconds);
+			// One batch: all of it, or none.
+			const statements = shareFirst(env, keep, drop, rowsOf(keep), linkedOf(keep).length > 0, me, nowSeconds);
+			if (own) statements.push(...mergeInto(env, drop, keep, rowsOf(drop), rowsOf(keep), me, nowSeconds));
 			// Songs that showed `drop`'s text (its own may all be hidden) show `keep`'s: a link is never two steps.
-			if (!own) await env.DB.prepare("UPDATE lyrics_links SET source = ?2, at = ?3 WHERE source = ?1 AND unlinked_at IS NULL").bind(drop, keep, nowSeconds).run();
-			await env.DB.prepare(`INSERT INTO lyrics_links (track, source, member_id, at) VALUES (?1, ?2, ?3, ?4)
-				ON CONFLICT (track) DO UPDATE SET source = excluded.source, member_id = excluded.member_id, at = excluded.at, unlinked_at = NULL, unlinked_by = NULL`).bind(drop, keep, me.id, nowSeconds).run();
-			// Proposals that these songs are the same are dealt with.
-			await env.DB.prepare(`UPDATE lyrics_proposals SET status = 'done', decided_by = ?3, decided_at = ?4
-				WHERE status = 'open' AND ((track = ?1 AND target = ?2) OR (track = ?2 AND target = ?1) OR id = ?5)`).bind(track, body.to, me.login, nowSeconds, Number.isSafeInteger(body.proposal) ? body.proposal : -1).run();
-			const langs = (await env.DB.prepare("SELECT lang FROM lyrics WHERE track IN (?1, ?2)").bind(keep, drop).all()).results ?? [];
-			for (const lang of new Set(langs.map((r) => r.lang))) await forget([drop, ...(await linkedTo(env, keep)), keep], lang);
+			else statements.push(env.DB.prepare("UPDATE lyrics_links SET source = ?2, at = ?3 WHERE source = ?1 AND unlinked_at IS NULL").bind(drop, keep, nowSeconds));
+			statements.push(
+				env.DB.prepare(`INSERT INTO lyrics_links (track, source, member_id, at) VALUES (?1, ?2, ?3, ?4)
+					ON CONFLICT (track) DO UPDATE SET source = excluded.source, member_id = excluded.member_id, at = excluded.at, unlinked_at = NULL, unlinked_by = NULL`).bind(drop, keep, me.id, nowSeconds),
+				// Proposals that these songs are the same are dealt with.
+				env.DB.prepare(`UPDATE lyrics_proposals SET status = 'done', decided_by = ?3, decided_at = ?4
+					WHERE status = 'open' AND ((track = ?1 AND target = ?2) OR (track = ?2 AND target = ?1) OR id = ?5)`).bind(track, body.to, me.login, nowSeconds, Number.isSafeInteger(body.proposal) ? body.proposal : -1),
+			);
+			await env.DB.batch(statements);
+			// Every song that showed either text, in every language either has, is read again.
+			const songs = [drop, keep, ...linkedOf(keep), ...linkedOf(drop)];
+			await Promise.all([...new Set(lyricsRows.map((r) => r.lang))].map((lang) => forget(songs, lang)));
 			return answer(200, await view(env, track, "", { hiddenToo: true }), cors);
 		}
 		if (action === "compare" && m === "GET") {
@@ -519,7 +524,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			return answer(200, { a: await copy(track), b: await copy(other) }, cors);
 		}
 		if (action === "decline" && m === "POST") {
-			const body = await readBody(request);
+			const body = await readBody(request, MAX_LYRICS * 4 + 1024);
 			if (!Number.isSafeInteger(body.proposal)) throw new MemberError("proposal must be the number of the proposal to decline");
 			const reason = typeof body.reason === "string" ? body.reason.replace(/\s+/g, " ").trim() : "";
 			if (!reason || reason.length > MAX_REASON) throw new MemberError(`give a reason of 1 to ${MAX_REASON} characters; it is kept with the proposal`);
@@ -528,7 +533,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			return answer(200, { declined: true }, cors);
 		}
 		if (action === "unlink" && m === "POST") {
-			const body = await readBody(request);
+			const body = await readBody(request, MAX_LYRICS * 4 + 1024);
 			const link = await env.DB.prepare("SELECT source FROM lyrics_links WHERE track = ?1 AND unlinked_at IS NULL").bind(track).first();
 			if (!link) throw new MemberError("this song does not show another song's lyrics", 404);
 			const langs = (await env.DB.prepare("SELECT lang, version, text, hidden_at FROM lyrics WHERE track = ?1").bind(link.source).all()).results ?? [];
@@ -600,7 +605,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			}, cors);
 		}
 		if (m !== "POST") throw new MemberError(`no route ${m} ${url.pathname}`, 404);
-		const body = await readBody(request);
+		const body = await readBody(request, MAX_LYRICS * 4 + 1024);
 		const row = await current(env, target, lang);
 		if (!row) throw new MemberError("this song has no lyrics yet", 404);
 		// Every decision on a song deals with its open reports.
@@ -629,7 +634,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		const after = await current(env, target, lang);
 		return answer(200, { ...(await view(env, track, lang, { hiddenToo: true })), hidden: after.hidden_at ? { at: after.hidden_at, by: after.hidden_by, reason: after.hidden_reason } : null }, cors);
 	} catch (err) {
-		if (err instanceof MemberError) return answer(err.status, { error: err.message, ...(err.current !== undefined ? { current: err.current } : {}) }, cors ?? "*");
+		if (err instanceof HttpError) return answer(err.status, { error: err.message, ...(err.current !== undefined ? { current: err.current } : {}) }, cors ?? "*");
 		console.error("lyrics request failed", err);
 		return answer(500, { error: "the lyrics request failed on the Worker" }, cors ?? "*");
 	}

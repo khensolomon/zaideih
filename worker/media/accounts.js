@@ -117,9 +117,18 @@ export async function signIn(env, who, { linkTo = null, emailJoin = true, nowSec
 			if (rows.length === 1) { memberId = rows[0].member_id; joined = "email"; }
 		}
 		if (memberId === null) {
-			// An id above every member's, and every id retired by joining accounts: never one used before.
-			const made = await env.DB.prepare(`INSERT INTO members (id, name, first_seen, last_seen) VALUES (
+			// An id above every member's, and every id retired by joining accounts: never one used
+			// before. Two people signing in for the first time at the same moment pick the same id;
+			// the second insert fails on the key and is tried once more.
+			const insert = () => env.DB.prepare(`INSERT INTO members (id, name, first_seen, last_seen) VALUES (
 				(SELECT MAX(n) + 1 FROM (SELECT COALESCE(MAX(id), 0) AS n FROM members UNION ALL SELECT COALESCE(MAX(id), 0) FROM member_retired)), ?1, ?2, ?2)`).bind(who.name, nowSeconds).run();
+			let made;
+			try {
+				made = await insert();
+			} catch (err) {
+				if (!/UNIQUE|PRIMARY KEY|constraint/i.test(err.message ?? "")) throw err;
+				made = await insert();
+			}
 			memberId = made.meta.last_row_id;
 			joined = "new";
 		}

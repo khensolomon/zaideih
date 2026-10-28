@@ -93,9 +93,11 @@ async function ask(env, me, body, nowSeconds) {
 	if (other.length) {
 		throw new LibraryError(`Only MP3 can be published. ${other.length === 1 ? `"${other[0].file_name}" is` : `${other.length} songs (${other.slice(0, 3).map((u) => `"${u.file_name}"`).join(", ")}${other.length > 3 ? ", …" : ""}) are`} ${other[0].format.toUpperCase()}: save an MP3 copy (320 kbps keeps an old recording's sound), upload it, and ask again.`, 415);
 	}
-	const res = await env.DB.prepare("INSERT INTO publish_requests (owner_id, album, lang, note, status, created_at) VALUES (?1, ?2, ?3, ?4, 'open', ?5)")
-		.bind(me.id, album, lang, note, nowSeconds).run();
-	await env.DB.prepare("UPDATE uploads SET status = 'requested', updated_at = ?1 WHERE owner_id = ?2 AND album = ?3 AND status = 'private'").bind(nowSeconds, me.id, album).run();
+	// The request and its songs' status together: never one without the other.
+	const [res] = await env.DB.batch([
+		env.DB.prepare("INSERT INTO publish_requests (owner_id, album, lang, note, status, created_at) VALUES (?1, ?2, ?3, ?4, 'open', ?5)").bind(me.id, album, lang, note, nowSeconds),
+		env.DB.prepare("UPDATE uploads SET status = 'requested', updated_at = ?1 WHERE owner_id = ?2 AND album = ?3 AND status = 'private'").bind(nowSeconds, me.id, album),
+	]);
 	return { id: res.meta.last_row_id, songs: rows.length };
 }
 
@@ -124,8 +126,10 @@ async function withdraw(env, me, id, nowSeconds) {
 	const r = await requestRow(env, id);
 	if (r.owner_id !== me.id && !can(me, "manage")) throw new LibraryError("only the member who asked, or a co-owner, withdraws a request", 403);
 	if (r.status !== OPEN) throw new LibraryError(`this request is ${r.status}, not open`, 409);
-	await env.DB.prepare("UPDATE publish_requests SET status = 'withdrawn', decided_at = ?1, reviewer = ?2 WHERE id = ?3").bind(nowSeconds, me.login, id).run();
-	await env.DB.prepare("UPDATE uploads SET status = 'private' WHERE owner_id = ?1 AND album = ?2 AND status = 'requested'").bind(r.owner_id, r.album).run();
+	await env.DB.batch([
+		env.DB.prepare("UPDATE publish_requests SET status = 'withdrawn', decided_at = ?1, reviewer = ?2 WHERE id = ?3").bind(nowSeconds, me.login, id),
+		env.DB.prepare("UPDATE uploads SET status = 'private' WHERE owner_id = ?1 AND album = ?2 AND status = 'requested'").bind(r.owner_id, r.album),
+	]);
 	return null;
 }
 
@@ -134,8 +138,10 @@ async function reject(env, me, id, body, nowSeconds) {
 	const reason = cleanText(body.reason, "reason", true);
 	const r = await requestRow(env, id);
 	if (r.status !== OPEN) throw new LibraryError(`this request is ${r.status}, not open`, 409);
-	await env.DB.prepare("UPDATE publish_requests SET status = 'rejected', reason = ?1, reviewer = ?2, decided_at = ?3 WHERE id = ?4").bind(reason, me.login, nowSeconds, id).run();
-	await env.DB.prepare("UPDATE uploads SET status = 'private' WHERE owner_id = ?1 AND album = ?2 AND status = 'requested'").bind(r.owner_id, r.album).run();
+	await env.DB.batch([
+		env.DB.prepare("UPDATE publish_requests SET status = 'rejected', reason = ?1, reviewer = ?2, decided_at = ?3 WHERE id = ?4").bind(reason, me.login, nowSeconds, id),
+		env.DB.prepare("UPDATE uploads SET status = 'private' WHERE owner_id = ?1 AND album = ?2 AND status = 'requested'").bind(r.owner_id, r.album),
+	]);
 	return shapeRequest({ ...r, status: "rejected", reason, reviewer: me.login, decided_at: nowSeconds });
 }
 
@@ -166,9 +172,14 @@ export function checkCatalogKey(key) {
 async function approve(env, me, id, body, nowSeconds) {
 	if (!can(me, "review")) throw new LibraryError("approving needs the Review publishing right", 403);
 	const r = await requestRow(env, id);
-	if (r.status !== OPEN) throw new LibraryError(`this request is ${r.status}, not open`, 409);
 	const album = typeof body.album === "string" && /^[0-9a-f]{16}$/.test(body.album) ? body.album : null;
 	if (!album) throw new LibraryError("album must be the new catalog album's id (16 hex characters)");
+	// Approved already with this album (a retry after the answer was lost): the same answer again.
+	if (r.status === "approved" && r.catalog_album === album) {
+		const inPlaceDone = !((await env.DB.prepare("SELECT 1 AS yes FROM published_tracks WHERE request_id = ?1 AND r2_key LIKE 'music/%' LIMIT 1").bind(id).first()));
+		return { id, status: "approved", copied: 0, inPlace: inPlaceDone, again: true };
+	}
+	if (r.status !== OPEN) throw new LibraryError(`this request is ${r.status}, not open`, 409);
 	const songs = await songsOf(env, r);
 	const tracks = Array.isArray(body.tracks) ? body.tracks : [];
 	const byUpload = new Map(tracks.map((t) => [Number(t?.upload), t]));
@@ -207,16 +218,22 @@ async function approve(env, me, id, body, nowSeconds) {
 			if (used) throw new LibraryError(`${used.r2_key} is already the catalog's song ${used.track_id}`, 409);
 		}
 	}
+	// A copy of the same size left by an approval cut short (the Worker's time ran out between
+	// copying and the rows) is this song's own, kept; any other object there is someone else's.
+	const already = new Set();
 	for (const u of songs) {
 		const key = byUpload.get(u.id).key;
+		const head = await env.BUCKET.head(key);
 		if (inPlace) {
-			if (!(await env.BUCKET.head(key))) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
-		} else if (await env.BUCKET.head(key)) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
+			if (!head) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
+		} else if (head && head.size === u.size) already.add(u.id);
+		else if (head) throw new LibraryError(`${key} already exists in the catalog's storage; choose another folder`, 409);
 	}
 	const copied = [];
 	try {
 		for (const u of songs) {
 			if (inPlace) break;
+			if (already.has(u.id)) continue;
 			const t = byUpload.get(u.id);
 			const src = await env.BUCKET.get(u.r2_key);
 			if (!src) throw new LibraryError(`"${u.file_name}" is missing from storage`, 404);
@@ -255,7 +272,7 @@ function chunks(list, size = 100) {
 	return out;
 }
 
-/** Requests settled per call: each is three D1 queries, the reads that run settling stay within the Free plan's 50. */
+/** Requests settled per call: each is three D1 queries, so the request list that runs settling stays within the Free plan's 50. */
 const SETTLE_PER_CALL = 5;
 
 /**
@@ -283,6 +300,7 @@ export async function settleReleased(env) {
 		const copies = rows.map((r) => r.r2_key).filter(isUpload);
 		if (copies.length) await env.BUCKET.delete(copies);
 	}
+	return ready.length;
 }
 
 /** /library/requests*: answers a Response, or null when the path is not one of these. */

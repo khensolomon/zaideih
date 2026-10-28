@@ -45,13 +45,14 @@
  * Bindings: DB, BUCKET, OWNER_GITHUB_ID, AUTH_ORIGINS, UPLOAD_MAX_BYTES,
  * UPLOAD_QUOTA_BYTES (vars), AUDIO_SIGNING_KEY (secret), UPLOAD_LIMIT (rate limiter).
  */
+import { allowedOrigins, corsOf, HttpError } from "./http.js";
 import { checkDetails, checkNewUpload, cleanText, FORMATS, megabytes, UploadRuleError } from "../../src/core/upload-rules.js";
 import { can, MemberError, memberRow, ownerId, RIGHTS, rightsOf } from "./members.js";
-import { AdminError, listPage, logStatement, memberPage, memberSummary, uploadsPage } from "./members-admin.js";
+import { listPage, logStatement, memberPage, memberSummary, uploadsPage } from "./members-admin.js";
 import { sessionMember } from "./accounts.js";
 import { handleSync } from "./sync.js";
 import { formatOf } from "../../src/core/upload-rules.js";
-import { handleRequests, settleReleased } from "./requests.js";
+import { handleRequests } from "./requests.js";
 import { followRename, handleShares, mayHear, sharedWith, sharesOf, sharesWith } from "./shares.js";
 
 export { checkNewUpload, FORMATS };
@@ -73,12 +74,7 @@ const D1_BIND_MAX = 100;
 const STALE_UPLOAD_S = 3600;
 const MAX_JSON = 8192;
 
-export class LibraryError extends Error {
-	constructor(message, status = 400) {
-		super(message);
-		this.status = status;
-	}
-}
+export class LibraryError extends HttpError {}
 
 /* ------------------------------------------------------------ settings ---- */
 
@@ -88,7 +84,7 @@ function settings(env) {
 	const maxBytes = Number(env.UPLOAD_MAX_BYTES);
 	const quota = Number(env.UPLOAD_QUOTA_BYTES);
 	if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || !Number.isSafeInteger(quota) || quota <= 0) throw new LibraryError("UPLOAD_MAX_BYTES and UPLOAD_QUOTA_BYTES must be whole numbers of bytes", 503);
-	return { maxBytes, quota, origins: new Set(env.AUTH_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)) };
+	return { maxBytes, quota, origins: allowedOrigins(env) };
 }
 
 /* ------------------------------------------------------------- signing ---- */
@@ -96,8 +92,12 @@ function settings(env) {
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const fromB64url = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
+// The key is imported once per secret and isolate: a library lists hundreds of addresses,
+// each signed, and importing the key cost three times the signing.
+let hmac = { secret: null, key: null };
 async function hmacKey(secret) {
-	return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+	if (hmac.secret !== secret) hmac = { secret, key: await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]) };
+	return hmac.key;
 }
 
 /** What a streaming address signs: the upload, the expiry, and the member it is for when shared. */
@@ -201,8 +201,8 @@ async function dropStale(env, ownerId, nowSeconds) {
 }
 
 async function library(env, me, cfg, origin, nowSeconds) {
+	// Half-done uploads of an hour ago go (their rows would count as space) before the library is read.
 	await dropStale(env, me.id, nowSeconds);
-	await settleReleased(env);
 	const rows = await env.DB.prepare("SELECT * FROM uploads WHERE owner_id = ?1 AND status <> 'uploading' ORDER BY album COLLATE NOCASE, track_no, title COLLATE NOCASE").bind(me.id).all();
 	const { used } = await usedBytes(env, me.id);
 	const uploads = [];
@@ -227,27 +227,38 @@ async function library(env, me, cfg, origin, nowSeconds) {
 async function createUpload(env, me, cfg, body, nowSeconds) {
 	const u = checkNewUpload(body, cfg);
 	if (!(await env.UPLOAD_LIMIT.limit({ key: `upload:${me.id}` })).success) throw new LibraryError("too many uploads in a minute; wait a moment and continue", 429);
-	if (me.role !== "owner") {
+	// The space is checked in the statement that takes it (uploads sent together cannot pass it
+	// one by one): the row is made only while the quota holds. The id comes from the row; the R2 key
+	// follows it, set in the same batch.
+	const quota = me.role === "owner" ? null : cfg.quota;
+	const [res] = await env.DB.batch([
+		env.DB.prepare(
+			`INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, artist, album, year, track_no, file_name, status, created_at, updated_at)
+			SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'uploading', ?12, ?12
+			WHERE ?13 IS NULL OR (SELECT COALESCE(SUM(size), 0) FROM uploads WHERE owner_id = ?1 AND r2_key LIKE '${UPLOADS_ROOT}%') + ?3 <= ?13`,
+		).bind(me.id, `pending/${me.id}/${crypto.randomUUID()}`, u.size, u.format, u.duration, u.title, u.artist, u.album, u.year, u.track_no, u.fileName, nowSeconds, quota),
+		env.DB.prepare(`UPDATE uploads SET r2_key = 'users/' || owner_id || '/' || id || '.' || format WHERE owner_id = ?1 AND status = 'uploading' AND r2_key LIKE 'pending/%'`).bind(me.id),
+	]);
+	if (!res.meta?.changes) {
 		const { used } = await usedBytes(env, me.id);
-		if (used + u.size > cfg.quota) {
-			throw new LibraryError(`"${u.fileName}" (${megabytes(u.size)}) does not fit: ${megabytes(Math.max(0, cfg.quota - used))} of your ${megabytes(cfg.quota)} is left. Delete some uploads first.`, 413);
-		}
+		throw new LibraryError(`"${u.fileName}" (${megabytes(u.size)}) does not fit: ${megabytes(Math.max(0, cfg.quota - used))} of your ${megabytes(cfg.quota)} is left. Delete some uploads first.`, 413);
 	}
-	// The id comes from the row; the R2 key follows it.
-	const res = await env.DB.prepare(
-		`INSERT INTO uploads (owner_id, r2_key, size, format, duration, title, artist, album, year, track_no, file_name, status, created_at, updated_at)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'uploading', ?12, ?12)`,
-	).bind(me.id, `pending/${me.id}/${crypto.randomUUID()}`, u.size, u.format, u.duration, u.title, u.artist, u.album, u.year, u.track_no, u.fileName, nowSeconds).run();
 	const id = res.meta.last_row_id;
-	const key = `users/${me.id}/${id}.${u.format}`;
-	await env.DB.prepare("UPDATE uploads SET r2_key = ?1 WHERE id = ?2").bind(key, id).run();
 	return { id, upload: `/library/uploads/${id}/file` };
 }
 
 async function storeFile(request, env, me, id, nowSeconds) {
 	const row = await uploadRow(env, id);
 	if (!row || row.owner_id !== me.id) throw new LibraryError("no such upload in your library", 404);
-	if (row.status !== "uploading") throw new LibraryError("this upload already has its file", 409);
+	if (row.status !== "uploading") {
+		// Sent again after the answer was lost: the file is there and whole, the same answer.
+		const have = await env.BUCKET.head(row.r2_key);
+		if (have && have.size === row.size && Number(request.headers.get("content-length")) === row.size) {
+			await request.body?.cancel().catch(() => {});
+			return publicUpload(row);
+		}
+		throw new LibraryError("this upload already has its file", 409);
+	}
 	const declared = Number(request.headers.get("content-length"));
 	if (!Number.isSafeInteger(declared)) throw new LibraryError("the file's size (Content-Length) is required", 411);
 	if (declared !== row.size) throw new LibraryError(`the file is ${declared} bytes, but ${row.size} were announced`, 400);
@@ -521,7 +532,7 @@ export async function handleLibrary(request, env, { now = () => Date.now() } = {
 		if (!cors) throw new LibraryError("this origin may not use personal libraries (AUTH_ORIGINS)", 403);
 		const memberId = await sessionMember(env, request, nowSeconds);
 		const path0 = url.pathname.replace(/\/+$/, "");
-		// Syncing the library needs only the member and the block, which keeps it within the Free plan's queries per request.
+		// Syncing the library needs only the member and the block: one query, not the member's whole row and rights.
 		if (path0 === "/library/sync" && request.method === "POST") {
 			const b = await env.DB.prepare("SELECT blocked_at, blocked_by, blocked_reason FROM members WHERE id = ?1").bind(memberId).first();
 			if (b?.blocked_at) throw new LibraryError(`Your library is closed by ${b.blocked_by}: ${b.blocked_reason}`, 403);
@@ -567,7 +578,7 @@ export async function handleLibrary(request, env, { now = () => Date.now() } = {
 		}
 		return json(404, { error: `no route ${m} ${path}` }, cors);
 	} catch (err) {
-		if (err instanceof LibraryError || err instanceof MemberError || err instanceof UploadRuleError || err instanceof AdminError) return json(err.status, { error: err.message }, cors);
+		if (err instanceof HttpError || err instanceof UploadRuleError) return json(err.status, { error: err.message }, cors);
 		console.error("library request failed", err);
 		return json(500, { error: "the library request failed on the Worker" }, cors);
 	}
@@ -603,8 +614,7 @@ export async function handleSignedAudio(request, env, id) {
 export async function handleSignedKey(request, env, encoded) {
 	const url = new URL(request.url);
 	const text = (status, body) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
-	const origin = request.headers.get("origin");
-	const allowed = origin && env.AUTH_ORIGINS?.split(",").map((s) => s.trim()).includes(origin) ? origin : null;
+	const allowed = corsOf(env, request);
 	if (request.method === "OPTIONS") {
 		if (!allowed) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
 		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": allowed, "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS", "Access-Control-Allow-Headers": "Range", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
@@ -644,9 +654,9 @@ async function streamObject(request, env, key, format, { shared = false } = {}) 
 		"X-Content-Type-Options": "nosniff",
 	});
 	// The app reads with CORS: downloads for offline listening, and tags before adding from storage.
-	const origin = request.headers.get("origin");
-	if (origin && env.AUTH_ORIGINS?.split(",").map((s) => s.trim()).includes(origin)) {
-		headers.set("Access-Control-Allow-Origin", origin);
+	const allowed = corsOf(env, request);
+	if (allowed) {
+		headers.set("Access-Control-Allow-Origin", allowed);
 		headers.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, Content-Type");
 		headers.set("Vary", "Origin");
 	}

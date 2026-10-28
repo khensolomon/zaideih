@@ -138,15 +138,23 @@ export function lyricsBackup(lyrics, versions, exportedAt, { links = [], times =
 	};
 }
 
-/** Tables that cannot be rebuilt from git: personal libraries (docs/library.md). */
-export const LIBRARY_TABLES = Object.freeze(["members", "member_logins", "member_sessions", "uploads", "member_rights", "member_folders", "publish_requests", "published_tracks", "passkeys", "library_likes", "library_playlists", "lyrics", "lyrics_versions", "lyrics_reports", "lyrics_links", "lyrics_times", "lyrics_proposals", "album_holds", "album_hold_tracks", "album_hold_log", "songbooks", "songbook_members", "songbook_entries", "song_texts", "song_works", "song_people", "song_credits", "audio_versions", "audio_current", "audio_log", "library_shares", "catalog_live", "catalog_live_log", "member_log", "member_retired"]);
+/**
+ * Tables a reset may drop without loss: rebuilt from git (track paths), from
+ * `plays` (the running sums, put back with --keep-plays), or short-lived.
+ * Every other table in the schema holds what cannot be rebuilt (personal
+ * libraries, docs/library.md): a new table is guarded unless named here.
+ */
+export const REBUILDABLE_TABLES = Object.freeze(["tracks", "tracks_status", "plays", "play_totals", "play_days", "schema_migrations", "passkey_challenges", "signin_waiting"]);
+
+/** Tables that cannot be rebuilt from git: every table of the schema but the rebuildable ones. */
+export const libraryTables = (schema) => schemaTables(schema).filter((t) => !REBUILDABLE_TABLES.includes(t));
 
 /**
  * Why a reset must not go ahead, or null: it would lose personal libraries
  * (`counts`: rows per table) unless `dropLibrary` was chosen.
  */
 export function libraryGuard(counts, dropLibrary) {
-	const held = LIBRARY_TABLES.filter((t) => (counts[t] ?? 0) > 0);
+	const held = Object.keys(counts).filter((t) => (counts[t] ?? 0) > 0);
 	if (!held.length || dropLibrary) return null;
 	return `${held.map((t) => `${t} holds ${counts[t]} row${counts[t] === 1 ? "" : "s"}`).join(" and ")}. Personal libraries cannot be rebuilt from git, and their files would stay in R2 (users/…) without an owner. Use "schema --apply" to add what is missing instead, or re-run with --drop-library to lose them.`;
 }

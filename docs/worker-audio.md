@@ -153,15 +153,15 @@ npx wrangler d1 execute audio --remote --command \
   "SELECT * FROM tracks_status ORDER BY last_seen DESC LIMIT 20"
 ```
 
-`served` counts fresh fetches that reach the Worker. It is not a play count: replays from the browser cache never arrive.
+`served` counts one in 20 of the fresh fetches that reach the Worker (a sample, so the day's D1 writes go to play counts instead). It is not a play count: replays from the browser cache never arrive, and `POST /plays` counts listening.
 
 ## Play counts
 
 The app counts a play after 10 seconds of listening (or at the end of a shorter song) and posts it to `POST /plays` (`src/core/plays.js`). The Worker stores one row per track and UTC day in `plays`; nothing about the listener is stored.
 
-The app reads the counts back with `GET /plays` (`src/core/playcounts.js`): `{"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}`, only tracks with plays, sorted by id. It is public (any origin; totals only) and cached for 5 minutes, at the edge (so D1 is asked at most once per data centre in that time) and in browsers. A read never sums the whole `plays` table (one row per song and day, growing for ever, and D1 counts every row read against the day's allowance): each count is added, in the same batch, to running sums (`play_totals`, a song's total; `play_days`, a day's, migration 0014), and `GET /plays` reads those plus only the last 30 days of `plays` through its day index; `GET /plays/stats` reads `play_days` and the last 7 days. The app adds each total to the catalog's own count, keeps the last answer per device for offline use, and asks again at start and on returning to the app, at most every 10 minutes.
+The app reads the counts back with `GET /plays` (`src/core/playcounts.js`): `{"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}`, only tracks with plays, sorted by id. It is public (any origin; totals only) and cached for 30 minutes, at the edge (so D1 is asked at most once per data centre in that time) and in browsers. A read never sums the whole `plays` table (one row per song and day, growing for ever, and D1 counts every row read against the day's allowance): each count is added, in the same batch, to running sums (`play_totals`, a song's total; `play_days`, a day's, migration 0014), and `GET /plays` reads those plus only the last 30 days of `plays` through its day index; `GET /plays/stats` reads `play_days` and the last 7 days. The app adds each total to the catalog's own count, keeps the last answer per device for offline use, and asks again at start and on returning to the app, at most every 10 minutes.
 
-The Workspace's Statistics also reads `GET /plays/stats`: `{"v":1,"updated":<unix seconds>,"first":"YYYY-MM-DD"|null,"today":"YYYY-MM-DD","days":[["YYYY-MM-DD", plays], ...],"week":[[id, plays], ...]}`: the first day with plays, the plays of each day with any in the last 400 days, and each song's plays of the last 7 days (today and the 6 days before). It is public and cached like `GET /plays` (5 minutes, edge and browsers): sums per day and per song, nothing about listeners. The day index on `plays` serves the day sums.
+The Workspace's Statistics also reads `GET /plays/stats`: `{"v":1,"updated":<unix seconds>,"first":"YYYY-MM-DD"|null,"today":"YYYY-MM-DD","days":[["YYYY-MM-DD", plays], ...],"week":[[id, plays], ...]}`: the first day with plays, the plays of each day with any in the last 400 days, and each song's plays of the last 7 days (today and the 6 days before). It is public and cached like `GET /plays` (30 minutes, edge and browsers): sums per day and per song, nothing about listeners. The day index on `plays` serves the day sums.
 
 ```bash
 # Plays per day, last 14 days
@@ -209,16 +209,15 @@ A Worker missing any of these answers `/auth/*` with 503 naming what is missing.
 
 `/library/*` and `/u/<id>` (`library.js`, `members.js`) serve members' own uploads; `/library/requests*` (`requests.js`) asking to publish them. The design is in [library.md](library.md). The upload and storage routes are listed in the header of `library.js`.
 
+`/library/members*` (the Workspace's Members: a page of members, a member's page, their uploads, blocks, rights, sign-outs) is in [library.md](library.md#moderation); `/library/shares*` (sharing with members) and `/k/<key>` (a file in storage, signed) in [library.md](library.md#sharing-with-members) and the header of `library.js`.
+
 | Route | Who | Does |
 |---|---|---|
-| `GET /library/members` | any right | every member with space used, uploads and rights |
-| `GET /library/members/<member id>` | Moderate members | one member's uploads (titles only, no addresses) |
-| `POST /library/members/<member id>` | Moderate members; co-owners for rights and folder | `{blocked: true, reason}` or `{blocked: false}`; `{rights: {<right>: true or false}}`; `{folder: "<prefix>/" or null}`, where Storage adds from |
 | `POST /library/requests` `{album, lang, note}` | the member | asks to publish an album of their uploads (MP3 only, else 415 naming the files) |
-| `GET /library/requests` | signed in | the person's own requests; with Review publishing, every open one and the 50 latest decided, each song with a signed address |
+| `GET /library/requests` | signed in | the person's own requests; with Review publishing, every open one and the 50 latest decided, each song with a signed address; settles approved requests whose songs a release has loaded (the daily housekeeping does too) |
 | `DELETE /library/requests/<id>` | the member, a co-owner | withdraws an open request |
 | `POST /library/requests/<id>/reject` `{reason}` | Review publishing | rejects; the songs are private again |
-| `POST /library/requests/<id>/approve` `{album, tracks: [{upload, track, key}]}` | Review publishing | checks every key (`music/…`, free) and track id (unused), then copies each upload there |
+| `POST /library/requests/<id>/approve` `{album, tracks: [{upload, track, key}]}` | Review publishing | checks every key and track id (unused), then copies each upload under `music/`, or publishes in place when every key is the song's own file in storage; approved already with the same album, answers the same again (a retry) |
 | `POST /library/requests/<id>/pr` `{url}` | Review publishing | records the pull request |
 
 An approved request is settled on the next `GET /library` or `GET /library/requests` after the release has loaded its track paths into `tracks`.
@@ -240,7 +239,7 @@ npx wrangler d1 execute audio --remote --command \
   "SELECT m.name, COUNT(u.id) AS files, SUM(u.size) / 1000000 AS mb, m.blocked_reason FROM members m LEFT JOIN uploads u ON u.owner_id = m.id GROUP BY m.id ORDER BY mb DESC"
 ```
 
-`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (`LIBRARY_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics). `--drop-library` overrides it; the files then stay in R2 under `users/` without an owner.
+`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (every table of the schema but `REBUILDABLE_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics, and any table added later). `--drop-library` overrides it; the files then stay in R2 under `users/` without an owner.
 
 ## History: the Worker without Django
 

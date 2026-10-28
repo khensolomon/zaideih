@@ -86,12 +86,18 @@ import { handleHolds, heldTracks } from "./holds.js";
 import { handleLive } from "./live.js";
 import { handleSongbooks } from "./songbooks.js";
 import { currentVersions, keyOfVersion, originalKey } from "./audio-edits.js";
+import { run as housekeeping } from "./housekeeping.js";
 import { handleEdits } from "./audio-edits.js";
 
 const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
+/** tracks_status.served is written for one start in this many (a sample, not a count). */
+const SERVED_SAMPLE = 20;
+/** Every SERVED_SAMPLE-th start of a file in this isolate (not chance: a quiet day is still sampled). */
+let starts = 0;
+const sampled = () => ++starts % SERVED_SAMPLE === 1;
 /** A song's ranges asked for without a version: it may be trimmed, so an hour, not a day (and not immutable). */
 const UNVERSIONED_CACHE_SECONDS = 3600;
 const MEDIA_DESTINATIONS = new Set(["audio", "video"]);
@@ -110,6 +116,11 @@ let allowedOrigins = null;
 let allowedOriginsSource = null;
 
 export default {
+	/** Once a day (wrangler.toml [triggers]): settling, sweeps of what has run out (housekeeping.js). */
+	async scheduled(event, env, ctx) {
+		ctx.waitUntil(housekeeping(env));
+	},
+
 	/**
 	 * @param {Request} request
 	 * @param {object} env
@@ -249,7 +260,8 @@ export function parsePlays(text, nowSeconds) {
  *
  *   {"v":1,"updated":<unix seconds>,"recentDays":30,"tracks":[[id, total, last30Days], ...]}
  */
-const PLAY_TOTALS_SECONDS = 300;
+// The app asks at most every 10 minutes (core/playcounts.js), so a shorter edge cache only costs D1 reads.
+const PLAY_TOTALS_SECONDS = 1800;
 const PLAY_RECENT_DAYS = 30;
 
 export async function playTotals(env) {
@@ -502,9 +514,10 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 		headers.set("Content-Length", String(object.size));
 	}
 
-	// Counts fresh fetches that reach the Worker, not plays: one write for the start of the
-	// file, not one for every range a player reads after it (D1 writes are counted per day).
-	if (!rangeOption || rangeOption.range.offset === 0) ctx.waitUntil(recordStatus(env, trackId, "served"));
+	// Counts fresh fetches that reach the Worker, not plays (POST /plays counts those): one in
+	// SERVED_SAMPLE of the starts of a file, since every D1 write counts against the day's allowance
+	// and the plays table already records listening. A diagnostic, read as a rate.
+	if ((!rangeOption || rangeOption.range.offset === 0) && sampled()) ctx.waitUntil(recordStatus(env, trackId, "served"));
 
 	return new Response(request.method === "HEAD" ? null : object.body, { headers, status });
 }

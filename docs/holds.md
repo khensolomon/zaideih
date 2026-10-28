@@ -35,7 +35,7 @@ Limits: a song a device has downloaded cannot be taken back from a device that s
 | `GET /holds/detail` | Albums right | every hold with its reason, who and when, and the latest 100 changes |
 | `POST /holds/:album {streaming, listed, reason, tracks}` | Albums right | sets the album's hold; `tracks` are the album's songs (each must be in D1 `tracks`); a reason is needed to hold back, not to give back |
 
-Tables (`migrations/0006-album-holds.sql`): `album_holds` (one row per held album), `album_hold_tracks` (the songs the Worker refuses), `album_hold_log` (every change). They cannot be rebuilt from git, so `tools/d1.mjs reset` keeps them (`LIBRARY_TABLES`).
+Tables (`migrations/0006-album-holds.sql`): `album_holds` (one row per held album), `album_hold_tracks` (the songs the Worker refuses), `album_hold_log` (every change). They cannot be rebuilt from git, so `tools/d1.mjs reset` keeps them (every table not in `REBUILDABLE_TABLES`).
 
 ## Releasing
 

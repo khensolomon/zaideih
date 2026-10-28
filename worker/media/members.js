@@ -12,19 +12,28 @@
  * Zaideih's own. Catalog editing follows the repository permission instead,
  * which GitHub decides on every request (src/workspace).
  */
-export class MemberError extends Error {
-	constructor(message, status = 400) {
-		super(message);
-		this.status = status;
-	}
-}
+import { HttpError } from "./http.js";
 
-/** The owner's member id, or null before the owner has signed in. Throws without OWNER_GITHUB_ID. */
+export class MemberError extends HttpError {}
+
+/**
+ * The owner's member id, or null before the owner has signed in. Throws without
+ * OWNER_GITHUB_ID. Once known it never changes (the owner's GitHub sign-in cannot
+ * be removed), so each isolate asks D1 once; "null" is asked again, since the
+ * owner may sign in for the first time meanwhile.
+ */
+const owners = new WeakMap(); // env.DB -> member id
 export async function ownerId(env) {
 	if (!/^\d+$/.test(env.OWNER_GITHUB_ID ?? "")) throw new MemberError("accounts are not set up on this Worker: OWNER_GITHUB_ID must be the owner's numeric GitHub id", 503);
+	const known = owners.get(env.DB);
+	if (known !== undefined) return known;
 	const row = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = 'github' AND subject = ?1").bind(env.OWNER_GITHUB_ID).first();
-	return row?.member_id ?? null;
+	const id = row?.member_id ?? null;
+	if (id !== null) owners.set(env.DB, id);
+	return id;
 }
+/** Tests: the owner may change between databases of one process. */
+export const forgetOwner = (env) => owners.delete(env.DB);
 
 /*
  * Rights (docs/library.md). The owner holds all of them; `manage` (a
@@ -70,13 +79,16 @@ export async function rightsOf(env, id = null) {
  * `login` is the name shown in decisions (blocked by, reviewed by).
  */
 export async function memberRow(env, id, nowSeconds = Math.floor(Date.now() / 1000)) {
-	const row = await env.DB.prepare("SELECT id, name, blocked_at, blocked_by, blocked_reason, last_seen FROM members WHERE id = ?1").bind(id).first();
+	// One query: the member, their rights (the old moderator flag counting as moderate) and their folder.
+	const row = await env.DB.prepare(`SELECT id, name, blocked_at, blocked_by, blocked_reason, last_seen, moderator,
+		(SELECT GROUP_CONCAT(kind) FROM member_rights WHERE member_id = m.id) AS rights,
+		(SELECT prefix FROM member_folders WHERE member_id = m.id) AS folder
+		FROM members m WHERE id = ?1`).bind(id).first();
 	if (!row) throw new MemberError("this account no longer exists; sign in again", 401);
 	if (row.last_seen < nowSeconds - SEEN_EVERY_S) await env.DB.prepare("UPDATE members SET last_seen = ?1 WHERE id = ?2").bind(nowSeconds, id).run();
 	const role = (await ownerId(env)) === id ? "owner" : "member";
-	const rights = role === "owner" ? new Set(Object.keys(RIGHTS)) : ((await rightsOf(env, id)).get(id) ?? new Set());
-	const folder = await env.DB.prepare("SELECT prefix FROM member_folders WHERE member_id = ?1").bind(id).first();
-	const me = { id, name: row.name, login: row.name, role, rights, folder: folder?.prefix ?? null };
+	const rights = role === "owner" ? new Set(Object.keys(RIGHTS)) : new Set([...(row.rights ? row.rights.split(",") : []), ...(row.moderator ? ["moderate"] : [])]);
+	const me = { id, name: row.name, login: row.name, role, rights, folder: row.folder ?? null };
 	return {
 		...me,
 		moderator: can(me, "moderate"),

@@ -24,7 +24,7 @@
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
  *            Refuses while any table that cannot be rebuilt from git holds
- *            rows (LIBRARY_TABLES in tools/lib/d1.mjs: accounts, libraries,
+ *            rows (every table but REBUILDABLE_TABLES in tools/lib/d1.mjs: accounts, libraries,
  *            synced likes and playlists, lyrics), unless --drop-library.
  *
  * Every command except status is a dry run unless --apply is given.
@@ -46,7 +46,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { D1Error, LIBRARY_TABLES, lyricsBackup, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
+import { D1Error, libraryTables, lyricsBackup, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
 import { MediaError, d1Sql, validateMedia } from "./lib/media.mjs";
 
 const DATABASE = "audio";
@@ -200,7 +200,7 @@ try {
 		if (values["keep-plays"] && values["drop-plays"]) fail("choose one of --keep-plays and --drop-plays");
 		const list = tables();
 		const plays = list.includes("plays") ? count("plays") : 0;
-		const held = Object.fromEntries(LIBRARY_TABLES.map((t) => [t, list.includes(t) ? count(t) : 0]));
+		const held = Object.fromEntries(libraryTables(schemaText).map((t) => [t, list.includes(t) ? count(t) : 0]));
 		const guard = libraryGuard(held, values["drop-library"]);
 		if (guard) fail(`reset refused: ${guard}`);
 		if (plays > 0 && !values["keep-plays"] && !values["drop-plays"]) {

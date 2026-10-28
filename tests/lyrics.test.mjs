@@ -364,8 +364,11 @@ test("merging: members propose, the Lyrics right compares and merges, nothing is
 
 	// Never over lyrics by accident: a merge is asked for.
 	assert.match((await call("gh-mod", "POST", "/lyrics/202/link", { to: 201 })).body.error, /merge/);
+	const before = env.DB.counter.queries;
 	const merged = await call("gh-mod", "POST", "/lyrics/202/link", { to: 201, merge: true, keep: "to", proposal: waiting[0].id });
 	assert.equal(merged.status, 200, JSON.stringify(merged.body));
+	// A merge of two songs with timing, translations and a linked song: well within D1's 50 queries a request (the writes are one batch).
+	assert.ok(env.DB.counter.queries - before <= 16, `a merge took ${env.DB.counter.queries - before} queries`);
 	assert.equal(merged.body.text, "[Verse 1]\n[00:03.00]Topa ngak ta un\n[00:07.00]Vang-liat-na!\n\n[Chorus]\nHallelujah", "Ann's words, Bo's timing");
 	assert.deepEqual(merged.body.shared, { source: 201, with: [201, 203] }, "the song linked to Bo's follows");
 	assert.equal((await read(203)).body.text, "[Verse 1]\nTopa ngak ta un\nVang-liat-na!\n\n[Chorus]\nHallelujah");

@@ -66,6 +66,7 @@
  * Credits are [{ person, role }]: on a work, words, music or arrangement; on
  * a text, translation or words (words adapted in that language).
  */
+import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 
@@ -83,23 +84,6 @@ const PEOPLE_LIMIT = 50;
 /** Roles on one book (songbook_members). */
 export const BOOK_ROLES = Object.freeze(["editor", "reader"]);
 const RANK = { read: 1, edit: 2, manage: 3 };
-
-function answer(status, body, cors, extra = {}) {
-	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
-	if (cors) headers.set("Access-Control-Allow-Origin", cors);
-	if (cors && cors !== "*") headers.set("Vary", "Origin");
-	return new Response(JSON.stringify(body), { status, headers });
-}
-
-async function readBody(request) {
-	const text = await request.text();
-	if (text.length > 64 * 1024) throw new MemberError("request body too large", 413);
-	try {
-		const v = JSON.parse(text || "{}");
-		if (v && typeof v === "object" && !Array.isArray(v)) return v;
-	} catch { /* below */ }
-	throw new MemberError("body must be a JSON object");
-}
 
 /* ------------------------------------------------------------ fields ---- */
 
@@ -243,8 +227,14 @@ async function readCredits(env, body, roles) {
 		if (!c || typeof c !== "object") throw new MemberError("each credit is { person, role }");
 		const person = id(c.person, "a credit's person");
 		if (!roles.includes(c.role)) throw new MemberError(`a credit's role must be one of ${roles.join(", ")}`);
-		if (!(await env.DB.prepare("SELECT 1 AS yes FROM song_people WHERE id = ?1").bind(person).first())) throw new MemberError(`there is no person ${person}`, 404);
 		out.push({ person, role: c.role });
+	}
+	// The people in one query, not one each.
+	const people = [...new Set(out.map((c) => c.person))];
+	if (people.length) {
+		const known = new Set(((await env.DB.prepare(`SELECT id FROM song_people WHERE id IN (${people.map((_, i) => `?${i + 1}`).join(", ")})`).bind(...people).all()).results ?? []).map((r) => r.id));
+		const missing = people.find((p) => !known.has(p));
+		if (missing !== undefined) throw new MemberError(`there is no person ${missing}`, 404);
 	}
 	return out;
 }
@@ -344,17 +334,29 @@ async function viewer(env, request, nowSeconds) {
 	return accessOf(env, await memberRow(env, await sessionMember(env, request, nowSeconds), nowSeconds));
 }
 
+// The public index at the edge (every device reads it at start and every 10 minutes): kept
+// INDEX_S, and let go after any change made here, as holds.js does.
+const INDEX_S = 300;
+const INDEX_KEY = new Request("https://cache.internal/songbooks/index/v1");
+const edge = () => globalThis.caches?.default ?? null;
+const forgetIndex = () => edge()?.delete(INDEX_KEY).catch((err) => console.warn("the songbooks index could not be removed from the edge cache", err));
+
 export async function handleSongbooks(request, env, ctx, { now = () => Date.now() } = {}) {
+	const res = await songbooksRoute(request, env, ctx, { now });
+	// A change (any POST that went through) makes the public index stale wherever it is kept.
+	if (request.method === "POST" && res.ok) {
+		const forgetting = forgetIndex();
+		if (ctx?.waitUntil) ctx.waitUntil(forgetting); else await forgetting;
+	}
+	return res;
+}
+
+async function songbooksRoute(request, env, ctx, { now }) {
 	const url = new URL(request.url);
 	const parts = url.pathname.replace(/^\/songbooks\/?/, "").split("/").filter(Boolean);
-	const origin = request.headers.get("origin");
-	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-	const cors = origin && origins.has(origin) ? origin : null;
+	const cors = corsOf(env, request);
 	const m = request.method;
-	if (m === "OPTIONS") {
-		if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
-		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
-	}
+	if (m === "OPTIONS") return preflight(cors);
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
 		if (!env.DB) throw new MemberError("songbooks are not set up on this Worker: missing DB", 503);
@@ -372,14 +374,21 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 		// GET /songbooks/index: every hymn of the books, for the app's search and lookups.
 		if (parts[0] === "index" && parts.length === 1 && m === "GET") {
 			const acc = await viewer(env, request, nowSeconds);
+			const cache = acc === NOBODY ? edge() : null;
+			const hit = cache ? await cache.match(INDEX_KEY) : null;
+			if (hit) return answer(200, await hit.json(), cors ?? "*", { "Cache-Control": `public, max-age=${INDEX_S}` });
 			const books = (await env.DB.prepare(`SELECT id, short, title, lang, public FROM songbooks b WHERE ${SEEN_SQL("b", acc)} ORDER BY title`).all()).results ?? [];
 			const entries = (await env.DB.prepare(`SELECT e.text_id, e.book_id, e.number, t.title FROM songbook_entries e JOIN songbooks b ON b.id = e.book_id JOIN song_texts t ON t.id = e.text_id
 				WHERE ${SEEN_SQL("b", acc)} ORDER BY e.book_id, e.number`).all()).results ?? [];
-			const signed = acc !== NOBODY;
-			return answer(200, {
+			const body = {
 				books: books.map((b) => ({ id: b.id, short: b.short, title: b.title, lang: b.lang, public: Boolean(b.public), may: mayOn(acc, b) })),
 				entries: entries.map((e) => [e.text_id, e.book_id, e.number, e.title]),
-			}, cors ?? "*", signed ? {} : { "Cache-Control": "public, max-age=300" });
+			};
+			if (cache) {
+				const put = cache.put(INDEX_KEY, new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${INDEX_S}` } }));
+				if (ctx?.waitUntil) ctx.waitUntil(put); else await put;
+			}
+			return answer(200, body, cors ?? "*", cache ? { "Cache-Control": `public, max-age=${INDEX_S}` } : {});
 		}
 		// GET /songbooks/members?q=: members by name, for appointing to a book.
 		if (parts[0] === "members" && parts.length === 1 && m === "GET") {
@@ -396,7 +405,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 			const acc = await writer(env, request, nowSeconds);
 			needAll(acc);
 			const me = acc.me;
-			const body = await readBody(request);
+			const body = await readBody(request, 64 * 1024);
 			const title = str(body, "title", { required: true });
 			const short = str(body, "short", { max: 8, required: true });
 			if (!SHORT.test(short)) throw new MemberError("short must be 1 to 8 letters or digits, such as TL");
@@ -430,7 +439,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 				return reply(200, { people: rows });
 			}
 			if (m !== "POST" || parts.length > 2) throw new MemberError(`no route ${m} ${url.pathname}`, 404);
-			const body = await readBody(request);
+			const body = await readBody(request, 64 * 1024);
 			const fields = [str(body, "name", { required: true }), str(body, "aka"), year(body, "born"), year(body, "died"), str(body, "note", { max: 1000 })];
 			if (parts.length === 1) {
 				const row = await env.DB.prepare("INSERT INTO song_people (name, aka, born, died, note, created_by, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id, name, aka, born, died, note").bind(...fields, me.login, nowSeconds).first();
@@ -464,7 +473,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 				return reply(200, { works: rows });
 			}
 			if (m !== "POST" || parts.length > 2) throw new MemberError(`no route ${m} ${url.pathname}`, 404);
-			const body = await readBody(request);
+			const body = await readBody(request, 64 * 1024);
 			const fields = [str(body, "title", { required: true }), lang(body), str(body, "tune"), str(body, "metre", { max: 40 }), year(body, "year"), str(body, "scripture", { max: 300 }), str(body, "topics", { max: 300 }), str(body, "note", { max: 1000 })];
 			if (wid !== null && !acc.all && !(await workEditable(env, acc, wid))) throw new MemberError("changing this work needs the Songbooks right: none of its texts is in a book you edit", 403);
 			const credits = await readCredits(env, body, WORK_ROLES);
@@ -491,7 +500,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 			const acc = await writer(env, request, nowSeconds);
 			if (!t) throw new MemberError(`there is no text ${tid}`, 404);
 			needOn(await textMay(env, acc, tid), "edit", "changing a song");
-			const body = await readBody(request);
+			const body = await readBody(request, 64 * 1024);
 			const work = body.work === undefined ? t.work_id : body.work === null ? null : id(body.work, "work");
 			if (work !== null && !(await env.DB.prepare("SELECT 1 AS yes FROM song_works WHERE id = ?1").bind(work).first())) throw new MemberError(`there is no work ${work}`, 404);
 			const from = body.from === undefined ? t.from_text : body.from === null ? null : id(body.from, "from");
@@ -526,7 +535,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 		const me = acc.me;
 		const b = await bookRow(env, bookId, acc);
 		const may = mayOn(acc, b);
-		const body = await readBody(request);
+		const body = await readBody(request, 64 * 1024);
 
 		// POST /songbooks/:book/collaborators {member, role}: appointed as editor or reader, or (role null) taken off.
 		if (parts[1] === "collaborators" && parts.length === 2) {
@@ -644,7 +653,7 @@ export async function handleSongbooks(request, env, ctx, { now = () => Date.now(
 		if (b.public) await touchTexts(env, [entry.text_id, textId], nowSeconds);
 		return answer(200, { book: bookId, number, text: textId }, cors);
 	} catch (err) {
-		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");
+		if (err instanceof HttpError) return answer(err.status, { error: err.message }, cors ?? "*");
 		console.error("songbooks request failed", err);
 		return answer(500, { error: "the songbooks request failed on the Worker" }, cors ?? "*");
 	}

@@ -54,6 +54,6 @@ D1 tables:
 | `library_playlists` | `(member_id, uid)`: `name`, `tracks` (JSON), `deleted`, `at`, `version`, `seq` |
 | `library_sync` | each member's counter, `seq` |
 
-Each request's writes are one D1 batch, a transaction: the member's counter goes up by one and every row written takes the new value, so "changed since" never misses a row another device wrote at the same moment. 25 changes per request keeps it within the Free plan's queries per request. Joining two accounts ([accounts.md](accounts.md#sign-ins)) moves the library too: likes the kept member has stay; the counter goes up so every device fetches the joined library.
+Each request's writes are one D1 batch, a transaction: the member's counter goes up by one and every row written takes the new value, so "changed since" never misses a row another device wrote at the same moment. 25 changes per request keeps the batch small (a batch counts as one of the Free plan's 50 queries a request, whatever its size); the app sends more in turn. Joining two accounts ([accounts.md](accounts.md#sign-ins)) moves the library too: likes the kept member has stay; the counter goes up so every device fetches the joined library.
 
 `/library/sync` is answered right after the session is checked (and the member is not blocked), before the rest of `/library/*`, to spend no more queries than it needs.

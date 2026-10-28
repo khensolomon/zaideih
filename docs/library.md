@@ -49,7 +49,7 @@ R2:
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).
 
-`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (`LIBRARY_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics); uploaded files would also be left in R2 without an owner. `--drop-library` overrides it.
+`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (every table of the schema but `REBUILDABLE_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics, and any table added later); uploaded files would also be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -161,7 +161,7 @@ Deleting is permanent. Blocking is the reversible step.
 | `POST /library/members/<id>` | Moderate members: `{blocked, reason}`, `{signOut: true}`; the owner and co-owners: `{rights}`, `{folder}` | the change, logged; answers the member as the list shows them |
 | `POST /library/members/<id>/uploads/delete {ids}` | Moderate members | up to 100 at once: `{ deleted, refused: [{ id, error }] }`, logged as one entry |
 
-`member_log` (`migrations/0012-member-log.sql`) cannot be rebuilt from git, so `tools/d1.mjs reset` keeps it (`LIBRARY_TABLES`). A list is four D1 queries and a member's page about twenty, within the Free plan's queries per request.
+`member_log` (`migrations/0012-member-log.sql`) cannot be rebuilt from git, so `tools/d1.mjs reset` keeps it (every table not in `REBUILDABLE_TABLES`). A list is four D1 queries and a member's page about twenty, within the Free plan's queries per request.
 
 ## Limits and cost
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { D1Error, isSystemTable, lyricsBackup, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "../tools/lib/d1.mjs";
 import { sqlite } from "./helpers/fakes.mjs";
 
@@ -38,7 +39,13 @@ test("wrangler's JSON output: rows, or a clear error", () => {
 });
 
 test("reset refuses to lose personal libraries unless asked", async () => {
-	const { libraryGuard } = await import("../tools/lib/d1.mjs");
+	const { libraryGuard, libraryTables, REBUILDABLE_TABLES } = await import("../tools/lib/d1.mjs");
+	// Every table of the schema is either rebuildable or guarded; a table added later is guarded by itself.
+	const schema = readFileSync(new URL("../worker/media/schema.sql", import.meta.url), "utf8");
+	const guarded = libraryTables(schema);
+	assert.ok(guarded.includes("members") && guarded.includes("library_sync") && guarded.includes("member_log"));
+	assert.ok(!guarded.some((t) => REBUILDABLE_TABLES.includes(t)));
+	assert.deepEqual([...REBUILDABLE_TABLES].sort(), [...REBUILDABLE_TABLES].filter((t) => schema.includes(`EXISTS ${t} `)).sort(), "every rebuildable table is in the schema");
 	assert.equal(libraryGuard({ members: 0, uploads: 0 }, false), null);
 	assert.match(libraryGuard({ members: 3, uploads: 12 }, false), /^members holds 3 rows and uploads holds 12 rows\. Personal libraries cannot be rebuilt from git.*--drop-library/);
 	assert.equal(libraryGuard({ members: 3, uploads: 12 }, true), null);

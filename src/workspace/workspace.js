@@ -1475,7 +1475,7 @@ export function mount(root, ctx) {
 				: html`<p class="adm-hint">Nothing played ${period === "all" ? "yet" : `in the ${PERIOD_NAMES[period].toLowerCase()}`}.</p>`}
 				${kind === "artists" ? html`<p class="adm-hint">An artist gets every play of each song they are credited on, so the plays of a duet count for both.</p>` : ""}
 			</section>
-			<p class="adm-hint">Updated ${new Date(s.stats.updated * 1000).toLocaleString()}; the Worker caches 5 minutes. <button class="link-btn" data-adm="totals">Read again</button></p>`;
+			<p class="adm-hint">Updated ${new Date(s.stats.updated * 1000).toLocaleString()}; the Worker caches 30 minutes. <button class="link-btn" data-adm="totals">Read again</button></p>`;
 	}
 
 	function suggestionsView() {

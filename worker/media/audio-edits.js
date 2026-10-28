@@ -23,6 +23,7 @@
  * /edits) and the current version otherwise. The owner and co-owners hold
  * the Audio studio right, and give it (Members) like any right.
  */
+import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 import { cut, Mp3Error } from "./mp3.js";
@@ -47,23 +48,6 @@ async function putParts(env, key, made, options) {
 	for (const p of made.parts) if (p.length) await writer.write(p);
 	await writer.close();
 	return putting;
-}
-
-function answer(status, body, cors, extra = {}) {
-	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
-	if (cors) headers.set("Access-Control-Allow-Origin", cors);
-	if (cors && cors !== "*") headers.set("Vary", "Origin");
-	return new Response(JSON.stringify(body), { status, headers });
-}
-
-async function readBody(request) {
-	const text = await request.text();
-	if (text.length > 16 * 1024) throw new MemberError("request body too large", 413);
-	try {
-		const v = JSON.parse(text || "{}");
-		if (v && typeof v === "object" && !Array.isArray(v)) return v;
-	} catch { /* below */ }
-	throw new MemberError("body must be a JSON object");
 }
 
 /** The original's R2 key, from the tracks table: under music/, or in place in storage (src/core/media-keys.js). */
@@ -122,14 +106,9 @@ async function detail(env, track) {
 export async function handleEdits(request, env, ctx, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
 	const parts = url.pathname.replace(/^\/edits\/?/, "").split("/").filter(Boolean);
-	const origin = request.headers.get("origin");
-	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-	const cors = origin && origins.has(origin) ? origin : null;
+	const cors = corsOf(env, request);
 	const m = request.method;
-	if (m === "OPTIONS") {
-		if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
-		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
-	}
+	if (m === "OPTIONS") return preflight(cors);
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
 		if (!env.DB) throw new MemberError("the audio studio is not set up on this Worker: missing DB", 503);
@@ -151,7 +130,7 @@ export async function handleEdits(request, env, ctx, { now = () => Date.now() } 
 			if (parts[1]) throw new MemberError(`no route ${m} ${url.pathname}`, 404);
 			return answer(200, await detail(env, track), cors);
 		}
-		const body = await readBody(request);
+		const body = await readBody(request, 16 * 1024);
 		const was = (await env.DB.prepare("SELECT version FROM audio_current WHERE track_id = ?1").bind(track).first())?.version ?? 0;
 		if (!Number.isSafeInteger(body.base) || body.base < 0) throw new MemberError("base must be the version the change was made against (0 for the original)");
 		if (body.base !== was) throw new MemberError(`version ${was} was made current meanwhile; open the song again`, 409);
@@ -193,7 +172,7 @@ export async function handleEdits(request, env, ctx, { now = () => Date.now() } 
 		forgetCurrent();
 		return answer(201, { ...(await detail(env, track)), made: { version, startMs: made.startMs, endMs: made.endMs, durationMs: made.durationMs, bytes: made.length } }, cors);
 	} catch (err) {
-		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");
+		if (err instanceof HttpError) return answer(err.status, { error: err.message }, cors ?? "*");
 		console.error("edits request failed", err);
 		return answer(500, { error: "the audio studio request failed on the Worker" }, cors ?? "*");
 	}

@@ -4,6 +4,7 @@ import { fakeD1, fakeLimiter, fakeR2, sqlite, tokenCheck } from "./helpers/fakes
 
 const { checkNewUpload, handleLibrary, handleSignedAudio, looksLike, signedUrl, verifySigned } = await import("../worker/media/library.js");
 const { handleAuth } = await import("../worker/media/auth.js");
+const { run: housekeeping } = await import("../worker/media/housekeeping.js");
 const { default: worker } = await import("../worker/media/script.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
@@ -116,6 +117,11 @@ test("a member uploads, lists, plays, edits and deletes their music", { skip }, 
 	const { id, res } = await upload(call, "tok-ann", song(), mp3(600));
 	assert.equal(res.status, 200, await res.clone().text());
 	assert.ok(env.BUCKET.objects.has(`users/42/${id}.mp3`));
+	// The file sent again (the first answer lost): the same answer, the file untouched; a different file is refused.
+	const again = await call("tok-ann", "PUT", `/library/uploads/${id}/file`, mp3(600));
+	assert.equal(again.status, 200);
+	assert.equal((await again.json()).id, id);
+	assert.equal((await call("tok-ann", "PUT", `/library/uploads/${id}/file`, mp3(700))).status, 409);
 
 	const lib = await (await call("tok-ann", "GET", "/library")).json();
 	assert.deepEqual(lib.space, { used: 600, quota: 2500, maxFile: 1000 });
@@ -387,11 +393,17 @@ test("asking to publish: a member asks, a reviewer listens and approves, the rel
 	assert.ok(!env.BUCKET.objects.has("music/tape-1990/One.mp3"), "nothing copied before the checks pass");
 	await env.BUCKET.delete("music/tape-1990/Two.mp3");
 
+	// An approval cut short earlier left a copy of One: it is this song's own (same size), kept, not refused.
+	await env.BUCKET.put("music/tape-1990/One.mp3", mp3(600), { httpMetadata: { contentType: "audio/mpeg" } });
 	const ok = await approve({ album: "0123456789abcdef", tracks });
 	assert.equal(ok.status, 200, await ok.clone().text());
+	assert.equal((await ok.clone().json()).copied, 1, "only Two was copied");
 	assert.equal(env.BUCKET.objects.get("music/tape-1990/One.mp3").bytes.length, 600);
 	assert.equal(env.BUCKET.objects.get("music/tape-1990/One.mp3").type, "audio/mpeg");
-	assert.equal((await approve({ album: "0123456789abcdef", tracks })).status, 409, "once");
+	const again = await approve({ album: "0123456789abcdef", tracks });
+	assert.equal(again.status, 200, "approved once: the same answer again for a retry (the first answer may have been lost)");
+	assert.deepEqual(await again.json(), { id, status: "approved", copied: 0, inPlace: false, again: true });
+	assert.equal((await approve({ album: "fedcba9876543210", tracks })).status, 409, "another album id is not a retry");
 	assert.equal((await call("tok-mod", "POST", `/library/requests/${id}/pr`, { url: "https://evil.example/pull/1" })).status, 400);
 	assert.equal((await call("tok-mod", "POST", `/library/requests/${id}/pr`, { url: "https://github.com/khensolomon/zaideih/pull/90" })).status, 204);
 	assert.equal((await call("tok-ann", "DELETE", `/library/uploads/${a.id}`)).status, 409, "a published song stays credited");
@@ -400,8 +412,11 @@ test("asking to publish: a member asks, a reviewer listens and approves, the rel
 	assert.deepEqual([lib.requests[0].status, lib.requests[0].pr, lib.requests[0].reviewer], ["approved", "https://github.com/khensolomon/zaideih/pull/90", "modi"]);
 	assert.deepEqual(lib.uploads.filter((u) => u.album === "Tape 1990").map((u) => u.status), ["published", "published"]);
 
-	// The release loads the tracks; the uploaded copies go and the library points at the catalog's files.
+	// The release loads the tracks; the daily housekeeping (or the request list) settles: the uploaded
+	// copies go and the library points at the catalog's files.
 	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, 'tape-1990', ?, 0)").run(t.track, t.key.split("/").pop());
+	const swept = await housekeeping(env);
+	assert.equal(swept.settled, 1);
 	lib = await (await call("tok-ann", "GET", "/library")).json();
 	assert.equal(lib.requests[0].status, "released");
 	assert.ok(!env.BUCKET.objects.has(`users/42/${a.id}.mp3`));
@@ -441,6 +456,7 @@ test("publishing in place: songs added from storage are published where they are
 
 	// The release loads them as an album in place; the files stay, and play from the catalog.
 	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, '/Google Music/Album A', ?, 0)").run(t.track, t.key.split("/").pop());
+	await call("tok-owner", "GET", "/library/requests");
 	const lib = await (await call("tok-owner", "GET", "/library")).json();
 	assert.equal(lib.requests.find((r) => r.id === id).status, "released");
 	assert.ok(env.BUCKET.objects.has("Google Music/Album A/01 One.mp3"), "a file from storage is never deleted");
@@ -670,7 +686,8 @@ test("asking to publish: a 60-song album is approved, listed and settled within 
 	await measured("approving", () => call("tok-mod", "POST", `/library/requests/${id}/approve`, { album: "0123456789abcdef", tracks }));
 	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM published_tracks WHERE request_id = ?").get(id).n, n);
 	for (const t of tracks) env.DB.raw.prepare("INSERT INTO tracks (id, folder_path, mp3, updated_at) VALUES (?, 'big-tape', ?, 0)").run(t.track, `${t.track}.mp3`);
-	const lib = await (await measured("the library read that settles it", () => call("tok-ann", "GET", "/library"))).json();
+	await measured("the request list, which settles it", () => call("tok-ann", "GET", "/library/requests"));
+	const lib = await (await measured("the library read", () => call("tok-ann", "GET", "/library"))).json();
 	assert.equal(lib.requests.find((r) => r.id === id).status, "released");
 	assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM uploads WHERE owner_id = 42 AND status = 'released' AND r2_key LIKE 'music/big-tape/%'").get().n, n);
 	assert.ok(![...env.BUCKET.objects.keys()].some((k) => k.startsWith("users/42/b")), "the uploaded copies are gone");

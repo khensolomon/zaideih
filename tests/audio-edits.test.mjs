@@ -4,7 +4,7 @@ import { fakeD1, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 globalThis.caches ??= { default: { match: async () => undefined, put: async () => {} } };
 const { handleAuth } = await import("../worker/media/auth.js");
-const { handleEdits, forgetCurrent } = await import("../worker/media/audio-edits.js");
+const { handleEdits, forgetCurrent, currentVersions } = await import("../worker/media/audio-edits.js");
 const { default: worker } = await import("../worker/media/script.js");
 const { scan } = await import("../worker/media/mp3.js");
 
@@ -84,4 +84,24 @@ test("audio studio: the Audio right cuts a song as a version, the original kept;
 	assert.equal(back.body.current, 1);
 	assert.deepEqual(back.body.log.map((l) => [l.action, l.version]), [["restore", 1], ["restore", 0], ["cut", 1]]);
 	assert.equal((await call("gh-ann", "GET", "/edits/7")).status, 403);
+});
+
+test("current versions: when D1 cannot be read, the last map read is kept, and the originals play at first", { skip }, async () => {
+	forgetCurrent();
+	const env = { DB: fakeD1() };
+	await env.DB.prepare("INSERT INTO audio_current (track_id, version, set_by, at) VALUES (7, 0, 'x', 0)").run();
+	const errors = [];
+	const quiet = console.error;
+	console.error = (...a) => errors.push(a[0]);
+	try {
+		assert.deepEqual([...(await currentVersions(env, 1000)).keys()], [7]);
+		const broken = { DB: { prepare() { return { all() { throw new Error("D1 is down"); } }; } } };
+		assert.deepEqual([...(await currentVersions(broken, 1000 + 86_400_000)).keys()], [7], "the last map read is kept");
+		forgetCurrent();
+		assert.equal((await currentVersions(broken, 1)).size, 0, "none at first: the originals play");
+		assert.equal(errors.length, 2);
+	} finally {
+		console.error = quiet;
+		forgetCurrent();
+	}
 });

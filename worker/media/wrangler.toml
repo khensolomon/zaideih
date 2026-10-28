@@ -72,6 +72,11 @@ database_id = "c9498604-47df-4dc9-b15c-357f5cb893ba"
 binding = "BUCKET"
 bucket_name = "media"
 
+# Housekeeping once a day, 03:17 UTC (script.js scheduled, housekeeping.js): released
+# requests settled, half-done uploads, old invites, challenges and run-out sessions removed.
+[triggers]
+crons = ["17 3 * * *"]
+
 # Rate limits for POST /plays, keyed per sender address (see script.js).
 # namespace_id must be unique within the Cloudflare account.
 [[ratelimits]]
@@ -95,3 +100,10 @@ simple = { limit = 2, period = 60 }
 name = "UPLOAD_LIMIT"
 namespace_id = "4204"
 simple = { limit = 30, period = 60 }
+
+# Passkey sign-in challenges (POST /auth/passkey/options {kind: "get"}, no sign-in needed), keyed
+# per sender address: each writes a D1 row, so a loop must not spend the day's writes.
+[[ratelimits]]
+name = "PASSKEY_LIMIT"
+namespace_id = "4205"
+simple = { limit = 10, period = 60 }

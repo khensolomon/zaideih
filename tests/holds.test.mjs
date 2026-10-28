@@ -75,3 +75,23 @@ test("holds: the Albums right holds an album back and gives it back; the public 
 	assert.equal((await call("gh-ann", "GET", "/holds/detail")).status, 403);
 	assert.equal((await call("gh-owner", "POST", "/holds/detail", {})).status, 404);
 });
+
+test("held songs: when D1 cannot be read, the last set read is kept, and none at first", { skip }, async () => {
+	forgetHeld();
+	const env = { DB: fakeD1() };
+	await env.DB.prepare("INSERT INTO album_hold_tracks (album_id, track_id) VALUES ('a', 7)").run();
+	const errors = [];
+	const quiet = console.error;
+	console.error = (...a) => errors.push(a[0]);
+	try {
+		assert.deepEqual([...(await heldTracks(env, 1000))], [7]);
+		const broken = { DB: { prepare() { return { all() { throw new Error("D1 is down"); } }; } } };
+		assert.deepEqual([...(await heldTracks(broken, 1000 + 86_400_000))], [7], "the last set read is kept");
+		forgetHeld();
+		assert.deepEqual([...(await heldTracks(broken, 1))], [], "none at first: the catalog plays");
+		assert.equal(errors.length, 2);
+	} finally {
+		console.error = quiet;
+		forgetHeld();
+	}
+});

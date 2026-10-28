@@ -32,12 +32,9 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_NOTE = 120;
 const MAX_LINES = 300;
 
-export class SuggestError extends Error {
-	constructor(message, status = 400) {
-		super(message);
-		this.status = status;
-	}
-}
+import { HttpError } from "./http.js";
+
+export class SuggestError extends HttpError {}
 
 /* ------------------------------------------------------------ App token ---- */
 

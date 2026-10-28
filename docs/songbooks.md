@@ -129,4 +129,4 @@ Routes in `worker/media/songbooks.js` (its header has the full list):
 
 A text's words are lyrics rows under its id (`/lyrics/<text id>`): saved, versioned, hidden and restored there. For a text in no public book, the public read answers 404, and only the Songbooks right reads or edits it; the Songbooks right also looks after its versions as the Lyrics right does. Texts are not joined to recordings and not in the app's lyrics index until step 4.
 
-Tables (`migrations/0007-songbooks.sql`): `songbooks`, `songbook_entries`, `song_texts`, `song_works`, `song_people`, `song_credits`; kept by `tools/d1.mjs reset` (`LIBRARY_TABLES`).
+Tables (`migrations/0007-songbooks.sql`): `songbooks`, `songbook_entries`, `song_texts`, `song_works`, `song_people`, `song_credits`; kept by `tools/d1.mjs reset` (every table not in `REBUILDABLE_TABLES`).
