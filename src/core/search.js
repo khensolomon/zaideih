@@ -47,13 +47,18 @@ export function search(catalog, query, limits = { tracks: 50, albums: 24, artist
  * core/uploads.js), for searching with "My music" on; the catalog itself
  * when there is none. Nothing leaves the device: uploads are already here.
  */
+let joined = null;
 export function withMine(catalog) {
 	const extra = catalog.extra;
 	if (!extra?.tracks.size) return catalog;
-	return Object.assign(Object.create(catalog), {
+	// Joining 28,000 songs costs a few milliseconds a keystroke: kept until the catalog is built again or the uploads change.
+	if (joined?.tracks === catalog.tracks && joined.version === extra.version && joined.catalog === catalog) return joined.value;
+	const value = Object.assign(Object.create(catalog), {
 		albums: new Map([...catalog.albums, ...extra.albums]),
 		tracks: new Map([...catalog.tracks, ...extra.tracks]),
 	});
+	joined = { catalog, tracks: catalog.tracks, version: extra.version, value };
+	return value;
 }
 
 /** What a search looks in: everything, or one kind of record. */

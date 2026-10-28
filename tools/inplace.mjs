@@ -32,13 +32,12 @@
  * Example:
  *   node tools/inplace.mjs point --album 1884014c6ff5229e --folder "Khen/Miaow"
  */
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { inPlace } from "../src/core/media-keys.js";
 import { wranglerRows } from "./lib/d1.mjs";
+import { wrangler as runWrangler, WranglerError } from "./lib/wrangler.mjs";
 import { MediaError, pointInPlace, stringifyMedia, validateMedia } from "./lib/media.mjs";
 
 const MEDIA = "assets/data/media.json";
@@ -49,18 +48,13 @@ const DATABASE = "audio";
 /** The Worker keeps a song's place this long (worker/media/script.js), with an hour to spare. */
 const SETTLE_S = 25 * 3600;
 
-function wranglerCommand() {
-	const own = resolve("worker/media/node_modules/.bin/wrangler");
-	if (existsSync(own)) return [own];
-	if (process.env.WRANGLER) return ["npx", "--yes", process.env.WRANGLER];
-	fail("wrangler is not installed. Run: npm --prefix worker/media install (or set WRANGLER, e.g. WRANGLER=wrangler@4.151.2)");
-}
 function wrangler(args) {
-	const [bin, ...pre] = wranglerCommand();
-	const r = spawnSync(bin, [...pre, ...args, "--config", CONFIG], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-	if (r.error) fail(`could not run wrangler: ${r.error.message}`);
-	if (r.status !== 0) fail(`wrangler ${args.slice(0, 3).join(" ")} failed (exit ${r.status}):\n${(r.stderr || r.stdout).trim().slice(-2000)}`);
-	return r.stdout;
+	try {
+		return runWrangler(args, { config: CONFIG, maxBuffer: 64 * 1024 * 1024 });
+	} catch (err) {
+		if (err instanceof WranglerError) fail(err.message);
+		throw err;
+	}
 }
 
 function fail(message) {

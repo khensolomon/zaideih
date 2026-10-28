@@ -189,13 +189,15 @@ async function checkClientData(env, clientDataJSON, { type, origin, nowSeconds }
  * answers errors). `memberOf()` answers the session's member, or throws.
  * Answers [status, body].
  */
-export async function handlePasskey(env, route, body, { origin, memberOf, nowSeconds }) {
+export async function handlePasskey(env, route, body, { origin, memberOf, nowSeconds, sender = "unknown" }) {
 	if (!env.DB) throw new MemberError("passkeys are not set up on this Worker: missing the D1 binding DB", 503);
 	const rpId = rpIdFor(origin);
 	const rpIdHash = await sha256(new TextEncoder().encode(rpId));
 
 	if (route === "/auth/passkey/options") {
 		if (body.kind === "get") {
+			// Anyone may ask (signing in), and each challenge is a D1 row: a few a minute per address.
+			if (env.PASSKEY_LIMIT && !(await env.PASSKEY_LIMIT.limit({ key: sender })).success) throw new MemberError("too many sign-in attempts; wait a minute and try again", 429);
 			return [200, { challenge: await newChallenge(env, { kind: "get", memberId: null, rpId, nowSeconds }), rpId, timeout: CHALLENGE_S * 1000 }];
 		}
 		if (body.kind !== "create") throw new MemberError('kind must be "create" or "get"');

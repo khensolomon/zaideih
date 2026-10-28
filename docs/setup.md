@@ -4,7 +4,7 @@ Everything needed to run Zaideih from a fresh clone to a released site, in order
 
 ## 1. Local development
 
-Needs Node.js 22 (`node --version`) and git.
+Needs Node.js 22.13 or later (`node --version`; the tests use `node:sqlite`) and git.
 
 ```bash
 git clone https://github.com/khensolomon/zaideih.git && cd zaideih

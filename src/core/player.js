@@ -19,7 +19,10 @@ const PERSIST_KEY = "player";
 const PREVIOUS_RESTART_SECONDS = 3;
 
 const audio = new Audio();
-audio.preload = "auto";
+// The song restored from the last visit: only its details until the person plays something, not
+// its whole file on every start; from the first play on, the next song's file is fetched ahead.
+audio.preload = "metadata";
+audio.addEventListener("play", () => { audio.preload = "auto"; }, { once: true });
 // CORS mode is required for the live sound processing and the animations
 // (core/sound.js); the audio Worker answers allowed origins with
 // Access-Control-Allow-Origin.
@@ -136,6 +139,8 @@ async function sourceFor(track) {
 // download was being read) changes nothing, and its blob address is let go.
 let loads = 0;
 let resumeAt = null;
+// A restored queue whose song is not in the catalog yet (an upload, before the library is read).
+let pending = null;
 
 async function load(autoplay, startAt = 0) {
 	const track = current();
@@ -474,12 +479,12 @@ export const player = {
 		bindMediaSession();
 		const saved = await db.get("kv", PERSIST_KEY);
 		if (saved?.queue?.length) {
-			// Drop ids that no longer exist in the catalog, and say so.
-			const known = (ids) => ids.filter((id) => catalog.tracks.has(id));
+			// Songs no longer in the catalog go, and the person is told. A person's own uploads ("u…")
+			// arrive with their library after signing in, so they are kept, and resolved when played.
+			const known = (ids) => ids.filter((id) => catalog.track(id) || /^u\d+$/.test(String(id)));
 			const queue = known(saved.queue);
-			if (queue.length !== saved.queue.length) {
-				notify(`${saved.queue.length - queue.length} queued track(s) are no longer in the catalog and were removed.`);
-			}
+			const gone = saved.queue.length - queue.length;
+			if (gone) notify(`${gone} queued ${gone === 1 ? "song is" : "songs are"} no longer in the catalog and ${gone === 1 ? "was" : "were"} removed.`);
 			if (queue.length) {
 				const prevId = saved.queue[saved.index];
 				Object.assign(state, {
@@ -491,10 +496,20 @@ export const player = {
 					context: saved.context ?? "",
 				});
 				const sameTrack = queue[state.index] === prevId;
-				await load(false, sameTrack ? saved.position : 0);
+				// An upload not here yet (the library is read after signing in): loaded once it is (relink).
+				if (!current()) pending = { id: queue[state.index], position: sameTrack ? saved.position : 0 };
+				else await load(false, sameTrack ? saved.position : 0);
 			}
 		}
 		changed();
+	},
+
+	/** The song restored from the last visit, once the person's library has brought it (app.js, on the uploads' change). */
+	async relink() {
+		if (!pending || !catalog.track(pending.id)) return;
+		const { position } = pending;
+		pending = null;
+		await load(false, position);
 	},
 
 	/** Replaces the queue with `ids` and starts at `startId` (or the first). */

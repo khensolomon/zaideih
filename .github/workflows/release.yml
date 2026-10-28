@@ -158,6 +158,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Built again here, not taken from the test job: the test job builds to check the build, and
+      # a job's files do not carry over; a build is quick and comes out the same from the same commit.
       - run: npm run build
       # Cloudflare's list of deployments shows the tag (the version) and the
       # message (the note from the release line, or the version).

@@ -1,6 +1,6 @@
 {
 	"name": "zaideih",
-	"version": "26.10.28.1",
+	"version": "26.10.28.2",
 	"private": true,
 	"description": "Zaideih Music Station: offline-first music app for web (PWA) and desktop (Electron).",
 	"type": "module",
@@ -22,7 +22,7 @@
 		"esbuild": "0.25.10"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=22.13"
 	},
 	"homepage": "https://github.com/khensolomon/zaideih#readme",
 	"repository": {

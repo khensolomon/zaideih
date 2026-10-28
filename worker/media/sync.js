@@ -20,7 +20,7 @@
  * (library_sync.seq) goes up by one and every row written takes the new
  * value, so "changed since" never misses a row written by another device at
  * the same moment. A request carries at most MAX_CHANGES changes, which keeps
- * it within the Free plan's queries per request; the app sends more in turn.
+ * the batch small (one batch is one query, whatever its size); the app sends more in turn.
  */
 import { MemberError } from "./members.js";
 

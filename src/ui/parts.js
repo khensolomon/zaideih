@@ -109,8 +109,8 @@ export function trackRow(t, listKey, index, opts = {}) {
 	const no = opts.thumb ? html`<span class="thumb">${cover(t.album, { label: false })}</span>` : html`<span>${opts.number ?? index + 1}</span>`;
 	return html`<li class="track${now ? " now" : ""}${opts.thumb ? " thumbed" : ""}${off ? " off" : ""}" data-track="${t.id}" data-index="${index}" ${opts.extra ? html`data-extra="${opts.extra}"` : ""}>
 		<span class="no">${no}<i class="eq" aria-hidden="true"><i></i><i></i><i></i></i></span>
-		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}" aria-label="Play ${t.title}">
-			<span class="title ${scriptClass(t.title)}">${t.title}${lyric}${t.upload && opts.thumb ? html`<span class="mine-mark" title="My music">${icon("lock", "My music")}</span>` : ""}</span>
+		<button class="main" data-act="play" data-list="${listKey}" data-id="${t.id}">
+			<span class="sr">Play </span><span class="title ${scriptClass(t.title)}">${t.title}${lyric}${t.upload && opts.thumb ? html`<span class="mine-mark" title="My music">${icon("lock", "My music")}</span>` : ""}</span>
 			<span class="sub ${scriptClass(String(sub))}">${sub}</span>
 		</button>
 		<span class="saved" title="${offline.has(t.id) ? "Downloaded" : ""}">${offline.has(t.id) ? icon("saved", "Downloaded") : ""}</span>
@@ -153,6 +153,7 @@ export function showMore(button) {
 	} else {
 		listEl.insertAdjacentHTML("beforeend", p.albums.slice(p.offset, next).map(albumTile).join(""));
 	}
+	const first = listEl.children[p.offset];
 	p.offset = next;
 	const total = (p.tracks ?? p.albums).length;
 	if (p.offset >= total) {
@@ -160,6 +161,13 @@ export function showMore(button) {
 		pending.delete(id);
 	} else if (p.tracks) {
 		button.textContent = `Show ${Math.min(p.step, total - p.offset)} more`;
+	}
+	// Keyboard and screen-reader users land on the first row added (its first control), not on a button that may be gone.
+	const wasFocused = document.activeElement === button || !button.isConnected;
+	const target = first?.querySelector("button, a") ?? first;
+	if (wasFocused && target) {
+		if (!target.matches("button, a, [tabindex]")) target.setAttribute("tabindex", "-1");
+		target.focus({ preventScroll: true });
 	}
 }
 

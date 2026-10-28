@@ -20,6 +20,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 const MIME = {
 	".html": "text/html; charset=utf-8",
@@ -182,7 +183,8 @@ export async function serve({ dir = "dist/web", port = 8080, host = "127.0.0.1",
 	};
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run as a script (not imported by tests): the path compared as a file URL, so spaces or Windows drives in it do not matter.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	const { values } = parseArgs({
 		options: {
 			dir: { type: "string", default: "dist/web" },

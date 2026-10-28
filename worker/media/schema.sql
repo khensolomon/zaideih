@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS tracks (
 -- =============================================================================
 -- tracks_status: what the Worker observed when serving /audio/:id
 -- =============================================================================
--- served       fresh fetches that reached the Worker. Not a play count:
+-- served       one in 20 of the fresh fetches that reached the Worker (a sample; script.js SERVED_SAMPLE). Not a play count:
 --              browser-cached replays and range continuations never arrive.
 -- not_found    a tracks row exists but R2 has no object (drift between
 --              media.json and the bucket)

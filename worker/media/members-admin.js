@@ -8,17 +8,13 @@
  * to, and searched by, the owner and co-owners only. Nothing here returns a
  * session, a passkey or an address to play an upload.
  *
- * Each request stays within D1's queries per request on the Free plan: a
- * list is four queries, a member's page about twenty.
+ * Each request stays within D1's 50 queries a request on the Free plan: a
+ * list is five queries beyond the sign-in's, a member's page about twenty.
  */
+import { HttpError } from "./http.js";
 import { can, ownerId, RIGHTS, rightsOf } from "./members.js";
 
-export class AdminError extends Error {
-	constructor(message, status = 400) {
-		super(message);
-		this.status = status;
-	}
-}
+export class AdminError extends HttpError {}
 
 export const PAGE = 50;
 const MAX_PAGE = 100;

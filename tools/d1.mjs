@@ -24,7 +24,7 @@
  *            the plays table holds counts, choose --keep-plays (they are
  *            read first and put back) or --drop-plays (they are lost).
  *            Refuses while any table that cannot be rebuilt from git holds
- *            rows (LIBRARY_TABLES in tools/lib/d1.mjs: accounts, libraries,
+ *            rows (every table but REBUILDABLE_TABLES in tools/lib/d1.mjs: accounts, libraries,
  *            synced likes and playlists, lyrics), unless --drop-library.
  *
  * Every command except status is a dry run unless --apply is given.
@@ -41,13 +41,12 @@
  *   node tools/d1.mjs status
  *   node tools/d1.mjs reset --keep-plays --apply
  */
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { D1Error, LIBRARY_TABLES, lyricsBackup, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
+import { D1Error, libraryTables, lyricsBackup, isSystemTable, libraryGuard, migrationPlan, migrationSql, recordMigrationsSql, resetSql, schemaSql, schemaTables, wranglerRows } from "./lib/d1.mjs";
 import { MediaError, d1Sql, validateMedia } from "./lib/media.mjs";
+import { wrangler as runWrangler, WranglerError } from "./lib/wrangler.mjs";
 
 const DATABASE = "audio";
 const CONFIG = "worker/media/wrangler.toml";
@@ -78,21 +77,14 @@ const [command] = positionals;
 const where = values.local ? "--local" : "--remote";
 const place = values.local ? "the local database" : `Cloudflare's "${DATABASE}" database`;
 
-function wranglerCommand() {
-	const own = resolve("worker/media/node_modules/.bin/wrangler");
-	if (existsSync(own)) return [own];
-	if (process.env.WRANGLER) return ["npx", "--yes", process.env.WRANGLER];
-	fail("wrangler is not installed. Run: npm --prefix worker/media install (or set WRANGLER, e.g. WRANGLER=wrangler@4.151.2)");
-}
-
 /** Runs wrangler d1 execute; returns stdout. Stops with wrangler's own message on failure. */
 function wrangler(args, { json = false } = {}) {
-	const [bin, ...pre] = wranglerCommand();
-	const all = [...pre, "d1", "execute", DATABASE, where, "--config", CONFIG, ...(json ? ["--json"] : []), ...args];
-	const r = spawnSync(bin, all, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-	if (r.error) fail(`could not run wrangler: ${r.error.message}`);
-	if (r.status !== 0) fail(`wrangler failed (exit ${r.status}):\n${(r.stderr || r.stdout).trim().slice(-2000)}`);
-	return r.stdout;
+	try {
+		return runWrangler(["d1", "execute", DATABASE, where, ...(json ? ["--json"] : []), ...args], { config: CONFIG });
+	} catch (err) {
+		if (err instanceof WranglerError) fail(err.message);
+		throw err;
+	}
 }
 const query = (sql) => wranglerRows(wrangler(["--command", sql], { json: true }));
 
@@ -200,7 +192,7 @@ try {
 		if (values["keep-plays"] && values["drop-plays"]) fail("choose one of --keep-plays and --drop-plays");
 		const list = tables();
 		const plays = list.includes("plays") ? count("plays") : 0;
-		const held = Object.fromEntries(LIBRARY_TABLES.map((t) => [t, list.includes(t) ? count(t) : 0]));
+		const held = Object.fromEntries(libraryTables(schemaText).map((t) => [t, list.includes(t) ? count(t) : 0]));
 		const guard = libraryGuard(held, values["drop-library"]);
 		if (guard) fail(`reset refused: ${guard}`);
 		if (plays > 0 && !values["keep-plays"] && !values["drop-plays"]) {

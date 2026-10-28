@@ -16,6 +16,7 @@
  * The owner and co-owners hold the Catalog right; the owner gives it to
  * others (Members), as any right.
  */
+import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 import { cleanValue, DraftError } from "../../src/workspace/draft.js";
@@ -28,23 +29,6 @@ const PUBLIC_S = 60;
 const PUBLIC_KEY = new Request("https://cache.internal/live/v1");
 const edge = () => globalThis.caches?.default ?? null;
 const WHY = new Set(["undo", "released", "overtaken"]);
-
-function answer(status, body, cors, extra = {}) {
-	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
-	if (cors) headers.set("Access-Control-Allow-Origin", cors);
-	if (cors && cors !== "*") headers.set("Vary", "Origin");
-	return new Response(JSON.stringify(body), { status, headers });
-}
-
-async function readBody(request) {
-	const text = await request.text();
-	if (text.length > 512 * 1024) throw new MemberError("request body too large", 413);
-	try {
-		const v = JSON.parse(text || "{}");
-		if (v && typeof v === "object" && !Array.isArray(v)) return v;
-	} catch { /* below */ }
-	throw new MemberError("body must be a JSON object");
-}
 
 /** A change's record id, checked: an album's ui, or a track's or artist's id. */
 function itemId(kind, id) {
@@ -114,14 +98,9 @@ async function forgetPublic() {
 export async function handleLive(request, env, ctx, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
 	const match = /^\/live(?:\/(detail|remove))?\/?$/.exec(url.pathname);
-	const origin = request.headers.get("origin");
-	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-	const cors = origin && origins.has(origin) ? origin : null;
+	const cors = corsOf(env, request);
 	const m = request.method;
-	if (m === "OPTIONS") {
-		if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
-		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
-	}
+	if (m === "OPTIONS") return preflight(cors);
 	if (!match) return answer(404, { error: "live catalog addresses are /live, /live/detail and /live/remove" }, cors ?? "*");
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
@@ -152,7 +131,7 @@ export async function handleLive(request, env, ctx, { now = () => Date.now() } =
 			}, cors);
 		}
 		if (m !== "POST" || match[1] === "detail") throw new MemberError(`no route ${m} ${url.pathname}`, 404);
-		const body = await readBody(request);
+		const body = await readBody(request, 512 * 1024);
 		const list = body.changes;
 		if (!Array.isArray(list) || !list.length || list.length > MAX_CHANGES) throw new MemberError(`changes must list 1 to ${MAX_CHANGES} changes`);
 
@@ -183,7 +162,7 @@ export async function handleLive(request, env, ctx, { now = () => Date.now() } =
 		await forgetPublic();
 		return answer(200, await publicLive(env), cors);
 	} catch (err) {
-		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");
+		if (err instanceof HttpError) return answer(err.status, { error: err.message }, cors ?? "*");
 		console.error("live catalog request failed", err);
 		return answer(500, { error: "the live catalog request failed on the Worker" }, cors ?? "*");
 	}

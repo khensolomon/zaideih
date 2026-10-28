@@ -26,6 +26,7 @@ export const offline = {
 
 	async init() {
 		state.downloaded = new Set(await db.keys("audio"));
+		await loadMeta();
 		if (navigator.storage?.persisted) state.persisted = await navigator.storage.persisted();
 		emit("downloads");
 	},
@@ -69,7 +70,9 @@ export const offline = {
 			if (state.active?.track.id === id) removing.add(id);
 			await db.delete("audio", id);
 			state.downloaded.delete(id);
+			meta.delete(id);
 		}
+		await saveMeta();
 		emit("downloads");
 	},
 
@@ -79,8 +82,7 @@ export const offline = {
 	 * copy kept plays until the new one has arrived.
 	 */
 	async refreshVersions(catalog) {
-		const rows = await db.all("audio");
-		const stale = rows.filter((r) => (r.v ?? 0) !== (versionOf(r.id) ?? 0)).map((r) => catalog.track(r.id)).filter(Boolean);
+		const stale = [...meta].filter(([id, m]) => m.v !== (versionOf(id) ?? 0)).map(([id]) => catalog.track(id)).filter(Boolean);
 		if (!stale.length) return 0;
 		state.queue.push(...stale.filter((t) => !this.isPending(t.id)));
 		emit("downloads");
@@ -88,13 +90,40 @@ export const offline = {
 		return stale.length;
 	},
 
+	/** What is downloaded: the count and bytes (from the sizes kept beside the files, not the files), and the device's storage. */
 	async usage() {
-		const rows = await db.all("audio");
-		const bytes = rows.reduce((sum, r) => sum + r.size, 0);
+		let bytes = 0;
+		for (const m of meta.values()) bytes += m.size;
 		const estimate = navigator.storage?.estimate ? await navigator.storage.estimate() : null;
-		return { count: rows.length, bytes, quota: estimate?.quota ?? null, used: estimate?.usage ?? null };
+		return { count: meta.size, bytes, quota: estimate?.quota ?? null, used: estimate?.usage ?? null };
 	},
 };
+
+/*
+ * The size and version of each download, kept as one small record (kv
+ * "offline-meta"): the usage and the versions to refresh are read from it,
+ * never by reading every downloaded song back out of the database.
+ */
+const META_KEY = "offline-meta";
+const meta = new Map();
+async function loadMeta() {
+	meta.clear();
+	let saved = null;
+	try { saved = await db.get("kv", META_KEY); } catch (err) { console.warn("the downloads' sizes could not be read", err); }
+	for (const [id, v] of Object.entries(saved ?? {})) if (state.downloaded.has(idOf(id))) meta.set(idOf(id), { size: v[0], v: v[1] });
+	// Downloads from before this record was kept: read once, then kept.
+	const missing = [...state.downloaded].filter((id) => !meta.has(id));
+	for (const id of missing) {
+		const row = await db.get("audio", id);
+		if (row) meta.set(id, { size: row.size, v: row.v ?? 0 });
+	}
+	if (missing.length || Object.keys(saved ?? {}).length !== meta.size) await saveMeta();
+}
+// Keys are track ids: numbers for the catalog's songs, "u<n>" for uploads; a record's keys are text.
+const idOf = (key) => (/^\d+$/.test(key) ? Number(key) : key);
+async function saveMeta() {
+	try { await db.put("kv", Object.fromEntries([...meta].map(([id, m]) => [id, [m.size, m.v]])), META_KEY); } catch (err) { console.warn("the downloads' sizes could not be kept", err); }
+}
 
 let running = false;
 // Removed while downloading: deleted when the download finishes, never kept.
@@ -110,7 +139,7 @@ async function pump() {
 			emit("downloads");
 			try {
 				await download(track);
-				if (removing.delete(track.id)) await db.delete("audio", track.id);
+				if (removing.delete(track.id)) { await db.delete("audio", track.id); meta.delete(track.id); await saveMeta(); }
 				else state.downloaded.add(track.id);
 			} catch (err) {
 				removing.delete(track.id);
@@ -168,7 +197,10 @@ async function download(track) {
 	const blob = new Blob(chunks, { type });
 	try {
 		// The version downloaded (core/audio-edits.js), to download it again when another becomes the one played.
-		await db.put("audio", { id: track.id, blob, size: blob.size, type, at: Date.now(), v: versionOf(track.id) ?? 0 });
+		const v = versionOf(track.id) ?? 0;
+		await db.put("audio", { id: track.id, blob, size: blob.size, type, at: Date.now(), v });
+		meta.set(track.id, { size: blob.size, v });
+		await saveMeta();
 	} catch (err) {
 		const quota = err?.name === "QuotaExceededError";
 		const e = new Error(quota ? "the device is out of storage space for downloads." : `saving failed (${err.message}).`);

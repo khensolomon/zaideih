@@ -49,7 +49,7 @@ R2:
 
 Upload ids are their own sequence, not catalog track ids; a published upload gets a catalog track id then (`published_tracks`).
 
-`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (`LIBRARY_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics); uploaded files would also be left in R2 without an owner. `--drop-library` overrides it.
+`tools/d1.mjs reset` refuses while any table that cannot be rebuilt from git holds rows (every table of the schema but `REBUILDABLE_TABLES` in `tools/lib/d1.mjs`: accounts, libraries, synced likes and playlists, lyrics, and any table added later); uploaded files would also be left in R2 without an owner. `--drop-library` overrides it.
 
 ## Uploading
 
@@ -80,7 +80,7 @@ Uploads are the only files a library owns (`users/…`): only they count towards
 A member can ask for an album of their uploads to join the public catalog. The catalog stays in git and is changed only by a reviewed, released pull request; publishing is that, prepared from the member's files.
 
 1. **Ask** (the album's page in the app, Ask to publish): the whole album, with its language, a note for the reviewer (who made it, why it may be shared) and a statement that they may share it. Only MP3 can be published, since the catalog streams MP3 (`media.json`, `/audio`); an album with other formats is refused naming the files, to be uploaded again as MP3. While asked, its songs cannot be edited or deleted; the member can withdraw the request.
-2. **Review** (Workspace, Requests, with Review publishing): every song can be listened to. **Reject** needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
+2. **Review** (Workspace, Requests, with Review publishing): every song can be listened to. **Decline** (`POST …/reject`) needs a reason, which the member sees on the album; the songs are theirs alone again. **Approve** opens a form filled from the uploads: title, year, language, genres, each song's title and artists (names matched to the catalog's artists; a new name is added as a new artist).
 3. **Approved**: everything is checked first (a free folder `music/<language>/<album>/`, new track ids, no file overwritten), then the Worker copies each song there (`POST /library/requests/<id>/approve`), all or nothing. Songs added from storage, all in one folder, are not copied: they are published in place (below). The Workspace then opens the pull request with `albums.json`, `media.json`, `artist.name.json` when artists were added, and the next version, titled `release: web+d1 <version> Published <album>`: merging it, in the Workspace (Merge and release) or on GitHub, releases the site and loads the track paths. A reviewer without write access sends it as a suggestion instead, which an editor merges and releases. If the pull request could not be opened, Open the pull request tries again with the same album id, track ids and files.
 4. **Released**: once D1 `tracks` holds every song of the request, the next library read settles it: the member's uploaded copies (`users/…`) are deleted and their library entries point at the catalog's files, so they play as before and no longer use the member's space. A song added from storage keeps its file. The album page says "In the catalog, published by you" with a link to the catalog album.
 
@@ -161,7 +161,7 @@ Deleting is permanent. Blocking is the reversible step.
 | `POST /library/members/<id>` | Moderate members: `{blocked, reason}`, `{signOut: true}`; the owner and co-owners: `{rights}`, `{folder}` | the change, logged; answers the member as the list shows them |
 | `POST /library/members/<id>/uploads/delete {ids}` | Moderate members | up to 100 at once: `{ deleted, refused: [{ id, error }] }`, logged as one entry |
 
-`member_log` (`migrations/0012-member-log.sql`) cannot be rebuilt from git, so `tools/d1.mjs reset` keeps it (`LIBRARY_TABLES`). A list is four D1 queries and a member's page about twenty, within the Free plan's queries per request.
+`member_log` (`migrations/0012-member-log.sql`) cannot be rebuilt from git, so `tools/d1.mjs reset` keeps it (every table not in `REBUILDABLE_TABLES`). A list is four D1 queries and a member's page about twenty, within the Free plan's queries per request.
 
 ## Limits and cost
 

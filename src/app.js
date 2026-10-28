@@ -12,7 +12,7 @@ import { player } from "./core/player.js";
 import { startPlayCounting } from "./core/plays.js";
 import { applyTotals, startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { startHolds } from "./core/holds.js";
-import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
+import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_CSS, WORKSPACE_URL } from "./config.js";
 import { LEVELS, readWho, saveWho, SESSION_KEY, TOKEN_KEY } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
@@ -177,6 +177,20 @@ route("admin", (_catalog, _params, query) => {
 });
 
 // The Workspace (src/workspace): its own bundle, loaded only here; linked for those signed in with GitHub.
+/** The Workspace's stylesheet, added to the page the first time it opens; resolves when it is in (or failed: the page still works, less styled). */
+let workspaceCss = null;
+function workspaceStyles() {
+	if (!WORKSPACE_CSS) return Promise.resolve();
+	workspaceCss ??= new Promise((resolve) => {
+		const link = document.createElement("link");
+		link.rel = "stylesheet";
+		link.href = new URL(WORKSPACE_CSS, document.baseURI).href;
+		link.onload = () => resolve();
+		link.onerror = () => { console.warn("the Workspace's stylesheet could not be loaded"); resolve(); };
+		document.head.append(link);
+	});
+	return workspaceCss;
+}
 route("workspace", () => ({
 	title: "Workspace",
 	body: html`<div class="workspace" id="workspace-root"><p class="muted adm-loading">Loading…</p></div>`,
@@ -184,7 +198,8 @@ route("workspace", () => ({
 		const root = $("#workspace-root", view);
 		if (!WORKSPACE_URL) { root.innerHTML = html`<p>The Workspace works in the web app only.</p>`; return; }
 		try {
-			const mod = await import(new URL(WORKSPACE_URL, document.baseURI).href);
+			// Its stylesheet first (once), so the page is never drawn unstyled; then the code.
+			const [mod] = await Promise.all([import(new URL(WORKSPACE_URL, document.baseURI).href), workspaceStyles()]);
 			mod.mount(root, {
 				catalog, notify, promptText, analyticsOn: () => analytics.choice() === "granted" && analytics.available, totalsUrl: totalsUrl(), audioUrl, authUrl: AUTH_URL, libraryUrl: LIBRARY_URL, onWho: syncAccess, desktop: document.documentElement.dataset.platform === "desktop",
 				// The app's own player, lyrics index and covers: the Workspace bundle has no copies of its own.
@@ -337,6 +352,9 @@ function closeAppMenu({ restoreFocus = false, restoreScroll = true } = {}) {
 
 // The search typed but not yet run, and the latest render: an older one finishing late is dropped.
 let searchTimer = 0;
+let suggestTimer = 0;
+// The next page change keeps the scroll (a sort chosen on the same page).
+let keepScrollNext = false;
 let renderSeq = 0;
 
 async function render({ keepScroll = false } = {}) {
@@ -503,6 +521,7 @@ function applyRail(state = railState()) {
 /** What the page's own Play plays (data-page-play), for the player's Play while nothing plays; "" when none. */
 const pagePlay = () => $("main [data-page-play]:not([disabled])")?.dataset.pagePlay ?? "";
 
+let announced = null;
 function renderBar() {
 	const t = player.current();
 	const s = player.state;
@@ -512,6 +531,8 @@ function renderBar() {
 	$("#bar-now").innerHTML = t
 		? html`${cover(t.album, { label: false })}<span class="meta"><span class="title ${scriptClass(t.title)}">${t.title}</span><span class="sub">${s.error ? s.error : creditOf(t.artists)}</span></span>`
 		: html`<span class="meta"><span class="title">Nothing playing</span><span class="sub">${pagePlay() ? `Play ${pagePlay()}` : "Pick a song to start"}</span></span>`;
+	// Screen readers hear the song that starts (once per song, not on every tick of its time).
+	if (t && t.id !== announced) { announced = t.id; $("#sr-now").textContent = `Now playing: ${t.title}, ${creditOf(t.artists)}`; }
 	for (const btn of $$("[data-ctl=toggle]")) {
 		btn.innerHTML = icon(s.playing ? "pause" : "play");
 		btn.setAttribute("aria-label", s.playing ? "Pause" : "Play");
@@ -560,6 +581,7 @@ function renderVolume() {
 	for (const range of $$("[data-ctl=volume]")) {
 		const v = muted ? 0 : volume;
 		range.value = String(v);
+		range.setAttribute("aria-valuetext", muted ? "muted" : `${Math.round(v * 100)}%`);
 		range.style.setProperty("--pct", `${v * 100}%`);
 	}
 }
@@ -579,6 +601,8 @@ function renderTime({ position, duration }) {
 		if (range.dataset.dragging) continue;
 		range.max = String(duration || 0);
 		range.value = String(position);
+		// Read out as time, not seconds (screen readers).
+		range.setAttribute("aria-valuetext", `${formatDuration(position)} of ${formatDuration(duration || 0)}`);
 		range.style.setProperty("--pct", `${pct}%`);
 		range.style.setProperty("--buf-pct", `${buf}%`);
 	}
@@ -593,8 +617,14 @@ function markPlaying() {
 }
 
 /* =================================================================== now playing sheet */
+// The queue is drawn QUEUE_STEP songs at a time (a language's songs can be a thousand), the rest on "Show more";
+// a change of song starts over.
+const QUEUE_STEP = 50;
+let queueShown = QUEUE_STEP;
+let queueOf = null;
 function renderSheet() {
 	const t = player.current();
+	if (t?.id !== queueOf) { queueOf = t?.id ?? null; queueShown = QUEUE_STEP; }
 	const s = player.state;
 	const sheet = $("#sheet");
 	if (!t) { sheet.innerHTML = html`<div class="top"><button class="icon-btn" data-act="close-sheet" aria-label="Close">${icon("down")}</button></div><div class="empty"><h2>Nothing playing</h2></div>`; return; }
@@ -646,7 +676,8 @@ function renderSheet() {
 			<section class="queue" aria-label="Queue">
 				<h2>Up next <span>${upcoming.length ? html`<button class="btn" data-act="clear-queue">Clear</button>` : ""}</span></h2>
 				${upcoming.length
-					? html`<ol class="tracks">${upcoming.map((u, i) => trackRow(u, key, s.index + 1 + i, { showAlbum: true, number: i + 1, extra: "queue" }))}</ol>`
+					? html`<ol class="tracks">${upcoming.slice(0, queueShown).map((u, i) => trackRow(u, key, s.index + 1 + i, { showAlbum: true, number: i + 1, extra: "queue" }))}</ol>
+						${upcoming.length > queueShown ? html`<div class="more"><button class="btn" data-act="queue-more">Show ${Math.min(QUEUE_STEP, upcoming.length - queueShown)} more of ${upcoming.length}</button></div>` : ""}`
 					: html`<p class="muted">The queue ends after this song.</p>`}
 			</section>
 		</div>`;
@@ -890,6 +921,10 @@ function setThemeColor(color) {
 function openSheet() {
 	const sheet = $("#sheet");
 	sheet.hidden = false;
+	// A layer over the page: the page beneath is inert (not reached by Tab or a screen reader) and
+	// its consent card and notices are not drawn over it (app.css, body.sheet-open).
+	document.body.classList.add("sheet-open");
+	$(".shell").inert = true;
 	document.body.style.overflow = "hidden";
 	renderSheet();
 	setThemeColor(sheet.classList.contains("has-scene") ? "#262626" : "#4a4a4a");
@@ -900,6 +935,8 @@ function closeSheet() {
 	if (sheet.hidden) return;
 	exitWatch();
 	sheet.hidden = true;
+	document.body.classList.remove("sheet-open");
+	$(".shell").inert = false;
 	updateScene();
 	document.body.style.overflow = "";
 	setThemeColor(null);
@@ -914,8 +951,8 @@ function openMenu(anchor, items) {
 	const menu = document.createElement("div");
 	menu.className = "menu";
 	menu.setAttribute("role", "menu");
-	menu.innerHTML = items.map((it) => it === "-" ? "<hr>" : it.label && !it.run
-		? `<div class="label">${escape(it.label)}</div>`
+	menu.innerHTML = items.map((it) => it === "-" ? '<hr role="separator">' : it.label && !it.run
+		? `<div class="label" role="presentation">${escape(it.label)}</div>`
 		: `<button role="menuitem" data-i="${items.indexOf(it)}">${escape(it.label)}</button>`).join("");
 	document.body.append(menu);
 	const r = anchor.getBoundingClientRect();
@@ -955,6 +992,9 @@ function closeMenu(restoreFocus = false) {
 function openDialog(d) {
 	d.returnValue = "";
 	d.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => d.close("cancel"));
+	// Named by its heading for screen readers.
+	const h = d.querySelector("h2");
+	if (h) { h.id ||= "dialog-title"; d.setAttribute("aria-labelledby", h.id); } else d.removeAttribute("aria-labelledby");
 	d.showModal();
 }
 
@@ -1020,7 +1060,7 @@ function askPublish(album) {
 	d.innerHTML = html`<form method="dialog" class="up-edit"><h2>Ask to publish “${album.title}”</h2>
 		<p class="muted">A reviewer listens and, if approved, adds all ${album.tracks.length === 1 ? "of it" : `${album.tracks.length} songs`} to the catalog for everyone. You stay credited, and it stays in your library.</p>
 		${other.length ? html`<p class="error">Only MP3 can be published: ${other.length === 1 ? `“${other[0].fileName}” is` : `${other.length} songs are`} ${other[0].format.toUpperCase()}. Upload MP3 copies, delete the others, and ask again.</p>` : ""}
-		<label>Language<select name="lang" required><option value="" selected disabled>Choose…</option>${langs.map((l) => html`<option value="${l.id}">${l.name[0].toUpperCase()}${l.name.slice(1)}</option>`)}</select></label>
+		<label>Language<select name="lang" required><option value="" selected disabled>Choose…</option>${langs.map((l) => html`<option value="${l.id}">${V.langLabel(l)}</option>`)}</select></label>
 		<label>For the reviewer<textarea name="note" rows="3" maxlength="200" placeholder="Who made it, and why you may share it (bought, recorded, the artist's permission)"></textarea></label>
 		<label class="check"><input type="checkbox" name="rights" required> I may share these recordings with everyone</label>
 		<div class="actions"><button type="button" class="btn" data-dialog-cancel>Cancel</button><button class="btn primary" value="ok" ${other.length ? "disabled" : ""}>Ask</button></div></form>`;
@@ -1315,7 +1355,8 @@ const actions = {
 	},
 	"artist-lang"(el) {
 		const section = el.closest("[data-artist-tabs]");
-		for (const b of $$("[data-act=artist-lang]", section)) b.setAttribute("aria-selected", String(b === el));
+		// One tab in the Tab order (the chosen one); the arrow keys move between them (keydown below).
+		for (const b of $$("[data-act=artist-lang]", section)) { b.setAttribute("aria-selected", String(b === el)); b.tabIndex = b === el ? 0 : -1; }
 		for (const panel of $$("[data-lang-panel]", section)) panel.hidden = panel.dataset.langPanel !== el.dataset.lang;
 	},
 	menu(el) {
@@ -1381,6 +1422,7 @@ const actions = {
 		rerender();
 	},
 	"clear-queue": () => player.clearUpcoming(),
+	"queue-more": () => { queueShown += QUEUE_STEP; renderSheet(); },
 	"close-sheet": () => closeSheet(),
 	"np-lyrics": () => { npLyrics.toggle(); renderSheet(); },
 	"scene-menu": (el) => openSceneMenu(el),
@@ -1488,7 +1530,9 @@ function markBusy(el, on) {
 document.addEventListener("change", async (e) => {
 	const el = e.target;
 	if (el.dataset.act === "sort") {
-		go(currentRoute.path, { sort: el.value });
+		// The same page in another order: the address is replaced (Back leaves the page, not the order) and the scroll stays.
+		keepScrollNext = true;
+		go(currentRoute.path, { sort: el.value }, { replace: true });
 	} else if (el.dataset.act === "publish-toggle") {
 		// Waits for the answer: switched once, not again meanwhile.
 		el.disabled = true;
@@ -1551,7 +1595,9 @@ document.addEventListener("input", (e) => {
 	if (el.id === "q") {
 		const clear = $(".search-clear");
 		if (clear) clear.hidden = !el.value;
-		updateSuggestions(catalog, el);
+		// Suggestions a moment after the last keystroke (a fast typist's keystrokes are 60 to 120 ms apart): one search per pause, not per key.
+		clearTimeout(suggestTimer);
+		suggestTimer = setTimeout(() => { suggestTimer = 0; if (document.activeElement === el) updateSuggestions(catalog, el); }, 60);
 		clearTimeout(searchTimer);
 		searchTimer = setTimeout(() => runSearch(el.value), 140);
 	} else if (el.dataset.ctl === "volume") {
@@ -1623,12 +1669,24 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+	// Tabs (the artists' languages on Home): Left and Right move between them, Home and End to the ends.
+	if (e.target.matches?.('[role="tab"]') && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+		const tabs = $$('[role="tab"]', e.target.closest('[role="tablist"]'));
+		const i = tabs.indexOf(e.target);
+		const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+		e.preventDefault();
+		tabs[next].focus();
+		tabs[next].click();
+		return;
+	}
 	if (e.target.id === "q") {
 		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 			if (moveSelection(e.target, e.key)) e.preventDefault();
 			return;
 		}
 		if (e.key === "Enter") {
+			// Suggestions still waiting on the last keystroke: brought up to date, so Enter takes what is typed, not an older list's choice.
+			if (suggestTimer) { clearTimeout(suggestTimer); suggestTimer = 0; updateSuggestions(catalog, e.target); }
 			const opt = pickOption();
 			if (opt) { e.preventDefault(); chooseSuggestion(opt); return; }
 			rememberSearch(e.target.value);
@@ -2078,7 +2136,9 @@ export async function boot(platform) {
 			if (gone.length) offline.remove(gone).catch((err) => console.warn("removing downloads no longer shared", err));
 		}
 		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.
-		else if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
+		if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
+		// A song of the person's own, playing when they left: back in the bar now that the library has it.
+		player.relink().catch((err) => console.warn("the restored song could not be loaded", err));
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
@@ -2106,6 +2166,7 @@ export async function boot(platform) {
 			edits.reapply();
 		},
 		onChange: () => {
+			V.forgetDiscover();
 			clearArtCaches();
 			renderRail();
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
@@ -2115,6 +2176,7 @@ export async function boot(platform) {
 		onChange: () => {
 			// The catalog was built again: the trimmed songs' lengths go back on.
 			edits.reapply();
+			V.forgetDiscover();
 			clearArtCaches();
 			renderRail();
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
@@ -2151,7 +2213,7 @@ export async function boot(platform) {
 		if (!e.target.closest("#app-menu, .nav-logo") || e.target.closest("#app-menu a")) closeAppMenu();
 	});
 	// A link in the menu: the menu closes onto the new page, without first putting the old one back in place.
-	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu({ restoreScroll: false }); if (!$("#sheet").hidden) closeSheet(); render(); });
+	addEventListener("hashchange", () => { trackDepth(); closeMenu(); closeAppMenu({ restoreScroll: false }); if (!$("#sheet").hidden) closeSheet(); const keepScroll = keepScrollNext; keepScrollNext = false; render({ keepScroll }); });
 	trackDepth();
 	await render();
 	document.body.classList.add("ready");

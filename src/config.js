@@ -10,7 +10,7 @@
  * Default (tools/build.mjs): https://media.zaideih.com/audio/{id}, served by
  * worker/media, which resolves the id to the R2 object.
  */
-/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__, __SOUND_WORKLET__, __WORKSPACE__, __AUTH_URL__, __LIBRARY_URL__ */
+/* global __AUDIO_URL__, __APP_VERSION__, __DEV__, __GA_ID__, __PLAYS_URL__, __SOUND_WORKLET__, __WORKSPACE__, __WORKSPACE_CSS__, __AUTH_URL__, __LIBRARY_URL__ */
 export const AUDIO_URL_TEMPLATE = typeof __AUDIO_URL__ === "string" ? __AUDIO_URL__ : "";
 /** Release version, yy.mm.dd.changes (see tools/lib/version.mjs). */
 export const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0.0";
@@ -24,6 +24,8 @@ export const PLAYS_URL = typeof __PLAYS_URL__ === "string" ? __PLAYS_URL__ : "";
 export const SOUND_WORKLET_URL = typeof __SOUND_WORKLET__ === "string" ? __SOUND_WORKLET__ : "";
 /** The Workspace bundle (src/workspace), relative to the page; empty where it is not built (desktop). */
 export const WORKSPACE_URL = typeof __WORKSPACE__ === "string" ? __WORKSPACE__ : "";
+/** The Workspace's own stylesheet, loaded with it. */
+export const WORKSPACE_CSS = typeof __WORKSPACE_CSS__ === "string" ? __WORKSPACE_CSS__ : "";
 /** Personal libraries on the audio Worker (worker/media/library.js); empty where they are not built. */
 export const LIBRARY_URL = typeof __LIBRARY_URL__ === "string" ? __LIBRARY_URL__ : "";
 /** Sign in with GitHub for the Workspace (worker/media/auth.js); empty where it is not built. */

@@ -27,6 +27,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkCoverage, validateMedia } from "./lib/media.mjs";
+import { pathToFileURL } from "node:url";
 
 export const CATALOG_FORMAT = 1;
 
@@ -260,7 +261,8 @@ async function main() {
 	console.log(`\nwrote ${file} and meta.json${stale.length ? `, removed ${stale.length} stale catalog file(s)` : ""}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run as a script (not imported by tests): the path compared as a file URL, so spaces or Windows drives in it do not matter.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	main().catch((err) => {
 		console.error(`error: ${err.message}`);
 		process.exit(err instanceof CatalogError ? 2 : 1);

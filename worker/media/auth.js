@@ -43,11 +43,11 @@
  * GITHUB_CLIENT_SECRET (secret).
  */
 
-import { suggest, SuggestError } from "./suggest.js";
+import { HttpError } from "./http.js";
+import { suggest } from "./suggest.js";
 import { handleSession, issueSession, sessionMember } from "./accounts.js";
 import { googleAuthorizeUrl, googleConfig, googleExchange } from "./google.js";
 import { handlePasskey } from "./passkeys.js";
-import { MemberError } from "./members.js";
 
 const GITHUB = "https://github.com";
 const API = "https://api.github.com";
@@ -60,12 +60,7 @@ const RETURN_ROUTES = new Set(["workspace", "admin", "account"]);
 // Base64url, 43 to 128 characters (RFC 7636 for the challenge; the nonce uses the same shape).
 const TOKENISH = /^[A-Za-z0-9_-]{43,128}$/;
 
-export class AuthError extends Error {
-	constructor(message, status = 400) {
-		super(message);
-		this.status = status;
-	}
-}
+export class AuthError extends HttpError {}
 
 const listOf = (value) => new Set(String(value ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
@@ -249,7 +244,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 		if (route === "/auth/suggest") return json(201, await suggest(request, env, body, { fetchImpl, now }), cors);
 		if (route.startsWith("/auth/passkey/")) {
 			const nowSeconds = Math.floor(now() / 1000);
-			const [status, answer] = await handlePasskey(env, route, body, { origin: cors, memberOf: () => sessionMember(env, request, nowSeconds), nowSeconds });
+			const [status, answer] = await handlePasskey(env, route, body, { origin: cors, memberOf: () => sessionMember(env, request, nowSeconds), nowSeconds, sender: request.headers.get("cf-connecting-ip") ?? "unknown" });
 			return json(status, answer, cors);
 		}
 		if (route === "/auth/wait") {
@@ -306,7 +301,7 @@ export async function handleAuth(request, env, { fetchImpl = (...a) => fetch(...
 		if (!res.ok && res.status !== 404) throw new AuthError(`GitHub could not revoke the token: HTTP ${res.status}`, 502);
 		return json(204, null, cors);
 	} catch (err) {
-		if (err instanceof SuggestError || err instanceof MemberError) return json(err.status, { error: err.message }, cors);
+		if (err instanceof HttpError && !(err instanceof AuthError)) return json(err.status, { error: err.message }, cors);
 		if (!(err instanceof AuthError)) {
 			console.error("auth failed", { route, err });
 			return json(500, { error: "sign-in failed on the Worker" }, cors);

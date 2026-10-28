@@ -97,7 +97,7 @@ export function buildModel(raw, meta, hidden = new Set()) {
 	if (hidden.size) for (const [id, a] of artists) if (!a.tracks.length) artists.delete(id);
 
 	// `raw` is what the model is built from: the catalog as released (`source`), with the live changes on it (applyLive).
-	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], topArtists: [], raw, source: raw, meta, hidden, live: [], holdsAlbums: {} };
+	const model = { version: meta.version, langs, genres, artists, albums, tracks, topTracks: [], raw, source: raw, meta, hidden, live: [], holdsAlbums: {} };
 	/*
 	 * Songs and albums outside the public catalog (the signed-in person's own
 	 * uploads, src/core/uploads.js): found by id like catalog ones, but never
@@ -144,6 +144,8 @@ function rebuild(model, raw, hidden) {
  * Answers { applied, done, stale }.
  */
 export function applyLive(model, changes) {
+	// Nothing to apply over nothing applied (most starts): the model stands; a rebuild is a good part of starting up.
+	if (!changes.length && !model.live.length) { markOff(model); return { raw: model.raw, applied: [], done: [], stale: [] }; }
 	const out = patchRaw(model.source, changes);
 	model.live = out.applied;
 	rebuild(model, out.raw, model.hidden);
@@ -152,7 +154,6 @@ export function applyLive(model, changes) {
 }
 
 const TOP_TRACKS = 100;
-const TOP_ARTISTS = 40;
 // Ids 0 ("Unknown") and 1 ("Various Artists") are catch-all credits, not artists.
 export const NOT_ARTISTS = new Set([0, 1]);
 
@@ -186,7 +187,6 @@ export function recount(model) {
 			.map(([artist, n]) => ({ artist, plays: n }));
 	}
 	model.topTracks = [...model.tracks.values()].sort(byPlays).slice(0, TOP_TRACKS);
-	model.topArtists = [...model.artists.values()].filter((a) => a.type >= 2).sort(byPlays).slice(0, TOP_ARTISTS);
 }
 
 /** Human-readable artist credit for a track or album. */

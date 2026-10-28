@@ -25,6 +25,7 @@
  * The owner and co-owners hold the Albums right; the owner gives it to others
  * (Members), as any right.
  */
+import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
 
@@ -36,23 +37,6 @@ export const HELD_TTL_MS = 60_000;
 const ALBUM_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PUBLIC_KEY = new Request("https://cache.internal/holds/v1");
 const edge = () => globalThis.caches?.default ?? null;
-
-function answer(status, body, cors, extra = {}) {
-	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
-	if (cors) headers.set("Access-Control-Allow-Origin", cors);
-	if (cors && cors !== "*") headers.set("Vary", "Origin");
-	return new Response(JSON.stringify(body), { status, headers });
-}
-
-async function readBody(request) {
-	const text = await request.text();
-	if (text.length > 64 * 1024) throw new MemberError("request body too large", 413);
-	try {
-		const v = JSON.parse(text || "{}");
-		if (v && typeof v === "object" && !Array.isArray(v)) return v;
-	} catch { /* below */ }
-	throw new MemberError("body must be a JSON object");
-}
 
 /** What the app applies: every held album, without reasons or names. */
 export async function publicHolds(env) {
@@ -94,14 +78,9 @@ export function forgetHeld() {
 export async function handleHolds(request, env, ctx, { now = () => Date.now() } = {}) {
 	const url = new URL(request.url);
 	const match = /^\/holds(?:\/(detail|[^/]+))?\/?$/.exec(url.pathname);
-	const origin = request.headers.get("origin");
-	const origins = new Set((env.AUTH_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-	const cors = origin && origins.has(origin) ? origin : null;
+	const cors = corsOf(env, request);
 	const m = request.method;
-	if (m === "OPTIONS") {
-		if (!cors) return new Response("Forbidden", { status: 403, headers: { Vary: "Origin" } });
-		return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": cors, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } });
-	}
+	if (m === "OPTIONS") return preflight(cors);
 	if (!match) return answer(404, { error: "hold addresses are /holds and /holds/<album id>" }, cors ?? "*");
 	const nowSeconds = Math.floor(now() / 1000);
 	try {
@@ -133,7 +112,7 @@ export async function handleHolds(request, env, ctx, { now = () => Date.now() } 
 
 		const album = decodeURIComponent(match[1]);
 		if (!ALBUM_ID.test(album)) throw new MemberError("the album id is letters, digits, - and _ only");
-		const body = await readBody(request);
+		const body = await readBody(request, 64 * 1024);
 		if (typeof body.streaming !== "boolean" || typeof body.listed !== "boolean") throw new MemberError("streaming and listed must be true or false");
 		const reason = typeof body.reason === "string" ? body.reason.replace(/\s+/g, " ").trim() : "";
 		if (reason.length > MAX_REASON) throw new MemberError(`the reason may be at most ${MAX_REASON} characters`);
@@ -161,7 +140,7 @@ export async function handleHolds(request, env, ctx, { now = () => Date.now() } 
 		try { await edge()?.delete(PUBLIC_KEY); } catch (err) { console.warn("could not remove the holds from the edge cache", err); }
 		return answer(200, { album, streaming: body.streaming, listed: body.listed, reason: note, by: me.login, at: nowSeconds }, cors);
 	} catch (err) {
-		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");
+		if (err instanceof HttpError) return answer(err.status, { error: err.message }, cors ?? "*");
 		console.error("holds request failed", err);
 		return answer(500, { error: "the holds request failed on the Worker" }, cors ?? "*");
 	}

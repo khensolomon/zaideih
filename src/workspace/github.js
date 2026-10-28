@@ -81,11 +81,10 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 			const ref = await call("GET", `/repos/${REPO}/git/ref/heads/${BASE}`);
 			return ref.object.sha;
 		},
-		/** A file's text and blob sha at a commit. */
+		/** A file's text at a commit (one request: the raw content; a blob sha is not needed, propose() makes its own blobs). */
 		async file(path, ref) {
-			const meta = await call("GET", `/repos/${REPO}/contents/${path}?ref=${ref}`);
 			const text = await call("GET", `/repos/${REPO}/contents/${path}?ref=${ref}`, null, { accept: "application/vnd.github.raw+json", raw: true });
-			return { text, sha: meta.sha };
+			return { text };
 		},
 		/**
 		 * Commits `files` ({path: text}) on a new branch from `parent` and opens a
@@ -93,11 +92,11 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 		 */
 		async propose({ parent, files, branch, title, body }) {
 			const base = await call("GET", `/repos/${REPO}/git/commits/${parent}`);
-			const tree = [];
-			for (const [path, content] of Object.entries(files)) {
+			// The blobs at once: a release touches several files.
+			const tree = await Promise.all(Object.entries(files).map(async ([path, content]) => {
 				const blob = await call("POST", `/repos/${REPO}/git/blobs`, { content, encoding: "utf-8" });
-				tree.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-			}
+				return { path, mode: "100644", type: "blob", sha: blob.sha };
+			}));
 			const newTree = await call("POST", `/repos/${REPO}/git/trees`, { base_tree: base.tree.sha, tree });
 			const commit = await call("POST", `/repos/${REPO}/git/commits`, { message: title, tree: newTree.sha, parents: [parent] });
 			try {
@@ -127,6 +126,10 @@ export function createGitHub(token, { fetchImpl = (...a) => fetch(...a) } = {}) 
 		/** Squash-merges with `title` as the commit's first line (the release line). */
 		async merge(number, head, title, message) {
 			return call("PUT", `/repos/${REPO}/pulls/${number}/merge`, { merge_method: "squash", sha: head, commit_title: title, commit_message: message });
+		},
+		/** Closes the pull request without merging. */
+		async close(number) {
+			return call("PATCH", `/repos/${REPO}/pulls/${number}`, { state: "closed" });
 		},
 		/** Deletes the pull request's branch after merging. */
 		async deleteBranch(branch) {

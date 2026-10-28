@@ -196,7 +196,9 @@ export function updateSuggestions(full, input) {
 		if (artist && artist.albums.length > 1) options.push({ kind: "query", label: `Albums by ${artist.name}`, query: `albums by ${artist.name}` });
 		if (artist && artist.tracks.length > 1) options.push({ kind: "query", label: `Most played songs by ${artist.name}`, query: `songs by ${artist.name}` });
 		if (!exact.length && !options.length) {
-			const fix = didYouMean(catalog, q);
+			// The closest spellings were found above (near): no second pass over the catalog for them.
+			const of = (kind) => near.filter((p) => p.kind === kind).map((p) => p.item);
+			const fix = didYouMean(catalog, q, { artists: of("artist"), albums: of("album"), tracks: of("track") });
 			if (fix) options.push({ kind: "fix", label: `Did you mean “${fix}”?`, query: fix });
 		}
 		if (near.length && !intent) options.push({ kind: "heading", label: "Close matches" }, ...near);

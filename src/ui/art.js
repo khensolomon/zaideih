@@ -53,7 +53,8 @@ export function patternOf(album) {
 }
 
 /** Grey lightness (percent) for an album or artist id. */
-export const shadeOf = (id) => 30 + (hash32(String(id)) % 17);
+// 30 % to 45 % grey: white text on the darkest and the lightest reads at 4.5:1 or better (WCAG AA for small text).
+export const shadeOf = (id) => 30 + (hash32(String(id)) % 16);
 
 const LANG_CODE = { uploads: "YOURS", shared: "SHARED", zola: "ZO", myanmar: "MY", mizo: "MZ", falam: "FA", haka: "HK", english: "EN", chin: "CH", korea: "KO", norwegian: "NO" };
 export const langCode = (lang) => LANG_CODE[lang.name] ?? lang.name.slice(0, 2).toUpperCase();

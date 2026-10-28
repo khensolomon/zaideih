@@ -52,7 +52,7 @@ Limits: an app that has never been online since a change shows the released valu
 | `POST /live {changes}` | Catalog right | made live; each replaces the one for its field. Checked as the draft checks it (`cleanValue`), its base another value of the same field; hidden only as true; up to 500 a call (the Workspace sends more in several calls), 5,000 in all |
 | `POST /live/remove {changes: [{kind, id, field}], why}` | Catalog right | taken away; `why` is `undo`, `released` or `overtaken`, kept in the log |
 
-Tables (`migrations/0011-catalog-live.sql`): `catalog_live` (one row per kind, record and field) and `catalog_live_log` (every change). They cannot be rebuilt from git, so `tools/d1.mjs reset` keeps them (`LIBRARY_TABLES`).
+Tables (`migrations/0011-catalog-live.sql`): `catalog_live` (one row per kind, record and field) and `catalog_live_log` (every change). They cannot be rebuilt from git, so `tools/d1.mjs reset` keeps them (every table not in `REBUILDABLE_TABLES`).
 
 ## Releasing
 

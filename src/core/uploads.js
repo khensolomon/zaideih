@@ -168,6 +168,8 @@ export const uploads = {
 			extra.albums.clear();
 			for (const t of tracks) extra.tracks.set(t.id, t);
 			for (const a of [...albums, ...sharedAlbums]) extra.albums.set(a.id, a);
+			// Counted up on every change: what joins the catalog's songs with these (core/search.js withMine) is kept until then.
+			extra.version = (extra.version ?? 0) + 1;
 			// What the library holds, without its addresses (renewed on every read): pages being worked
 			// on are drawn again only when this changes (app.js).
 			const content = JSON.stringify(lib, (k, v) => (k === "url" || k === "expires" ? undefined : v));
@@ -199,6 +201,7 @@ export const uploads = {
 		this.state.loading = false;
 		this.catalog?.extra.tracks.clear();
 		this.catalog?.extra.albums.clear();
+		if (this.catalog) this.catalog.extra.version = (this.catalog.extra.version ?? 0) + 1;
 		Object.assign(this.state, { member: null, space: null, list: [], albums: [], requests: [], shared: [], shares: [], received: [], error: "" });
 		emit("uploads", this.state);
 	},

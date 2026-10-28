@@ -1,40 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { sqlite } from "./helpers/fakes.mjs";
+import { harness } from "./helpers/worker.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleSongbooks, TEXT_BASE } = await import("../worker/media/songbooks.js");
 const { handleLyrics } = await import("../worker/media/lyrics.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" }, "gh-ed": { id: 43, login: "ed" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
-};
-
 function setup() {
-	const env = { DB: fakeD1(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s" };
-	const clock = 1_800_000_000_000;
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github, now: () => clock })).json()));
-	const request = async (handler, who, method, path, body) => {
-		const headers = { Origin: ORIGIN };
-		if (who) headers.Authorization = `Bearer ${(await signIn(who)).token}`;
-		if (body) headers["Content-Type"] = "application/json";
-		const res = await handler(new Request(`${W}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, null, { now: () => clock });
-		return { status: res.status, body: await res.json() };
-	};
-	return {
-		env, signIn,
-		sb: (who, method, path, body) => request(handleSongbooks, who, method, path, body),
-		ly: (who, method, path, body) => request(handleLyrics, who, method, path, body),
-	};
+	const h = harness({ people: PEOPLE, handler: handleSongbooks, handleAuth });
+	return { ...h, sb: h.call, ly: (who, method, path, body) => h.callWith(handleLyrics, who, method, path, body) };
 }
 
 test("songbooks: private until its rights are settled and the owner makes it public; texts are lyrics", { skip }, async () => {

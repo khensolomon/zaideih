@@ -187,8 +187,10 @@ const workspace = values.platform === "web" ? await bundle("the Workspace", {
 	metafile: true,
 	logLevel: "warning",
 }) : null;
-const workspaceFile = workspace ? Object.keys(workspace.metafile.outputs).map((p) => posix(relative(OUT, p))).find((p) => /^assets\/workspace\.[^/]+\.js$/.test(p)) : "";
-if (workspace && !workspaceFile) die(`unexpected esbuild output for the Workspace: ${Object.keys(workspace.metafile.outputs).join(", ")}`);
+const workspaceOut = workspace ? Object.keys(workspace.metafile.outputs).map((p) => posix(relative(OUT, p))) : [];
+const workspaceFile = workspaceOut.find((p) => /^assets\/workspace\.[^/]+\.js$/.test(p)) ?? "";
+const workspaceCss = workspaceOut.find((p) => /^assets\/workspace\.[^/]+\.css$/.test(p)) ?? "";
+if (workspace && !(workspaceFile && workspaceCss)) die(`unexpected esbuild output for the Workspace: ${workspaceOut.join(", ")}`);
 
 // 2. App bundle (JS + CSS + fonts), content-hashed.
 const app = await bundle("the app", {
@@ -213,6 +215,7 @@ const app = await bundle("the app", {
 		__PLAYS_URL__: JSON.stringify(playsUrl),
 		__SOUND_WORKLET__: JSON.stringify(workletFile),
 		__WORKSPACE__: JSON.stringify(workspaceFile),
+		__WORKSPACE_CSS__: JSON.stringify(workspaceCss),
 		__AUTH_URL__: JSON.stringify(authUrl),
 		// Personal libraries live beside sign-in on the audio Worker.
 		__LIBRARY_URL__: JSON.stringify(authUrl ? `${audioOrigin}/library` : ""),
@@ -242,7 +245,12 @@ const index = template
 	// The loading screen's logo, there before any script runs.
 	.replace("<!--%LOGO%-->", String(logoMark()))
 	// The release workflow reads data-version from the live page to confirm a deploy.
-	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
+	.replace("<!--%HEAD%-->", [
+		`<meta name="application-name" content="Zaideih" data-version="${release}">`,
+		...platform.head,
+		// The catalog file this build names: downloaded with the page, beside the app's code, not after it.
+		...(values.platform === "web" ? [`<link rel="preload" href="catalog/${catalogMeta.catalog}" as="fetch" crossorigin="anonymous">`] : []),
+	].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
 // The privacy policy: a page of its own, readable without any script (served at /privacy).
 await cp("src/privacy.html", join(OUT, "privacy.html"));
@@ -259,8 +267,9 @@ if (values.platform === "web") {
 		"./",
 		// The privacy policy under the address it is visited at (Cloudflare serves privacy.html there and redirects privacy.html to it).
 		"privacy",
+		// The Workspace's files are for editors: fetched (and then kept) when it opens, not installed on every device.
 		...files.filter((f) =>
-			f.startsWith("assets/") || f.startsWith("icons/") || f === "manifest.webmanifest" ||
+			(f.startsWith("assets/") && !f.startsWith("assets/workspace.")) || f.startsWith("icons/") || f === "manifest.webmanifest" ||
 			f === "catalog/meta.json" || f === `catalog/${catalogMeta.catalog}`),
 	];
 	await bundle("the service worker", {

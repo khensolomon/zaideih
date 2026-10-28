@@ -1,36 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { harness, W } from "./helpers/worker.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { handleHolds, heldTracks, forgetHeld } = await import("../worker/media/holds.js");
 
 const skip = !sqlite && "node:sqlite needs Node 22.13 or later";
-const W = "https://media.zaideih.com";
-const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" }, "gh-rev": { id: 43, login: "rev" } };
-const github = async (url, init) => {
-	const checked = tokenCheck(url, init);
-	if (checked) return checked;
-	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
-	if (!p) return new Response("{}", { status: 401 });
-	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });
-};
-
-function setup() {
-	const env = { DB: fakeD1(), GITHUB_REPO: "khensolomon/zaideih", OWNER_GITHUB_ID: "1", AUTH_ORIGINS: ORIGIN, GITHUB_CLIENT_ID: "c", GITHUB_CLIENT_SECRET: "s" };
-	let clock = 1_800_000_000_000;
-	const sessions = {};
-	const signIn = async (t) => (sessions[t] ??= (await (await handleAuth(new Request(`${W}/auth/session`, { method: "POST", headers: { Origin: ORIGIN, Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" }), env, { fetchImpl: github, now: () => clock })).json()));
-	const call = async (who, method, path, body) => {
-		const headers = { Origin: ORIGIN };
-		if (who) headers.Authorization = `Bearer ${(await signIn(who)).token}`;
-		if (body) headers["Content-Type"] = "application/json";
-		const res = await handleHolds(new Request(`${W}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, null, { now: () => clock });
-		return { status: res.status, body: await res.json(), headers: res.headers };
-	};
-	return { env, call, signIn, tick: (s) => { clock += s * 1000; } };
-}
+const setup = () => harness({ people: PEOPLE, handler: handleHolds, handleAuth });
 
 test("holds: the Albums right holds an album back and gives it back; the public sees only what is held", { skip }, async () => {
 	const { env, call, signIn, tick } = setup();
@@ -58,14 +36,14 @@ test("holds: the Albums right holds an album back and gives it back; the public 
 	// The owner gives the right to a reviewer, who hides another album.
 	const rev = (await signIn("gh-rev")).member.id;
 	await env.DB.prepare("INSERT INTO member_rights (member_id, kind, granted_by, granted_at) VALUES (?1, 'albums', 'khen', 0)").bind(rev).run();
-	tick(60);
+	tick(60e3);
 	assert.equal((await call("gh-rev", "POST", "/holds/def", { streaming: true, listed: false, reason: "Asked by the artist", tracks: [21] })).status, 200);
 	const pub = (await call(null, "GET", "/holds")).body;
 	assert.deepEqual(pub.albums.def, { streaming: true, listed: false });
 	assert.equal(JSON.stringify(pub).includes("Asked"), false, "reasons are not public");
 
 	// Given back: no hold, its songs play again; the log keeps every change.
-	tick(60);
+	tick(60e3);
 	assert.equal((await call("gh-owner", "POST", "/holds/abc", { streaming: true, listed: true, tracks: [11, 12] })).status, 200);
 	assert.deepEqual(Object.keys((await call(null, "GET", "/holds")).body.albums), ["def"]);
 	assert.deepEqual([...(await heldTracks(env))], [21]);
@@ -74,4 +52,24 @@ test("holds: the Albums right holds an album back and gives it back; the public 
 	assert.deepEqual(detail.log.map((h) => [h.album, h.reason]), [["abc", "given back"], ["def", "Asked by the artist"], ["abc", "Rights being checked"]]);
 	assert.equal((await call("gh-ann", "GET", "/holds/detail")).status, 403);
 	assert.equal((await call("gh-owner", "POST", "/holds/detail", {})).status, 404);
+});
+
+test("held songs: when D1 cannot be read, the last set read is kept, and none at first", { skip }, async () => {
+	forgetHeld();
+	const env = { DB: fakeD1() };
+	await env.DB.prepare("INSERT INTO album_hold_tracks (album_id, track_id) VALUES ('a', 7)").run();
+	const errors = [];
+	const quiet = console.error;
+	console.error = (...a) => errors.push(a[0]);
+	try {
+		assert.deepEqual([...(await heldTracks(env, 1000))], [7]);
+		const broken = { DB: { prepare() { return { all() { throw new Error("D1 is down"); } }; } } };
+		assert.deepEqual([...(await heldTracks(broken, 1000 + 86_400_000))], [7], "the last set read is kept");
+		forgetHeld();
+		assert.deepEqual([...(await heldTracks(broken, 1))], [], "none at first: the catalog plays");
+		assert.equal(errors.length, 2);
+	} finally {
+		console.error = quiet;
+		forgetHeld();
+	}
 });

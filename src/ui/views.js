@@ -44,7 +44,9 @@ function pickRandom(list, n) {
 }
 
 /* ---------- home ---------- */
+// Home's "Discover" picks, kept for the visit; made again from the catalog after it is built again (holds, live changes).
 let discover = null;
+export const forgetDiscover = () => { discover = null; };
 
 export async function home(c) {
 	discover ??= pickRandom([...c.albums.values()], 12);
@@ -111,7 +113,7 @@ function topArtistsByLanguage(c, first = false) {
 	return html`<section class="section${first ? " first" : ""}" data-artist-tabs>
 		<header><h2>Most played artists</h2></header>
 		<div class="lang-tabs" role="tablist" aria-label="Language">
-			${langs.map((l) => html`<button role="tab" data-act="artist-lang" data-lang="${l.id}" aria-selected="${String(l === selected)}">${langLabel(l)}</button>`)}
+			${langs.map((l) => html`<button role="tab" data-act="artist-lang" data-lang="${l.id}" aria-selected="${String(l === selected)}" tabindex="${l === selected ? 0 : -1}">${langLabel(l)}</button>`)}
 		</div>
 		${langs.map((l) => html`<div class="artist-grid" role="tabpanel" data-lang-panel="${l.id}" ${l === selected ? "" : html`hidden`}>${l.topArtists.map(artistCard)}</div>`)}
 	</section>`;
@@ -203,7 +205,7 @@ export function album(c, { id }) {
 			<div class="actions">
 				<button class="btn primary" data-page-play="${a.title}" data-act="play-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("play")} Play</button>
 				<button class="btn" data-act="shuffle-all" data-list="${key}" ${a.off ? "disabled" : ""}>${icon("shuffle")} Shuffle</button>
-				${a.shared?.listenOnly ? "" : html`<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}" ${a.off && !allSaved ? "disabled" : ""}>
+				${a.shared?.listenOnly ? "" : html`<button class="btn" data-act="${allSaved ? "remove-download" : "download"}" data-list="${key}" data-download-btn="${key}" data-confirm="Remove the ${ids.length === 1 ? "downloaded song" : `${ids.length} downloaded songs`} of “${a.title}” from this device?" ${a.off && !allSaved ? "disabled" : ""}>
 					${allSaved ? html`${icon("saved")} Downloaded` : html`${icon("download")} ${saved ? `Download remaining ${ids.length - saved}` : "Download"}`}
 				</button>`}
 				${a.upload ? "" : editLink({ album: a.id })}
@@ -405,7 +407,8 @@ export function searchView(c, _params, query) {
 	return {
 		title: q ? `Search: ${q}` : "Search",
 		// Phones: one bar, the way back on its left (away from where the bar's Library button comes back), clearing on its right.
-		body: html`<form class="searchbox" role="search" data-act="search-form">
+		body: html`<h1 class="sr">${q ? `Search results for “${q}”` : "Search"}</h1>
+			<form class="searchbox" role="search" data-act="search-form">
 				<button type="button" class="search-back" data-act="search-back" aria-label="Back" title="Back">${icon("back")}</button>
 				${icon("search")}
 				<label class="sr" for="q">Search songs, albums, artists and lyrics, or ask, for example “most played Mizo artists”</label>
@@ -574,7 +577,7 @@ const LIB_SECTIONS = {
 	liked: "Liked songs",
 	playlists: "Playlists",
 	downloads: "Downloads",
-	history: "Recently played",
+	history: "History",
 	...(LIBRARY_URL ? { uploads: "Uploads" } : {}),
 };
 
@@ -612,7 +615,7 @@ async function libraryHome(c) {
 			</section>
 			<section class="section lib-rows">
 				${libRow("downloads", "download", "Downloads", usage.count ? `${plural(usage.count, "song")} on this device, ${formatBytes(usage.bytes)}` : "Nothing downloaded yet")}
-				${libRow("history", "clock", "Recently played", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
+				${libRow("history", "clock", "History", recent.length ? recent.slice(0, 3).map((t) => t.title).join(", ") : "Nothing played yet")}
 				${LIBRARY_URL ? libRow("uploads", "upload", "Uploads", uploads.available ? ([st.list.length ? `${plural(st.list.length, "song")} of your own` : "", st.shared.length ? `${plural(st.shared.length, "album")} shared with you` : ""].filter(Boolean).join(", ") || "Add music of your own") : "Sign in to keep music of your own") : ""}
 			</section>
 			<section class="section lib-backup">
@@ -774,7 +777,7 @@ export function help() {
 					<li><strong>The connection.</strong> On a slow or interrupted connection, try again, or download the song while the connection is good.</li>
 				</ol>
 				<h2 id="clear-cache">Clear the browser's cached files</h2>
-				<p>Clear only cached files. Your likes, playlists, history and downloads stay. Clearing all site data or cookies for Zaideih removes them too, so back up the library first (Library, Back up library).</p>
+				<p>Clear only cached files. Your likes, playlists, history and downloads stay. Clearing all site data or cookies for Zaideih removes them too, so back up the library first (Library, Keep your library, Back up).</p>
 				<ul class="steps">
 					<li><strong>Chrome, Edge</strong>: Settings, Privacy and security, Delete browsing data. Tick only “Cached images and files”, then Delete data.</li>
 					<li><strong>Firefox</strong>: Settings, Privacy &amp; Security, Cookies and Site Data, Clear Data. Tick only “Temporary cached files and pages”, then Clear.</li>

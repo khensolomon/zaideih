@@ -18,9 +18,10 @@
  * away until asked for. A cut that reaches sound louder than the tape is
  * outlined and said in words.
  *
- * Saved, the audio Worker cuts the original without decoding it (no loss,
- * worker/media/mp3.js) into a new version that plays for everyone without a
- * release. "Listen to the saved file" plays that file as the Worker serves it.
+ * Saved, the cut is planned here from the file read for the waveform (its
+ * frames, worker/media/mp3.js: no decoding, no loss) and the audio Worker
+ * checks the plan and copies those byte ranges of the original into a new
+ * version that plays for everyone without a release. "Listen to the saved file" plays that file as the Worker serves it.
  */
 import { audioUrl } from "../config.js";
 import { creditOf } from "../core/catalog.js";
@@ -30,6 +31,7 @@ import { player } from "../core/player.js";
 import { href } from "../core/router.js";
 import { account } from "../core/signin.js";
 import { clock, envelope, LEAD_MS, parseClock, quietest, seconds, soundIn, soundMask, suggestTrim, TAIL_MS, WINDOW_MS } from "../core/trim.js";
+import { Mp3Error, plan as planCut, scan } from "../../worker/media/mp3.js";
 import { icon } from "./icons.js";
 import { scriptClass } from "./parts.js";
 
@@ -95,7 +97,7 @@ export function audioStudio(catalog, id, ctx) {
 		return page("Audio studio", html`<div class="empty"><h2>The audio studio needs the Audio studio right</h2><p>The owner and co-owners have it, and give it to members in the Workspace, Members.</p><p><a class="btn" href="${href(`album/${t.album.id}`, { song: t.id })}">Back to the album</a></p></div>`);
 	}
 	st = {
-		t, ctx, detail: null, buffer: null, levels: null, mask: null, totalMs: 0, start: 0, end: 0, hint: null,
+		t, ctx, detail: null, buffer: null, frames: null, levels: null, mask: null, totalMs: 0, start: 0, end: 0, hint: null,
 		snap: true, note: "", saving: false, playing: null, progress: 0, error: "", savedPlay: null,
 		fine: false, hist: false, active: "start", justSaved: null, held: null,
 	};
@@ -799,6 +801,14 @@ async function read(root) {
 		const bytes = new Uint8Array(got);
 		let at = 0;
 		for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
+		// The file's frames, for planning the cut here (the Worker then copies ranges of the original,
+		// never reading it whole); read before decoding, which takes the bytes away.
+		try {
+			s.frames = { scan: scan(bytes), size: bytes.length };
+		} catch (err) {
+			if (!(err instanceof Mp3Error)) throw err;
+			throw new StudioError(`the recording cannot be cut: ${err.message}`);
+		}
 		audioCtx ??= new AudioContext();
 		const buffer = await audioCtx.decodeAudioData(bytes.buffer);
 		if (gone()) return;
@@ -941,7 +951,12 @@ async function save(root, ctx) {
 	redraw(root);
 	const previous = st.detail.current;
 	try {
-		const r = await call("POST", `/${st.t.id}`, { startMs: Math.round(st.start), endMs: Math.round(st.end), base: previous, note: st.note });
+		const startMs = Math.round(st.start);
+		const endMs = Math.round(st.end);
+		// The cut planned here, from the file read for the waveform: the Worker checks and copies its ranges.
+		const p = planCut(st.frames.scan, st.frames.size, startMs, endMs);
+		const info = p.info ? btoa(String.fromCharCode(...p.info)) : null;
+		const r = await call("POST", `/${st.t.id}`, { startMs, endMs, base: previous, note: st.note, plan: { ...p, info } });
 		st.detail = r;
 		st.start = r.made.startMs;
 		st.end = r.made.endMs;

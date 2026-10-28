@@ -2,7 +2,12 @@
  * Service worker.
  *
  * Strategy:
- *   shell (html, js, css, fonts, icons)   precached at install, cache-first
+ *   shell (html, js, css, fonts, icons)   precached at install, cache-first; a
+ *                                          content-hashed file the last release's
+ *                                          cache holds is copied, not downloaded
+ *                                          again; the Workspace's files are not
+ *                                          precached (editors only) but kept once
+ *                                          fetched
  *   catalog/meta.json                      network-first; the cached copy offline, or when
  *                                          the network has not answered in META_WAIT_MS
  *   catalog/catalog.<hash>.json            cache-first (immutable, content-hashed)
@@ -16,6 +21,8 @@ const VERSION = __VERSION__;
 const SHELL = `shell-${VERSION}`;
 const DATA = "catalog";
 const PRECACHE = __PRECACHE__;
+// Files named by their content (assets/name.HASH.ext): the same name is the same file, in any release.
+const HASHED = /^assets\/[^/]+\.[0-9A-Z]{8}\.[a-z0-9]+$/;
 
 self.addEventListener("install", (event) => {
 	event.waitUntil((async () => {
@@ -23,7 +30,18 @@ self.addEventListener("install", (event) => {
 		const isData = (p) => p.startsWith("catalog/");
 		const reload = (p) => new Request(p, { cache: "reload" });
 		const [shellCache, dataCache] = await Promise.all([caches.open(SHELL), caches.open(DATA)]);
-		await shellCache.addAll(PRECACHE.filter((p) => !isData(p)).map(reload));
+		// A new release changes a few files; the rest, named by their content, are copied from the last release's cache.
+		const older = await Promise.all((await caches.keys()).filter((k) => k.startsWith("shell-") && k !== SHELL).map((k) => caches.open(k)));
+		const fresh = [];
+		await Promise.all(PRECACHE.filter((p) => !isData(p)).map(async (p) => {
+			if (!HASHED.test(p)) { fresh.push(p); return; }
+			for (const c of older) {
+				const hit = await c.match(p);
+				if (hit) { await shellCache.put(p, hit); return; }
+			}
+			fresh.push(p);
+		}));
+		await shellCache.addAll(fresh.map(reload));
 		// The catalog is stored at install so the very first visit works offline afterwards.
 		await dataCache.addAll(PRECACHE.filter(isData).map(reload));
 	})());
@@ -125,7 +143,10 @@ async function shell(request) {
 		if (index) return plain(index);
 		return plain(await fetch(request));
 	}
-	return fetch(request);
+	const res = await fetch(request);
+	// A content-hashed file not precached (the Workspace's): kept once fetched, for the next visit and offline.
+	if (res.ok && HASHED.test(new URL(request.url).pathname.slice(scope.pathname.length))) await cache.put(request, res.clone());
+	return res;
 }
 
 self.addEventListener("fetch", (event) => {

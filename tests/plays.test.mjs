@@ -252,7 +252,7 @@ test("GET /plays gives the totals per track from the running sums, public and ca
 	const res = await get();
 	assert.equal(res.status, 200);
 	assert.equal(res.headers.get("access-control-allow-origin"), "*");
-	assert.match(res.headers.get("cache-control"), /max-age=300/);
+	assert.match(res.headers.get("cache-control"), /max-age=1800/);
 	const body = await res.json();
 	assert.equal(body.v, 1);
 	assert.equal(body.recentDays, 30);
