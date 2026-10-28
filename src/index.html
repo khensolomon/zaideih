@@ -132,10 +132,11 @@
 	</div>
 
 	<canvas class="scene" id="scene" aria-hidden="true" hidden></canvas>
-	<section class="sheet" id="sheet" aria-label="Now playing" hidden></section>
+	<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Now playing" hidden></section>
 	<div class="watch-ui" id="watch-ui" role="region" aria-label="Watching the background" hidden></div>
 	<dialog id="dialog"></dialog>
 	<div class="toasts" id="toasts" aria-live="polite"></div>
+	<div class="sr" id="sr-now" role="status" aria-live="polite"></div>
 	<div class="tip" id="tip" role="tooltip" hidden></div>
 
 	<noscript><p class="fatal">Zaideih needs JavaScript to play music.</p></noscript>

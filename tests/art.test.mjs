@@ -20,7 +20,7 @@ test("cover shade is stable per id and stays in the grey range", () => {
 	assert.equal(shadeOf("136da131360cb128"), shadeOf("136da131360cb128"));
 	for (const id of ["a", "b", "c", "xyz", "136da131360cb128"]) {
 		const g = shadeOf(id);
-		assert.ok(g >= 30 && g <= 46, `${id}: ${g}`);
+		assert.ok(g >= 30 && g <= 45, `${id}: ${g} (white text reads at 4.5:1 up to 45 % grey)`);
 	}
 });
 

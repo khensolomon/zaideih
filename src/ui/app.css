@@ -96,6 +96,8 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [tabindex="-1"]:focus { outline: none; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+/* A button that is a label around a hidden file input ("Restore"): the ring on the button, since the input cannot be seen. */
+.btn:has(> input.sr:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
 /*
@@ -368,7 +370,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .cover .c-art { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--accent); pointer-events: none; }
 .cover .c-in { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 4cqi; padding: 8cqi; }
 .cover .mark { display: block; width: 12cqi; height: max(2px, 2cqi); border-radius: 2px; background: var(--accent); flex: none; }
-.cover .c-top { display: flex; align-items: center; gap: 5cqi; font-size: 7.5cqi; font-weight: 600; letter-spacing: 0.06em; color: var(--ink-3); line-height: 1; }
+.cover .c-top { display: flex; align-items: center; gap: 5cqi; font-size: 7.5cqi; font-weight: 600; letter-spacing: 0.06em; color: var(--ink); line-height: 1; }
 .cover .c-year { margin-left: auto; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .cover b {
 	margin-top: auto;
@@ -479,6 +481,8 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .btn.danger { color: var(--danger-ink); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .icon-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; border-radius: 999px; color: var(--ink-2); }
+/* Fingers: the round icon buttons are 44 px, the size a tap lands on (the icon inside stays as it is). */
+@media (pointer: coarse) { .icon-btn { width: 44px; height: 44px; } }
 .icon-btn:hover { background: var(--surface); color: var(--ink); }
 .icon-btn[aria-pressed="true"] { color: var(--accent-ink); }
 /* Like: grey outline when not liked, filled rose heart when liked. */
@@ -558,8 +562,6 @@ body.is-playing .track.now .no .eq i { animation-play-state: running; }
 	.segmented::-webkit-scrollbar { display: none; }
 	.segmented a, .segmented button { padding: 8px 8px; border-radius: 14px; text-align: center; font-size: 14.5px; }
 	.segmented button span { display: block; margin: 0; font-size: 12px; }
-	.lib-actions { display: flex; gap: 8px; width: 100%; justify-content: flex-end; }
-	.lib-actions .btn { min-height: 36px; padding: 0 14px; font-size: 14px; }
 }
 
 /*
@@ -1031,7 +1033,6 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 .rail .rail-more { margin-top: auto; }
 .rail .stats-on:not([hidden]) + .rail-more { margin-top: 0; }
 #app-menu .stats-on { width: calc(100% - 24px); margin-top: 12px; }
-.track .grip { display: none; }
 
 /* ---------- about and terms ---------- */
 .about { max-width: 700px; }
@@ -1058,6 +1059,9 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 .page-foot a { color: var(--ink-3); text-decoration: underline; text-decoration-color: rgb(255 255 255 / 0.35); text-underline-offset: 3px; }
 
 /* ---------- usage statistics consent ---------- */
+/* While Now playing is open the consent card waits beneath it, and notices sit at the sheet's foot (none over the player). */
+body.sheet-open .consent { display: none; }
+body.sheet-open .toasts { bottom: calc(24px + env(safe-area-inset-bottom)); }
 .consent {
 	position: fixed; z-index: 50; right: 16px; bottom: calc(var(--deck) + 2 * var(--deck-gap) + 12px); width: min(440px, calc(100vw - 32px));
 	padding: 16px 18px; border-radius: var(--radius-m); background: #4a4a4a; color: var(--ink-2);
@@ -1173,7 +1177,8 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .offline-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 650; }
 
 @media (prefers-reduced-motion: reduce) {
-	*, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+	/* The spinner of a busy button stays (slower, .btn-spin below): still, it would say nothing is happening. */
+	*:not(.btn-spin), *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 /* ---------- sound panel (src/ui/sound-panel.js) ---------- */
@@ -1306,7 +1311,6 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 14px; }
 .ly-chips li { padding: 4px 12px; border-radius: 999px; background: var(--raised); font-size: 14px; font-weight: 600; }
 .ly-chips span { color: var(--ink-3); font-weight: 500; margin-right: 2px; }
-.ly-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; }
 .ly-transpose { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .ly-transpose > span { min-width: 3ch; text-align: center; font-weight: 600; }
 .ly-transpose .icon-btn { font-size: 20px; width: 40px; height: 40px; }
@@ -1314,32 +1318,12 @@ dialog .up-edit .error { color: var(--danger-ink); font-size: 14px; margin: 0 0 
 .ly-timed .ly-line[data-time]:not([data-time=""]) { cursor: pointer; border-radius: 8px; transition: color 0.2s, background 0.2s; }
 .ly-timed:has(.ly-now) .ly-line { color: var(--ink-3); }
 .ly-timed .ly-line.ly-now { color: var(--ink); background: var(--raised); box-shadow: -8px 0 0 var(--raised), 8px 0 0 var(--raised); }
-.ly-edit-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
-.ly-edit-head .ly-label { margin: 0; white-space: nowrap; }
-.ly-edit-head .segmented { flex: none; }
-.ly-insert { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
-.ly-insert .btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
-.ly-edit textarea.ly-mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 15px; }
-.ly-preview { min-height: 30vh; padding: 12px 14px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: var(--radius-m); }
 .ly-guide { margin: 0 0 12px; }
 .ly-guide summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .ly-guide-body h4 { margin: 14px 0 4px; font-size: 14px; }
 .ly-guide-body pre { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; overflow-x: auto; }
 .ly-guide-body p { margin: 6px 0; font-size: 14px; color: var(--ink-2); }
 .ly-empty { text-align: left; padding: 8px 0 16px; }
-.ly-edit { max-width: 40em; }
-.ly-label { display: block; font-weight: 600; margin: 0 0 8px; }
-.ly-edit textarea {
-	display: block; width: 100%; min-height: 50vh; box-sizing: border-box; margin: 0 0 10px; padding: 12px 14px;
-	font: inherit; font-size: 17px; line-height: 1.6; color: var(--ink); background: var(--surface-2);
-	border: 1px solid var(--line); border-radius: var(--radius-m); resize: vertical;
-}
-.ly-edit textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.ly-conflict { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--raised); margin: 0 0 16px; }
-.ly-conflict .ly-text { font-size: 15px; max-height: 40vh; overflow: auto; margin: 8px 0 0; }
-.ly-mod { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); max-width: 40em; }
-.ly-mod h2 { font-size: 15px; color: var(--ink-3); font-weight: 600; margin: 0 0 10px; }
-.ly-mod h3 { font-size: 15px; margin: 16px 0 6px; }
 .ly-versions { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
 .ly-versions li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .ly-versions summary { cursor: pointer; padding: 4px 0; }
