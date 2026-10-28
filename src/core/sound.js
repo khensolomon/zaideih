@@ -589,5 +589,16 @@ export const sound = {
 			if (skipper.state === "listen" || skipper.state === "fast") skipper.seeked();
 		});
 		audio.addEventListener("ended", () => skipper.stop());
+		// Paused for a while: the audio graph rests (no audio thread, less battery); "play" resumes it above.
+		let rest = 0;
+		const restSoon = () => {
+			clearTimeout(rest);
+			rest = setTimeout(() => {
+				if (audio.paused && ctx?.state === "running") ctx.suspend().catch((err) => console.warn("audio context suspend failed", err));
+			}, 3000);
+		};
+		audio.addEventListener("pause", restSoon);
+		audio.addEventListener("ended", restSoon);
+		audio.addEventListener("play", () => clearTimeout(rest));
 	},
 };

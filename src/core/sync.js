@@ -115,10 +115,9 @@ export function createSync({ load, save, local, apply, send, member, online, now
 					await withState((st) => { st.outbox = st.outbox.map((c) => ({ ...c, offline: true })); });
 					throw err;
 				}
-				const sent = new Set(batch);
 				const pending = await withState((st) => {
-					// The ones sent leave the outbox; anything changed meanwhile stays (a newer object).
-					st.outbox = st.outbox.filter((c) => !sent.has(c) && !batch.some((b) => b.at === c.at && keyOf(b) === keyOf(c)));
+					// The ones sent leave the outbox (the same key and moment); anything changed meanwhile stays (a newer moment).
+					st.outbox = st.outbox.filter((c) => !batch.some((b) => b.at === c.at && keyOf(b) === keyOf(c)));
 					st.since = answer.since;
 					return new Set(st.outbox.map(keyOf));
 				});

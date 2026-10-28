@@ -352,6 +352,7 @@ function closeAppMenu({ restoreFocus = false, restoreScroll = true } = {}) {
 
 // The search typed but not yet run, and the latest render: an older one finishing late is dropped.
 let searchTimer = 0;
+let suggestTimer = 0;
 let renderSeq = 0;
 
 async function render({ keepScroll = false } = {}) {
@@ -1566,7 +1567,9 @@ document.addEventListener("input", (e) => {
 	if (el.id === "q") {
 		const clear = $(".search-clear");
 		if (clear) clear.hidden = !el.value;
-		updateSuggestions(catalog, el);
+		// Suggestions a moment after the last keystroke (a fast typist's keystrokes are 60 to 120 ms apart): one search per pause, not per key.
+		clearTimeout(suggestTimer);
+		suggestTimer = setTimeout(() => { suggestTimer = 0; if (document.activeElement === el) updateSuggestions(catalog, el); }, 60);
 		clearTimeout(searchTimer);
 		searchTimer = setTimeout(() => runSearch(el.value), 140);
 	} else if (el.dataset.ctl === "volume") {
@@ -1644,6 +1647,8 @@ document.addEventListener("keydown", (e) => {
 			return;
 		}
 		if (e.key === "Enter") {
+			// Suggestions still waiting on the last keystroke: brought up to date, so Enter takes what is typed, not an older list's choice.
+			if (suggestTimer) { clearTimeout(suggestTimer); suggestTimer = 0; updateSuggestions(catalog, e.target); }
 			const opt = pickOption();
 			if (opt) { e.preventDefault(); chooseSuggestion(opt); return; }
 			rememberSearch(e.target.value);
@@ -2094,6 +2099,8 @@ export async function boot(platform) {
 		}
 		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.
 		if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
+		// A song of the person's own, playing when they left: back in the bar now that the library has it.
+		player.relink().catch((err) => console.warn("the restored song could not be loaded", err));
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
@@ -2121,6 +2128,7 @@ export async function boot(platform) {
 			edits.reapply();
 		},
 		onChange: () => {
+			V.forgetDiscover();
 			clearArtCaches();
 			renderRail();
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
@@ -2130,6 +2138,7 @@ export async function boot(platform) {
 		onChange: () => {
 			// The catalog was built again: the trimmed songs' lengths go back on.
 			edits.reapply();
+			V.forgetDiscover();
 			clearArtCaches();
 			renderRail();
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();

@@ -50,6 +50,7 @@ export const versionOf = (id) => edits.get(id)?.version;
  */
 export function applyEdits(catalog, list = edits) {
 	let changed = false;
+	const albums = new Set();
 	for (const t of catalog.tracks.values()) {
 		const e = list.get(t.id);
 		const catalogDuration = t.catalogDuration ?? t.duration;
@@ -58,8 +59,11 @@ export function applyEdits(catalog, list = edits) {
 			t.catalogDuration = catalogDuration;
 			t.duration = want;
 			changed = true;
+			if (t.album) albums.add(t.album);
 		}
 	}
+	// An album's length is its songs' (the album page shows it).
+	for (const album of albums) album.duration = album.tracks.reduce((n, t) => n + t.duration, 0);
 	return changed;
 }
 

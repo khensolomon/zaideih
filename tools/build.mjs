@@ -245,7 +245,12 @@ const index = template
 	// The loading screen's logo, there before any script runs.
 	.replace("<!--%LOGO%-->", String(logoMark()))
 	// The release workflow reads data-version from the live page to confirm a deploy.
-	.replace("<!--%HEAD%-->", [`<meta name="application-name" content="Zaideih" data-version="${release}">`, ...platform.head].join("\n  "));
+	.replace("<!--%HEAD%-->", [
+		`<meta name="application-name" content="Zaideih" data-version="${release}">`,
+		...platform.head,
+		// The catalog file this build names: downloaded with the page, beside the app's code, not after it.
+		...(values.platform === "web" ? [`<link rel="preload" href="catalog/${catalogMeta.catalog}" as="fetch" crossorigin="anonymous">`] : []),
+	].join("\n  "));
 await writeFile(join(OUT, "index.html"), index);
 // The privacy policy: a page of its own, readable without any script (served at /privacy).
 await cp("src/privacy.html", join(OUT, "privacy.html"));

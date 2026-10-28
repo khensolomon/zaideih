@@ -128,3 +128,19 @@ test("current versions: when D1 cannot be read, the last map read is kept, and t
 		forgetCurrent();
 	}
 });
+
+test("the app: a song's length is its version's, the album's length follows, and the original's length comes back", async () => {
+	globalThis.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {} };
+	const { applyEdits, parseEdits } = await import("../src/core/audio-edits.js");
+	const album = { id: "a", tracks: [], duration: 0 };
+	const t1 = { id: 1, duration: 200, album };
+	const t2 = { id: 2, duration: 100, album };
+	album.tracks.push(t1, t2);
+	album.duration = 300;
+	const catalog = { tracks: new Map([[1, t1], [2, t2]]) };
+	assert.equal(applyEdits(catalog, parseEdits({ at: 1, tracks: { 1: [1, 150_400] } }).tracks), true);
+	assert.deepEqual([t1.duration, t1.catalogDuration, album.duration], [150, 200, 250]);
+	assert.equal(applyEdits(catalog, parseEdits({ at: 2, tracks: { 1: [0, null] } }).tracks), true, "the original again");
+	assert.deepEqual([t1.duration, album.duration], [200, 300]);
+	assert.equal(applyEdits(catalog, parseEdits({ at: 2, tracks: { 1: [0, null] } }).tracks), false, "nothing changed");
+});

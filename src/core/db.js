@@ -49,12 +49,14 @@ function open() {
 			const req = indexedDB.open(DB_NAME, DB_VERSION);
 			req.onupgradeneeded = () => {
 				const db = req.result;
-				db.createObjectStore("kv");
-				db.createObjectStore("likes", { keyPath: "id" });
-				db.createObjectStore("playlists", { keyPath: "id", autoIncrement: true });
-				const history = db.createObjectStore("history", { keyPath: "key", autoIncrement: true });
-				history.createIndex("at", "at");
-				db.createObjectStore("audio", { keyPath: "id" });
+				// Each store made only when missing: a later DB_VERSION adds to a database that has these already.
+				const store = (name, options) => (db.objectStoreNames.contains(name) ? req.transaction.objectStore(name) : db.createObjectStore(name, options));
+				store("kv");
+				store("likes", { keyPath: "id" });
+				store("playlists", { keyPath: "id", autoIncrement: true });
+				const history = store("history", { keyPath: "key", autoIncrement: true });
+				if (!history.indexNames.contains("at")) history.createIndex("at", "at");
+				store("audio", { keyPath: "id" });
 			};
 			req.onsuccess = () => {
 				clearTimeout(timer);

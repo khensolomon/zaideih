@@ -44,7 +44,9 @@ function pickRandom(list, n) {
 }
 
 /* ---------- home ---------- */
+// Home's "Discover" picks, kept for the visit; made again from the catalog after it is built again (holds, live changes).
 let discover = null;
+export const forgetDiscover = () => { discover = null; };
 
 export async function home(c) {
 	discover ??= pickRandom([...c.albums.values()], 12);

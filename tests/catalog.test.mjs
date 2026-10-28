@@ -202,4 +202,10 @@ test("My music: the person's own uploads are searched only when asked, the catal
 	const byArtist = search(withMine(model), "Me");
 	assert.deepEqual([byArtist.tracks.items.map((t) => t.id), byArtist.albums.items.map((a) => a.id)], [["u5"], ["u-album-1"]], "found by the artist's name too");
 	assert.equal(model.tracks.has("u5"), false, "the catalog's own lists are untouched");
+	// The joined view is kept between keystrokes, and made again when the uploads change (extra.version, core/uploads.js).
+	assert.equal(withMine(model), mine, "kept");
+	model.extra.tracks.set("u6", { ...ut[0], id: "u6", title: "Another", search: "another", searchCompact: "another" });
+	model.extra.version = (model.extra.version ?? 0) + 1;
+	assert.notEqual(withMine(model), mine);
+	assert.deepEqual(search(withMine(model), "another").tracks.items.map((t) => t.id), ["u6"]);
 });
