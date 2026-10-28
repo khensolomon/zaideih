@@ -139,6 +139,23 @@ function xingFrame(s, frames, bytes, vbr) {
 	return out;
 }
 
+/** The frames kept for a cut from `startMs` to `endMs`: { from, to, kept, vbr, msPer }. */
+function choose(s, startMs, endMs) {
+	if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs) throw new Mp3Error("the cut needs a start before its end, from 0");
+	const msPer = (s.samples * 1000) / s.rate;
+	const from = Math.min(s.frames.length - 1, Math.round(startMs / msPer));
+	const to = Math.min(s.frames.length, Math.max(from + 1, Math.round(endMs / msPer)));
+	const kept = s.frames.slice(from, to);
+	return { from, to, kept, vbr: new Set(kept.map((f) => f.bIndex)).size > 1, msPer };
+}
+
+/** The Xing/Info frame for `kept` frames of `soundBytes` in all, or none when the original had no such frame and the bitrate is constant. */
+function infoFor(s, kept, soundBytes, vbr) {
+	if (!s.info && !vbr) return new Uint8Array(0);
+	const probe = xingFrame(s, kept, 0, vbr);
+	return xingFrame(s, kept, probe.length + soundBytes, vbr);
+}
+
 /**
  * The song from `startMs` to `endMs` (of the original), cut at frame edges:
  * { parts, length, bytes, startMs, endMs, durationMs, frames } with the times as cut. The
@@ -146,19 +163,10 @@ function xingFrame(s, frames, bytes, vbr) {
  * the original had one (or a VBRI header), Xing when the bitrate varies.
  */
 export function cut(b, startMs, endMs) {
-	if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs) throw new Mp3Error("the cut needs a start before its end, from 0");
 	const s = scan(b);
-	const msPer = (s.samples * 1000) / s.rate;
-	const from = Math.min(s.frames.length - 1, Math.round(startMs / msPer));
-	const to = Math.min(s.frames.length, Math.max(from + 1, Math.round(endMs / msPer)));
-	const kept = s.frames.slice(from, to);
+	const { from, to, kept, vbr, msPer } = choose(s, startMs, endMs);
 	const sound = b.subarray(kept[0].offset, kept.at(-1).offset + kept.at(-1).size);
-	const vbr = new Set(kept.map((f) => f.bIndex)).size > 1;
-	let info = new Uint8Array(0);
-	if (s.info || vbr) {
-		const probe = xingFrame(s, kept, 0, vbr);
-		info = xingFrame(s, kept, probe.length + sound.length, vbr);
-	}
+	const info = infoFor(s, kept, sound.length, vbr);
 	const head = b.subarray(0, s.head);
 	const tail = s.tail === null ? new Uint8Array(0) : b.subarray(s.tail);
 	// The parts are views into the original: a long recording is not copied whole again
@@ -176,4 +184,29 @@ export function cut(b, startMs, endMs) {
 		},
 		startMs: Math.round(from * msPer), endMs: Math.round(to * msPer), durationMs: durationMs(s, kept.length), frames: kept.length,
 	};
+}
+
+/**
+ * The same cut as a plan for the Worker, made where the whole file is (the
+ * studio in the browser has it for its waveform): the Worker then copies
+ * byte ranges of the original in storage without reading it whole.
+ * { size, head, from, frames, sound: [start, end), last (the last frame's
+ * offset), tail (offset or null), info (the Xing/Info frame's bytes, or
+ * null) }. `s` is the file's scan and `size` its length: the scan is all
+ * the studio keeps once the file is decoded for its waveform.
+ */
+export function plan(s, size, startMs, endMs) {
+	const { from, kept, vbr } = choose(s, startMs, endMs);
+	const first = kept[0];
+	const last = kept.at(-1);
+	const info = infoFor(s, kept, last.offset + last.size - first.offset, vbr);
+	return { size, head: s.head, from, frames: kept.length, sound: [first.offset, last.offset + last.size], last: last.offset, tail: s.tail, info: info.length ? info : null };
+}
+
+/** Whether `b` is one whole Xing or Info frame (what `plan` writes). */
+export function isInfoFrame(b) {
+	const h = frameAt(b, 0);
+	if (!h || h.size !== b.length) return false;
+	const x = sideEnd(h);
+	return tag(b, x, "Xing") || tag(b, x, "Info");
 }

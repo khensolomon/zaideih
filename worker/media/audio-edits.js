@@ -11,11 +11,19 @@
  *                                   (cached a minute)
  *   GET  /edits/:track              Audio right: the versions, the current one
  *                                   and the latest changes
- *   POST /edits/:track {startMs, endMs, base, note}
+ *   POST /edits/:track {startMs, endMs, base, note, plan}
  *                                   Audio right: a new version, cut from the
  *                                   original between the two times (snapped to
  *                                   frame edges); `base` is the current version
- *                                   the cut was made against (a newer one: 409)
+ *                                   the cut was made against (a newer one: 409).
+ *                                   `plan` (mp3.js plan(), made by the studio,
+ *                                   which has the whole file for its waveform)
+ *                                   names the byte ranges to keep; the Worker
+ *                                   checks its frame edges with two small reads
+ *                                   and copies the ranges, never reading the
+ *                                   recording whole. Without a plan (older app
+ *                                   builds) the Worker scans a recording of up
+ *                                   to MAX_BYTES itself.
  *   POST /edits/:track/restore {version, base}
  *                                   Audio right: that version current again
  *
@@ -26,14 +34,16 @@
 import { answer, corsOf, HttpError, preflight, readBody } from "./http.js";
 import { MemberError, can, memberRow } from "./members.js";
 import { sessionMember } from "./accounts.js";
-import { cut, Mp3Error } from "./mp3.js";
+import { cut, frameAt, isInfoFrame, Mp3Error } from "./mp3.js";
 import { trackKey } from "../../src/core/media-keys.js";
 
 const MAX_NOTE = 300;
 const LOG = 30;
 const PUBLIC_S = 60;
 export const CURRENT_TTL_MS = 60_000;
-const MAX_BYTES = 60 * 1024 * 1024;
+// Scanned on the Worker only without a plan: within its memory, with the copy made when reading.
+const MAX_BYTES = 40 * 1024 * 1024;
+const MAX_INFO = 2048;
 
 /**
  * The cut recording to R2 from its parts, streamed: a long recording is held
@@ -48,6 +58,76 @@ async function putParts(env, key, made, options) {
 	for (const p of made.parts) if (p.length) await writer.write(p);
 	await writer.close();
 	return putting;
+}
+
+const int = (v) => Number.isSafeInteger(v) && v >= 0;
+
+/**
+ * A cut from the studio's plan (mp3.js plan()): the plan's numbers are
+ * checked against the original (its size; a frame at the start and at the
+ * end of the sound kept, of one version and rate; a whole Xing/Info frame),
+ * then the ranges are copied from storage to the new object, streamed,
+ * without the Worker reading the recording whole. The same answer as cut().
+ */
+async function cutByPlan(env, fromKey, size, p, toKey, optionsFor) {
+	const bad = (why) => { throw new MemberError(`the cut does not fit the recording: ${why}`, 422); };
+	if (!p || typeof p !== "object" || !Array.isArray(p.sound) || p.sound.length !== 2) bad("no plan");
+	const [a, b] = p.sound;
+	if (![p.size, p.head, p.from, p.frames, a, b, p.last].every(int) || (p.tail !== null && !int(p.tail))) bad("not whole numbers");
+	if (p.size !== size) bad("the recording in storage is not the one planned for");
+	if (p.frames < 1 || p.head > a || a >= b || p.last < a || p.last >= b || b > (p.tail ?? size) || (p.tail !== null && p.tail !== size - 128)) bad("its ranges are out of order");
+	let info = new Uint8Array(0);
+	if (p.info !== null && p.info !== undefined) {
+		if (typeof p.info !== "string" || p.info.length > MAX_INFO) bad("its info frame");
+		try { info = Uint8Array.from(atob(p.info), (c) => c.charCodeAt(0)); } catch { bad("its info frame"); }
+		if (!isInfoFrame(info)) bad("its info frame");
+	}
+	const probe = async (offset) => {
+		const o = await env.BUCKET.get(fromKey, { range: { offset, length: 4 } });
+		return o ? frameAt(new Uint8Array(await o.arrayBuffer()), 0) : null;
+	};
+	const [first, last] = await Promise.all([probe(a), probe(p.last)]);
+	if (!first || !last) bad("the sound kept does not start and end at frames");
+	if (p.last + last.size !== b || first.version !== last.version || first.rate !== last.rate) bad("the sound kept does not start and end at frames");
+	const msPer = (first.samples * 1000) / first.rate;
+	const made = { startMs: Math.round(p.from * msPer), endMs: Math.round((p.from + p.frames) * msPer), durationMs: Math.round((p.frames * first.samples * 1000) / first.rate), frames: p.frames };
+	const options = optionsFor(made);
+	// The new file: the ID3v2 tag, the info frame, the sound kept, the ID3v1 tag.
+	const ranges = [[0, p.head], info, [a, b], p.tail === null ? [0, 0] : [p.tail, size]];
+	const length = p.head + info.length + (b - a) + (p.tail === null ? 0 : size - p.tail);
+	const read = async (write) => {
+		for (const r of ranges) {
+			if (r instanceof Uint8Array) { if (r.length) await write(r); continue; }
+			if (r[1] <= r[0]) continue;
+			const o = await env.BUCKET.get(fromKey, { range: { offset: r[0], length: r[1] - r[0] } });
+			if (!o) bad("the recording left storage");
+			// Exactly the range, whatever the body offers beyond it (the local runtime has been seen to).
+			let left = r[1] - r[0];
+			for await (const chunk of o.body) {
+				const c = chunk.byteLength > left ? chunk.subarray(0, left) : chunk;
+				await write(c);
+				left -= c.byteLength;
+				if (!left) break;
+			}
+			if (left) bad("the recording in storage is shorter than planned for");
+		}
+	};
+	if (typeof FixedLengthStream !== "function") {
+		const parts = [];
+		await read(async (c) => { parts.push(c); });
+		const out = new Uint8Array(length);
+		let at = 0;
+		for (const c of parts) { out.set(c, at); at += c.length; }
+		await env.BUCKET.put(toKey, out, options);
+	} else {
+		const { readable, writable } = new FixedLengthStream(length);
+		const putting = env.BUCKET.put(toKey, readable, options);
+		const writer = writable.getWriter();
+		await read((c) => writer.write(c));
+		await writer.close();
+		await putting;
+	}
+	return { ...made, length };
 }
 
 /** The original's R2 key, from the tracks table: under music/, or in place in storage (src/core/media-keys.js). */
@@ -150,19 +230,27 @@ export async function handleEdits(request, env, ctx, { now = () => Date.now() } 
 		const { startMs, endMs } = body;
 		const note = typeof body.note === "string" ? body.note.replace(/\s+/g, " ").trim().slice(0, MAX_NOTE) : "";
 		if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs < 0 || endMs <= startMs) throw new MemberError("startMs and endMs must be times in the original, the start before the end");
-		const original = await env.BUCKET.get(originalKey(row));
-		if (!original) throw new MemberError(`the recording of song ${track} is not in storage`, 404);
-		if (original.size > MAX_BYTES) throw new MemberError(`the recording is larger than ${MAX_BYTES / 1024 / 1024} MB; it cannot be cut here`, 413);
-		let made;
-		try {
-			made = cut(new Uint8Array(await original.arrayBuffer()), startMs, endMs);
-		} catch (err) {
-			if (err instanceof Mp3Error) throw new MemberError(`the recording cannot be cut: ${err.message}`, 422);
-			throw err;
-		}
 		const version = ((await env.DB.prepare("SELECT MAX(version) AS v FROM audio_versions WHERE track_id = ?1").bind(track).first())?.v ?? 0) + 1;
 		const key = versionKey(track, version);
-		await putParts(env, key, made, { httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { track: String(track), version: String(version), from: originalKey(row), startMs: String(made.startMs), endMs: String(made.endMs) } });
+		const from = originalKey(row);
+		let made;
+		if (body.plan !== undefined) {
+			// The studio planned the cut from the whole file: checked, then copied by ranges.
+			const head = await env.BUCKET.head(from);
+			if (!head) throw new MemberError(`the recording of song ${track} is not in storage`, 404);
+			made = await cutByPlan(env, from, head.size, body.plan, key, (m) => ({ httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { track: String(track), version: String(version), from, startMs: String(m.startMs), endMs: String(m.endMs) } }));
+		} else {
+			const original = await env.BUCKET.get(from);
+			if (!original) throw new MemberError(`the recording of song ${track} is not in storage`, 404);
+			if (original.size > MAX_BYTES) throw new MemberError(`the recording is larger than ${MAX_BYTES / 1024 / 1024} MB; open the song in a current app build, which plans the cut itself`, 413);
+			try {
+				made = cut(new Uint8Array(await original.arrayBuffer()), startMs, endMs);
+			} catch (err) {
+				if (err instanceof Mp3Error) throw new MemberError(`the recording cannot be cut: ${err.message}`, 422);
+				throw err;
+			}
+			await putParts(env, key, made, { httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { track: String(track), version: String(version), from, startMs: String(made.startMs), endMs: String(made.endMs) } });
+		}
 		await env.DB.batch([
 			env.DB.prepare(`INSERT INTO audio_versions (track_id, version, object_key, start_ms, end_ms, duration_ms, bytes, note, made_by, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`)
 				.bind(track, version, key, made.startMs, made.endMs, made.durationMs, made.length, note, me.login, nowSeconds),

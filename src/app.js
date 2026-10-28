@@ -2078,7 +2078,7 @@ export async function boot(platform) {
 			if (gone.length) offline.remove(gone).catch((err) => console.warn("removing downloads no longer shared", err));
 		}
 		// The audio studio, opened before the member's rights were read (a link, a reload): drawn once they are.
-		else if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
+		if (path.startsWith("audio/") && studioWaiting() && !uploads.state.loading) rerender();
 	});
 	// Counted plays (GET /plays) on top of the catalog's counts: saved ones at once, fresh ones when they arrive.
 	startPlayTotals(catalog, {
