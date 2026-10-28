@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeLimiter, fakeR2, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, fakeLimiter, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const { checkNewUpload, handleLibrary, handleSignedAudio, looksLike, signedUrl, verifySigned } = await import("../worker/media/library.js");
 const { handleAuth } = await import("../worker/media/auth.js");
@@ -17,6 +17,8 @@ const PEOPLE = {
 	"tok-co": { user: { id: 5, login: "lian" }, permissions: { pull: true } },
 };
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response(JSON.stringify({ message: "Bad credentials" }), { status: 401 });
 	if (url.endsWith("/user")) return new Response(JSON.stringify(p.user));

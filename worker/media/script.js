@@ -253,15 +253,15 @@ const PLAY_TOTALS_SECONDS = 300;
 const PLAY_RECENT_DAYS = 30;
 
 export async function playTotals(env) {
-	const rows = await env.DB.prepare(
-		`SELECT track_id AS id, SUM(n) AS total, SUM(CASE WHEN day >= date('now', '-${PLAY_RECENT_DAYS - 1} days') THEN n ELSE 0 END) AS recent
-		FROM plays GROUP BY track_id ORDER BY track_id`,
-	).all();
+	// Totals from the running sums (one row a song), the recent days from `plays` by its day
+	// index (only the rows of those days): never a sum over every song's every day.
+	const totals = (await env.DB.prepare("SELECT track_id AS id, total FROM play_totals ORDER BY track_id").all()).results ?? [];
+	const recent = new Map(((await env.DB.prepare(`SELECT track_id AS id, SUM(n) AS n FROM plays WHERE day >= date('now', '-${PLAY_RECENT_DAYS - 1} days') GROUP BY track_id`).all()).results ?? []).map((r) => [r.id, r.n]));
 	return {
 		v: 1,
 		updated: Math.floor(Date.now() / 1000),
 		recentDays: PLAY_RECENT_DAYS,
-		tracks: (rows.results ?? []).map((r) => [r.id, r.total, r.recent]),
+		tracks: totals.map((r) => [r.id, r.total, recent.get(r.id) ?? 0]),
 	};
 }
 
@@ -296,9 +296,10 @@ async function handlePlayTotals(request, env, ctx) {
 const PLAY_STATS_DAYS = 400;
 
 export async function playStats(env) {
-	const first = (await env.DB.prepare("SELECT MIN(day) AS day FROM plays").first())?.day ?? null;
+	const first = (await env.DB.prepare("SELECT MIN(day) AS day FROM play_days").first())?.day ?? null;
 	const today = new Date().toISOString().slice(0, 10);
-	const days = (await env.DB.prepare(`SELECT day, SUM(n) AS n FROM plays WHERE day >= date('now', '-${PLAY_STATS_DAYS - 1} days') GROUP BY day ORDER BY day`).all()).results ?? [];
+	// One row a day from the running sums; each song's week from `plays` by its day index.
+	const days = (await env.DB.prepare(`SELECT day, n FROM play_days WHERE day >= date('now', '-${PLAY_STATS_DAYS - 1} days') ORDER BY day`).all()).results ?? [];
 	const week = (await env.DB.prepare("SELECT track_id AS id, SUM(n) AS n FROM plays WHERE day >= date('now', '-6 days') GROUP BY track_id ORDER BY track_id").all()).results ?? [];
 	return { v: 1, updated: Math.floor(Date.now() / 1000), first, today, days: days.map((r) => [r.day, r.n]), week: week.map((r) => [r.id, r.n]) };
 }
@@ -373,11 +374,25 @@ async function handlePlays(request, env, ctx) {
 			counts.set(key, (counts.get(key) ?? 0) + 1);
 		}
 		if (counts.size) {
-			const sql = "INSERT INTO plays (track_id, day, n) VALUES (?1, ?2, ?3) ON CONFLICT(track_id, day) DO UPDATE SET n = n + excluded.n";
-			await env.DB.batch([...counts].map(([key, n]) => {
-				const [id, day] = key.split("|");
-				return env.DB.prepare(sql).bind(Number(id), day, n);
-			}));
+			// Each day's count and the running sums (a song's total, a day's) together: all or none.
+			const perDay = "INSERT INTO plays (track_id, day, n) VALUES (?1, ?2, ?3) ON CONFLICT(track_id, day) DO UPDATE SET n = n + excluded.n";
+			const total = "INSERT INTO play_totals (track_id, total) VALUES (?1, ?2) ON CONFLICT(track_id) DO UPDATE SET total = total + excluded.total";
+			const day = "INSERT INTO play_days (day, n) VALUES (?1, ?2) ON CONFLICT(day) DO UPDATE SET n = n + excluded.n";
+			const byTrack = new Map();
+			const byDay = new Map();
+			for (const [key, n] of counts) {
+				const [id, d] = key.split("|");
+				byTrack.set(Number(id), (byTrack.get(Number(id)) ?? 0) + n);
+				byDay.set(d, (byDay.get(d) ?? 0) + n);
+			}
+			await env.DB.batch([
+				...[...counts].map(([key, n]) => {
+					const [id, d] = key.split("|");
+					return env.DB.prepare(perDay).bind(Number(id), d, n);
+				}),
+				...[...byTrack].map(([id, n]) => env.DB.prepare(total).bind(id, n)),
+				...[...byDay].map(([d, n]) => env.DB.prepare(day).bind(d, n)),
+			]);
 		}
 		rejected.sort((a, b) => a[0] - b[0]);
 		const accepted = [...counts.values()].reduce((a, b) => a + b, 0);

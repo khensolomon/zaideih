@@ -105,3 +105,14 @@ export function fakeR2() {
 export function fakeLimiter(ok = true) {
 	return { keys: [], async limit({ key }) { this.keys.push(key); return { success: typeof ok === "function" ? ok(key) : ok }; } };
 }
+
+/**
+ * GitHub's "Check a token" (POST /applications/<client id>/token), as the Worker asks it
+ * for a GitHub sign-in (accounts.js issuedToZaideih): a token named "pat-…" stands for a
+ * personal or other app's token (404); any other is Zaideih's own (200). Null for other addresses.
+ */
+export function tokenCheck(url, init) {
+	if (!/\/applications\/[^/]+\/token$/.test(url)) return null;
+	const token = JSON.parse(init.body).access_token;
+	return token.startsWith("pat-") ? new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }) : new Response(JSON.stringify({ token }), { status: 200 });
+}

@@ -638,3 +638,21 @@ CREATE TABLE IF NOT EXISTS member_retired (
     kept  INTEGER NOT NULL,              -- the member it was joined into
     at    INTEGER NOT NULL
 );
+
+-- =============================================================================
+-- play_totals, play_days: running sums of `plays`
+-- =============================================================================
+-- Kept in the same batch as each count (POST /plays): every song's total and
+-- every day's. GET /plays and /plays/stats read these, and `plays` only for
+-- recent days (by idx_plays_day), so a read never sums the whole table.
+-- Rebuildable from `plays` (migration 0014 does it once):
+--   INSERT OR REPLACE INTO play_totals SELECT track_id, SUM(n) FROM plays GROUP BY track_id;
+--   INSERT OR REPLACE INTO play_days SELECT day, SUM(n) FROM plays GROUP BY day;
+CREATE TABLE IF NOT EXISTS play_totals (
+    track_id  INTEGER PRIMARY KEY,
+    total     INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS play_days (
+    day  TEXT    PRIMARY KEY,             -- UTC date, YYYY-MM-DD
+    n    INTEGER NOT NULL
+) WITHOUT ROWID;

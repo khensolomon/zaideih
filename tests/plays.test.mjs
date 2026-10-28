@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fakeD1, sqlite } from "./helpers/fakes.mjs";
 
 const edge = new Map();
 globalThis.caches = { default: { match: async (req) => edge.get(req.url)?.clone(), put: async (req, res) => { edge.set(req.url, res); } } };
@@ -17,6 +18,7 @@ function limiter(limit) {
 
 function makeEnv({ known = [7, 8] } = {}) {
 	const writes = [];
+	const sums = [];
 	const prepare = (sql) => ({
 		bind: (...args) => ({
 			sql, args,
@@ -25,11 +27,13 @@ function makeEnv({ known = [7, 8] } = {}) {
 	});
 	return {
 		writes,
+		sums,
 		env: {
 			PLAY_ORIGINS: "https://zaideih.com, app://zaideih",
 			PLAYS_LIMIT: limiter(20),
 			TRACK_LIMIT: limiter(1),
-			DB: { prepare, batch: async (stmts) => { writes.push(...stmts.map((s) => s.args)); } },
+			// Each day's counts in `writes`, the running sums (a song's total, a day's) in `sums`.
+			DB: { prepare, batch: async (stmts) => { for (const s of stmts) (s.sql.startsWith("INSERT INTO plays ") ? writes : sums).push([s.sql.split(" ")[2], ...s.args]); } },
 		},
 	};
 }
@@ -42,12 +46,17 @@ const post = (env, body, { origin = "https://zaideih.com", ip = "203.0.113.5", m
 	}), env, { waitUntil: (p) => p });
 
 test("plays from the app are counted per track and day", async () => {
-	const { env, writes } = makeEnv();
+	const { env, writes, sums } = makeEnv();
 	const res = await post(env, { v: 1, plays: [[7, NOW], [8, NOW - 86400], [7, NOW - 60]] });
 	assert.equal(res.status, 200);
 	assert.equal(res.headers.get("access-control-allow-origin"), "https://zaideih.com");
 	assert.deepEqual(await res.json(), { accepted: 3, rejected: [] });
-	assert.deepEqual(writes.sort(), [[7, playDay(NOW), 2], [8, playDay(NOW - 86400), 1]].sort());
+	assert.deepEqual(writes.sort(), [["plays", 7, playDay(NOW), 2], ["plays", 8, playDay(NOW - 86400), 1]].sort());
+	// The running sums, in the same batch: each song's total and each day's.
+	const days = [...new Set([playDay(NOW), playDay(NOW - 60)])];
+	assert.deepEqual(sums.filter((x) => x[0] === "play_totals").sort(), [["play_totals", 7, 2], ["play_totals", 8, 1]]);
+	assert.equal(sums.filter((x) => x[0] === "play_days").reduce((a, x) => a + x[2], 0), 3);
+	assert.ok(days.every((d) => sums.some((x) => x[0] === "play_days" && x[1] === d)));
 });
 
 test("unknown, invalid, stale and future plays are named, the rest counted", async () => {
@@ -57,7 +66,7 @@ test("unknown, invalid, stale and future plays are named, the rest counted", asy
 	assert.equal(res.status, 200);
 	assert.equal(body.accepted, 1);
 	assert.deepEqual(body.rejected, [[0, "unknown-track"], [1, "invalid"], [2, "too-old"], [3, "in-future"]]);
-	assert.deepEqual(writes, [[8, playDay(NOW), 1]]);
+	assert.deepEqual(writes, [["plays", 8, playDay(NOW), 1]]);
 });
 
 test("a track counts at most 3 times a request and once a minute per sender", async () => {
@@ -224,10 +233,21 @@ test("with no URL (dev builds) nothing is queued", () => {
 	assert.equal(q.pending().length, 0);
 });
 
-test("GET /plays gives the totals per track, public and cached at the edge", async () => {
+/** A D1 with the schema, recording every statement's SQL. */
+function recordedD1() {
+	const db = fakeD1();
+	const sqls = [];
+	return { db: { ...db, prepare: (sql) => { sqls.push(sql); return db.prepare(sql); } }, raw: db.raw, sqls };
+}
+const today = () => new Date().toISOString().slice(0, 10);
+const daysAgo = (n) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+
+test("GET /plays gives the totals per track from the running sums, public and cached at the edge", { skip: !sqlite }, async () => {
 	edge.clear();
-	let queries = 0;
-	const env = { DB: { prepare: (sql) => ({ all: async () => { queries += 1; assert.match(sql, /GROUP BY track_id/); return { results: [{ id: 7, total: 12, recent: 3 }, { id: 8, total: 1, recent: 1 }] }; } }) } };
+	const { db, raw, sqls } = recordedD1();
+	for (const [id, day, n] of [[7, today(), 3], [7, daysAgo(60), 9], [8, daysAgo(1), 1]]) raw.prepare("INSERT INTO plays (track_id, day, n) VALUES (?, ?, ?)").run(id, day, n);
+	raw.exec("INSERT INTO play_totals SELECT track_id, SUM(n) FROM plays GROUP BY track_id");
+	const env = { DB: db };
 	const get = () => worker.fetch(new Request("https://media.zaideih.com/plays", { headers: { origin: "https://elsewhere.example" } }), env, { waitUntil: (p) => p });
 	const res = await get();
 	assert.equal(res.status, 200);
@@ -237,9 +257,11 @@ test("GET /plays gives the totals per track, public and cached at the edge", asy
 	assert.equal(body.v, 1);
 	assert.equal(body.recentDays, 30);
 	assert.deepEqual(body.tracks, [[7, 12, 3], [8, 1, 1]]);
+	assert.ok(sqls.every((q) => !/FROM plays\b/.test(q) || /WHERE day >=/.test(q)), "the plays table is read only for recent days");
+	const n = sqls.length;
 	await new Promise((r) => setTimeout(r, 0));
 	assert.deepEqual((await (await get()).json()).tracks, body.tracks);
-	assert.equal(queries, 1, "the second read comes from the edge cache");
+	assert.equal(sqls.length, n, "the second read comes from the edge cache");
 });
 
 test("GET /plays says so when D1 cannot be read", async () => {
@@ -253,29 +275,24 @@ test("GET /plays says so when D1 cannot be read", async () => {
 	} finally { console.error = err; }
 });
 
-test("GET /plays/stats gives the first day, the plays of each day and the last 7 days per song", async () => {
+test("GET /plays/stats gives the first day, the plays of each day and the last 7 days per song", { skip: !sqlite }, async () => {
 	edge.clear();
-	const sqls = [];
-	const env = { DB: { prepare: (sql) => {
-		sqls.push(sql);
-		return {
-			first: async () => ({ day: "2026-09-01" }),
-			all: async () => ({ results: /GROUP BY day/.test(sql) ? [{ day: "2026-09-01", n: 4 }, { day: "2026-09-03", n: 2 }] : [{ id: 7, n: 3 }] }),
-		};
-	} } };
-	const get = () => worker.fetch(new Request("https://media.zaideih.com/plays/stats"), env, { waitUntil: (p) => p });
+	const { db, raw, sqls } = recordedD1();
+	for (const [id, day, n] of [[7, daysAgo(40), 4], [7, daysAgo(2), 2], [8, today(), 1], [8, daysAgo(10), 5]]) raw.prepare("INSERT INTO plays (track_id, day, n) VALUES (?, ?, ?)").run(id, day, n);
+	raw.exec("INSERT INTO play_days SELECT day, SUM(n) FROM plays GROUP BY day");
+	const get = () => worker.fetch(new Request("https://media.zaideih.com/plays/stats"), { DB: db }, { waitUntil: (p) => p });
 	const res = await get();
 	assert.equal(res.status, 200);
 	assert.equal(res.headers.get("access-control-allow-origin"), "*");
 	const body = await res.json();
 	assert.equal(body.v, 1);
-	assert.equal(body.first, "2026-09-01");
-	assert.match(body.today, /^\d{4}-\d{2}-\d{2}$/);
-	assert.deepEqual(body.days, [["2026-09-01", 4], ["2026-09-03", 2]]);
-	assert.deepEqual(body.week, [[7, 3]]);
-	assert.ok(sqls.some((s) => /-6 days/.test(s)), "the week is today and the 6 days before");
-	await new Promise((r) => setTimeout(r, 0));
+	assert.equal(body.first, daysAgo(40));
+	assert.equal(body.today, today());
+	assert.deepEqual(body.days, [[daysAgo(40), 4], [daysAgo(10), 5], [daysAgo(2), 2], [today(), 1]]);
+	assert.deepEqual(body.week, [[7, 2], [8, 1]]);
+	assert.ok(sqls.every((q) => !/FROM plays\b/.test(q) || /WHERE day >= date\('now', '-6 days'\)/.test(q)), "the plays table is read only for the week");
 	const n = sqls.length;
+	await new Promise((r) => setTimeout(r, 0));
 	await get();
 	assert.equal(sqls.length, n, "the second read comes from the edge cache");
 });

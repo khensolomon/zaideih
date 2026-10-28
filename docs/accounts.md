@@ -76,7 +76,7 @@ After a sign-in the Worker gives a session token (`zs_` and 43 base64url charact
 
 | Route | Does |
 |---|---|
-| `POST /auth/session` with `Authorization: Bearer <GitHub token>`, body `{}` or `{"link": "<session>"}` | Checks the token with GitHub (`GET /user`, `GET /user/emails`), finds or makes the member, answers `{token, expires_at, member: {id, name}, joined, email}`; `joined` is `known`, `link`, `email` or `new` |
+| `POST /auth/session` with `Authorization: Bearer <GitHub token>`, body `{}` or `{"link": "<session>"}` | Checks the token with GitHub (`GET /user`, `GET /user/emails`, and "Check a token" with the App's client id and secret, to know whether Zaideih's GitHub App issued it), finds or makes the member, answers `{token, expires_at, member: {id, name}, joined, email}`; `joined` is `known`, `link`, `email` or `new`. A token Zaideih did not issue (a fine-grained token, or any other app the person authorized) signs in only a member who is not the owner and holds no right, makes a new member rather than joining one by email, and never adds GitHub to an account (403 with the reason): otherwise any app the owner once authorized could hold the owner's every right |
 | `POST /auth/session/end` with `Authorization: Bearer <session>` | Signs that session out |
 | `POST /auth/wait` `{nonce}` | The code of a sign-in started with `wait=1`, once; 204 while it has not come back |
 | `POST /auth/google/token` `{code, verifier, link?}` | A Google sign-in for a session, answered like `/auth/session` |

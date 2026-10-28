@@ -89,6 +89,9 @@ export function resetSql({ tables, schema, tracks, plays = null, migrations = []
 			});
 			out.push(`INSERT INTO plays (track_id, day, n) VALUES\n${rows.join(",\n")};`);
 		}
+		// The running sums (GET /plays reads them) are rebuilt from the counts put back.
+		out.push("INSERT INTO play_totals (track_id, total) SELECT track_id, SUM(n) FROM plays GROUP BY track_id;");
+		out.push("INSERT INTO play_days (day, n) SELECT day, SUM(n) FROM plays GROUP BY day;");
 	}
 	return `${out.join("\n")}\n`;
 }

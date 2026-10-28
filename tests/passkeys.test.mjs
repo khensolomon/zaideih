@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeD1, fakeR2, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, fakeR2, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const { handleAuth } = await import("../worker/media/auth.js");
 const { cbor, derToRaw, rpIdFor } = await import("../worker/media/passkeys.js");
@@ -69,6 +69,8 @@ async function authenticator({ rpId = "zaideih.com", flags = 0x05 } = {}) {
 }
 
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	const t = init.headers.Authorization.replace("Bearer ", "");
 	if (t !== "gh-ann") return new Response("{}", { status: 401 });
 	if (url.endsWith("/user")) return new Response(JSON.stringify({ id: 42, login: "ann" }));

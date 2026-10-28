@@ -4,7 +4,7 @@ import { compile } from "../tools/catalog.mjs";
 import { applyHolds, applyLive, buildModel } from "../src/core/catalog.js";
 import { indexRaw, parseLive, patchRaw, rawValue } from "../src/core/live-catalog.js";
 import { search } from "../src/core/search.js";
-import { fakeD1, sqlite } from "./helpers/fakes.mjs";
+import { fakeD1, sqlite, tokenCheck } from "./helpers/fakes.mjs";
 
 const category = {
 	lang: [{ id: 1, name: "zola" }, { id: 2, name: "myanmar" }, { id: 3, name: "mizo" }],
@@ -100,6 +100,8 @@ const W = "https://media.zaideih.com";
 const ORIGIN = "https://zaideih.com";
 const PEOPLE = { "gh-owner": { id: 1, login: "khen" }, "gh-ann": { id: 42, login: "ann" } };
 const github = async (url, init) => {
+	const checked = tokenCheck(url, init);
+	if (checked) return checked;
 	const p = PEOPLE[init.headers.Authorization.replace("Bearer ", "")];
 	if (!p) return new Response("{}", { status: 401 });
 	return url.endsWith("/user") ? new Response(JSON.stringify(p)) : new Response("{}", { status: 403 });

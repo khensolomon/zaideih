@@ -14,6 +14,8 @@
 - Privacy: analytics gets the kind of a private page (invite, share, playlist, your own music) with a plain title, never its address or name; turning statistics on signs out of the Workspace on the device; sign-in errors show only plain words from the address
 - Workspace: edits made while a pull request is open stay in the draft after it merges; Apply now takes each batch out of the draft as it goes live; Merge and release on a request merges only that request's own pull request; signing out stops background reading and polling; a passing failure (offline, GitHub down) keeps the sign-in; Show more never mixes two searches
 - Release: the site waits for the track paths (d1), which wait for the Worker (audio); the version's tag is checked before anything is deployed; release lines are read in any case
+- Sign-in: a GitHub token Zaideih's GitHub App did not issue (a personal token, or any other app the person authorized) signs in only members who are not the owner and hold no right, never joins by email and never adds GitHub to an account; checked with GitHub's "Check a token"
+- Play counts: each count also adds to running sums (`play_totals`, `play_days`, migration 0014); `GET /plays` and `/plays/stats` read those and only the recent days of `plays`, instead of summing the whole table on every cache miss
 
 ## v26.10.27.10
 

@@ -30,7 +30,7 @@
  *                        never the last sign-in, nor the owner's GitHub
  * Google's sign-in (google.js) answers sessions the same way.
  */
-import { MemberError } from "./members.js";
+import { MemberError, ownerId, rightsOf } from "./members.js";
 
 const API = "https://api.github.com";
 const USER_AGENT = "zaideih-media-worker";
@@ -93,7 +93,7 @@ export function safePicture(url) {
  * Finds or makes the member for a sign-in (see the rules at the top) and
  * keeps the sign-in's details. Answers { id, name, joined: "known" | "link" | "merged" | "email" | "new" }.
  */
-export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
+export async function signIn(env, who, { linkTo = null, emailJoin = true, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
 	const known = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = ?1 AND subject = ?2").bind(who.provider, who.subject).first();
 	let memberId = null;
 	let joined;
@@ -108,7 +108,7 @@ export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(
 		memberId = linkTo;
 		joined = "link";
 	} else {
-		const emails = [...new Set([who.emailVerified ? who.email : null, ...(who.verifiedEmails ?? [])].filter(Boolean))];
+		const emails = emailJoin ? [...new Set([who.emailVerified ? who.email : null, ...(who.verifiedEmails ?? [])].filter(Boolean))] : [];
 		if (emails.length) {
 			const rows = (await env.DB.prepare(
 				`SELECT DISTINCT member_id FROM member_logins WHERE email_verified = 1 AND email IN (${emails.map((_, i) => `?${i + 1}`).join(", ")})`,
@@ -231,8 +231,44 @@ async function linkTarget(env, body, nowSeconds) {
 }
 
 /** Signs in `who` and answers the new session, as every sign-in route does. */
-export async function issueSession(env, who, body, nowSeconds) {
-	const member = await signIn(env, who, { linkTo: await linkTarget(env, body, nowSeconds), nowSeconds });
+/**
+ * Whether a GitHub token was issued to Zaideih's own GitHub App (its sign-in), not to another
+ * app the person authorized or made by hand (a personal access token): GitHub's "Check a
+ * token", asked with the App's client id and secret. 200: Zaideih's; 404 or 422: not.
+ */
+export async function issuedToZaideih(env, token, fetchImpl) {
+	if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) throw new MemberError("GitHub sign-in is not set up on this Worker: GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET", 503);
+	const res = await fetchImpl(`${API}/applications/${encodeURIComponent(env.GITHUB_CLIENT_ID)}/token`, {
+		method: "POST",
+		headers: {
+			Accept: "application/vnd.github+json", "Content-Type": "application/json", "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28",
+			Authorization: `Basic ${btoa(`${env.GITHUB_CLIENT_ID}:${env.GITHUB_CLIENT_SECRET}`)}`,
+		},
+		body: JSON.stringify({ access_token: token }),
+	});
+	if (res.ok) return true;
+	if (res.status === 404 || res.status === 422) return false;
+	throw new MemberError(`GitHub could not check the sign-in (HTTP ${res.status}); try again`, 502);
+}
+
+/**
+ * A personal GitHub token (one not issued to Zaideih: any app the person authorized,
+ * or a fine-grained token made by hand) signs in only a member who holds no right and is
+ * not the owner, and never adds GitHub to an account or joins one by email: otherwise
+ * any app the owner once authorized could hold the owner's every right.
+ */
+async function checkPersonal(env, who, body) {
+	const refuse = () => new MemberError("for this account, sign in with GitHub through Zaideih (Account, or the Workspace's Sign in with GitHub); a personal or other app's GitHub token is not enough", 403);
+	if (body?.link) throw new MemberError("adding GitHub to an account needs the GitHub sign-in through Zaideih, not a personal token", 403);
+	if (who.subject === String(env.OWNER_GITHUB_ID)) throw refuse();
+	const known = await env.DB.prepare("SELECT member_id FROM member_logins WHERE provider = 'github' AND subject = ?1").bind(who.subject).first();
+	if (!known) return;
+	if (known.member_id === (await ownerId(env)) || (await rightsOf(env, known.member_id)).get(known.member_id)?.size) throw refuse();
+}
+
+export async function issueSession(env, who, body, nowSeconds, { personal = false } = {}) {
+	if (personal) await checkPersonal(env, who, body);
+	const member = await signIn(env, who, { linkTo: personal ? null : await linkTarget(env, body, nowSeconds), emailJoin: !personal, nowSeconds });
 	const session = await startSession(env, member.id, nowSeconds);
 	return { token: session.token, expires_at: session.expiresAt * 1000, member: { id: member.id, name: member.name }, joined: member.joined, email: who.email };
 }
@@ -283,5 +319,6 @@ export async function handleSession(request, env, route, body, { fetchImpl, nowS
 	const auth = /^Bearer (\S+)$/.exec(request.headers.get("authorization") ?? "");
 	if (!auth || TOKEN.test(auth[1])) throw new MemberError("expected Authorization: Bearer <GitHub token>", 400);
 	const who = await githubIdentity(auth[1], fetchImpl);
-	return [200, await issueSession(env, who, body, nowSeconds)];
+	const personal = !(await issuedToZaideih(env, auth[1], fetchImpl));
+	return [200, await issueSession(env, who, body, nowSeconds, { personal })];
 }
