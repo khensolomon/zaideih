@@ -2,11 +2,15 @@
  * Minimal promise wrapper over IndexedDB.
  *
  * Stores:
- *   kv         arbitrary key/value state (queue, settings, playback position)
+ *   kv         key/value state: the queue and position ("player"), the sync
+ *              state, the downloads' sizes and versions ("offline-meta")
  *   likes      liked track ids            key: track id, value: { id, at }
  *   playlists  user playlists             key: auto, value: { id, name, tracks, created, updated }
  *   history    play history               key: auto, value: { track, at }
- *   audio      downloaded audio blobs     key: track id, value: { id, blob, size, type, at }
+ *   audio      downloaded audio blobs     key: track id, value: { id, blob, size, type, at, v (the version) }
+ *
+ * A later DB_VERSION adds to what is there: the upgrade makes a store only
+ * when it is missing.
  */
 /** The browser's storage failed or did not answer; the message is for the listener. */
 export class StorageError extends Error {}
