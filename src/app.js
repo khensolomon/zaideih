@@ -13,7 +13,7 @@ import { startPlayCounting } from "./core/plays.js";
 import { applyTotals, startPlayTotals, totalsUrl } from "./core/playcounts.js";
 import { startHolds } from "./core/holds.js";
 import { audioUrl, AUTH_URL, LIBRARY_URL, WORKSPACE_URL } from "./config.js";
-import { LEVELS, readWho } from "./core/access.js";
+import { LEVELS, readWho, saveWho, SESSION_KEY, TOKEN_KEY } from "./core/access.js";
 import { uploads } from "./core/uploads.js";
 import { account } from "./core/signin.js";
 import { accountView } from "./ui/account-view.js";
@@ -52,6 +52,44 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 let catalog = null;
 let currentRoute = null;
+// Who the person's library was last drawn for (uploads events): a page being worked on is drawn again only when it changes.
+let lastWho = "";
+
+/*
+ * Pages whose address or title carries something of the person's own (an
+ * invite code, a share, a playlist's name, their own or shared albums, a
+ * diagnostic code) are reported to analytics by their kind only, with a
+ * plain title: architecture.md, "nothing from the library is sent".
+ */
+const PRIVATE_PAGES = new Map([
+	["share/:id", "Share"], ["join/:code", "Join"], ["playlist/:id", "Playlist"], ["code/:code", "Code"],
+	["library/:tab", "Library"], ["songbooks/text/:id/studio", "Songbook studio"], ["account", "Account"],
+]);
+/**
+ * Statistics turned on: the Workspace's GitHub sign-in is let go first. The Workspace is
+ * refused while statistics are on because a script on the page could read what is kept on
+ * the device; a sign-in left there from before would still be readable (docs/architecture.md).
+ */
+function forgetWorkspaceSignIn() {
+	try {
+		const had = [TOKEN_KEY, SESSION_KEY].some((k) => localStorage.getItem(k) !== null);
+		for (const k of [TOKEN_KEY, SESSION_KEY]) localStorage.removeItem(k);
+		if (had) {
+			saveWho(localStorage, null);
+			syncAccess();
+			notify("Signed out of the Workspace on this device: it is not used while statistics are on.");
+		}
+	} catch (err) {
+		console.warn("the Workspace sign-in could not be removed", err);
+	}
+}
+
+function reportPage(r) {
+	const ownAlbum = (r.pattern === "album/:id" || r.pattern === "artist/:id") && /^u/.test(r.params?.id ?? "");
+	const kind = PRIVATE_PAGES.get(r.pattern) ?? (ownAlbum ? "Your music" : null);
+	const path = kind ? r.pattern.replace(/\/:\w+/g, "") : r.path;
+	analytics.pageView(`${location.origin}${location.pathname}#/${path}`, kind ? `${kind} | Zaideih` : document.title);
+}
 
 /* =================================================================== routes */
 route("", V.home);
@@ -308,7 +346,18 @@ async function render({ keepScroll = false } = {}) {
 	closeSuggestions();
 	const r = parse();
 	const view = $("#view");
-	if (!r) { go("", undefined, { replace: true }); return; }
+	if (!r) {
+		// The empty address is Home; any other unknown one says so (an old or mistyped link), with the way Home.
+		if (!location.hash.replace(/^#\/?/, "").split("?")[0]) { go("", undefined, { replace: true }); return; }
+		currentRoute = null;
+		document.body.dataset.page = "missing";
+		document.body.toggleAttribute("data-studio", false);
+		applyRail();
+		document.title = "Not found | Zaideih";
+		view.innerHTML = html`<div class="empty"><h2>There is no page at this address</h2><p>The link may be old, or cut short.</p><p><a class="btn primary" href="#/">Home</a></p></div>`;
+		scrollTo(0, 0);
+		return;
+	}
 	// The page kind, for layout rules such as the search field in place of the bar on phones.
 	document.body.dataset.page = r.path.split("/")[0] || "home";
 	// The lyrics studio and the Workspace are pages of their own: the sidebar narrows to icons while one is open (not saved as the listener's choice).
@@ -336,7 +385,7 @@ async function render({ keepScroll = false } = {}) {
 	updateNavbar(r.path, out.title);
 	// The address without its query: search text never leaves the device, and
 	// a diagnostic code is reported as the bare "code" page.
-	if (!keepScroll && r.path !== "workspace") analytics.pageView(`${location.origin}${location.pathname}#/${r.path.startsWith("code") ? "code" : r.path}`, document.title);
+	if (!keepScroll && r.path !== "workspace") reportPage(r);
 	scrollTo(0, scroll);
 	out.mount?.(view);
 	// The player's Play, while nothing plays, offers this page's own.
@@ -391,7 +440,17 @@ const SOFT_MS = 300;
 const SOFT_MAX_MS = 1000;
 let softTimer = 0;
 let softSince = 0;
+/*
+ * Pages where someone types, picks or waits on something (studios, the Workspace,
+ * account, sharing, uploads, a songbook import): drawn again only by their own
+ * actions, never by a background change (live catalog, holds, trims, counts),
+ * which would lose what is being typed or the sign-in being waited for.
+ */
+const EDITING = /^(workspace|admin|account|audio\/|lyrics\/\d+\/studio|songbooks\/text\/\d+\/studio|songbooks\/import|share\/|join\/|library\/uploads)/;
+const editing = (path = currentRoute?.path ?? "") => EDITING.test(path);
+
 function rerenderSoon() {
+	if (editing()) return;
 	const now = performance.now();
 	if (!softTimer) softSince = now;
 	clearTimeout(softTimer);
@@ -888,14 +947,25 @@ function closeMenu(restoreFocus = false) {
 	if (restoreFocus && menuReturnFocus?.isConnected) menuReturnFocus.focus();
 }
 
+/**
+ * Opens the shared #dialog. Its answer starts empty each time, so Esc or Cancel is never
+ * read as the "ok" of an earlier dialog; Cancel is a plain button, so Enter in a field
+ * submits the dialog's own action, not Cancel.
+ */
+function openDialog(d) {
+	d.returnValue = "";
+	d.querySelector("[data-dialog-cancel]")?.addEventListener("click", () => d.close("cancel"));
+	d.showModal();
+}
+
 function promptText(title, value = "", confirm = "Save") {
 	return new Promise((resolve) => {
 		const d = $("#dialog");
 		d.innerHTML = html`<form method="dialog"><h2>${title}</h2>
 			<input type="text" name="value" value="${value}" required maxlength="120" aria-label="${title}">
-			<div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">${confirm}</button></div></form>`;
+			<div class="actions"><button type="button" class="btn" data-dialog-cancel>Cancel</button><button class="btn primary" value="ok">${confirm}</button></div></form>`;
 		d.onclose = () => resolve(d.returnValue === "ok" ? $("input", d).value.trim() || null : null);
-		d.showModal();
+		openDialog(d);
 	});
 }
 
@@ -908,7 +978,7 @@ function editUpload(track) {
 		<label>Album<input name="album" value="${track.album.title === "Singles" ? "" : track.album.title}" maxlength="200"></label>
 		<div class="up-edit-row"><label>Year<input name="year" type="number" min="1900" max="2100" value="${track.year ?? ""}"></label>
 		<label>Track<input name="track" type="number" min="1" max="999" value="${track.track ?? ""}"></label></div>
-		<div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div></form>`;
+		<div class="actions"><button type="button" class="btn" data-dialog-cancel>Cancel</button><button class="btn primary" value="ok">Save</button></div></form>`;
 	d.onclose = async () => {
 		if (d.returnValue !== "ok") return;
 		const f = new FormData($("form", d));
@@ -919,7 +989,7 @@ function editUpload(track) {
 			notify(err.message, { kind: "error" });
 		}
 	};
-	d.showModal();
+	openDialog(d);
 }
 
 /**
@@ -953,7 +1023,7 @@ function askPublish(album) {
 		<label>Language<select name="lang" required><option value="" selected disabled>Choose…</option>${langs.map((l) => html`<option value="${l.id}">${l.name[0].toUpperCase()}${l.name.slice(1)}</option>`)}</select></label>
 		<label>For the reviewer<textarea name="note" rows="3" maxlength="200" placeholder="Who made it, and why you may share it (bought, recorded, the artist's permission)"></textarea></label>
 		<label class="check"><input type="checkbox" name="rights" required> I may share these recordings with everyone</label>
-		<div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok" ${other.length ? "disabled" : ""}>Ask</button></div></form>`;
+		<div class="actions"><button type="button" class="btn" data-dialog-cancel>Cancel</button><button class="btn primary" value="ok" ${other.length ? "disabled" : ""}>Ask</button></div></form>`;
 	d.onclose = async () => {
 		if (d.returnValue !== "ok") return;
 		const f = new FormData($("form", d));
@@ -964,16 +1034,16 @@ function askPublish(album) {
 			notify(err.message, { kind: "error" });
 		}
 	};
-	d.showModal();
+	openDialog(d);
 }
 
 function confirmAction(message, confirm = "Continue") {
 	return new Promise((resolve) => {
 		const d = $("#dialog");
 		d.innerHTML = html`<form method="dialog"><h2>${message}</h2>
-			<div class="actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">${confirm}</button></div></form>`;
+			<div class="actions"><button type="button" class="btn" data-dialog-cancel>Cancel</button><button class="btn primary" value="ok">${confirm}</button></div></form>`;
 		d.onclose = () => resolve(d.returnValue === "ok");
-		d.showModal();
+		openDialog(d);
 	});
 }
 
@@ -1117,9 +1187,12 @@ const listTracks = (key) => (getList(key)?.ids ?? []).map((id) => catalog.track(
 
 const actions = {
 	async play(el) {
-		const { ids, context } = getList(el.dataset.list);
-		const id = trackIdOf(el.dataset.id);
+		// Up next plays from the queue itself: its list key may be gone after a redraw of the page beneath.
 		if (el.closest("[data-extra=queue]")) return player.jump(Number(el.closest(".track").dataset.index));
+		const list = getList(el.dataset.list);
+		if (!list) throw new Error("This list changed; tap the song again.");
+		const { ids, context } = list;
+		const id = trackIdOf(el.dataset.id);
 		if (player.current()?.id === id && player.state.queue.join() === ids.join()) return player.toggle();
 		await player.playList(ids, id, context);
 	},
@@ -1192,12 +1265,13 @@ const actions = {
 		else closeAppMenu({ restoreFocus: true });
 	},
 	consent(el) {
+		if (el.dataset.value === "granted") forgetWorkspaceSignIn();
 		analytics.setChoice(el.dataset.value);
 		$("#consent")?.remove();
 		syncStatsButtons();
 		// About shows the current choice; refresh it when changed there.
 		if (currentRoute?.path === "about") rerender();
-		else if (el.dataset.value === "granted") analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
+		else if (el.dataset.value === "granted" && currentRoute) reportPage(currentRoute);
 	},
 	/** Leaves an album shared with the person; one that came with all of its owner's music leaves all of it, after asking. */
 	async "leave-share"(el) {
@@ -1330,10 +1404,11 @@ const actions = {
 		saveRail(FOLDED_FIRST.includes(id) ? { ...state, opened: toggle(state.opened) } : { ...state, closed: toggle(state.closed) });
 	},
 	"stats-on"() {
+		forgetWorkspaceSignIn();
 		analytics.setChoice("granted");
 		$("#consent")?.remove();
 		syncStatsButtons();
-		analytics.pageView(`${location.origin}${location.pathname}#/${currentRoute?.path ?? ""}`, document.title);
+		if (currentRoute) reportPage(currentRoute);
 		notify("Thank you. Listening statistics are on; you can turn them off on About.");
 		if (currentRoute?.path === "about") rerender();
 	},
@@ -1571,6 +1646,8 @@ document.addEventListener("keydown", (e) => {
 		wakeWatch(); // other keys show the controls and keep working (Space, arrows)
 	}
 	if (e.key === "Escape") {
+		// A dialog closes itself on Esc; nothing under it closes too.
+		if (e.target.closest?.("dialog") || $("dialog[open]")) return;
 		if (!$("#app-menu").hidden) closeAppMenu({ restoreFocus: true });
 		else if ($(".menu")) closeMenu(true);
 		else if (!$("#sheet").hidden) closeSheet();
@@ -1969,7 +2046,7 @@ export async function boot(platform) {
 	// The public songbooks' hymns (core/songbooks.js): Songbooks shows in the sidebar once there are any.
 	refreshHymnIndex().then(() => syncAccess(), (err) => console.warn("songbooks index", err.message));
 	// Uploads: read once someone is signed in (syncAccess), shown where they appear.
-	uploads.catalog = catalog;
+	uploads.connect(catalog);
 	syncAccess();
 	on("uploads", () => {
 		// The hymns of the books, for search and for naming them: signed in, the private ones the person sees too
@@ -1987,9 +2064,11 @@ export async function boot(platform) {
 		}
 		if (mineChanged && includeMine() && $("#q")?.value) runSearch($("#q").value);
 		// Songbook pages show editing to the Songbooks right, known once the member is read.
-		if (path === "library" || path === "library/uploads" || path.startsWith("album/u-") || path.startsWith("songbook")) rerender();
-		// Sharing: its pages show the person's own music and shares, known once read.
-		if (path.startsWith("share/") || path.startsWith("join/")) rerender();
+		// Pages being worked on (EDITING) are drawn again only when who is signed in, or their rights, changed.
+		const who = JSON.stringify([uploads.state.member?.id ?? null, uploads.state.member?.rights ?? [], Boolean(uploads.state.error), uploads.state.version ?? 0]);
+		const newWho = who !== lastWho;
+		lastWho = who;
+		if ((path === "library" || path.startsWith("album/u-") || /^songbook\//.test(path)) || (newWho && /^(library\/uploads|songbooks\/text\/\d+$|share\/|join\/)/.test(path))) rerender();
 		// An invite opened before signing in opens again once they have.
 		const invite = pendingInvite();
 		if (invite && uploads.state.member && !path.startsWith("join/")) go(`join/${invite}`);
@@ -2041,6 +2120,8 @@ export async function boot(platform) {
 			if (!document.body.classList.contains("search-open") && !inStudio()) rerenderSoon();
 		},
 	});
+	// The holds kept on the device were applied at once, building the catalog again: the trims go back on.
+	edits.reapply();
 	clearArtCaches();
 	renderRail();
 	syncAccess();

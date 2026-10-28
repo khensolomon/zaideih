@@ -408,6 +408,9 @@ async function build(audio) {
 
 let player = null; // { audio, current(), finish() }
 
+const REMEMBER_EVERY_MS = 5000;
+const kept = { key: "", loud: null, at: 0 };
+
 function onMeter(l, r) {
 	if (!player) return;
 	const { audio } = player;
@@ -424,7 +427,17 @@ function onMeter(l, r) {
 	if (skipper.state === "play" || !settings.skip) {
 		leveler.update(level, step, skipper.quiet === null ? -45 : skipper.quiet + 10);
 		if (settings.level) applyLevel();
-		if (leveler.settled && t) remember(memoryKey(t), { loud: Math.round(leveler.loudness * 10) / 10 });
+		// Written when the remembered loudness changes by a tenth of a dB, and at most every few
+		// seconds: the meter reads 20 times a second, the memory holds thousands of songs.
+		if (leveler.settled && t) {
+			const key = memoryKey(t);
+			const loud = Math.round(leveler.loudness * 10) / 10;
+			const nowMs = performance.now();
+			if (key !== kept.key || (loud !== kept.loud && nowMs - kept.at >= REMEMBER_EVERY_MS)) {
+				remember(key, { loud });
+				kept.key = key; kept.loud = loud; kept.at = nowMs;
+			}
+		}
 	}
 	if (!settings.skip) return;
 	const action = skipper.update(level, audio.currentTime, audio.duration, step);

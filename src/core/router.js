@@ -12,7 +12,7 @@ export function route(pattern, handler) {
 	const re = new RegExp(
 		"^" + pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "$",
 	);
-	routes.push({ re, keys, handler });
+	routes.push({ re, keys, handler, pattern });
 }
 
 export function parse(hash = location.hash) {
@@ -21,8 +21,14 @@ export function parse(hash = location.hash) {
 	for (const r of routes) {
 		const m = r.re.exec(path);
 		if (m) {
-			const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
-			return { handler: r.handler, params, query: new URLSearchParams(qs), path };
+			// A cut-off link ("%2" at its end) is no address: not found, not an error that stops the app.
+			let params;
+			try {
+				params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+			} catch {
+				return null;
+			}
+			return { handler: r.handler, params, query: new URLSearchParams(qs), path, pattern: r.pattern };
 		}
 	}
 	return null;

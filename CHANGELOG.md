@@ -1,5 +1,20 @@
 # Version
 
+## v26.10.28.1
+
+- Audit fixes: privacy, D1 limits, playback and editing safety
+- Lyrics: a recording joined to a private songbook text follows the text's rules on every route; before, any member could overwrite the text through the recording, and the Lyrics right could read it (with a test)
+- Library: settling a released album, approving a request, deleting several uploads and adding from storage run in set queries and one batch each, within D1's 50 queries a request (a 60-song album is tested); before, an album of about 30 songs broke `GET /library` for every member, and approving about 20 songs failed halfway
+- Library: an invite taken by two people at once goes to the first; one-time sign-in codes and passkey challenges are taken in one statement; shared songs are never kept by the browser, so taking a share back stops them at once; the owner's library counts are not shown in Members; an id of an account joined into another is never given out again (migration 0013 `member_retired`), and its history moves with it
+- Audio Worker: a range past the end answers 416 instead of 500; ranges asked for without a version are kept an hour, not a day as immutable; one status write per play, not per range; a trim is streamed to R2 instead of copied whole (long tapes no longer run the Worker out of memory); a device clock ahead never files a play under tomorrow
+- Songbooks: a text added to, taken out of or replaced in a public book reaches the lyrics index, and a deleted one is dropped from devices
+- Plays: a play turned away for the rate (listeners sharing a carrier's address) is kept and sent again; one tab sends at a time, so two tabs never count a play twice
+- App: skipping quickly never plays the wrong song; the offline catalog is replaced only once the new one is kept, so the app always starts offline; the sound leveler writes its memory every few seconds, not 20 times a second; likes and playlists changed in one tab are read again in the others, and the sync outbox is written one tab at a time; your library's answer arriving after sign-out is dropped, and failed refreshes are retried before the addresses run out; play history is trimmed; a draft that could not be read is never written over; a download removed while arriving is not kept; trims show at start with album holds; another tab's update offers Reload
+- App: pages being worked on (studios, Workspace, account, sharing, uploads, songbook import) are no longer drawn again by background changes; Esc or Cancel in a dialog is never read as an earlier "ok" (it could confirm deleting an upload), and Enter submits the dialog's own action; a cut-off or unknown link shows "There is no page at this address" instead of hanging or going Home; the audio studio keeps a late download out of the next song's page and stops the left page's playback; Up next plays after a redraw; long menus scroll; Esc in a dialog leaves Now playing open; page listeners are removed when the page is left; an invite error can be tried again
+- Privacy: analytics gets the kind of a private page (invite, share, playlist, your own music) with a plain title, never its address or name; turning statistics on signs out of the Workspace on the device; sign-in errors show only plain words from the address
+- Workspace: edits made while a pull request is open stay in the draft after it merges; Apply now takes each batch out of the draft as it goes live; Merge and release on a request merges only that request's own pull request; signing out stops background reading and polling; a passing failure (offline, GitHub down) keeps the sign-in; Show more never mixes two searches
+- Release: the site waits for the track paths (d1), which wait for the Worker (audio); the version's tag is checked before anything is deployed; release lines are read in any case
+
 ## v26.10.27.10
 
 - Members studio in the Workspace

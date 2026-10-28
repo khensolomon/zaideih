@@ -192,10 +192,14 @@ export function mount(root, ctx) {
 			ctx.onWho?.();
 			await load();
 		} catch (err) {
-			// A sign-in that cannot be used is forgotten here, so the page does not retry it on every visit.
-			if (via === "github") store.set(SESSION_KEY, null);
-			saveWho(localStorage, null);
-			ctx.onWho?.();
+			// A sign-in GitHub or the service refused is forgotten here, so the page does not retry it on
+			// every visit. One that met a passing failure (offline, GitHub or the service down) is kept.
+			const refused = (err instanceof GitHubError && err.status === 401) || (err instanceof SignInError && !err.passing);
+			if (refused) {
+				if (via === "github") store.set(SESSION_KEY, null);
+				saveWho(localStorage, null);
+				ctx.onWho?.();
+			}
 			fail(err);
 		}
 	}
@@ -239,7 +243,8 @@ export function mount(root, ctx) {
 	async function finishSignIn(query) {
 		// The code is single-use; take it out of the address and history right away.
 		history.replaceState(history.state, "", "#/workspace");
-		if (query.get("signin-error")) throw new SignInError(`GitHub did not sign you in: ${query.get("signin-error")}`);
+		// Plain words only: the address can be made by anyone (see account-view.js signInReason).
+		if (query.get("signin-error")) throw new SignInError(`GitHub did not sign you in${/^[A-Za-z][A-Za-z .,;'_-]{0,119}$/.test(query.get("signin-error")) ? `: ${query.get("signin-error")}` : ". Try again."}`);
 		s.busy = "Finishing the GitHub sign-in…";
 		render();
 		await session.finish({ code: query.get("signin"), nonce: query.get("nonce") });
@@ -270,7 +275,13 @@ export function mount(root, ctx) {
 		store.set(TOKEN_KEY, null);
 		saveWho(localStorage, null);
 		ctx.onWho?.();
+		// Background work for this person stops: reading lengths, watching the pull request.
+		s.lengths?.stop.abort();
+		clearTimeout(poll);
+		watching += 1;
 		s.gh = null; s.via = null; s.user = null; s.level = null; s.data = null; s.suggestions = null; s.done = null; s.menu = false; s.rights = new Set(); s.isOwner = false; s.mlist = null; s.member = null; s.mpage = null; s.mup = null; s.requests = null; s.reviewing = null;
+		// Nothing of theirs is left for the next person to sign in on this tab.
+		s.live = null; s.holds = null; s.lyrics = null; s.health = null; s.pr = null; s.lengths = null; s.totals = null; s.stats = null;
 		render();
 		await account.signOut().catch((err) => console.warn("the Zaideih session could not be signed out", err));
 		if (via === "github") await session.signOut();
@@ -599,7 +610,8 @@ export function mount(root, ctx) {
 		// while a branch with the folder's name ("admin") exists.
 		const branch = `catalog-edit-${next}-${Date.now().toString(36)}`;
 		const pr = await s.gh.propose({ parent: head, files, branch, title: `Catalog: ${note.trim()}`, body });
-		s.draft.pr = { ...pr, branch, title, body, version: next };
+		// The changes it carries, so a merge takes only those out of the draft (edits made meanwhile stay).
+		s.draft.pr = { ...pr, branch, title, body, version: next, changes: structuredClone(s.draft.changes) };
 		saveDraft();
 		s.busy = "";
 		watch();
@@ -636,7 +648,7 @@ export function mount(root, ctx) {
 		}
 		const answer = await res.json().catch(() => null);
 		if (!res.ok) throw new SignInError(`the suggestion was not accepted: ${answer?.error ?? `HTTP ${res.status}`}`);
-		s.draft.pr = { number: answer.number, url: answer.url, branch: answer.branch, suggestion: true };
+		s.draft.pr = { number: answer.number, url: answer.url, branch: answer.branch, suggestion: true, changes: structuredClone(s.draft.changes) };
 		saveDraft();
 		s.busy = "";
 		ctx.notify(`Sent as suggestion #${answer.number}; an editor reviews it`);
@@ -648,19 +660,34 @@ export function mount(root, ctx) {
 		render();
 	}
 
+	/** The draft after its pull request merged: the changes it carried go, those made since stay. */
+	function afterMerge(pr) {
+		if (!pr.changes) return { changes: [], pr: null };
+		const carried = new Set(pr.changes.map((c) => JSON.stringify([c.kind, c.id, c.field, c.value])));
+		return { changes: s.draft.changes.filter((c) => !carried.has(JSON.stringify([c.kind, c.id, c.field, c.value]))), pr: null };
+	}
+
+	// One check of the pull request at a time: "Check again" or opening the Draft starts a new
+	// round, and a check from an earlier round that answers afterwards does nothing.
+	let watching = 0;
 	function watch() {
 		clearTimeout(poll);
+		const round = ++watching;
 		const tick = async () => {
-			if (!s.draft.pr || !root.isConnected) return;
+			if (round !== watching || !s.draft.pr || !root.isConnected) return;
 			try {
-				s.pr = await s.gh.status(s.draft.pr.number);
+				const st = await s.gh.status(s.draft.pr.number);
+				if (round !== watching || !s.draft.pr) return;
+				s.pr = st;
 				if (s.pr.merged || s.pr.state === "closed") {
-					// Merged (here or on GitHub) or closed: the draft is done.
+					// Merged on GitHub, or closed: the draft is done.
 					if (s.pr.merged) {
-						const suggestion = s.draft.pr.suggestion;
-						s.draft = { changes: [], pr: null };
+						const pr = s.draft.pr;
+						s.draft = afterMerge(pr);
 						saveDraft();
-						ctx.notify(suggestion ? "Your suggestion was merged; it ships with the next release" : "Merged: the release deploys in a few minutes");
+						// The release starts from a commit titled "release: …"; merged on GitHub under its own title, it does not.
+						ctx.notify(pr.suggestion ? "Your suggestion was merged; it ships with the next release"
+							: "Merged on GitHub. It is released with the next release (Merge and release in the Workspace starts one at once)");
 						await load();
 					}
 					return render();
@@ -681,7 +708,8 @@ export function mount(root, ctx) {
 		render();
 		await s.gh.merge(pr.number, s.pr.head, pr.title, pr.body);
 		await s.gh.deleteBranch(pr.branch).catch((err) => console.warn("the branch could not be deleted", err));
-		s.draft = { changes: [], pr: null };
+		watching += 1;
+		s.draft = afterMerge(pr);
 		saveDraft();
 		s.busy = "";
 		ctx.notify(`Merged. ${pr.title.split(" ").slice(0, 3).join(" ")} is being released`);
@@ -818,15 +846,21 @@ export function mount(root, ctx) {
 		if (!sent.length) { ctx.notify(`Nothing here can go live: ${describe(kept[0].c, s.data.index, names())} ${kept[0].why}`, { kind: "error" }); return; }
 		s.busy = `Applying ${plural(sent.length, "change")}…`;
 		render();
+		// The Worker takes LIVE_BATCH changes a request (worker/media/live.js MAX_CHANGES). Each batch
+		// that went live leaves the draft at once: one refused later leaves only itself and the rest.
+		const live = new Set();
 		try {
-			// The Worker takes LIVE_BATCH changes a request (worker/media/live.js MAX_CHANGES).
-			for (let i = 0; i < sent.length; i += LIVE_BATCH) await liveCall("POST", "", { changes: sent.slice(i, i + LIVE_BATCH).map((x) => x.live) });
+			for (let i = 0; i < sent.length; i += LIVE_BATCH) {
+				const part = sent.slice(i, i + LIVE_BATCH);
+				await liveCall("POST", "", { changes: part.map((x) => x.live) });
+				for (const x of part) live.add(x.c);
+				s.draft.changes = s.draft.changes.filter((c) => !live.has(c));
+				saveDraft();
+			}
 		} finally {
 			s.busy = "";
+			await loadLive().catch((err) => console.warn("the live changes could not be read again", err));
 		}
-		s.draft.changes = kept.map((x) => x.c);
-		saveDraft();
-		await loadLive();
 		ctx.notify(`${plural(sent.length, "change")} live: listeners see ${sent.length === 1 ? "it" : "them"} within about five minutes${kept.length ? `. ${plural(kept.length, "change")} need${kept.length === 1 ? "s" : ""} a release and stay${kept.length === 1 ? "s" : ""} in the draft` : ""}`);
 	}
 
@@ -990,11 +1024,14 @@ export function mount(root, ctx) {
 	/** The first page of members for the search, filter and sort; `more` adds the next page. */
 	async function loadMembers({ more = false } = {}) {
 		const ask = ++memberAsk;
-		const offset = more && s.mlist ? s.mlist.members.length : 0;
+		const key = memberQuery(0);
+		// More of the same search only: a list shown for another search (a filter just tapped) starts again.
+		const adding = more && s.mlist?.key === key;
+		const offset = adding ? s.mlist.members.length : 0;
 		const page = await libraryCall("GET", `/members${memberQuery(offset)}`);
 		// A newer search has been asked for meanwhile: its answer wins.
 		if (ask !== memberAsk) return;
-		s.mlist = more && s.mlist ? { ...page, members: [...s.mlist.members, ...page.members] } : page;
+		s.mlist = adding ? { ...page, key, members: [...s.mlist.members, ...page.members] } : { ...page, key };
 		render();
 	}
 
@@ -1055,7 +1092,13 @@ export function mount(root, ctx) {
 	}
 
 	async function deleteUploads(ids) {
-		const out = await libraryCall("POST", `/members/${s.member}/uploads/delete`, { ids });
+		// The Worker takes 100 a request.
+		const out = { deleted: [], refused: [] };
+		for (let i = 0; i < ids.length; i += 100) {
+			const part = await libraryCall("POST", `/members/${s.member}/uploads/delete`, { ids: ids.slice(i, i + 100) });
+			out.deleted.push(...part.deleted);
+			out.refused.push(...part.refused);
+		}
 		s.mpick = new Set();
 		const refused = out.refused.length ? `; ${plural(out.refused.length, "was", "were")} kept: ${out.refused[0].error}` : "";
 		ctx.notify(`${plural(out.deleted.length, "upload")} deleted${refused}`, out.deleted.length ? undefined : { kind: "error" });
@@ -1176,11 +1219,17 @@ export function mount(root, ctx) {
 	}
 
 	/** Merges a publishing pull request with its own title, the release line, once its checks pass. */
-	async function mergePublished(url) {
+	async function mergePublished(url, requestId) {
 		const number = Number(url.split("/").pop());
 		s.busy = "Checking the pull request…";
 		render();
 		const st = await s.gh.status(number);
+		// The address is kept by the Worker, set by whoever holds Review: it must be this request's
+		// own publishing pull request (its branch and its release title), never another one.
+		if (!st.branch.startsWith(`publish-${requestId}-`) || !/^release: web\+d1 /.test(st.title)) {
+			s.busy = "";
+			throw new DraftError(`pull request #${number} is not the one made for this request (branch ${st.branch}); open it on GitHub`);
+		}
 		if (st.merged) { s.busy = ""; ctx.notify("Already merged"); return loadRequests(); }
 		const done = st.checks.length && st.checks.every((c) => c.status === "completed");
 		if (!done || !st.checks.every((c) => ["success", "skipped", "neutral"].includes(c.conclusion))) {
@@ -1710,7 +1759,7 @@ export function mount(root, ctx) {
 				${r.reason ? html`<p class="adm-quote">Reason: ${r.reason}</p>` : ""}
 				${r.pr ? html`<p><a class="text-link" href="${r.pr}" target="_blank" rel="noopener">${r.pr.replace("https://github.com/", "")}</a></p>` : ""}
 				${songs.length ? html`<div class="adm-songs" role="table" aria-label="Songs">${songs}</div>` : ""}
-				${r.status === "approved" && r.pr && s.canWrite && r.pr.includes(`/${REPO}/pull/`) ? html`<div class="adm-actions"><button class="btn primary" data-adm="req-merge" data-url="${r.pr}">Merge and release</button></div>` : ""}
+				${r.status === "approved" && r.pr && s.canWrite && r.pr.includes(`/${REPO}/pull/`) ? html`<div class="adm-actions"><button class="btn primary" data-adm="req-merge" data-url="${r.pr}" data-id="${r.id}">Merge and release</button></div>` : ""}
 			</div>`;
 		}
 		return html`<form class="adm-item" data-form="approve" data-id="${r.id}">
@@ -1794,6 +1843,7 @@ export function mount(root, ctx) {
 			}
 			return html`<div class="adm-panel">
 				<h2 class="adm-h">Pull request #${pr.number}</h2>
+				${(() => { const since = pr.changes ? afterMerge(pr).changes.length : 0; return since ? html`<p class="adm-hint">${plural(since, "change")} made since publishing ${since === 1 ? "stays" : "stay"} in your draft for the next pull request.</p>` : ""; })()}
 				<p><a class="text-link" href="${pr.url}" target="_blank" rel="noopener">${pr.url}</a> · releases v${pr.version}</p>
 				${checkList}
 				${done && !green ? html`<p class="adm-error">A check failed: open it on GitHub, then fix the draft there or close the pull request.</p>` : ""}
@@ -2237,7 +2287,7 @@ export function mount(root, ctx) {
 				case "req-open": s.reviewing = Number(b.dataset.id); s.rejecting = null; previewStop(); render(); break;
 				case "reject-open": s.rejecting = Number(b.dataset.id); render(); root.querySelector("[name=reason]")?.focus(); break;
 				case "reject-cancel": s.rejecting = null; render(); break;
-				case "req-merge": await mergePublished(b.dataset.url); break;
+				case "req-merge": await mergePublished(b.dataset.url, Number(b.dataset.id)); break;
 				case "suggestions": s.suggestions = null; render(); await loadSuggestions(); break;
 				case "members-reload": s.mlist = null; render(); await loadMembers(); break;
 				case "lyrics-reload": s.lyrics = null; render(); await loadLyrics(); break;

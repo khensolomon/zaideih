@@ -316,10 +316,13 @@ function mount(root, ctx) {
 	// Timed lyrics: the line being sung, lit and kept in view, while this song plays.
 	let touched = 0;
 	const held = () => { touched = Date.now(); };
-	addEventListener("touchstart", held, { passive: true });
-	addEventListener("wheel", held, { passive: true });
+	// Removed when the page is left, not only at the next tick of a song playing.
+	const page = new AbortController();
+	addEventListener("touchstart", held, { passive: true, signal: page.signal });
+	addEventListener("wheel", held, { passive: true, signal: page.signal });
+	addEventListener("hashchange", () => page.abort(), { once: true, signal: page.signal });
 	const offTime = on("time", ({ position }) => {
-		if (st !== mine || !root.isConnected) { offTime(); removeEventListener("touchstart", held); removeEventListener("wheel", held); return; }
+		if (st !== mine || !root.isConnected) { offTime(); page.abort(); return; }
 		if (!st.lyrics || player.current()?.id !== st.id) return;
 		const p = parsed();
 		if (!p.timed) return;

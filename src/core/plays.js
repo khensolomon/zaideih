@@ -24,6 +24,8 @@ const MAX_PENDING = 500;
 const PENDING_KEY = "zaideih.plays";
 const SEND_DELAY_MS = 3000;
 const RETRY_MS = [30_000, 120_000, 600_000];
+/** After plays turned away for the rate: the Worker allows one batch per address and song a minute. */
+const RATE_RETRY_MS = 70_000;
 /** Answers that mean the batch can never be accepted as it is. */
 const REFUSED = new Set([400, 403, 405, 413]);
 /** Progress steps larger than this are seeks or stalls, not listening. */
@@ -80,6 +82,8 @@ export function createPlayQueue({
 	send = (body, { keepalive }) => fetch(url, { method: "POST", body, keepalive, headers: { "Content-Type": "text/plain" }, credentials: "omit" }),
 	now = () => Date.now(),
 	online = () => globalThis.navigator?.onLine !== false,
+	// One tab sends at a time: the queue is shared, and the Worker adds every play it is sent.
+	exclusive = (fn) => (globalThis.navigator?.locks ? globalThis.navigator.locks.request("zaideih.plays", { ifAvailable: true }, (lock) => (lock ? fn() : undefined)) : fn()),
 } = {}) {
 	let timer = 0;
 	let sending = false;
@@ -114,6 +118,8 @@ export function createPlayQueue({
 	const schedule = (ms) => {
 		clearTimeout(timer);
 		timer = setTimeout(() => queue.flush(), ms);
+		// Node (tests): a waiting send does not keep the process alive. Browsers return a number.
+		timer?.unref?.();
 	};
 
 	const queue = {
@@ -141,6 +147,11 @@ export function createPlayQueue({
 		async flush({ leaving = false } = {}) {
 			clearTimeout(timer);
 			if (!url || sending || !online()) return;
+			return exclusive(() => this.send(leaving));
+		},
+
+		async send(leaving) {
+			if (sending) return;
 			const batch = read().slice(0, MAX_BATCH);
 			if (!batch.length) return;
 			sending = true;
@@ -157,10 +168,15 @@ export function createPlayQueue({
 			if (leaving) return;
 			if (res && res.ok) {
 				failures = 0;
-				removeSent(batch);
 				const body = await res.json().catch(() => null);
-				if (body?.rejected?.length) console.warn("some play counts were not accepted", body.rejected);
-				if (read().length) schedule(0);
+				// A play turned away for the rate (another listener on the same address played the
+				// song this minute) is kept and sent again later; every other answer is final.
+				const later = new Set((body?.rejected ?? []).filter((r) => r[1] === "rate-limited").map((r) => r[0]));
+				removeSent(batch.filter((_, i) => !later.has(i)));
+				const final = (body?.rejected ?? []).filter((r) => r[1] !== "rate-limited");
+				if (final.length) console.warn("some play counts were not accepted", final);
+				if (read().length > later.size) schedule(0);
+				else if (later.size) schedule(RATE_RETRY_MS);
 				return;
 			}
 			if (res && REFUSED.has(res.status)) {

@@ -62,7 +62,11 @@ export const offline = {
 	},
 
 	async remove(ids) {
+		const gone = new Set(ids);
+		// Waiting ones are not fetched; the one on its way is deleted once it lands (pump).
+		state.queue = state.queue.filter((t) => !gone.has(t.id));
 		for (const id of ids) {
+			if (state.active?.track.id === id) removing.add(id);
 			await db.delete("audio", id);
 			state.downloaded.delete(id);
 		}
@@ -93,6 +97,8 @@ export const offline = {
 };
 
 let running = false;
+// Removed while downloading: deleted when the download finishes, never kept.
+const removing = new Set();
 
 async function pump() {
 	if (running) return;
@@ -104,8 +110,10 @@ async function pump() {
 			emit("downloads");
 			try {
 				await download(track);
-				state.downloaded.add(track.id);
+				if (removing.delete(track.id)) await db.delete("audio", track.id);
+				else state.downloaded.add(track.id);
 			} catch (err) {
+				removing.delete(track.id);
 				state.failed.set(track.id, err.message);
 				notify(`Couldn't download "${track.title}": ${err.message}`, { kind: "error" });
 				if (err.fatal) {

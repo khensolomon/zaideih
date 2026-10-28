@@ -2,7 +2,7 @@
  * Zaideih accounts (docs/accounts.md): one member however they sign in, and
  * Zaideih's own sign-in tokens.
  *
- * A sign-in (GitHub now; Google and passkeys later) is a row in D1
+ * A sign-in (GitHub, Google or a passkey) is a row in D1
  * `member_logins`, keyed by the provider and the provider's id for the
  * person. On a sign-in the Worker finds the member:
  *   1. the sign-in is known: its member;
@@ -117,7 +117,9 @@ export async function signIn(env, who, { linkTo = null, nowSeconds = Math.floor(
 			if (rows.length === 1) { memberId = rows[0].member_id; joined = "email"; }
 		}
 		if (memberId === null) {
-			const made = await env.DB.prepare("INSERT INTO members (name, first_seen, last_seen) VALUES (?1, ?2, ?2)").bind(who.name, nowSeconds).run();
+			// An id above every member's, and every id retired by joining accounts: never one used before.
+			const made = await env.DB.prepare(`INSERT INTO members (id, name, first_seen, last_seen) VALUES (
+				(SELECT MAX(n) + 1 FROM (SELECT COALESCE(MAX(id), 0) AS n FROM members UNION ALL SELECT COALESCE(MAX(id), 0) FROM member_retired)), ?1, ?2, ?2)`).bind(who.name, nowSeconds).run();
 			memberId = made.meta.last_row_id;
 			joined = "new";
 		}
@@ -181,6 +183,9 @@ export async function mergeMembers(env, a, b, nowSeconds) {
 		q("DELETE FROM member_folders WHERE member_id = ?2"),
 		env.DB.prepare(`UPDATE members SET moderator = MAX(moderator, (SELECT moderator FROM members WHERE id = ?2)),
 			first_seen = MIN(first_seen, (SELECT first_seen FROM members WHERE id = ?2)), last_seen = ?3 WHERE id = ?1`).bind(keep, gone, nowSeconds),
+		// What was done to either account stays in the one kept; the other id is never given out again.
+		q("UPDATE member_log SET member_id = ?1 WHERE member_id = ?2"),
+		env.DB.prepare("INSERT OR REPLACE INTO member_retired (id, kept, at) VALUES (?2, ?1, ?3)").bind(keep, gone, nowSeconds),
 		q("DELETE FROM members WHERE id = ?2"),
 	]);
 	return keep;

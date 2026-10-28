@@ -26,6 +26,14 @@ const GITHUB_LINK_KEY = "zaideih.account.github-link";
 const PROVIDERS = { google: "Google", github: "GitHub", passkey: "Passkey" };
 
 // Browsers inside other apps (Facebook, Messenger, Instagram, LINE, WeChat, Android web views): Google refuses to sign in there.
+/**
+ * The reason a sign-in gives in its return address (GitHub's or Google's own words, or a
+ * code such as access_denied), shown only when it is plain words: the address can be made
+ * by anyone, so nothing with digits, addresses or other marks (a phone number, a link) is
+ * put on the page.
+ */
+export const signInReason = (text) => (/^[A-Za-z][A-Za-z .,;'_-]{0,119}$/.test(text ?? "") ? `: ${text.replace(/_/g, " ")}` : ". Try again.");
+
 export const inAppBrowser = (ua) => /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|; wv\)/.test(ua);
 
 // State that survives re-renders of the page.
@@ -171,7 +179,7 @@ function draw(root, ctx) {
 async function finishGitHub(query) {
 	const link = sessionStorage.getItem(GITHUB_LINK_KEY) === "1";
 	sessionStorage.removeItem(GITHUB_LINK_KEY);
-	if (query.get("signin-error")) throw new Error(`GitHub did not sign you in: ${query.get("signin-error")}`);
+	if (query.get("signin-error")) throw new Error(`GitHub did not sign you in${signInReason(query.get("signin-error"))}`);
 	await githubSession().finish({ code: query.get("signin"), nonce: query.get("nonce") });
 	const who = await createGitHub(() => githubSession().token()).whoami();
 	saveWho(localStorage, { login: who.login, level: who.level, via: "github" });
@@ -294,7 +302,7 @@ async function mount(root, ctx) {
 	});
 	try {
 		if (query.has("google") || query.has("google-error")) {
-			if (query.get("google-error")) throw new Error(query.get("google-error") === "access_denied" ? "Google sign-in was cancelled." : `Google did not sign you in: ${query.get("google-error")}`);
+			if (query.get("google-error")) throw new Error(query.get("google-error") === "access_denied" ? "Google sign-in was cancelled." : `Google did not sign you in${signInReason(query.get("google-error"))}`);
 			st.busy = "Finishing the Google sign-in…"; draw(root, ctx);
 			const s = await account().google.finish({ code: query.get("google"), nonce: query.get("nonce") });
 			ctx.notify(s.joined === "email" ? `Signed in: joined to your account by your email` : s.joined === "link" ? "Google added to your account" : s.joined === "merged" ? "Your two accounts are now one" : `Signed in as ${s.member.name}`);

@@ -174,9 +174,9 @@ async function checkClientData(env, clientDataJSON, { type, origin, nowSeconds }
 	}
 	if (client.type !== type) throw new MemberError(`expected a ${type} response`);
 	if (client.origin !== origin) throw new MemberError(`the passkey was used on ${client.origin}, not ${origin}`, 403);
-	const row = await env.DB.prepare("SELECT * FROM passkey_challenges WHERE challenge = ?1").bind(String(client.challenge)).first();
+	// Taken and removed in one statement: two requests can never both use it.
+	const row = await env.DB.prepare("DELETE FROM passkey_challenges WHERE challenge = ?1 RETURNING *").bind(String(client.challenge)).first();
 	if (!row) throw new MemberError("this passkey request is unknown or already used; try again", 400);
-	await env.DB.prepare("DELETE FROM passkey_challenges WHERE challenge = ?1").bind(row.challenge).run();
 	if (row.created_at < nowSeconds - CHALLENGE_S) throw new MemberError("this passkey request took too long; try again", 400);
 	if (row.kind !== (type === "webauthn.create" ? "create" : "get")) throw new MemberError("this passkey request was for something else", 400);
 	return { client, raw, challengeRow: row };

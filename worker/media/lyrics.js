@@ -358,6 +358,12 @@ async function editsText(env, me, ...ids) {
 	return false;
 }
 
+/** False for a private songbook text `me` may not see (no book of theirs prints it); true for anything else. */
+async function mayReadText(env, me, id) {
+	if (!isText(id) || (await textIsPublic(env, id))) return true;
+	return Boolean(await textAccess(env, me, id));
+}
+
 async function mayModerate(env, me, ...ids) {
 	// A songbook text, and a recording joined to one, are looked after by those who edit the text too.
 	if (!can(me, "lyrics") && !(await editsText(env, me, ...ids))) throw new MemberError("this needs the Lyrics right", 403);
@@ -403,6 +409,13 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			if (privateText && !(await editsText(env, me, track)) && m === "POST") throw new MemberError("changing this song needs the Songbooks right, or to be an editor of its book", 403);
 			// Joining texts and recordings comes later (docs/songbooks.md, step 4).
 			if (["link", "unlink", "propose", "compare", "decline"].includes(action)) throw new MemberError("songbook texts are not joined to recordings yet", 400);
+		}
+		// A recording joined to a private songbook text shows that text: the text's own rules hold for it too.
+		const joined = isText(track) ? track : await sourceOf(env, track);
+		if (joined !== track && !(await mayReadText(env, me, joined))) throw new MemberError("this song's lyrics are in a private songbook", 404);
+		const writes = m === "POST" && ["", "hide", "show", "restore", "resolve", "unlink"].includes(action);
+		if (joined !== track && writes && isText(joined) && !(await textIsPublic(env, joined)) && !(await editsText(env, me, joined))) {
+			throw new MemberError("changing this song's lyrics needs the Songbooks right, or to be an editor of its book", 403);
 		}
 
 		if (!action && m === "POST") {
@@ -456,7 +469,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 		}
 
 		// A recording showing a songbook text is looked after by the Songbooks right too.
-		await mayModerate(env, me, track, toText ? linkBody.to : 0, action === "unlink" ? await sourceOf(env, track) : 0);
+		await mayModerate(env, me, track, joined, toText ? linkBody.to : 0);
 		if (action === "link" && m === "POST") {
 			const body = linkBody;
 			if (!Number.isSafeInteger(body.to) || body.to <= 0) throw new MemberError("to must be the song whose lyrics to show");
@@ -466,6 +479,7 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			if (already) throw new MemberError(`this song already shows the lyrics of song ${already.source}; unlink it first`, 409);
 			const target = await sourceOf(env, body.to);
 			if (target === track) throw new MemberError("these songs already show one text", 409);
+			if (!(await mayReadText(env, me, target))) throw new MemberError(`song ${body.to} has no lyrics to share`, 404);
 			const targetText = await current(env, target, "");
 			if (!targetText || targetText.hidden_at) throw new MemberError(`song ${body.to} has no lyrics to share`, 404);
 			const own = (await env.DB.prepare("SELECT COUNT(*) AS n FROM lyrics WHERE track = ?1 AND hidden_at IS NULL").bind(track).first())?.n ?? 0;
@@ -493,6 +507,8 @@ export async function handleLyrics(request, env, ctx, { now = () => Date.now() }
 			await checkTrack(env, other);
 			const copy = async (t) => {
 				const src = await sourceOf(env, t);
+				// A private songbook text is compared only by those who see its book.
+				if (!(await mayReadText(env, me, src))) return null;
 				const row = await current(env, src, "");
 				if (!row) return null;
 				const n = await env.DB.prepare("SELECT COUNT(*) AS versions, COUNT(DISTINCT member_id) AS people FROM lyrics_versions WHERE track = ?1 AND lang = ''").bind(src).first();

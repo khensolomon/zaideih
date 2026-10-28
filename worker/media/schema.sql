@@ -625,3 +625,16 @@ CREATE TABLE IF NOT EXISTS member_log (
     at         INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_member_log_member ON member_log (member_id, at);
+
+-- =============================================================================
+-- member_retired: member ids no longer used, never given out again
+-- =============================================================================
+-- An account joined into another is removed; its id is kept here so the next
+-- new member does not get it (and its history). New members take an id above
+-- every one here and in members (accounts.js).
+-- Not rebuildable from git: kept by `tools/d1.mjs reset` like members.
+CREATE TABLE IF NOT EXISTS member_retired (
+    id    INTEGER PRIMARY KEY,           -- the id no longer used
+    kept  INTEGER NOT NULL,              -- the member it was joined into
+    at    INTEGER NOT NULL
+);

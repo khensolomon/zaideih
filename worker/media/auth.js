@@ -164,9 +164,9 @@ async function waitPage(env, { nonce, code, error, nowSeconds }) {
 /** The code (or error) kept for this nonce, once: { code } | { error } | null while the sign-in has not come back. */
 async function takeWaiting(env, nonce, nowSeconds) {
 	const hash = await sha256(nonce);
-	const row = await env.DB.prepare("SELECT code, error, created_at FROM signin_waiting WHERE nonce_hash = ?1").bind(hash).first();
+	// Taken and removed in one statement: the code is handed out once.
+	const row = await env.DB.prepare("DELETE FROM signin_waiting WHERE nonce_hash = ?1 RETURNING code, error, created_at").bind(hash).first();
 	if (!row) return null;
-	await env.DB.prepare("DELETE FROM signin_waiting WHERE nonce_hash = ?1").bind(hash).run();
 	if (row.created_at < nowSeconds - WAIT_S) return { error: "the sign-in took too long; try again" };
 	return row.error ? { error: row.error } : { code: row.code };
 }

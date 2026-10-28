@@ -47,12 +47,13 @@ export function createSession({ authUrl, local, tab, fetchImpl = (...a) => fetch
 		try {
 			res = await fetchImpl(`${authUrl}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
 		} catch (err) {
-			throw new SignInError(`the sign-in service could not be reached (${err.message})`);
+			throw Object.assign(new SignInError(`the sign-in service could not be reached (${err.message})`), { passing: true });
 		}
 		if (res.status === 204) return null;
 		let answer = null;
 		try { answer = await res.json(); } catch { /* reported below */ }
-		if (!res.ok) throw new SignInError(answer?.error ?? `the sign-in service answered HTTP ${res.status}`);
+		// A refusal (4xx) is final; the service down or busy (5xx) passes, and the sign-in is kept.
+		if (!res.ok) throw Object.assign(new SignInError(answer?.error ?? `the sign-in service answered HTTP ${res.status}`), { passing: res.status >= 500 });
 		return answer;
 	}
 
@@ -106,6 +107,8 @@ export function createSession({ authUrl, local, tab, fetchImpl = (...a) => fetch
 			// One renewal at a time: parallel calls share it.
 			renewing ??= call("refresh", { refresh_token: t.refresh_token })
 				.then(keep, (err) => {
+					// Offline, or the service down a moment: kept, and renewed on the next try.
+					if (err.passing) throw new SignInError(`the GitHub sign-in could not be renewed just now (${err.message}); try again in a moment`);
 					write(local, SESSION_KEY, null);
 					throw new SignInError(`the GitHub sign-in could not be renewed (${err.message}); sign in again`);
 				})

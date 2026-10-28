@@ -17,20 +17,42 @@ export function fakeD1() {
 	const schema = readFileSync(new URL("../../worker/media/schema.sql", import.meta.url), "utf8")
 		.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
 	db.exec(schema);
+	// Queries as D1 counts them against its limit per Worker invocation (50 on the Free
+	// plan): each first/all/run is one, and a whole batch() is one.
+	const counter = { queries: 0, inBatch: false };
+	const count = () => { if (!counter.inBatch) counter.queries += 1; };
 	const statement = (sql, args = []) => ({
 		bind: (...a) => statement(sql, a),
-		async first() { return db.prepare(sql).get(...args) ?? null; },
-		async all() { return { results: db.prepare(sql).all(...args) }; },
+		async first() { count(); return db.prepare(sql).get(...args) ?? null; },
+		async all() { count(); return { results: db.prepare(sql).all(...args) }; },
 		async run() {
+			count();
 			const r = db.prepare(sql).run(...args);
 			return { meta: { last_row_id: Number(r.lastInsertRowid), changes: r.changes } };
 		},
 	});
 	return {
 		raw: db,
+		counter,
 		prepare: (sql) => statement(sql),
 		withSession: () => ({ prepare: (sql) => statement(sql) }),
-		async batch(list) { return Promise.all(list.map((s) => s.run())); },
+		// All or nothing, as D1 runs a batch in one transaction.
+		async batch(list) {
+			counter.queries += 1;
+			counter.inBatch = true;
+			db.exec("BEGIN");
+			try {
+				const out = [];
+				for (const s of list) out.push(await s.run());
+				db.exec("COMMIT");
+				return out;
+			} catch (err) {
+				db.exec("ROLLBACK");
+				throw err;
+			} finally {
+				counter.inBatch = false;
+			}
+		},
 	};
 }
 
@@ -61,7 +83,8 @@ export function fakeR2() {
 				writeHttpMetadata() {},
 			};
 		},
-		async delete(key) { objects.delete(key); },
+		// One key, or several at once (R2 takes up to 1,000 in one call).
+		async delete(key) { for (const k of [key].flat()) objects.delete(k); },
 		async head(key) { const o = objects.get(key); return o ? { size: o.bytes.length } : null; },
 		/** Like R2's list(): objects under a prefix, and with a delimiter the "folders" one level down. */
 		async list({ prefix = "", delimiter, limit = 1000 } = {}) {

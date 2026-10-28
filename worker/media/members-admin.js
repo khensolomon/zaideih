@@ -9,7 +9,7 @@
  * session, a passkey or an address to play an upload.
  *
  * Each request stays within D1's queries per request on the Free plan: a
- * list is four queries, a member's page about a dozen.
+ * list is four queries, a member's page about twenty.
  */
 import { can, ownerId, RIGHTS, rightsOf } from "./members.js";
 
@@ -22,6 +22,8 @@ export class AdminError extends Error {
 
 export const PAGE = 50;
 const MAX_PAGE = 100;
+/** Past this, a page is never asked for (the list is far shorter); a larger offset is refused, not sent to D1. */
+const MAX_OFFSET = 1_000_000;
 const MAX_QUERY = 100;
 const NEW_DAYS = 30;
 const HISTORY = 60;
@@ -29,7 +31,7 @@ export const FILTERS = Object.freeze(["all", "rights", "uploading", "new", "bloc
 export const SORTS = Object.freeze({
 	seen: "m.last_seen DESC, m.id DESC",
 	joined: "m.first_seen DESC, m.id DESC",
-	space: "used DESC, m.last_seen DESC, m.id DESC",
+	space: "CASE WHEN m.id = {OWNER} THEN 0 ELSE used END DESC, m.last_seen DESC, m.id DESC",
 	name: "m.name COLLATE NOCASE ASC, m.id ASC",
 });
 export const ACTIONS = Object.freeze(["right-given", "right-taken", "folder", "blocked", "unblocked", "signed-out", "uploads-deleted"]);
@@ -90,7 +92,7 @@ const FILTER_SQL = {
 	all: "1",
 	// The owner holds every right without a row.
 	rights: "(m.id = {OWNER} OR m.moderator = 1 OR EXISTS (SELECT 1 FROM member_rights r WHERE r.member_id = m.id))",
-	uploading: "EXISTS (SELECT 1 FROM uploads u WHERE u.owner_id = m.id)",
+	uploading: "(m.id <> {OWNER} AND EXISTS (SELECT 1 FROM uploads u WHERE u.owner_id = m.id))",
 	new: "m.first_seen >= {SINCE}",
 	blocked: "m.blocked_at IS NOT NULL",
 };
@@ -107,7 +109,7 @@ export async function listPage(env, me, params, nowSeconds) {
 	if (!FILTERS.includes(filter)) throw new AdminError(`filter is one of ${FILTERS.join(", ")}`);
 	const sort = params.get("sort") || "seen";
 	if (!SORTS[sort]) throw new AdminError(`sort is one of ${Object.keys(SORTS).join(", ")}`);
-	const offset = whole(params.get("offset"), "offset", 0);
+	const offset = whole(params.get("offset"), "offset", 0, MAX_OFFSET);
 	const limit = whole(params.get("limit"), "limit", PAGE, MAX_PAGE) || PAGE;
 	const owner = await ownerId(env);
 	const since = nowSeconds - NEW_DAYS * 86400;
@@ -150,7 +152,8 @@ function summary(r, owner, rights) {
 		// Where Storage adds from (the owner and co-owners: the whole bucket but users/).
 		folder: r.id === owner ? null : r.folder ?? `${STORAGE_DEFAULT}${r.id}/`,
 		rights: r.id === owner ? Object.keys(RIGHTS) : [...(rights.get(r.id) ?? [])],
-		uploads: r.uploads, used: r.used,
+		// The owner's library is the owner's alone: nothing of it is shown.
+		uploads: r.id === owner ? 0 : r.uploads, used: r.id === owner ? 0 : r.used,
 		blocked: r.blocked_at ? { at: r.blocked_at, by: r.blocked_by, reason: r.blocked_reason ?? "" } : null,
 		firstSeen: r.first_seen, lastSeen: r.last_seen,
 	};
@@ -247,7 +250,7 @@ async function history(env, id, base, logins, keys) {
 export async function uploadsPage(env, id, params, publicUpload) {
 	const q = (params.get("q") ?? "").normalize("NFC").trim();
 	if (q.length > MAX_QUERY) throw new AdminError(`the search is at most ${MAX_QUERY} characters`);
-	const offset = whole(params.get("offset"), "offset", 0);
+	const offset = whole(params.get("offset"), "offset", 0, MAX_OFFSET);
 	const limit = whole(params.get("limit"), "limit", PAGE, MAX_PAGE) || PAGE;
 	const where = q ? "owner_id = ?1 AND (title LIKE ?2 ESCAPE '\\' OR artist LIKE ?2 ESCAPE '\\' OR album LIKE ?2 ESCAPE '\\' OR file_name LIKE ?2 ESCAPE '\\')" : "owner_id = ?1";
 	const args = q ? [id, likeOf(q)] : [id];

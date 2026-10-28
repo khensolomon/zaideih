@@ -279,3 +279,34 @@ test("GET /plays/stats gives the first day, the plays of each day and the last 7
 	await get();
 	assert.equal(sqls.length, n, "the second read comes from the edge cache");
 });
+
+test("plays turned away for the rate are kept for later; other refusals are final", async () => {
+	const q = createPlayQueue({ url: "https://x/plays", storage: memoryStorage(), send: async () => new Response(JSON.stringify({ accepted: 1, rejected: [[0, "rate-limited"], [2, "unknown-track"]] })) });
+	const warn = console.warn;
+	console.warn = () => {};
+	try {
+		q.add(7); q.add(8); q.add(9);
+		await q.flush();
+	} finally { console.warn = warn; }
+	assert.deepEqual(q.pending().map((p) => p[0]), [7], "the rate-limited play waits; the unknown one is gone");
+});
+
+test("one tab sends at a time", async () => {
+	let sends = 0;
+	let release;
+	const held = new Promise((r) => { release = r; });
+	let busy = false;
+	// A lock shared by two queues, as navigator.locks is by two tabs.
+	const exclusive = async (fn) => { if (busy) return undefined; busy = true; try { return await fn(); } finally { busy = false; } };
+	const storage = memoryStorage();
+	const send = async () => { sends += 1; await held; return new Response(JSON.stringify({ accepted: 1, rejected: [] })); };
+	const a = createPlayQueue({ url: "https://x/plays", storage, send, exclusive });
+	const b = createPlayQueue({ url: "https://x/plays", storage, send, exclusive });
+	a.add(5);
+	const first = a.flush();
+	await b.flush();
+	release();
+	await first;
+	assert.equal(sends, 1);
+	assert.equal(a.pending().length, 0);
+});

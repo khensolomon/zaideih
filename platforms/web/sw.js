@@ -49,11 +49,7 @@ const META_WAIT_MS = 4000;
 async function catalogMeta(request) {
 	const cache = await caches.open(DATA);
 	const network = fetch(request, { cache: "no-cache" }).then(async (res) => {
-		if (res.ok) {
-			await cache.put(request, res.clone());
-			const meta = await res.clone().json();
-			pruneCatalogs(cache, meta.catalog);
-		}
+		if (res.ok) await keepMeta(cache, request, res.clone());
 		return res;
 	});
 	const slow = new Promise((resolve) => setTimeout(() => resolve(null), META_WAIT_MS));
@@ -68,6 +64,29 @@ async function catalogMeta(request) {
 		const hit = await cache.match(request);
 		if (hit) return hit;
 		throw err;
+	}
+}
+
+/**
+ * A new meta.json is kept only once the catalog file it names is kept too,
+ * and older catalog files go only after that: the app always starts offline
+ * from a meta whose catalog is there, even when an update was cut short.
+ */
+async function keepMeta(cache, request, res) {
+	try {
+		const meta = await res.clone().json();
+		if (typeof meta.catalog !== "string" || !/^catalog\.[0-9a-f]+\.json$/.test(meta.catalog)) throw new Error("meta.json names no catalog file");
+		const file = new URL(meta.catalog, request.url).href;
+		if (!(await cache.match(file))) {
+			const got = await fetch(file, { cache: "reload" });
+			if (!got.ok) throw new Error(`${meta.catalog}: HTTP ${got.status}`);
+			await cache.put(file, got);
+		}
+		await cache.put(request, res);
+		await pruneCatalogs(cache, meta.catalog);
+	} catch (err) {
+		// The saved meta and its catalog stay as they were; the next start tries again.
+		console.warn("the new catalog was not kept for offline use", err);
 	}
 }
 

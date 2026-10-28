@@ -34,6 +34,21 @@ const PUBLIC_S = 60;
 export const CURRENT_TTL_MS = 60_000;
 const MAX_BYTES = 60 * 1024 * 1024;
 
+/**
+ * The cut recording to R2 from its parts, streamed: a long recording is held
+ * once (the original), not twice, within the Worker's 128 MB. Outside the
+ * Workers runtime (tests) the parts are joined.
+ */
+async function putParts(env, key, made, options) {
+	if (typeof FixedLengthStream !== "function") return env.BUCKET.put(key, made.bytes, options);
+	const { readable, writable } = new FixedLengthStream(made.length);
+	const putting = env.BUCKET.put(key, readable, options);
+	const writer = writable.getWriter();
+	for (const p of made.parts) if (p.length) await writer.write(p);
+	await writer.close();
+	return putting;
+}
+
 function answer(status, body, cors, extra = {}) {
 	const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
 	if (cors) headers.set("Access-Control-Allow-Origin", cors);
@@ -168,15 +183,15 @@ export async function handleEdits(request, env, ctx, { now = () => Date.now() } 
 		}
 		const version = ((await env.DB.prepare("SELECT MAX(version) AS v FROM audio_versions WHERE track_id = ?1").bind(track).first())?.v ?? 0) + 1;
 		const key = versionKey(track, version);
-		await env.BUCKET.put(key, made.bytes, { httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { track: String(track), version: String(version), from: originalKey(row), startMs: String(made.startMs), endMs: String(made.endMs) } });
+		await putParts(env, key, made, { httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { track: String(track), version: String(version), from: originalKey(row), startMs: String(made.startMs), endMs: String(made.endMs) } });
 		await env.DB.batch([
 			env.DB.prepare(`INSERT INTO audio_versions (track_id, version, object_key, start_ms, end_ms, duration_ms, bytes, note, made_by, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`)
-				.bind(track, version, key, made.startMs, made.endMs, made.durationMs, made.bytes.length, note, me.login, nowSeconds),
+				.bind(track, version, key, made.startMs, made.endMs, made.durationMs, made.length, note, me.login, nowSeconds),
 			env.DB.prepare("INSERT INTO audio_current (track_id, version, set_by, at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (track_id) DO UPDATE SET version = excluded.version, set_by = excluded.set_by, at = excluded.at").bind(track, version, me.login, nowSeconds),
 			env.DB.prepare("INSERT INTO audio_log (track_id, version, action, by_name, at) VALUES (?1, ?2, 'cut', ?3, ?4)").bind(track, version, me.login, nowSeconds),
 		]);
 		forgetCurrent();
-		return answer(201, { ...(await detail(env, track)), made: { version, startMs: made.startMs, endMs: made.endMs, durationMs: made.durationMs, bytes: made.bytes.length } }, cors);
+		return answer(201, { ...(await detail(env, track)), made: { version, startMs: made.startMs, endMs: made.endMs, durationMs: made.durationMs, bytes: made.length } }, cors);
 	} catch (err) {
 		if (err instanceof MemberError) return answer(err.status, { error: err.message }, cors ?? "*");
 		console.error("edits request failed", err);

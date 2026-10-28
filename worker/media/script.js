@@ -92,6 +92,8 @@ const TRACK_META_TTL_SECONDS = 86400;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const MEMORY_CACHE_MAX_ENTRIES = 5000;
 const AUDIO_CACHE_MAX_AGE = 86400;
+/** A song's ranges asked for without a version: it may be trimmed, so an hour, not a day (and not immutable). */
+const UNVERSIONED_CACHE_SECONDS = 3600;
 const MEDIA_DESTINATIONS = new Set(["audio", "video"]);
 const MAX_PLAYS = 50;
 const MAX_PER_TRACK = 3;
@@ -344,7 +346,8 @@ async function handlePlays(request, env, ctx) {
 	const text = await request.text();
 	if (text.length > MAX_PLAYS_BODY) return playsResponse(413, `body larger than ${MAX_PLAYS_BODY} bytes`, allowed);
 
-	const parsed = parsePlays(text, Math.floor(Date.now() / 1000));
+	const nowSeconds = Math.floor(Date.now() / 1000);
+	const parsed = parsePlays(text, nowSeconds);
 	if (parsed.error) return playsResponse(400, parsed.error, allowed);
 	const { plays, rejected } = parsed;
 
@@ -365,7 +368,8 @@ async function handlePlays(request, env, ctx) {
 			if (!t.allowed) { rejected.push([p.index, "rate-limited"]); continue; }
 			if (t.n >= MAX_PER_TRACK) { rejected.push([p.index, "repeated"]); continue; }
 			t.n += 1;
-			const key = `${p.id}|${playDay(p.at)}`;
+			// A device clock a little ahead never files a play under tomorrow.
+			const key = `${p.id}|${playDay(Math.min(p.at, nowSeconds))}`;
 			counts.set(key, (counts.get(key) ?? 0) + 1);
 		}
 		if (counts.size) {
@@ -429,9 +433,20 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	}
 
 	let object;
+	const rangeOption = parseRangeOption(range);
 	try {
-		object = await env.BUCKET.get(objectKey, parseRangeOption(range));
+		object = await env.BUCKET.get(objectKey, rangeOption);
 	} catch (err) {
+		// A range starting at or past the end of the file is the asker's mistake, not the song's: 416.
+		if (rangeOption) {
+			const head = await env.BUCKET.head(objectKey).catch(() => null);
+			if (head && rangeOption.range.offset >= head.size) {
+				const h = diag("range");
+				h.set("Content-Range", `bytes */${head.size}`);
+				h.set("Cache-Control", "no-store");
+				return new Response(null, { status: 416, headers: h });
+			}
+		}
 		console.error("R2 get threw", { trackId, objectKey, err });
 		ctx.waitUntil(recordStatus(env, trackId, "fetch_error"));
 		return new Response("Internal Server Error", { status: 500, headers: diag() });
@@ -452,10 +467,13 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 	headers.set("Vary", "Origin");
 	if (object.httpEtag) headers.set("ETag", object.httpEtag);
 	headers.set("X-Zaideih-Version", String(version));
-	// A version asked for never changes; the current one of an edited song can, so it is kept only briefly.
+	// A version asked for (`?v=`) never changes. Without one, the song may be trimmed later (audio-edits.js):
+	// an edited song's current file is kept briefly, an unedited one an hour, never as immutable.
 	headers.set(
 		"Cache-Control",
-		edited ? "private, max-age=300" : range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable` : "private, max-age=60",
+		asked !== null && range ? `public, max-age=${AUDIO_CACHE_MAX_AGE}, immutable`
+			: edited ? "private, max-age=300"
+			: range ? `public, max-age=${UNVERSIONED_CACHE_SECONDS}` : "private, max-age=60",
 	);
 
 	let status = 200;
@@ -469,9 +487,9 @@ async function handleAudioRequest(trackId, request, env, ctx, cors) {
 		headers.set("Content-Length", String(object.size));
 	}
 
-	// Counts fresh fetches that reach the Worker, not plays: browser-cached
-	// replays and range continuations never arrive here.
-	ctx.waitUntil(recordStatus(env, trackId, "served"));
+	// Counts fresh fetches that reach the Worker, not plays: one write for the start of the
+	// file, not one for every range a player reads after it (D1 writes are counted per day).
+	if (!rangeOption || rangeOption.range.offset === 0) ctx.waitUntil(recordStatus(env, trackId, "served"));
 
 	return new Response(request.method === "HEAD" ? null : object.body, { headers, status });
 }

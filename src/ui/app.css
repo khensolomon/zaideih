@@ -1067,6 +1067,8 @@ input[data-ctl="seek"][data-hover]::-webkit-slider-runnable-track {
 /* ---------- popover menu, dialog, toast ---------- */
 .menu {
 	position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 24px); padding: 6px;
+	/* A long menu (many playlists) scrolls inside the screen. */
+	max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain;
 	background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m);
 	box-shadow: 0 12px 32px var(--shadow);
 }

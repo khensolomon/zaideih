@@ -130,45 +130,73 @@ export const uploads = {
 	state: { member: null, space: null, list: [], albums: [], requests: [], shared: [], shares: [], received: [], loading: false, error: "" },
 	catalog: null,
 	timer: 0,
+	// Each read is numbered; one answered after another began, or after sign-out, is dropped.
+	asks: 0,
+	content: "",
+	failures: 0,
 
 	/** True when this build has personal libraries and someone is signed in. */
 	get available() {
 		return Boolean(LIBRARY_URL) && account().signedIn;
 	},
 
-	/** Connects to the app's catalog and reads the library when someone is signed in. */
-	start(catalog) {
+	/** Connects to the app's catalog; the library is read once someone is signed in (app.js syncAccess). */
+	connect(catalog) {
 		this.catalog = catalog;
-		if (this.available) this.refresh().catch(() => {});
+		// Addresses are signed for a few hours: back in view or online, they are renewed when due.
+		const due = () => { if (this.available && Date.now() >= this.dueAt) this.refresh().catch((err) => console.warn(`your library could not be read (${err.message})`)); };
+		document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") due(); });
+		addEventListener("online", due);
 	},
+	dueAt: 0,
 
 	/** Reads the library again: new signed addresses, and any change made elsewhere. */
 	async refresh() {
 		clearTimeout(this.timer);
 		if (!this.available) { this.clear(); return; }
+		const mine = ++this.asks;
+		const who = account().key;
 		this.state.loading = true;
 		emit("uploads", this.state);
 		try {
 			const lib = await call("GET", "");
+			// Signed out, someone else signed in, or a newer read began meanwhile: this answer is not shown.
+			if (mine !== this.asks || who !== account().key) return;
 			const { tracks, albums, sharedAlbums } = shapeUploads(lib.uploads, lib.requests ?? [], lib.shared ?? []);
 			const extra = this.catalog.extra;
 			extra.tracks.clear();
 			extra.albums.clear();
 			for (const t of tracks) extra.tracks.set(t.id, t);
 			for (const a of [...albums, ...sharedAlbums]) extra.albums.set(a.id, a);
+			// What the library holds, without its addresses (renewed on every read): pages being worked
+			// on are drawn again only when this changes (app.js).
+			const content = JSON.stringify(lib, (k, v) => (k === "url" || k === "expires" ? undefined : v));
+			if (content !== this.content) { this.content = content; this.state.version = (this.state.version ?? 0) + 1; }
 			Object.assign(this.state, { member: lib.member, space: lib.space, list: lib.uploads, albums, requests: lib.requests ?? [], shared: sharedAlbums, shares: lib.shares ?? [], received: lib.received ?? [], error: "" });
-			this.timer = setTimeout(() => this.refresh().catch(() => {}), REFRESH_MS);
+			this.failures = 0;
+			this.dueAt = Date.now() + REFRESH_MS;
+			this.timer = setTimeout(() => this.refresh().catch((err) => console.warn(`your library could not be read (${err.message})`)), REFRESH_MS);
 		} catch (err) {
+			if (mine !== this.asks) return;
 			this.state.error = err.message;
+			// Tried again sooner than the addresses run out: 1, 5, then 15 minutes.
+			const wait = [60_000, 300_000, 900_000][Math.min(this.failures++, 2)];
+			this.dueAt = Date.now() + wait;
+			this.timer = setTimeout(() => this.refresh().catch((e) => console.warn(`your library could not be read (${e.message})`)), wait);
 			throw err;
 		} finally {
-			this.state.loading = false;
-			emit("uploads", this.state);
+			if (mine === this.asks) {
+				this.state.loading = false;
+				emit("uploads", this.state);
+			}
 		}
 	},
 
 	clear() {
 		clearTimeout(this.timer);
+		// A read still on its way belongs to whoever was signed in: dropped when it comes.
+		this.asks += 1;
+		this.state.loading = false;
 		this.catalog?.extra.tracks.clear();
 		this.catalog?.extra.albums.clear();
 		Object.assign(this.state, { member: null, space: null, list: [], albums: [], requests: [], shared: [], shares: [], received: [], error: "" });
