@@ -1,5 +1,9 @@
 # Version
 
+## v26.10.29.1
+
+- Published Various Collections (2 songs, from @khensolomon's library)
+
 ## v26.10.28.2
 
 - Improvement scan: Worker, app and Workspace
